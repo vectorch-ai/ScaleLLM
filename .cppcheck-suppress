@@ -1,0 +1,18 @@
+// This file contains the list of suppressions used by the cppcheck tool
+// <https://cppcheck.sourceforge.io/manual.pdf>
+// The format for an error suppression is one of:
+// [error id]:[filename]:[line]
+// [error id]:[filename2]
+// [error id]
+// The error id is the id that you want to suppress.
+// The filename may include the wildcard characters *or ?, which matches any
+// sequence of characters or any single character respectively. It is recommended to
+// use “/” as path separator on all operating systems. The filename must match the
+// filename in the reported warning exactly.
+*:*build/*
+*:*vcpkg/*
+*:*benchmark/*
+*:*proto/*
+
+// error ids
+missingInclude

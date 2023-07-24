@@ -1,0 +1,11 @@
+# Visual Studio Code
+/.vscode*
+
+# CMake
+/build*
+
+# vcpkg
+/.vcpkg*
+
+# clangd cache
+/.cache*

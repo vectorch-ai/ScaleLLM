@@ -1,0 +1,23 @@
+{
+  "name": "llm-serving",
+  "version": "0.0.1",
+  "dependencies": [
+    {
+      "name": "abseil",
+      "version>=": "20230125.3"
+    },
+    {
+      "name": "benchmark",
+      "version>=": "1.8.0"
+    },
+    {
+      "name": "gtest",
+      "version>=": "1.13.0"
+    },
+    {
+      "name": "glog",
+      "version>=": "0.6.0#2"
+    }
+  ],
+  "builtin-baseline": "f6a5d4e8eb7476b8d7fc12a56dff300c1c986131"
+}
