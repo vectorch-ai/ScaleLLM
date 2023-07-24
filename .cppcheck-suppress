@@ -9,10 +9,6 @@
 // sequence of characters or any single character respectively. It is recommended to
 // use “/” as path separator on all operating systems. The filename must match the
 // filename in the reported warning exactly.
-*:*build/*
-*:*vcpkg/*
-*:*benchmark/*
-*:*proto/*
 
 // error ids
 missingInclude

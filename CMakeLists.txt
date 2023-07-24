@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# add libtorch to CMAKE_PREFIX_PATH
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libtorch")
+
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.vcpkg/scripts/buildsystems/vcpkg.cmake"
@@ -18,7 +21,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 include(static_analyzers)
 include(sanitizers)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
