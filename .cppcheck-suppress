@@ -12,3 +12,5 @@
 
 // error ids
 missingInclude
+syntaxError
+unmatchedSuppression

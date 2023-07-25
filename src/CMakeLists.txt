@@ -6,7 +6,12 @@ cc_binary(
   SRCS 
     example.cpp
   DEPS
+    :torch_utils
     ${TORCH_LIBRARIES}
+    gflags::gflags
+    glog::glog
 )
 
 add_subdirectory(tokenizer)
+add_subdirectory(models)
+add_subdirectory(common)

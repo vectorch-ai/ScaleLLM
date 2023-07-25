@@ -1,0 +1,11 @@
+cc_library(
+  NAME 
+    torch_utils
+  HDRS 
+    torch_utils.h
+  SRCS 
+    torch_utils.cpp
+  DEPS
+    glog::glog
+    ${TORCH_LIBRARIES}
+)
