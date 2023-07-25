@@ -25,14 +25,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+find_package(Torch REQUIRED)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
 # find all dependencies from vcpkg
 find_package(glog CONFIG REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
+find_package(GTest CONFIG REQUIRED)
+find_package(SentencePiece REQUIRED)
 
 # enable testing in this directory so we can do a top-level `make test`.
 # this also includes the BUILD_TESTING option, which is on by default.
 include(CTest)
+include(GoogleTest)
 
 # add subdirectories
 add_subdirectory(src)

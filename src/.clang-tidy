@@ -12,6 +12,8 @@ Checks: >
   performance-*,
   portability-*,
   readability-*,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
 
 HeaderFilterRegex: '.*'
 FormatStyle: 'file'

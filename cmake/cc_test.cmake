@@ -56,12 +56,13 @@ function(cc_test)
   )
 
   target_link_libraries(${CC_TEST_NAME}
-    PUBLIC ${CC_TEST_DEPS} gtest_main
+    PUBLIC ${CC_TEST_DEPS}
     PRIVATE ${CC_TEST_LINKOPTS}
   )
 
   gtest_add_tests(
     TARGET ${CC_TEST_NAME}
     EXTRA_ARGS ${CC_TEST_ARGS}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   )
 endfunction()

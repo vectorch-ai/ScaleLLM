@@ -17,6 +17,10 @@
     {
       "name": "glog",
       "version>=": "0.6.0#2"
+    },
+    {
+      "name": "sentencepiece",
+      "version>=": "0.1.97"
     }
   ],
   "builtin-baseline": "f6a5d4e8eb7476b8d7fc12a56dff300c1c986131"
