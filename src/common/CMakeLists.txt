@@ -2,9 +2,9 @@ cc_library(
   NAME 
     torch_utils
   HDRS 
-    torch_utils.h
+    state_dict.h
   SRCS 
-    torch_utils.cpp
+    state_dict.cpp
   DEPS
     glog::glog
     ${TORCH_LIBRARIES}

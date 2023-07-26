@@ -40,6 +40,9 @@ find_package(SentencePiece REQUIRED)
 include(CTest)
 include(GoogleTest)
 
+# include current path
+list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 # add subdirectories
 add_subdirectory(src)
 

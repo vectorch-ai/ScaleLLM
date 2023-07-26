@@ -14,6 +14,10 @@ Checks: >
   readability-*,
   -modernize-use-nodiscard,
   -modernize-use-trailing-return-type,
+  -misc-non-private-member-variables-in-classes,
+  -performance-unnecessary-value-param,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-magic-numbers,
 
 HeaderFilterRegex: '.*'
 FormatStyle: 'file'
@@ -28,3 +32,5 @@ CheckOptions:
     value: "f"
   - key: readability-function-cognitive-complexity.IgnoreMacros
     value: true
+  - key: readability-identifier-length.MinimumVariableNameLength
+    value: 2

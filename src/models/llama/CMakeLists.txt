@@ -1,3 +1,23 @@
 include(cc_library)
-include(cc_test)
 
+cc_library(
+  NAME 
+    llama
+  HDRS 
+    model_args.h
+    attention.h
+    feedforward.h
+    rms_norm.h
+    transformer_block.h
+    transformer.h
+  SRCS 
+    attention.cpp
+    feedforward.cpp
+    rms_norm.cpp
+    transformer_block.cpp
+    transformer.cpp
+  DEPS
+    :layers
+    glog::glog
+    ${TORCH_LIBRARIES}
+)
