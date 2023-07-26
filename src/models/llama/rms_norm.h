@@ -9,6 +9,7 @@
 
 namespace llm {
 
+// Root mean square normalization
 class RMSNormImpl : public torch::nn::Module {
  public:
   RMSNormImpl(int64_t dim, float eps);

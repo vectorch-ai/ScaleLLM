@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # add libtorch to CMAKE_PREFIX_PATH
@@ -11,8 +11,11 @@ set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.vcpkg/scripts/buildsystem
 
 project(
   "llm-serving"
-  LANGUAGES CXX
+  LANGUAGES CXX CUDA
 )
+
+# CMake 3.18 adds integrated support for architecture selection, disable it for now.
+set(CMAKE_CUDA_ARCHITECTURES OFF)
 
 # setup CMake module path, defines path for include() and find_package()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -24,6 +27,9 @@ include(sanitizers)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# pybind11 requires python headers
+find_package(Python REQUIRED COMPONENTS Development)
 
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
@@ -45,4 +51,5 @@ list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # add subdirectories
 add_subdirectory(src)
+add_subdirectory(third_party)
 

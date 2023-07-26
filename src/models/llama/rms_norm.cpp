@@ -12,7 +12,7 @@ torch::Tensor RMSNormImpl::norm(torch::Tensor x) {
 }
 
 torch::Tensor RMSNormImpl::forward(torch::Tensor x) {
-  auto output = norm(x.toType(torch::kFloat)).type_as(x);
+  auto output = norm(x.to(torch::kFloat)).type_as(x);
   return output * weight_;
 }
 
