@@ -21,22 +21,10 @@ cc_library(
     flash-attention/csrc/flash_attn/src/flash_fwd_hdim224_bf16_sm80.cu
     flash-attention/csrc/flash_attn/src/flash_fwd_hdim256_fp16_sm80.cu
     flash-attention/csrc/flash_attn/src/flash_fwd_hdim256_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim32_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim32_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim64_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim64_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim96_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim96_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim128_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim128_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim160_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim160_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim192_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim192_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim224_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim224_bf16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim256_fp16_sm80.cu
-    flash-attention/csrc/flash_attn/src/flash_bwd_hdim256_bf16_sm80.cu
+  INCLUDES
+    flash-attention/csrc/flash_attn
+    flash-attention/csrc/flash_attn/src
+    flash-attention/csrc/cutlass/include
   DEPS
     ${TORCH_LIBRARIES}
     Python::Python

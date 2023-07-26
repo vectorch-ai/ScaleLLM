@@ -35,7 +35,7 @@ function(cc_library)
     CC_LIB # prefix
     "TESTONLY" # options
     "NAME" # one value args
-    "HDRS;SRCS;COPTS;DEFINES;LINKOPTS;DEPS" # multi value args
+    "HDRS;SRCS;COPTS;DEFINES;LINKOPTS;DEPS;INCLUDES" # multi value args
     ${ARGN}
   )
 
@@ -66,7 +66,9 @@ function(cc_library)
       PRIVATE ${CC_LIB_LINKOPTS}
     )
     target_include_directories(${CC_LIB_NAME}
-      PUBLIC "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>"
+      PUBLIC 
+        "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>"
+        ${CC_LIB_INCLUDES}
     )
     target_compile_options(${CC_LIB_NAME} PRIVATE ${CC_LIB_COPTS})
     target_compile_definitions(${CC_LIB_NAME} PUBLIC ${CC_LIB_DEFINES})
@@ -75,6 +77,7 @@ function(cc_library)
     add_library(${CC_LIB_NAME} INTERFACE)
     target_include_directories(${CC_LIB_NAME}
       INTERFACE "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>"
+      PUBLIC ${CC_LIB_INCLUDES}
     )
 
     target_link_libraries(${CC_LIB_NAME}
