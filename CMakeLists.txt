@@ -10,7 +10,7 @@ set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.vcpkg/scripts/buildsystem
   CACHE STRING "Vcpkg toolchain file")
 
 project(
-  "llm-serving"
+  "LLMInfer"
   LANGUAGES CXX CUDA
 )
 
@@ -52,4 +52,3 @@ list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # add subdirectories
 add_subdirectory(src)
 add_subdirectory(third_party)
-

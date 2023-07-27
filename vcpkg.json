@@ -1,5 +1,5 @@
 {
-  "name": "llm-serving",
+  "name": "llminfer",
   "version": "0.0.1",
   "dependencies": [
     {

@@ -1,7 +1,7 @@
-# llm-serving
+# LLMInfer
 
 ---
-LLM serving is a high-performance serving system for large language models, designed for production environments.
+LLMInfer is a high-performance inference system for large language models, designed for production environments.
 
 Key features:
 
