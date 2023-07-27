@@ -30,6 +30,14 @@ Before you start building the project, you need to install the build tools. You 
 sudo apt-get install build-essential, ninja-build, cmake, python3-dev
 ```
 
+### Enlist code
+
+You can enlist the project by running the following command.
+
+``` bash
+git clone --recursive https://github.com/vectorch-ai/LLMInfer.git
+```
+
 ### Install libtorch 2.0.0
 
 You can download specific version of libtorch from pytorch website. Here is the link: <https://pytorch.org/get-started/locally/>. We are using libtorch 2.0.0 for this project and you can leverage the script to install it.
