@@ -1,3 +1,5 @@
+include(cc_library)
+
 cc_library(
   NAME 
     torch_utils

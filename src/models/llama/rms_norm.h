@@ -4,8 +4,8 @@
 #include <torch/nn/module.h>
 #include <torch/torch.h>
 
-#include "models/layers.h"
 #include "model_args.h"
+#include "models/layers.h"
 
 namespace llm {
 
@@ -19,7 +19,11 @@ class RMSNormImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);
 
-private:
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes();
+  }
+
+ private:
   torch::Tensor norm(torch::Tensor x);
 
   // parameter members, must be registered

@@ -11,9 +11,11 @@ class SentencePieceTokenizer : public Tokenizer {
  public:
   explicit SentencePieceTokenizer(const std::string& model_path);
 
-  std::vector<int> Encode(const std::string_view& text) const override;
+  std::vector<int> encode(const std::string_view& text) const override;
 
-  std::string Decode(const std::vector<int>& ids) const override;
+  std::string decode(const std::vector<int>& ids) const override;
+
+  int n_words() const { return sp_processor_.GetPieceSize(); }
 
  private:
   sentencepiece::SentencePieceProcessor sp_processor_;

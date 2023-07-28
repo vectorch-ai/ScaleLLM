@@ -11,7 +11,7 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string& model_path) {
   }
 }
 
-std::vector<int> SentencePieceTokenizer::Encode(
+std::vector<int> SentencePieceTokenizer::encode(
     const std::string_view& text) const {
   std::vector<int> tokens;
   const auto status = sp_processor_.Encode(text, &tokens);
@@ -21,7 +21,7 @@ std::vector<int> SentencePieceTokenizer::Encode(
   return tokens;
 }
 
-std::string SentencePieceTokenizer::Decode(const std::vector<int>& ids) const {
+std::string SentencePieceTokenizer::decode(const std::vector<int>& ids) const {
   std::string text;
   const auto status = sp_processor_.Decode(ids, &text);
   if (!status.ok()) {

@@ -20,9 +20,9 @@ class Tokenizer {
  public:
   virtual ~Tokenizer() = default;
 
-  virtual std::vector<int> Encode(const std::string_view& text) const = 0;
+  virtual std::vector<int> encode(const std::string_view& text) const = 0;
 
-  virtual std::string Decode(const std::vector<int>& tokens) const = 0;
+  virtual std::string decode(const std::vector<int>& tokens) const = 0;
 };
 
 }  // namespace llm

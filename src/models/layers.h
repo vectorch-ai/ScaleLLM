@@ -25,6 +25,10 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);
 
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes();
+  }
+
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
@@ -47,6 +51,10 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);
+
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes();
+  }
 
  private:
   // parameter members, must be registered
@@ -71,9 +79,13 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);
 
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes();
+  }
+
  private:
   // parameter members, must be registered
-  // we allocate the transpose since linear performs XA^T. 
+  // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features_per_partition, in_features]
   torch::Tensor weight_{nullptr};
 
@@ -103,9 +115,13 @@ class RowParallelLinearImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);
 
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes();
+  }
+
  private:
   // parameter members, must be registered
-  // we allocate the transpose since linear performs XA^T. 
+  // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features, in_features_per_partition]
   torch::Tensor weight_{nullptr};
 

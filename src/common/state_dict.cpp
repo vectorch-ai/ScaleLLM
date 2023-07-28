@@ -44,8 +44,8 @@ StateDict StateDict::select(const std::string_view& prefix) const {
   std::unordered_map<std::string, torch::Tensor> selected;
   for (const auto& [name, tensor] : dict_) {
     std::size_t found = name.find(prefix);
-    if (found != std::string::npos) {
-      selected[name.substr(found)] = tensor;
+    if (found == 0) {
+      selected[name.substr(prefix.length())] = tensor;
     }
   }
   return StateDict(std::move(selected));
