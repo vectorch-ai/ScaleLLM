@@ -1,7 +1,7 @@
-# LLMInfer
+# ScaleLLM
 
 ---
-LLMInfer is a high-performance inference system for large language models, designed for production environments.
+ScaleLLM is a high-performance inference system for large language models, designed for production environments.
 
 Key features:
 
