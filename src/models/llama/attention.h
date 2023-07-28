@@ -3,8 +3,8 @@
 #include <torch/nn/module.h>
 #include <torch/torch.h>
 
-#include "models/linear.h"
 #include "model_args.h"
+#include "models/layers.h"
 
 namespace llm {
 
@@ -12,7 +12,10 @@ class AttentionImpl : public torch::nn::Module {
  public:
   AttentionImpl(const ModelArgs& args, int64_t world_size);
 
-  torch::Tensor forward(torch::Tensor input);
+  torch::Tensor forward(torch::Tensor x,
+                        int64_t start_pos,
+                        torch::Tensor freqs_cis,
+                        torch::Tensor mask);
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);

@@ -12,3 +12,6 @@
 
 # libtorch
 /libtorch
+
+# tests
+/Testing*

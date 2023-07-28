@@ -1,25 +1,31 @@
 #pragma once
 
+#include <c10/core/TensorImpl.h>
 #include <torch/nn/module.h>
 #include <torch/torch.h>
 
-#include "model_args.h"
 #include "attention.h"
 #include "feedforward.h"
+#include "model_args.h"
 #include "rms_norm.h"
 
 namespace llm {
 
 class TransformerBlockImpl : public torch::nn::Module {
  public:
-  TransformerBlockImpl(const ModelArgs& args, int32_t layer_id, int64_t world_size);
+  TransformerBlockImpl(int32_t layer_id,
+                       const ModelArgs& args,
+                       int64_t world_size);
 
-  torch::Tensor forward(torch::Tensor input);
+  torch::Tensor forward(torch::Tensor x,
+                        int64_t start_pos,
+                        torch::Tensor freqs_cis,
+                        torch::Tensor mask);
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);
 
-private:
+ private:
   // parameter members, must be registered
   Attention attention_{nullptr};
 

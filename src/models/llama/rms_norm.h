@@ -4,7 +4,7 @@
 #include <torch/nn/module.h>
 #include <torch/torch.h>
 
-#include "models/linear.h"
+#include "models/layers.h"
 #include "model_args.h"
 
 namespace llm {
@@ -12,7 +12,7 @@ namespace llm {
 // Root mean square normalization
 class RMSNormImpl : public torch::nn::Module {
  public:
-  RMSNormImpl(int64_t dim, float eps);
+  RMSNormImpl(int64_t dim, float eps = 1e-6);
 
   torch::Tensor forward(torch::Tensor input);
 

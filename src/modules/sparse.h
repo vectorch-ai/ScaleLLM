@@ -3,7 +3,6 @@
 #include <torch/nn/functional/embedding.h>
 #include <torch/nn/module.h>
 #include <torch/torch.h>
-#include "common/state_dict.h"
 
 namespace llm {
 
@@ -12,18 +11,18 @@ namespace llm {
 // indices.
 // Embedding parallelized in the embedding dimension.
 // Question: how to partition the embedding table?
-class ColumnParallelEmbeddingImpl : public torch::nn::Module {
+class ParallelEmbeddingImpl : public torch::nn::Module {
  public:
-  ColumnParallelEmbeddingImpl(int64_t num_embeddings,
-                              int64_t embedding_dim,
-                              int64_t world_size);
+  ParallelEmbeddingImpl(int64_t num_embeddings,
+                        int64_t embedding_dim,
+                        int64_t world_size);
 
   // The input to the module is a list of indices, and the output is the
   // corresponding word embeddings.
   torch::Tensor forward(torch::Tensor input);
 
   // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict);
+  void load_state_dict();
 
  private:
   // parameter members, must be registered
@@ -32,7 +31,7 @@ class ColumnParallelEmbeddingImpl : public torch::nn::Module {
   // configs
   int64_t world_size_;
 };
-TORCH_MODULE(ColumnParallelEmbedding);
+TORCH_MODULE(ParallelEmbedding);
 
 // TODO: add RowParallelEmbedding, parallelized in the vocabulary dimension.
 

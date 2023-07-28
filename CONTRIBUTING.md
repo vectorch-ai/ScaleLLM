@@ -56,6 +56,8 @@ Vcpkg helps you manage C and C++ libraries on Windows, Linux and MacOS. This too
 
 ### Build
 
+Config and build the project in the build directory.
+
 ``` bash
 cmake -G Ninja -S . -B build
 cmake --build build
@@ -63,8 +65,10 @@ cmake --build build
 
 ### Run tests
 
+You can run all tests in build directory by running the following command.
+
 ``` bash
-ctest --output-on-failure
+cd build && ctest --output-on-failure
 ``````
 
 ## Compiler

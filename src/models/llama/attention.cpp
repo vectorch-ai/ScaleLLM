@@ -4,14 +4,15 @@
 #include <torch/nn/module.h>
 #include <torch/torch.h>
 
-#include "models/linear.h"
+#include "models/layers.h"
 
 namespace llm {
 
 AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
     : world_size_(world_size) {
-  const int64_t n_kv_heads =
-      args.n_kv_heads() == 0 ? args.n_heads() : args.n_kv_heads();
+  const int64_t n_kv_heads = args.n_kv_heads().has_value()
+                                 ? args.n_kv_heads().value()
+                                 : args.n_heads();
   const int64_t n_local_heads = args.n_heads() / world_size_;
   const int64_t n_local_kv_heads = n_kv_heads / world_size_;
   const int64_t dim = args.dim();
@@ -35,8 +36,12 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
       {args.max_batch_size(), args.max_seq_len(), n_local_kv_heads, head_dim});
 }
 
-torch::Tensor AttentionImpl::forward(torch::Tensor input) {
-  return input;
+torch::Tensor AttentionImpl::forward(torch::Tensor x,
+                                     int64_t start_pos,
+                                     torch::Tensor freqs_cis,
+                                     torch::Tensor mask) {
+  // TODO: add logics
+  return x;
 }
 
 // load the weight from the checkpoint

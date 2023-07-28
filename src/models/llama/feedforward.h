@@ -3,8 +3,10 @@
 #include <torch/nn/module.h>
 #include <torch/torch.h>
 
+#include <optional>
+
 #include "model_args.h"
-#include "models/linear.h"
+#include "models/layers.h"
 
 namespace llm {
 
@@ -13,7 +15,7 @@ class FeedForwardImpl : public torch::nn::Module {
   FeedForwardImpl(int64_t dim,
                   int64_t hidden_dim,
                   int64_t multiple_of,
-                  float ffn_dim_multiplier,
+                  std::optional<float> ffn_dim_multiplier,
                   int64_t world_size);
 
   torch::Tensor forward(torch::Tensor x);
