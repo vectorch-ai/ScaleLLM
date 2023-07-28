@@ -13,6 +13,18 @@
 
 namespace llm {
 
+static torch::Tensor precompute_freqs_cis(int64_t dim,
+                                          int64_t max_seq_len,
+                                          float theta = 10000.0f) {
+  auto range = torch::arange(0, dim, 2);
+  auto slice =
+      range.slice(/*dim=*/0, /*start=*/0, /*end=*/dim / 2).to(torch::kFloat32);
+  auto freqs = 1.0 / torch::pow(theta, slice / dim);
+  auto t = torch::arange(0, max_seq_len, 1).to(torch::kFloat32);
+  freqs = torch::outer(t, freqs).to(torch::kFloat32);
+  return torch::polar(torch::ones_like(freqs), freqs);
+}
+
 TransformerImpl::TransformerImpl(const ModelArgs& args, int64_t world_size) {
   // register submodules
   tok_embeddings_ = register_module(
@@ -30,8 +42,9 @@ TransformerImpl::TransformerImpl(const ModelArgs& args, int64_t world_size) {
       "output",
       ColumnParallelLinear(args.dim(), args.vocab_size(), world_size));
 
-  // TODO: calculate freqs_cis
-  freqs_cis_ = torch::zeros({args.max_seq_len(), args.dim() / 2});
+  // calculate freqs_cis
+  freqs_cis_ =
+      precompute_freqs_cis(args.dim() / args.n_heads(), args.max_seq_len() * 2);
 }
 
 torch::Tensor TransformerImpl::forward(torch::Tensor tokens,

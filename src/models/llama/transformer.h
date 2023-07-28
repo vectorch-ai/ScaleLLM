@@ -9,6 +9,7 @@
 #include "rms_norm.h"
 #include "transformer_block.h"
 
+// port LLAMA's model to C++ API: https://github.com/facebookresearch/llama/blob/main/llama/model.py
 namespace llm {
 
 class TransformerImpl : public torch::nn::Module {

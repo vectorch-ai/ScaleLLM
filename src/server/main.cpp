@@ -17,9 +17,6 @@ int main(int argc, char* argv[]) {
   // initialize gflags
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  const auto weights =
-      llm::StateDict::load_from_file(FLAGS_model_path, torch::kCPU);
-
   llm::SentencePieceTokenizer tokenizer(FLAGS_tokenizer_path);
 
   llm::ModelArgs args;
@@ -36,13 +33,20 @@ int main(int argc, char* argv[]) {
   args.vocab_size(tokenizer.n_words());
 
   llm::Transformer transformer(args, 1);
-  transformer->load_state_dict(weights);
 
+  // load the weights from the checkpoint
+  const auto weights =
+      llm::StateDict::load_from_file(FLAGS_model_path, torch::kCPU);
+  transformer->load_state_dict(weights);
   LOG(ERROR) << "Successfully loaded model. " << transformer;
+  // move the model to the GPU
+  // transformer->to(torch::kCUDA);
+  // set the module in evaluation/inference mode
+  transformer->eval();
 
   // construct a dummy input and run inference
   auto input = torch::randint(0, 100, {1, 512});
-  LOG(ERROR) << "Input: " << input;
+  LOG(ERROR) << "Input: " << input.sizes();
   auto output = transformer->forward(input, 0);
   LOG(ERROR) << "Output: " << output.sizes();
 

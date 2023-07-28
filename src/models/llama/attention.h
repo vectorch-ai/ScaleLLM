@@ -35,6 +35,11 @@ class AttentionImpl : public torch::nn::Module {
 
   // configs
   int64_t world_size_;
+  int64_t n_kv_heads_;
+  int64_t n_local_heads_;
+  int64_t n_local_kv_heads_;
+  int64_t n_rep_;
+  int64_t head_dim_;
 };
 
 TORCH_MODULE(Attention);
