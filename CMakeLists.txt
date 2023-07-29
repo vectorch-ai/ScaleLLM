@@ -41,6 +41,9 @@ find_package(absl CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(SentencePiece REQUIRED)
 
+find_package(Jemalloc REQUIRED)
+link_libraries(Jemalloc::jemalloc)
+
 # enable testing in this directory so we can do a top-level `make test`.
 # this also includes the BUILD_TESTING option, which is on by default.
 include(CTest)

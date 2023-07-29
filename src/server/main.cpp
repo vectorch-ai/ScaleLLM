@@ -1,4 +1,3 @@
-#include <c10/core/TensorImpl.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -21,6 +20,8 @@ DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
 DEFINE_double(top_p, 0.9, "Top p for sampling.");
 
+DEFINE_int32(torch_thread_num, 1, "Number of torch threads.");
+
 torch::Tensor sample_top_p(torch::Tensor logits, float top_p) {
   auto [probs_sort, probs_idx] =
       torch::sort(logits, /*dim=*/-1, /*descending=*/true);
@@ -42,7 +43,12 @@ int main(int argc, char* argv[]) {
   // initialize gflags
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
+  torch::set_num_threads(FLAGS_torch_thread_num);
+  torch::manual_seed(1);
+
   llm::SentencePieceTokenizer tokenizer(FLAGS_tokenizer_path);
+
+  torch::InferenceMode guard;
 
   llm::ModelArgs args;
   args.max_seq_len(128).max_batch_size(4);
@@ -71,7 +77,7 @@ int main(int argc, char* argv[]) {
   // set the module in evaluation/inference mode
   transformer->eval();
 
-  std::string prompt = "Enter some text: ";
+  std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
 
   // construct batch input [2, max_seq_len]
