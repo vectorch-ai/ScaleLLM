@@ -1,3 +1,4 @@
+#include <c10/core/TensorImpl.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -16,6 +17,27 @@ DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
               "Path to the tokenizer file.");
 
+DEFINE_double(temperature, 0.6, "Temperature for sampling.");
+
+DEFINE_double(top_p, 0.9, "Top p for sampling.");
+
+torch::Tensor sample_top_p(torch::Tensor logits, float top_p) {
+  auto [probs_sort, probs_idx] =
+      torch::sort(logits, /*dim=*/-1, /*descending=*/true);
+  // Calculate the cumulative sum of sorted probabilities
+  const auto probs_sum = torch::cumsum(probs_sort, /*dim=*/-1);
+  // Create a mask where (cumulative sum - current value) > p
+  const auto mask = (probs_sum - probs_sort) > top_p;
+  // Set values where mask is true to 0.0
+  probs_sort.masked_fill_(mask, 0);
+  // Normalize the probabilities
+  probs_sort.div_(probs_sort.sum(-1, /*keepdim=*/true));
+  // Sample from the adjusted distribution
+  const auto selected = torch::multinomial(probs_sort, /*num_samples=*/1);
+  // Get the original indices of the sampled values
+  return torch::gather(probs_idx, /*dim=*/-1, selected);
+}
+
 int main(int argc, char* argv[]) {
   // initialize gflags
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -23,7 +45,7 @@ int main(int argc, char* argv[]) {
   llm::SentencePieceTokenizer tokenizer(FLAGS_tokenizer_path);
 
   llm::ModelArgs args;
-  args.max_seq_len(512).max_batch_size(4);
+  args.max_seq_len(128).max_batch_size(4);
   // TODO: read from params.json
   // {"dim": 4096, "multiple_of": 256, "n_heads": 32, "n_layers": 32,
   // "norm_eps": 1e-06, "vocab_size": -1}
@@ -76,8 +98,18 @@ int main(int argc, char* argv[]) {
                               torch::indexing::Slice(prev_pos, cur_pos)});
 
       const auto logits = transformer->forward(slice_tensor, prev_pos);
-      const auto next_token = torch::argmax(
-          logits.index({torch::indexing::Slice(), -1}), /*dim=*/-1);
+
+      const auto flatten_logits = logits.index({torch::indexing::Slice(), -1});
+      // sample the next token
+      torch::Tensor next_token;
+      if (FLAGS_temperature > 0.0) {
+        const auto logits_scaled = flatten_logits / FLAGS_temperature;
+        const auto probs = torch::softmax(logits_scaled, /*dim=*/-1);
+        next_token = sample_top_p(probs, FLAGS_top_p);
+      } else {
+        next_token = torch::argmax(flatten_logits, /*dim=*/-1);
+      }
+
       const auto flat_tensor = next_token.reshape({-1});
 
       // add the next token to the batch input
