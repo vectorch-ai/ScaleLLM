@@ -17,6 +17,14 @@ class SentencePieceTokenizer : public Tokenizer {
 
   int n_words() const { return sp_processor_.GetPieceSize(); }
 
+  int unk_id() const { return sp_processor_.unk_id(); }
+
+  int bos_id() const { return sp_processor_.bos_id(); }
+
+  int eos_id() const { return sp_processor_.eos_id(); }
+
+  int pad_id() const { return sp_processor_.pad_id(); }
+
  private:
   sentencepiece::SentencePieceProcessor sp_processor_;
 };

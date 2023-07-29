@@ -17,7 +17,8 @@ torch::Tensor reshape_for_broadcast(const torch::Tensor& freqs_cis,
 }
 
 // shape from [..., n] to [..., -1, 2]
-static std::vector<int64_t> get_shape_split_by_last_dim(const torch::Tensor& x) {
+static std::vector<int64_t> get_shape_split_by_last_dim(
+    const torch::Tensor& x) {
   auto shape = x.sizes().vec();
   shape.back() = -1;
   shape.push_back(2);
@@ -27,10 +28,10 @@ static std::vector<int64_t> get_shape_split_by_last_dim(const torch::Tensor& x) 
 static void apply_rotary_emb(torch::Tensor& xq,
                              torch::Tensor& xk,
                              torch::Tensor freqs_cis) {
-  auto xq_complex =
-      torch::view_as_complex(xq.to(torch::kFloat32).reshape(get_shape_split_by_last_dim(xq)));
-  auto xk_complex =
-      torch::view_as_complex(xk.to(torch::kFloat32).reshape(get_shape_split_by_last_dim(xk)));
+  auto xq_complex = torch::view_as_complex(
+      xq.to(torch::kFloat32).reshape(get_shape_split_by_last_dim(xq)));
+  auto xk_complex = torch::view_as_complex(
+      xk.to(torch::kFloat32).reshape(get_shape_split_by_last_dim(xk)));
 
   freqs_cis = reshape_for_broadcast(freqs_cis, xq_complex);
   auto xq_out = torch::view_as_real(xq_complex * freqs_cis).flatten(3);
@@ -94,6 +95,8 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
                                      int64_t start_pos,
                                      torch::Tensor freqs_cis,
                                      torch::Tensor mask) {
+  const double sqrt_head_dim = std::sqrt(static_cast<double>(head_dim_));
+
   const auto bsz = x.size(0);
   const auto seqlen = x.size(1);
 
@@ -125,8 +128,7 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
   keys = keys.transpose(1, 2);
   values = values.transpose(1, 2);
 
-  auto scores = torch::matmul(xq, keys.transpose(2, 3)) /
-                std::sqrt(static_cast<double>(head_dim_));
+  auto scores = torch::matmul(xq, keys.transpose(2, 3)) / sqrt_head_dim;
   if (mask.defined()) {
     scores += mask;
   }

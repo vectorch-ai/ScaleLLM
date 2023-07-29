@@ -14,6 +14,7 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string& model_path) {
 std::vector<int> SentencePieceTokenizer::encode(
     const std::string_view& text) const {
   std::vector<int> tokens;
+  tokens.push_back(sp_processor_.bos_id());
   const auto status = sp_processor_.Encode(text, &tokens);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to encode text: " << status.ToString();
