@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
       const auto next_token_scalar =
           static_cast<int>(flat_tensor.item<int64_t>());
       // decode the output and print it
-      std::cout << tokenizer.decode({next_token_scalar}) << " ";
+      std::cout << tokenizer.decode({next_token_scalar}) << " " << std::flush;
 
       if (next_token_scalar == tokenizer.eos_id()) {
         break;
