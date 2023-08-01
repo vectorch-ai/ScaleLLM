@@ -1,5 +1,7 @@
 add_subdirectory(torch_utils)
+add_subdirectory(kernels)
 add_subdirectory(tokenizer)
 add_subdirectory(layers)
 add_subdirectory(models)
+add_subdirectory(scheduler)
 add_subdirectory(server)

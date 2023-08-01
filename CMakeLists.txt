@@ -39,6 +39,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 find_package(glog CONFIG REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
+find_package(folly CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(SentencePiece REQUIRED)
 

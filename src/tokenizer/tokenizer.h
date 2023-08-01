@@ -6,13 +6,16 @@
 
 namespace llm {
 
-// Fundamentally, LLM generates text given a prompt. LLM models typically
-// take a sequence of integers as input and produces a sequence of integers as
-// output. A tokenizer is used in preprocessing steps to convert text to a
-// sequence of integers and back. In general, a tokenizer has two main
-// functions:
-// * breaks text into tokens then maps them to integers using a vocabulary
-// * converts a sequence of integers back to text using the vocabulary
+// Fundamentally, Large Language Models (LLM) are designed to generate text
+// based on given prompts. To process text effectively, LLM models typically
+// work with sequences of integers as inputs and produce sequences of integers
+// as outputs. The conversion between text and integer sequences is handled by a
+// tokenizer during preprocessing. The tokenizer serves two primary functions:
+// 1. Breaking down text into tokens and then mapping those tokens to
+// corresponding integers using a predefined vocabulary.
+// 2. Reversing this process by converting a sequence of integers back into
+// human-readable text using the same vocabulary.
+//
 // For example:
 //  ids = tokenizer.Encode("Hello, world!") # [1, 2, 3]
 //  text = tokenizer.Decode(ids) # "Hello, world!"

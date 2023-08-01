@@ -14,3 +14,4 @@
 missingInclude
 syntaxError
 unmatchedSuppression
+useStlAlgorithm
