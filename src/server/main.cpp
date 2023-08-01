@@ -89,6 +89,7 @@ int main(int argc, char* argv[]) {
       continue;
     }
 
+    std::string output;
     auto tokens = tokenizer.encode(input);
     int64_t prev_pos = 0;
     // generate tokens until the end of sentence token is generated
@@ -124,8 +125,12 @@ int main(int argc, char* argv[]) {
 
       const auto next_token_scalar =
           static_cast<int>(flat_tensor.item<int64_t>());
+      
       // decode the output and print it
-      std::cout << tokenizer.decode({next_token_scalar}) << " " << std::flush;
+      tokens.push_back(next_token_scalar);
+      const auto new_output = tokenizer.decode(tokens);
+      std::cout << new_output.substr(output.size()) << std::flush;
+      output = new_output;
 
       if (next_token_scalar == tokenizer.eos_id()) {
         break;

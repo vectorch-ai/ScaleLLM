@@ -20,7 +20,7 @@ class RMSNormImpl : public torch::nn::Module {
   void load_state_dict(const StateDict& state_dict);
 
   void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes();
+    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
  private:

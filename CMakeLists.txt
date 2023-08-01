@@ -22,7 +22,8 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 # include custom cmake modules
 include(static_analyzers)
-include(sanitizers)
+# TODO: can't use sanitizers with CUDA for now.
+# include(sanitizers)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
