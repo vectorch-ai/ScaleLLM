@@ -6,8 +6,8 @@
 #include <memory>
 
 #include "attention.h"
+#include "layers/layers.h"
 #include "model_args.h"
-#include "models/layers.h"
 #include "rms_norm.h"
 #include "transformer_block.h"
 

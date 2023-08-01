@@ -4,12 +4,13 @@
 #include <torch/torch.h>
 
 #include "attention.h"
+#include "layers/layers.h"
 #include "model_args.h"
-#include "models/layers.h"
 #include "rms_norm.h"
 #include "transformer_block.h"
 
-// port LLAMA's model to C++ API: https://github.com/facebookresearch/llama/blob/main/llama/model.py
+// port LLAMA's model to C++ API:
+// https://github.com/facebookresearch/llama/blob/main/llama/model.py
 namespace llm {
 
 class TransformerImpl : public torch::nn::Module {

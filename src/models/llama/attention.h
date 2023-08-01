@@ -4,7 +4,7 @@
 #include <torch/torch.h>
 
 #include "model_args.h"
-#include "models/layers.h"
+#include "layers/layers.h"
 
 namespace llm {
 

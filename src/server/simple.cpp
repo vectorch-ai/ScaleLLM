@@ -4,10 +4,10 @@
 #include <iostream>
 #include <string>
 
-#include "common/state_dict.h"
 #include "models/llama/model_args.h"
 #include "models/llama/transformer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
+#include "torch_utils/state_dict.h"
 
 DEFINE_string(model_path,
               "/home/michael/code/llama/llama-2-7b/consolidated.00.pth",
@@ -125,7 +125,7 @@ int main(int argc, char* argv[]) {
 
       const auto next_token_scalar =
           static_cast<int>(flat_tensor.item<int64_t>());
-      
+
       // decode the output and print it
       tokens.push_back(next_token_scalar);
       const auto new_output = tokenizer.decode(tokens);

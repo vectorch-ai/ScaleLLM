@@ -2,9 +2,9 @@ include(cc_binary)
 
 cc_binary(
   NAME 
-    scalellm
+    simple
   SRCS 
-    main.cpp
+    simple.cpp
   DEPS
     :torch_utils
     :llama

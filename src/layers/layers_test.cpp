@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
-#include "common/state_dict.h"
+#include "torch_utils/state_dict.h"
 
 namespace llm {
 
