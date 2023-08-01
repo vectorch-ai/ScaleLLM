@@ -7,13 +7,13 @@ namespace llm {
 TEST(SentencePieceTokenizerTest, EncodeTest) {
   SentencePieceTokenizer tokenizer("src/tokenizer/test_model.model");
   const auto ids = tokenizer.encode("Hello, world!");
-  const std::vector<int> desired_ids = {151, 88, 21, 5, 887, 147};
+  const std::vector<int> desired_ids = {1, 151, 88, 21, 5, 887, 147};
   EXPECT_EQ(ids, desired_ids);
 }
 
 TEST(SentencePieceTokenizerTest, DecodeTest) {
   SentencePieceTokenizer tokenizer("src/tokenizer/test_model.model");
-  const std::vector<int> tokens = {151, 88, 21, 5, 887, 147};
+  const std::vector<int> tokens = {1, 151, 88, 21, 5, 887, 147};
   const auto text = tokenizer.decode(tokens);
   EXPECT_EQ(text, "Hello, world!");
 }

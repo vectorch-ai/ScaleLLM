@@ -15,7 +15,8 @@ TEST(LayersTest, TestLoadStateDict) {
 
   ColumnParallelLinear linear(in_features, out_features, 1);
   std::unordered_map<std::string, torch::Tensor> state_dict_data;
-  state_dict_data["weight"] = torch::randn({in_features, out_features});
+  // Allocate transposed weight matrix
+  state_dict_data["weight"] = torch::randn({out_features, in_features});
 
   StateDict state_dict(state_dict_data);
   // test load state dict for transformer
