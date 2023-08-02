@@ -5,9 +5,10 @@ cc_library(
   NAME 
     layers
   HDRS 
-    layers.h
+    norm.h
+    linear.h
+    embedding.h
   SRCS 
-    layers.cpp
   DEPS
     :torch_utils
     glog::glog

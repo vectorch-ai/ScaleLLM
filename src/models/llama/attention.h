@@ -1,10 +1,9 @@
 #pragma once
 
-#include <torch/nn/module.h>
 #include <torch/torch.h>
 
 #include "model_args.h"
-#include "layers/layers.h"
+#include "layers/linear.h"
 
 namespace llm {
 

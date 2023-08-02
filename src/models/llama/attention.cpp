@@ -1,10 +1,8 @@
 #include "attention.h"
 
-#include <c10/core/TensorImpl.h>
-#include <torch/nn/module.h>
 #include <torch/torch.h>
 
-#include "layers/layers.h"
+#include "layers/linear.h"
 
 namespace llm {
 // x (bsz, seqlen, n_local_heads, head_dim/2)

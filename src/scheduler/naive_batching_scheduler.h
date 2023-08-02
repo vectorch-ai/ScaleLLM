@@ -11,6 +11,9 @@
 
 namespace llm {
 
+// An implementation of Naive Batching (Batch Requests by Time): In this
+// strategy, requests are buffered into batches before being sent for inference.
+// The batch size remains constant until the inference process completes.
 class NaiveBatchingScheduler : public Scheduler {
  public:
   NaiveBatchingScheduler();

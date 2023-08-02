@@ -1,12 +1,12 @@
 #pragma once
 
-#include <torch/nn/module.h>
 #include <torch/torch.h>
 
 #include "attention.h"
-#include "layers/layers.h"
+#include "layers/embedding.h"
+#include "layers/linear.h"
+#include "layers/norm.h"
 #include "model_args.h"
-#include "rms_norm.h"
 #include "transformer_block.h"
 
 // port LLAMA's model to C++ API:

@@ -7,14 +7,10 @@ cc_library(
     model_args.h
     attention.h
     feedforward.h
-    rms_norm.h
     transformer_block.h
     transformer.h
   SRCS 
     attention.cpp
-    feedforward.cpp
-    rms_norm.cpp
-    transformer_block.cpp
     transformer.cpp
   DEPS
     :layers

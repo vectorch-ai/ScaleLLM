@@ -1,14 +1,13 @@
 #include "transformer.h"
 
-#include <torch/nn/module.h>
 #include <torch/torch.h>
 
 #include <memory>
 
 #include "attention.h"
-#include "layers/layers.h"
+#include "layers/linear.h"
+#include "layers/embedding.h"
 #include "model_args.h"
-#include "rms_norm.h"
 #include "transformer_block.h"
 
 namespace llm {
