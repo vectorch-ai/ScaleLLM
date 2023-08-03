@@ -10,3 +10,6 @@ Key features:
 - **Pipeline parallelism**:
 - **Production ready**:
 - **Customizable**:
+
+
+If you have any questions, feel free to ask questions on the ["Discussions" forum](https://github.com/vectorch-ai/ScaleLLM/discussions) or ["Discord" chat room](https://discord.gg/csyXycWU).
