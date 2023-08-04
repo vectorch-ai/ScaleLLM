@@ -5,6 +5,7 @@ cc_library(
   NAME 
     tokenizer
   HDRS 
+    hf-tokenizers.h
     tokenizer.h
     sentencepiece_tokenizer.h
   SRCS 
@@ -12,6 +13,7 @@ cc_library(
   DEPS
     glog::glog
     SentencePiece::sentencepiece
+    hf-tokenizers
 )
 
 cc_test(
@@ -23,3 +25,6 @@ cc_test(
     :tokenizer
     GTest::gtest_main
 )
+
+# build huggingface tokenizers (rust)
+add_subdirectory(hf-tokenizers)

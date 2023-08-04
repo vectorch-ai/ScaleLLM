@@ -27,7 +27,16 @@ Before you start building the project, you need to install the build tools. You 
 [to be updated]
 
 ``` bash
-sudo apt-get install build-essential, ninja-build, cmake, python3-dev
+sudo apt-get install build-essential ninja-build cmake python3-dev
+```
+
+### Install rust
+
+You can install rust by running the following command.
+
+``` bash
+curl https://sh.rustup.rs -sSf | sh
+source "$HOME/.cargo/env"
 ```
 
 ### Enlist code

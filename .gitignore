@@ -15,3 +15,6 @@
 
 # tests
 /Testing*
+
+# rust
+Cargo.lock
