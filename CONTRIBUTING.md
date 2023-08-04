@@ -52,7 +52,7 @@ git clone --recursive https://github.com/vectorch-ai/LLMInfer.git
 You can download specific version of libtorch from pytorch website. Here is the link: <https://pytorch.org/get-started/locally/>. We are using libtorch 2.0.0 for this project and you can leverage the script to install it.
 
 ``` bash
-./scripts/install_libtorch.sh
+./scripts/install-libtorch.sh
 ```
 
 ### Install vcpkg
@@ -60,7 +60,7 @@ You can download specific version of libtorch from pytorch website. Here is the 
 Vcpkg helps you manage C and C++ libraries on Windows, Linux and MacOS. This tool and ecosystem are constantly evolving; and we are using it for the development of this project. You can install it by running the following command.
 
 ``` bash
-./scripts/install_vcpkg.sh
+./scripts/install-vcpkg.sh
 ```
 
 ### Build
