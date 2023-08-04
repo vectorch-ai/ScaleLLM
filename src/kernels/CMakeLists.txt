@@ -4,7 +4,7 @@ cc_library(
   NAME 
     kernels
   HDRS 
-    reduction_utils.cuh
+    reduce_kernel_utils.cuh
   SRCS 
     rms_norm_kernel.cu
   DEPS
