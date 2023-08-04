@@ -1,3 +1,4 @@
+# ported from https://github.com/Devolutions/CMakeRust
 function(cargo_build)
     cmake_parse_arguments(CARGO "" "NAME" "" ${ARGN})
     string(REPLACE "-" "_" LIB_NAME ${CARGO_NAME})

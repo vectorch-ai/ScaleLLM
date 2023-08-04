@@ -1,4 +1,4 @@
-
+# ported from https://github.com/Devolutions/CMakeRust
 # 
 # Usage: rustc [OPTIONS] INPUT
 # 

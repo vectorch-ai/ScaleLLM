@@ -1,4 +1,4 @@
-
+# ported from https://github.com/Devolutions/CMakeRust
 if(NOT CMAKE_Rust_COMPILER)
 	find_package(Rust)
 	if(RUST_FOUND)

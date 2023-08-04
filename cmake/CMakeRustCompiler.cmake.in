@@ -1,4 +1,5 @@
 
+# ported from https://github.com/Devolutions/CMakeRust
 set(CMAKE_Rust_COMPILER "@CMAKE_Rust_COMPILER@")
 set(CMAKE_Rust_COMPILER_ID "@CMAKE_Rust_COMPILER_ID@")
 set(CMAKE_Rust_COMPILER_VERSION "@CMAKE_Rust_COMPILER_VERSION@")
