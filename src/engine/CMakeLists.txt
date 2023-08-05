@@ -3,14 +3,11 @@ include(cc_test)
 
 cc_library(
   NAME 
-    scheduler
+    engine
   HDRS
-    request_queue.h
-    scheduler.h
-    naive_batching_scheduler.h
+    engine.h
+    worker.h
   SRCS 
-    request_queue.cpp
-    naive_batching_scheduler.cpp
   DEPS
     :request
     glog::glog

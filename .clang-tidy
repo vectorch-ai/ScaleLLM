@@ -18,6 +18,7 @@ Checks: >
   -performance-unnecessary-value-param,
   -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-avoid-magic-numbers,
+  -readability-identifier-length,
 
 HeaderFilterRegex: '.*'
 FormatStyle: 'file'
@@ -32,5 +33,3 @@ CheckOptions:
     value: "f"
   - key: readability-function-cognitive-complexity.IgnoreMacros
     value: true
-  - key: readability-identifier-length.MinimumVariableNameLength
-    value: 2

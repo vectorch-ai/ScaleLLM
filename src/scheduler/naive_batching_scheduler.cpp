@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "request_context.h"
+#include "request/request_context.h"
 #include "request_queue.h"
 
 namespace llm {
@@ -38,7 +38,7 @@ void NaiveBatchingScheduler::step() {
 
   // check if we found a preferred batch size and the batch delay has been
   // exceeded if so, process the batch
-  
+
   // prepare the prefill input for the batch
 
   // process the batch by calling llm->forward(batch)
