@@ -8,6 +8,7 @@
 #include "models/llama/transformer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 #include "torch_utils/state_dict.h"
+#include "hf_model_downloader.h"
 
 DEFINE_string(model_path,
               "/home/michael/code/llama/llama-2-7b/consolidated.00.pth",
@@ -42,6 +43,10 @@ torch::Tensor sample_top_p(torch::Tensor logits, float top_p) {
 int main(int argc, char* argv[]) {
   // initialize gflags
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // test model download
+  // const std::string model_path = llm::download_hf_model("bigscience/bloom-1b1");
+  // LOG(INFO) << "Model downloaded to: " << model_path;
 
   torch::set_num_threads(FLAGS_torch_thread_num);
   torch::manual_seed(1);

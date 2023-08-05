@@ -1,4 +1,17 @@
 include(cc_binary)
+include(cc_library)
+
+cc_library(
+  NAME 
+    hf_model_downloader
+  HDRS 
+    hf_model_downloader.h
+  SRCS 
+    hf_model_downloader.cpp
+  DEPS
+    ${TORCH_LIBRARIES}
+    Python::Python
+)
 
 cc_binary(
   NAME 
@@ -9,6 +22,7 @@ cc_binary(
     :torch_utils
     :llama
     :tokenizer
+    :hf_model_downloader
     ${TORCH_LIBRARIES}
     gflags::gflags
     glog::glog
