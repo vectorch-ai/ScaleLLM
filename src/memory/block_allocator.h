@@ -16,7 +16,7 @@ enum class MemoryType {
 class BlockAllocator;
 
 // Memory block represents a contiguous memory region. It is used to track
-// memory usage and to allocate memory.
+// memory usage.
 class Block final {
  public:
   ~Block();
@@ -29,14 +29,14 @@ class Block final {
   Block(Block&& other) noexcept;
   Block& operator=(Block&& other) noexcept;
 
+  // get the memory type
+  MemoryType memory_type() const { return type_; }
+
   // get the block id
   uint32_t id() const { return id_; }
 
   // get the block size in bytes
-  uint32_t size() const { return size_; }
-
-  // get the memory type
-  MemoryType memory_type() const { return type_; }
+  uint32_t size() const;
 
   // get the reference count, 0 if the block is invalid after move
   uint32_t ref_count() const { return ref_count_ == nullptr ? 0 : *ref_count_; }
@@ -46,17 +46,15 @@ class Block final {
 
  private:
   friend class BlockAllocator;
-  Block(MemoryType type, uint32_t id, uint32_t size, BlockAllocator* allocator);
+  Block(MemoryType type, uint32_t id, BlockAllocator* allocator);
 
   // memory type: CPU or GPU
   MemoryType type_;
   // block id
   uint32_t id_;
-  // block size in bytes
-  uint32_t size_;
   // reference count
   uint32_t* ref_count_ = nullptr;
-  // allocator
+  // allocator that manages this block
   BlockAllocator* allocator_ = nullptr;
 };
 

@@ -8,15 +8,13 @@
 namespace llm {
 
 // Memory block represents a contiguous memory region. It is used to track
-// memory usage and to allocate memory.
+// memory usage.
 
 Block::Block(MemoryType type,
              uint32_t id,
-             uint32_t size,
              BlockAllocator* allocator)
     : type_(type),
       id_(id),
-      size_(size),
       ref_count_(new uint32_t(1)),
       allocator_(allocator) {}
 
@@ -32,7 +30,6 @@ Block::~Block() {
 Block::Block(const Block& other)
     : type_(other.type_),
       id_(other.id_),
-      size_(other.size_),
       ref_count_(other.ref_count_),
       allocator_(other.allocator_) {
   // increase reference count
@@ -48,7 +45,6 @@ Block& Block::operator=(const Block& other) {
     }
     type_ = other.type_;
     id_ = other.id_;
-    size_ = other.size_;
     allocator_ = other.allocator_;
     ref_count_ = other.ref_count_;
     ++(*ref_count_);
@@ -59,11 +55,11 @@ Block& Block::operator=(const Block& other) {
 Block::Block(Block&& other) noexcept
     : type_(other.type_),
       id_(other.id_),
-      size_(other.size_),
       ref_count_(other.ref_count_),
       allocator_(other.allocator_) {
   // reset other
   other.ref_count_ = nullptr;
+  other.allocator_ = nullptr;
 }
 
 Block& Block::operator=(Block&& other) noexcept {
@@ -76,13 +72,17 @@ Block& Block::operator=(Block&& other) noexcept {
 
     type_ = other.type_;
     id_ = other.id_;
-    size_ = other.size_;
     allocator_ = other.allocator_;
     ref_count_ = other.ref_count_;
 
     other.ref_count_ = nullptr;
+    other.allocator_ = nullptr;
   }
   return *this;
+}
+
+uint32_t Block::size() const {
+  return allocator_ == nullptr ? 0 : allocator_->block_size_in_bytes();
 }
 
 // BlockAllocator is used to allocate memory blocks. It is not thread safe.
@@ -117,7 +117,7 @@ Block BlockAllocator::allocate(MemoryType type) {
     CHECK(gpu_block_count_ > 0) << "No more GPU memory blocks available";
     block_id = free_gpu_blocks_[--gpu_block_count_];
   }
-  return {type, block_id, block_size_in_bytes_, this};
+  return {type, block_id, this};
 }
 
 // free a block of memory, should only be called by Block destructor implicitly

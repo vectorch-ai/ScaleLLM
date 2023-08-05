@@ -6,12 +6,15 @@ cc_library(
     memory
   HDRS 
     block_allocator.h
-    cache_manager.h 
-    memory_planner.h
+    cache_manager.h
+    cache_planner.h
   SRCS 
     block_allocator.cpp
+    cache_manager.cpp
+    cache_planner.cpp
   DEPS
     glog::glog
+    ${TORCH_LIBRARIES}
 )
 
 cc_test(
