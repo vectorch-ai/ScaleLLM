@@ -7,19 +7,24 @@ cc_library(
   HDRS
     engine.h
     worker.h
-  SRCS 
+    concurrent_queue.h
+    executor.h
+  SRCS
+    executor.cpp 
   DEPS
     :request
     glog::glog
     Folly::folly
+    absl::synchronization
 )
 
-# cc_test(
-#   NAME
-#     scheduler_test
-#   SRCS
-#     scheduler_test.cpp
-#   DEPS
-#     :scheduler
-#     GTest::gtest_main
-# )
+cc_test(
+  NAME
+    engine_test
+  SRCS
+    executor_test.cpp
+  DEPS
+    :engine
+    absl::time
+    GTest::gtest_main
+)
