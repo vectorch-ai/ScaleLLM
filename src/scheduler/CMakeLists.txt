@@ -5,16 +5,15 @@ cc_library(
   NAME 
     scheduler
   HDRS
-    request_queue.h
     scheduler.h
     naive_batching_scheduler.h
   SRCS 
-    request_queue.cpp
     naive_batching_scheduler.cpp
   DEPS
     :request
     glog::glog
     Folly::folly
+    absl::time
 )
 
 # cc_test(

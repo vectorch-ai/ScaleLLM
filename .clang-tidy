@@ -17,8 +17,10 @@ Checks: >
   -misc-non-private-member-variables-in-classes,
   -performance-unnecessary-value-param,
   -bugprone-easily-swappable-parameters,
+  -bugprone-unused-return-value,
   -cppcoreguidelines-avoid-magic-numbers,
   -readability-identifier-length,
+  -readability-use-anyofallof,
 
 HeaderFilterRegex: '.*'
 FormatStyle: 'file'

@@ -19,14 +19,14 @@ std::unique_ptr<CachePlan> CachePlanner::create_plan() {
 // try to schedule a request to the memory planner
 // return true if the cache memory requirements of the request can be
 // fulfilled return false otherwise
-bool CachePlanner::try_to_schedule_request() {
+bool CachePlanner::try_to_schedule_request(Request* request) {
   // TODO: allocate blocks based on the request requirements
   return false;
 }
 
 // preempt a request to release memory allocation for other high priority
 // requests.
-bool CachePlanner::preempte_request() {
+bool CachePlanner::preempte_request(Request* request) {
   // TODO: release blocks based on the request cache allocation
   return false;
 }

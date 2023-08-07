@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "request/request_context.h"
+#include "request/request.h"
 
 namespace llm {
 
@@ -34,9 +34,9 @@ class Scheduler {
   virtual ~Scheduler() = default;
 
   // schedule a request. thread safe
-  // return true if the request is scheduled successfully, false otherwise
-  // TODO: handle ownership of the request when returning false
-  virtual bool schedule(std::unique_ptr<RequestContext> request) = 0;
+  // return true if the request is scheduled successfully.
+  // false otherwise and the ownership of the request is not transferred.
+  virtual bool schedule(std::unique_ptr<Request>& request) = 0;
 
   // step the scheduler forward by one step
   // may get blocked if there are no requests to process

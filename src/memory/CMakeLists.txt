@@ -5,10 +5,12 @@ cc_library(
   NAME 
     memory
   HDRS 
+    block.h
     block_allocator.h
     cache_manager.h
     cache_planner.h
   SRCS 
+    block.cpp
     block_allocator.cpp
     cache_manager.cpp
     cache_planner.cpp

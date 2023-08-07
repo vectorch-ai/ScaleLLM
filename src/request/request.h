@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "sequence.h"
+
 namespace llm {
 
 // Status of the request.
@@ -31,26 +33,24 @@ enum class RequestStatus {
   CANCELLED,
 };
 
-// A request context is a data structure that encapsulates all the necessary
+// Priority of the request.
+// The higher the priority, the sooner the request is processed.
+enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
+
+// A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
 // container, holding essential data, such as input parameters, configuration
 // settings, and any additional context-specific details related to the
 // request's handling.
-struct RequestContext {
+struct Request {
   // The unique id of the request.
-  uint64_t request_id;
+  uint64_t request_id = 0;
 
   // prompt to generate completions for
   std::string prompt;
 
-  // token ids generated from p
-  std::vector<int> token_ids;
-
-  // the length of the prompt
-  int prompt_len = 0;
-
-  // the current position in generating tokens
-  int cur_pos = 0;
+  // list of sequences to generate completions for the prompt
+  std::vector<Sequence> sequences;
 
   // the maximum number of tokens to generate.
   int max_tokens = 0;
@@ -61,19 +61,37 @@ struct RequestContext {
   // The status of the request.
   RequestStatus status = RequestStatus::WAITING;
 
+  // the priority of the request.
+  RequestPriority priority = RequestPriority::MEDIUM;
+
   // Scheduled time of the request.
   uint64_t scheduled_time = 0;
 
-  // TODO: cache related
+  // this function will be called when the request is finished.
+  void finish();
 
-  // TODO: sampling related
+  bool is_finished() const { return status == RequestStatus::COMPLETED; }
 };
 
-// Compare two request contexts by their scheduled time.
-// Used for priority queue (min heap).
-struct RequestContextPtrLess {
-  bool operator()(const RequestContext* a, const RequestContext* b) const {
-    return a->scheduled_time < b->scheduled_time;
+// Compare two request contexts based on priority then scheduled time.
+// if a < b then a should be processed before b.
+struct RequestPtrLess {
+  bool operator()(const Request* a, const Request* b) const {
+    if (a->priority == b->priority) {
+      return a->scheduled_time < b->scheduled_time;
+    }
+    return a->priority < b->priority;
+  }
+};
+
+// Compare two request contexts based on priority then scheduled time.
+// if a > b then a should be processed after b.
+struct RequestPtrGreater {
+  bool operator()(const Request* a, const Request* b) const {
+    if (a->priority == b->priority) {
+      return a->scheduled_time > b->scheduled_time;
+    }
+    return a->priority > b->priority;
   }
 };
 

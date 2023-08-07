@@ -6,6 +6,7 @@
 
 namespace llm {
 class BlockAllocator;
+class Request;
 
 struct CachePlan {
   std::vector<std::pair<uint32_t, uint32_t>> swap_ins;
@@ -26,11 +27,11 @@ class CachePlanner final {
   // try to schedule a request to the memory planner
   // return true if the cache memory requirements of the request can be
   // fulfilled return false otherwise
-  bool try_to_schedule_request();
+  bool try_to_schedule_request(Request* request);
 
   // preempt a request to release memory allocation for other high priority
   // requests.
-  bool preempte_request();
+  bool preempte_request(Request* request);
 
  private:
   // swap in: copy block from cpu to gpu

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "request/request_context.h"
+#include "memory/cache_planner.h"
+#include "request/request.h"
 
 namespace llm {
 
@@ -17,18 +18,22 @@ namespace llm {
 // process. The engine must be adept at handling these diverse requests,
 // ensuring optimal resource management.
 
-class LLMEngine {
+class Engine {
  public:
-  virtual ~LLMEngine() = default;
+  virtual ~Engine() = default;
 
-  // prepare the batch for execution, the task may include:
-  // 1. tokenize the input text for new requests
-  // 2. allocate resource for new requests
-  // 3. resource management for preempted requests
-  virtual void prepare_batch(const std::vector<RequestContext*>& requests) = 0;
+  std::unique_ptr<CachePlanner> create_cache_planner();
+
+  // // prepare the batch for execution, the task may include:
+  // // 1. tokenize the input text for new requests
+  // // 2. allocate resource for new requests
+  // // 3. resource management for preempted requests
+  // virtual void prepare_batch(const std::vector<Request*>& batch,
+  //                            const CachePlan& cache_plan) {}
 
   // step the engine forward by one step with the batch
-  virtual void execute() = 0;
+  virtual void forward(const std::vector<Request*>& batch,
+                       const CachePlan* cache_plan) {}
 };
 
 }  // namespace llm

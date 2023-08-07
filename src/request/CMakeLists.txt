@@ -5,7 +5,8 @@ cc_library(
   NAME 
     request
   HDRS 
-    request_context.h
+    sequence.h
+    request.h
   SRCS 
   DEPS
     glog::glog
