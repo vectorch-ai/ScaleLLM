@@ -1,5 +1,5 @@
 #pragma once
-#include <functional>
+#include <folly/Function.h>
 #include <thread>
 
 #include "concurrent_queue.h"
@@ -10,7 +10,7 @@ class Executor final {
  public:
   // a runnable is an object intended to be executed by the executor
   // it must be invokable with no arguments and return void.
-  using Runnable = std::function<void()>;
+  using Runnable = folly::Function<void()>;
 
   // constructors
   Executor() : Executor(1) {}

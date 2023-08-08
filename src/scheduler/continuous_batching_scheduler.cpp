@@ -14,8 +14,32 @@ constexpr size_t kRequestQueueSize = 100000;
 // TODO: reader from config
 constexpr size_t kMaxBatchSize = 100;
 
+constexpr uint64_t kStepSleepTimeMs = 10;
+
 ContinuousBatchingScheduler::ContinuousBatchingScheduler()
     : request_queue_(kRequestQueueSize) {}
+
+ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
+  // release all requests in the queue
+  while (!request_queue_.isEmpty()) {
+    Request* request = nullptr;
+    request_queue_.read(request);
+    std::unique_ptr<Request> request_ptr(request);
+  }
+
+  // release all requests in the priority queue
+  while (!priority_queue_.empty()) {
+    Request* request = priority_queue_.top();
+    priority_queue_.pop();
+    std::unique_ptr<Request> request_ptr(request);
+  }
+
+  // release all requests in the batch
+  for (Request* request : batch_) {
+    std::unique_ptr<Request> request_ptr(request);
+  }
+  batch_.clear();
+}
 
 bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
   CHECK(request != nullptr);
@@ -28,7 +52,7 @@ bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
   return false;
 }
 
-std::vector<Request*> ContinuousBatchingScheduler::get_batch() {
+void ContinuousBatchingScheduler::create_batch() {
   // propogate new requests to priority_queue_
   while (!request_queue_.isEmpty()) {
     Request* request = nullptr;
@@ -38,10 +62,22 @@ std::vector<Request*> ContinuousBatchingScheduler::get_batch() {
     priority_queue_.push(request);
   }
 
+  // fast paths
+  // no new requests
+  if (priority_queue_.empty()) {
+    return;
+  }
+  // requests in current batch all have precedence over new requests
+  if (!batch_.empty() &&
+      RequestPtrLess()(batch_.back(), priority_queue_.top())) {
+    return;
+  }
+
   // add requests in current batch back to the priority queue
   std::unordered_map<Request*, size_t> request_to_idx;
   for (size_t i = 0; i < batch_.size(); ++i) {
     Request* request = batch_[i];
+    // TODO: skip finished requests
     request_to_idx[request] = i;
     priority_queue_.push(request);
   }
@@ -61,8 +97,8 @@ std::vector<Request*> ContinuousBatchingScheduler::get_batch() {
       }
       // preempt the lowest priority (last) request in current batch
       CHECK(end_idx > begin_idx);
-      Request* preempted_request = batch_[--end_idx];
-      block_manager_->release_slots_for_request(preempted_request);
+      Request* request_to_preempt = batch_[--end_idx];
+      block_manager_->release_slots_for_request(request_to_preempt);
       continue;
     }
     // update index range for current batch
@@ -77,14 +113,32 @@ std::vector<Request*> ContinuousBatchingScheduler::get_batch() {
     priority_queue_.pop();
   }
   CHECK(begin_idx == end_idx);
-  return new_batch;
+  batch_ = std::move(new_batch);
 }
 
 // step the scheduler forward by one step
 // may get blocked if there are no requests to process
 void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   // get a new batch of requests
-  batch_ = get_batch();
+  const auto deadline = absl::Now() + timeout;
+  while (true) {
+    create_batch();
+    if (!batch_.empty()) {
+      // find one batch of requests to process
+      break;
+    }
+    const auto now = absl::Now();
+    if (now > deadline) {
+      // no requests to process
+      return;
+    }
+    // wait for new requests to arrive
+    const auto time_to_sleep =
+        std::min(absl::Milliseconds(kStepSleepTimeMs), deadline - now);
+    absl::SleepFor(time_to_sleep);
+  }
+
+  CHECK(!batch_.empty());
   engine_->forward(batch_);
 
   // TODO: process finished requests

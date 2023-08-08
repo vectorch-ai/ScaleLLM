@@ -11,11 +11,14 @@ cc_library(
     executor.h
   SRCS
     executor.cpp 
+    worker.cpp
   DEPS
     :request
+    :torch_utils
     glog::glog
     Folly::folly
     absl::synchronization
+    ${TORCH_LIBRARIES}
 )
 
 cc_test(

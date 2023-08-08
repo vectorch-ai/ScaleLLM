@@ -14,9 +14,11 @@
 
 namespace llm {
 
-class ContinuousBatchingScheduler : public Scheduler {
+class ContinuousBatchingScheduler final : public Scheduler {
  public:
   ContinuousBatchingScheduler();
+
+  ~ContinuousBatchingScheduler();
 
   // schedule a request, thread safe and non-blocking
   // may return false if the queue is full
@@ -28,7 +30,7 @@ class ContinuousBatchingScheduler : public Scheduler {
 
  private:
   // get a batch of requests from the priority queue
-  std::vector<Request*> get_batch();
+  void create_batch();
 
   // a thread safe queue of requests, bounded by kRequestQueueSize
   // the schedule owns the requests and manages their lifetimes.
@@ -38,7 +40,7 @@ class ContinuousBatchingScheduler : public Scheduler {
   // priority requests, and finally LOW priority requests. Within each priority
   // level, requests are handled on First-Come-First-Served (FCFS) basis.
   using MinHeap =
-      std::priority_queue<Request*, std::vector<Request*>, RequestPtrLess>;
+      std::priority_queue<Request*, std::vector<Request*>, RequestPtrGreater>;
   MinHeap priority_queue_;
 
   // a batch of requests to be processed
