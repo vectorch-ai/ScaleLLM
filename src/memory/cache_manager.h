@@ -14,9 +14,6 @@ namespace llm {
 // GPU physical memory used for key and value cache in attention layers
 // the fixed memory is allocated in the constructor for each attention layer
 // and is never released.
-// The cache manager is responsible for managing the cache mapping from
-// sequence to slots, as well as preparing the cache data for each slot.
-// Question: for cpu inference, do we even need to allocate memory beforehand?
 struct KVCache {
   // the contunuous memory region for key and value cache would be splited into
   // fixed size blocks. the blocks allocation would be managed by the
@@ -29,9 +26,7 @@ struct KVCache {
 
 struct CacheArg {};
 
-// CacheManager is responsible for managing the cache of the LLM model,
-// including allocating physical memory for cache, executing cache operations
-// (swap in/out) given by the the memory planner.
+// CacheManager is responsible for managing the cache of the LLM model.
 class CacheManager final {
  public:
   CacheManager(const CacheArg& cache_arg);
@@ -40,8 +35,6 @@ class CacheManager final {
     CHECK_LT(layer_id, kv_caches_.size());
     return kv_caches_[layer_id];
   }
-
-  void execute_plan(const CachePlan& cache_plan);
 
  private:
   // actual cache memory allocated for each attention layer

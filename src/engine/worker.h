@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include <thread>
+#include "executor.h"
 
 namespace llm {
 class CacheManager;
@@ -23,13 +23,11 @@ class Worker final {
   void init_cache_manager();
 
  private:
-  // working loop
-  void work_loop();
-
+  // model path
   std::string model_path_;
 
   // working thread
-  std::thread worker_thread_;
+  Executor executor_;
 
   // cache manager
   std::unique_ptr<CacheManager> cache_manager_;

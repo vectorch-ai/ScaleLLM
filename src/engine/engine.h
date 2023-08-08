@@ -1,6 +1,5 @@
 #pragma once
 
-#include "memory/cache_planner.h"
 #include "request/request.h"
 
 namespace llm {
@@ -22,18 +21,8 @@ class Engine {
  public:
   virtual ~Engine() = default;
 
-  std::unique_ptr<CachePlanner> create_cache_planner();
-
-  // // prepare the batch for execution, the task may include:
-  // // 1. tokenize the input text for new requests
-  // // 2. allocate resource for new requests
-  // // 3. resource management for preempted requests
-  // virtual void prepare_batch(const std::vector<Request*>& batch,
-  //                            const CachePlan& cache_plan) {}
-
   // step the engine forward by one step with the batch
-  virtual void forward(const std::vector<Request*>& batch,
-                       const CachePlan* cache_plan) {}
+  virtual void forward(const std::vector<Request*>& batch) {}
 };
 
 }  // namespace llm

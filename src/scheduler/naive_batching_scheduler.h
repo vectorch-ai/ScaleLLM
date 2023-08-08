@@ -8,7 +8,7 @@
 #include <queue>
 
 #include "engine/engine.h"
-#include "memory/cache_planner.h"
+#include "memory/block_manager.h"
 #include "request/request.h"
 #include "scheduler.h"
 
@@ -27,7 +27,7 @@ class NaiveBatchingScheduler : public Scheduler {
 
   // step the scheduler forward by one step
   // may get blocked if there are no requests to process
-  void step() override;
+  void step(const absl::Duration& timeout) override;
 
  private:
   // get a batch of requests from the priority queue
@@ -56,11 +56,10 @@ class NaiveBatchingScheduler : public Scheduler {
   // maximum delay in nanoseconds before a batch is processed
   uint64_t max_batch_delay_ns_ = 0;
 
+  std::unique_ptr<BlockManager> block_manager_;
+
   // the engine to run the batch
   std::unique_ptr<Engine> engine_;
-
-  // the cache planner to plan the cache for the batch
-  std::unique_ptr<CachePlanner> cache_planner_;
 };
 
 }  // namespace llm

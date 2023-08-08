@@ -16,8 +16,4 @@ CacheManager::CacheManager(const CacheArg& cache_arg) {
   // TODO: pre-allocate memory for each layer based on the cache_arg
 }
 
-void CacheManager::execute_plan(const CachePlan& cache_plan) {
-  // TODO: swap in/out cache data according to the cache plan
-}
-
 }  // namespace llm

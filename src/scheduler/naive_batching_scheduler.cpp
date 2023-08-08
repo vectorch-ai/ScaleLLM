@@ -46,8 +46,8 @@ std::vector<Request*> NaiveBatchingScheduler::get_batch(
     // get all available requests from the priority queue
     while (!priority_queue_.empty()) {
       Request* candidate = priority_queue_.top();
-      if (!cache_planner_->try_to_schedule_request(candidate)) {
-        // engine cannot handle more requests
+      if (!block_manager_->allocate_slots_for_request(candidate)) {
+        // no more slots available, return the batch
         return batch;
       }
 
@@ -83,10 +83,10 @@ bool NaiveBatchingScheduler::is_batch_finished() {
 
 // step the scheduler forward by one step
 // may get blocked if there are no requests to process
-void NaiveBatchingScheduler::step() {
+void NaiveBatchingScheduler::step(const absl::Duration& /*timeout*/) {
   // check if all requests in the batch have been fulfilled
   if (!is_batch_finished()) {
-    return engine_->forward(batch_, nullptr);
+    return engine_->forward(batch_);
   }
 
   // process finished requests
@@ -100,8 +100,7 @@ void NaiveBatchingScheduler::step() {
 
   // get a new batch of requests
   batch_ = get_batch(absl::Milliseconds(max_batch_delay_ns_));
-  auto plan = cache_planner_->create_plan();
-  engine_->forward(batch_, plan.get());
+  engine_->forward(batch_);
 }
 
 }  // namespace llm

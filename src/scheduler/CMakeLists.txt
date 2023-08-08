@@ -7,8 +7,10 @@ cc_library(
   HDRS
     scheduler.h
     naive_batching_scheduler.h
+    continuous_batching_scheduler.h
   SRCS 
     naive_batching_scheduler.cpp
+    continuous_batching_scheduler.cpp
   DEPS
     :request
     glog::glog

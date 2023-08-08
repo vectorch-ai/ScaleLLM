@@ -4,59 +4,68 @@
 
 #include <cstdint>
 #include <vector>
-#include "block.h"
 
 namespace llm {
 
 // BlockAllocator is used to track memory blocks. It is not thread safe.
 // Please note: The actual memory has been allocated outside of this class. This
-// class only manages the allocation and deallocation of memory block ids.
+// class only manages the allocation and deallocation of block ids.
 class BlockAllocator final {
  public:
-  BlockAllocator(uint32_t num_cpu_blocks,
-                 uint32_t num_gpu_blocks,
-                 uint32_t block_size_in_bytes);
+  // block_size: number of slots per block
+  BlockAllocator(uint32_t num_blocks, uint32_t slots_per_block)
+      : free_block_count_(num_blocks), slots_per_block_(slots_per_block) {
+    free_blocks_.reserve(free_block_count_);
+    for (uint32_t i = 0; i < free_block_count_; ++i) {
+      // push smaller block ids to the back of the vector
+      free_blocks_.push_back(free_block_count_ - i - 1);
+    }
+  }
 
-  ~BlockAllocator() = default;
+  // allocate a list of block ids
+  std::vector<uint32_t> allocate(uint32_t num_blocks) {
+    std::vector<uint32_t> block_ids;
+    block_ids.reserve(num_blocks);
+    for (uint32_t i = 0; i < num_blocks; ++i) {
+      block_ids.push_back(allocate());
+    }
+    return block_ids;
+  }
 
-  // disable copy and move operations
-  BlockAllocator(const BlockAllocator&) = delete;
-  BlockAllocator& operator=(const BlockAllocator&) = delete;
-  BlockAllocator(BlockAllocator&&) = delete;
-  BlockAllocator& operator=(BlockAllocator&&) = delete;
+  // free a list of block ids
+  void free(const std::vector<uint32_t>& block_ids) {
+    for (uint32_t block_id : block_ids) {
+      free(block_id);
+    }
+  }
 
-  // allocate a block of memory
-  Block allocate(MemoryType type);
+  // allocate a block id
+  uint32_t allocate() {
+    CHECK(free_block_count_ > 0) << "No more CPU memory blocks available";
+    return free_blocks_[--free_block_count_];
+  }
 
-  // get block size in bytes
-  uint32_t block_size_in_bytes() const { return block_size_in_bytes_; }
+  // caller should make sure the block_id is valid
+  void free(uint32_t block_id) {
+    CHECK(free_block_count_ < free_blocks_.size());
+    free_blocks_[free_block_count_++] = block_id;
+  }
 
-  // get number of free cpu blocks
-  uint32_t free_cpu_block_count() const { return cpu_block_count_; }
+  // get number of slots per block
+  uint32_t slots_per_block() const { return slots_per_block_; }
 
-  // get number of free gpu blocks
-  uint32_t free_gpu_block_count() const { return gpu_block_count_; }
+  // get number of free blocks
+  uint32_t free_block_count() const { return free_block_count_; }
 
  private:
-  friend class Block;
-  // free a block of memory
-  // should only be called by Block destructor implicitly
-  void free(const Block& block);
+  // free block count
+  uint32_t free_block_count_ = 0;
 
-  // free cpu block count
-  uint32_t cpu_block_count_ = 0;
+  // number of slots per block
+  uint32_t slots_per_block_ = 0;
 
-  // free gpu block count
-  uint32_t gpu_block_count_ = 0;
-
-  // block size in bytes
-  uint32_t block_size_in_bytes_ = 0;
-
-  // free cpu block list
-  std::vector<uint32_t> free_cpu_blocks_;
-
-  // free gpu block list
-  std::vector<uint32_t> free_gpu_blocks_;
+  // free block list
+  std::vector<uint32_t> free_blocks_;
 };
 
 }  // namespace llm

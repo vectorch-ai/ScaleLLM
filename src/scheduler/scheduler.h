@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <absl/time/time.h>
 
 #include "request/request.h"
 
@@ -41,8 +43,7 @@ class Scheduler {
   // step the scheduler forward by one step
   // may get blocked if there are no requests to process
   // not thread safe
-  // TODO: add timeout
-  virtual void step() = 0;
+  virtual void step(const absl::Duration& timeout) = 0;
 };
 
 }  // namespace llm

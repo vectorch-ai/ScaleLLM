@@ -46,8 +46,7 @@ struct Request {
   // The unique id of the request.
   uint64_t request_id = 0;
 
-  // prompt to generate completions for
-  std::string prompt;
+
 
   // list of sequences to generate completions for the prompt
   std::vector<Sequence> sequences;

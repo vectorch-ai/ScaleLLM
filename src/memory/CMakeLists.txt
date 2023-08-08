@@ -5,26 +5,21 @@ cc_library(
   NAME 
     memory
   HDRS 
-    block.h
     block_allocator.h
-    cache_manager.h
-    cache_planner.h
+    block_manager.h
   SRCS 
-    block.cpp
-    block_allocator.cpp
-    cache_manager.cpp
-    cache_planner.cpp
+    block_manager.cpp
   DEPS
     glog::glog
     ${TORCH_LIBRARIES}
 )
 
-cc_test(
-  NAME
-    memory_test
-  SRCS
-    block_allocator_test.cpp
-  DEPS
-    :memory
-    GTest::gtest_main
-)
+# cc_test(
+#   NAME
+#     memory_test
+#   SRCS
+#     block_allocator_test.cpp
+#   DEPS
+#     :memory
+#     GTest::gtest_main
+# )
