@@ -44,7 +44,7 @@ source "$HOME/.cargo/env"
 You can enlist the project by running the following command.
 
 ``` bash
-git clone --recursive https://github.com/vectorch-ai/LLMInfer.git
+git clone --recursive https://github.com/vectorch-ai/ScaleLLM.git
 ```
 
 ### Install libtorch 2.0.0
