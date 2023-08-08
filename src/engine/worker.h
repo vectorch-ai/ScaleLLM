@@ -30,7 +30,7 @@ class Worker final {
   Executor executor_;
 
   // cache manager
-  std::unique_ptr<CacheManager> cache_manager_;
+  // std::unique_ptr<CacheManager> cache_manager_;
 };
 
 }  // namespace llm
