@@ -5,13 +5,14 @@ cc_library(
   NAME 
     engine
   HDRS
-    engine.h
-    worker.h
     concurrent_queue.h
     executor.h
+    worker.h
+    engine.h
   SRCS
     executor.cpp 
     worker.cpp
+    engine.cpp
   DEPS
     :request
     :torch_utils

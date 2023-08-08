@@ -1,7 +1,7 @@
 #pragma once
 
-#include <torch/torch.h>
 #include <folly/futures/Future.h>
+#include <torch/torch.h>
 
 #include <string>
 #include <utility>
@@ -23,7 +23,7 @@ class Worker final {
 
   // Load the model from the given path. blocking call
   // can be called multiple times to reload the model with different parameters
-  void load_state_dict(const StateDict& state_dict);
+  bool load_state_dict(const StateDict& state_dict);
 
   // Run the model on the given input. async call
   // input contains prefill and generate requests with the following format:
@@ -35,23 +35,26 @@ class Worker final {
   // generate requests
   //                                                     [4,  3,   2, ..., 5]
   // input parameters:
-  void execute_model_async(
-      torch::Tensor tokens,     // [num_tokens]
-      torch::Tensor positions,  // [num_tokens]
-      torch::Tensor slots,      // [num_tokens] key value cache slots
-      InputParameters parameters);
+  folly::Future<bool> execute_model_async(
+      const torch::Tensor& tokens,     // [num_tokens]
+      const torch::Tensor& positions,  // [num_tokens]
+      const torch::Tensor& slots,      // [num_tokens] key value cache slots
+      const InputParameters& parameters);
 
   // initialize model, cache manager. async call
   folly::Future<bool> init_async();
 
- private:
-  void execute_model(torch::Tensor tokens,     // [num_tokens]
-                     torch::Tensor positions,  // [num_tokens]
-                     torch::Tensor slots,  // [num_tokens] key value cache slots
-                     InputParameters parameters) const;
+  // Run the model on the given input. blocking call
+  void execute_model(
+      const torch::Tensor& tokens,     // [num_tokens]
+      const torch::Tensor& positions,  // [num_tokens]
+      const torch::Tensor& slots,      // [num_tokens] key value cache slots
+      const InputParameters& parameters) const;
 
+  // initialize model, cache manager. blocking call
   bool init();
 
+ private:
   // model path
   std::string model_path_;
 

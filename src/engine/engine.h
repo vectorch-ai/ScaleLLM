@@ -1,7 +1,8 @@
 #pragma once
 
+#include "worker.h"
 #include "request/request.h"
-// #include "worker.h"
+
 
 namespace llm {
 
@@ -25,10 +26,9 @@ class Engine {
   // step the engine forward by one step with the batch
   virtual void forward(const std::vector<Request*>& batch) {}
 
-
-private:
+ private:
   // a list of workers, with each worker handling a partial of model
-  // std::vector<std::unique_ptr<Worker>> workers_;
+  std::vector<std::unique_ptr<Worker>> workers_;
 };
 
 }  // namespace llm

@@ -13,6 +13,7 @@ cc_library(
     continuous_batching_scheduler.cpp
   DEPS
     :request
+    :engine
     glog::glog
     Folly::folly
     absl::time
