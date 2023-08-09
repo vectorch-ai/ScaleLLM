@@ -3,8 +3,6 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "models/model_args.h"
-
 namespace {
 torch::Tensor precompute_freqs_cis(int64_t dim,
                                    int64_t max_seq_len,
@@ -64,11 +62,10 @@ void apply_rotary_emb(torch::Tensor& xq,
 
 namespace llm {
 
-RotaryPositionalEmbeddingImpl::RotaryPositionalEmbeddingImpl(
-    const ModelArgs& args) {
+RotaryPositionalEmbeddingImpl::RotaryPositionalEmbeddingImpl(int64_t rotary_dim,
+                                                             int64_t max_seq_len) {
   // calculate freqs_cis
-  freqs_cis_ =
-      precompute_freqs_cis(args.dim() / args.n_heads(), args.max_seq_len() * 2);
+  freqs_cis_ = precompute_freqs_cis(rotary_dim, max_seq_len * 2);
 }
 
 void RotaryPositionalEmbeddingImpl::forward(torch::Tensor& query,

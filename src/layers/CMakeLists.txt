@@ -9,8 +9,10 @@ cc_library(
     linear.h
     embedding.h
     pos_embedding.h
+    attention.h
   SRCS 
     pos_embedding.cpp
+    attention.cpp
   DEPS
     :torch_utils
     glog::glog

@@ -5,6 +5,7 @@
 #include "models/model_args.h"
 #include "layers/linear.h"
 #include "layers/pos_embedding.h"
+#include "layers/attention.h"
 
 namespace llm {
 
@@ -29,6 +30,8 @@ class AttentionImpl : public torch::nn::Module {
   RowParallelLinear wo_{nullptr};
 
   RotaryPositionalEmbedding pos_emb_{nullptr};
+
+  SelfAttention attn_{nullptr};
 
   // state variable members
   torch::Tensor cache_k_{nullptr};

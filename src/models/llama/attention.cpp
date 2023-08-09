@@ -56,7 +56,12 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
                            head_dim_});
 
   // initialize positional embedding
-  pos_emb_ = register_module("pos_emb", RotaryPositionalEmbedding(args));
+  pos_emb_ =
+      register_module("pos_emb",
+                      RotaryPositionalEmbedding(args.dim() / args.n_heads(),
+                                                args.max_seq_len()));
+  // initialize attention
+  attn_ = register_module("attn", SelfAttention());
 }
 
 // input: (bsz, seqlen, dim)
@@ -64,7 +69,7 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
 torch::Tensor AttentionImpl::forward(torch::Tensor x,
                                      int64_t start_pos,
                                      torch::Tensor mask) {
-  const double sqrt_head_dim = std::sqrt(static_cast<double>(head_dim_));
+  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
 
   const auto bsz = x.size(0);
   const auto seqlen = x.size(1);
@@ -106,29 +111,7 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
     values = repeat_kv(values, n_rep_);
   }
 
-  // (bs, n_local_heads, seqlen, head_dim)
-  xq = xq.transpose(1, 2);
-  keys = keys.transpose(1, 2);
-  values = values.transpose(1, 2);
-
-  // [bs, n_local_heads, seqlen, head_dim] x [bs, n_local_heads, head_dim,
-  // cache_len + seqlen]
-  // => [bs, n_local_heads, seqlen, cache_len + seqlen]
-  auto scores = torch::matmul(xq, keys.transpose(2, 3)) / sqrt_head_dim;
-  if (mask.defined()) {
-    // (bs, n_local_heads, seqlen, cache_len + seqlen)
-    scores += mask;
-  }
-  // (bs, n_local_heads, seqlen, cache_len + seqlen)
-  scores = torch::softmax(scores.to(torch::kFloat), -1).type_as(xq);
-  // (bs, n_local_heads, seqlen, cache_len + seqlen) x [bs, n_local_heads,
-  // cache_len + seqlen, head_dim]
-  // => [bs, n_local_heads, seqlen, head_dim]
-  auto output = torch::matmul(scores, values);
-  // (bs, seqlen, dim = n_local_heads X head_dim)
-  output = output.transpose(1, 2).contiguous().view({bsz, seqlen, -1});
-  // (bs, seqlen, n_local_heads * head_dim) X (n_heads * head_dim_, dim)
-  // -> (bs, seqlen, dim)
+  auto output = attn_->forward(xq, keys, values, mask, scale);
   return wo_->forward(output);
 }
 
