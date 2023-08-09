@@ -15,3 +15,4 @@ missingInclude
 syntaxError
 unmatchedSuppression
 useStlAlgorithm
+preprocessorErrorDirective

@@ -41,6 +41,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 find_package(glog CONFIG REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
+find_package(Protobuf REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
 find_package(folly CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(SentencePiece REQUIRED)
@@ -54,8 +56,10 @@ include(CTest)
 include(GoogleTest)
 
 # include current path
+list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR})
 list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # add subdirectories
+add_subdirectory(proto)
 add_subdirectory(src)
 add_subdirectory(third_party)

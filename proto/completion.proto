@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package scalellm.v1;
+
+message CompletionRequest {
+  // unique id for the completion request
+  uint64 id = 1;
+
+  // the prompt to generate completions for
+  string prompt = 2;
+
+  // the prompt tokens
+  // repeated int32 prompt_tokens = 3;
+
+  // number of tokens to generate
+  // the prompt token count + max_tokens can't exceed the model's max context length.
+  uint32 max_tokens = 4;
+
+  // temperature of the sampling, between [0, 2]. default = 1.0
+  // higher value will make the ouput more random.
+  float temperature = 5;
+
+  // top_p sampling cutoff, between [0, 1.0]. default = 1.0
+  float top_p = 6;
+
+  // number of completions to return for each prompt. default = 1
+  uint32 n = 7;
+
+  // whether to stream partial completions back as they are generated
+  bool stream = 8;
+
+  // include the log probabilities of the chosen tokens. the maximum value is 5.
+  uint32 logprobs = 9;
+
+  // whether to include the original prompt in the completion response
+  bool echo = 10;
+
+  // presence penalty to reduce the likelihood of generating words already in the prompt.
+  // values between [-2.0, 2.0]. Positive values penalize new tokens based on their existing
+  // in the prompt. default = 0.0
+  float presence_penalty = 11;
+
+  // frequency penalty to reduce the likelihood of generating the same word multiple times.
+  // values between [0.0, 2.0]. 0.0 means no penalty. default = 0.0
+  // Positive values penalize new tokens based on their existing frequency in the text.
+  float frequency_penalty = 12;
+
+  // Generates best_of completions server-side and returns the "best" (the one with the lowest log probability per token).
+  // Results can't be streamed once set.
+  // when used with n, best_of controls the number of candidate completions and n specifies how many to return
+  // best_of must be >= n
+  uint32 best_of = 13;
+
+  // whether to use the logit bias specified in the model configuration
+  bool use_logit_bias = 14;
+}
+
+message Choice {
+  // the generated completion
+  string text = 1;
+
+  // the log probability of the completion
+  float logprobs = 2;
+
+  // the index of the generated completion
+  uint32 index = 3;
+
+  // the finish reason of the completion.
+  string finish_reason = 4;
+}
+
+message CompletionResponse {
+  // unique id for the completion request
+  uint64 id = 1;
+
+  // the model used for the completion
+  string model = 2;
+
+  // list of generated completion choices for the input prompt
+  repeated Choice choices = 3;
+}
+
+service CompleteService {
+  rpc Complete(CompletionRequest) returns (stream CompletionResponse) {}
+}
