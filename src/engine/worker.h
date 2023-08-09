@@ -35,14 +35,14 @@ class Worker final {
   // generate requests
   //                                                     [4,  3,   2, ..., 5]
   // input parameters:
-  folly::Future<bool> execute_model_async(
+  folly::SemiFuture<bool> execute_model_async(
       const torch::Tensor& tokens,     // [num_tokens]
       const torch::Tensor& positions,  // [num_tokens]
       const torch::Tensor& slots,      // [num_tokens] key value cache slots
       const InputParameters& parameters);
 
   // initialize model, cache manager. async call
-  folly::Future<bool> init_async();
+  folly::SemiFuture<bool> init_async();
 
   // Run the model on the given input. blocking call
   void execute_model(

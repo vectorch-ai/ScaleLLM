@@ -34,8 +34,6 @@ class TransformerImpl : public torch::nn::Module {
 
   ColumnParallelLinear output_{nullptr};
 
-  torch::Tensor freqs_cis_;
-
   // configs
   int64_t world_size_;
 };

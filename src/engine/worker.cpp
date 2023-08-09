@@ -14,7 +14,7 @@ namespace llm {
 
 bool Worker::load_state_dict(const StateDict& state_dict) {
   folly::Promise<bool> promise;
-  auto future = promise.getFuture();
+  auto future = promise.getSemiFuture();
   executor_.schedule(
       [this, &state_dict, promise = std::move(promise)]() mutable {
         // load the model from the given path within the working thread
@@ -29,13 +29,13 @@ bool Worker::load_state_dict(const StateDict& state_dict) {
   return future.value();
 }
 
-folly::Future<bool> Worker::execute_model_async(
+folly::SemiFuture<bool> Worker::execute_model_async(
     const torch::Tensor& tokens,     // [num_tokens]
     const torch::Tensor& positions,  // [num_tokens]
     const torch::Tensor& slots,      // [num_tokens] key value cache slots
     const InputParameters& parameters) {
   folly::Promise<bool> promise;
-  auto future = promise.getFuture();
+  auto future = promise.getSemiFuture();
   executor_.schedule([this,
                       tokens,
                       positions,
@@ -50,9 +50,9 @@ folly::Future<bool> Worker::execute_model_async(
 }
 
 // initialize model, cache manager. async call
-folly::Future<bool> Worker::init_async() {
+folly::SemiFuture<bool> Worker::init_async() {
   folly::Promise<bool> promise;
-  auto future = promise.getFuture();
+  auto future = promise.getSemiFuture();
   executor_.schedule([this, promise = std::move(promise)]() mutable {
     // initialize model and cache manager within the working thread
     const bool success = this->init();
