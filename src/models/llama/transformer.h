@@ -6,7 +6,7 @@
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/norm.h"
-#include "model_args.h"
+#include "models/model_args.h"
 #include "transformer_block.h"
 
 // port LLAMA's model to C++ API:

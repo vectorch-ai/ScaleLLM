@@ -10,4 +10,14 @@ cc_library(
     ${TORCH_LIBRARIES}
 )
 
+cc_library(
+  NAME 
+    model_args
+  HDRS 
+    model_args.h
+  SRCS 
+  DEPS
+    ${TORCH_LIBRARIES}
+)
+
 add_subdirectory(llama)

@@ -5,48 +5,6 @@
 #include "layers/linear.h"
 
 namespace llm {
-// x (bsz, seqlen, n_local_heads, head_dim/2)
-torch::Tensor reshape_for_broadcast(const torch::Tensor& freqs_cis,
-                                    const torch::Tensor& x) {
-  const int64_t ndim = x.dim();
-  std::vector<int64_t> shape(ndim, 1);
-  shape[1] = x.size(1);
-  shape[ndim - 1] = x.size(ndim - 1);
-  // (seqlen, dim/2) -> (1, seqlen, 1, head_dim/2)
-  return freqs_cis.view(shape);
-}
-
-// returns a tensor where the last dimension of the original tensor is split
-// into two dimensions shape from [..., n] to [..., -1, 2]
-static torch::Tensor split_tensor_by_last_dim(const torch::Tensor& x) {
-  auto shape = x.sizes().vec();
-  shape.back() = -1;
-  shape.push_back(2);
-  return x.reshape(shape);
-}
-
-// xq: (bsz, seqlen, n_local_heads, head_dim)
-static void apply_rotary_emb(torch::Tensor& xq,
-                             torch::Tensor& xk,
-                             torch::Tensor freqs_cis) {
-  // (bsz, seqlen, n_local_heads, head_dim/2, 2)
-  //  -> (bsz, seqlen, n_local_heads, head_dim/2)
-  auto xq_complex =
-      torch::view_as_complex(split_tensor_by_last_dim(xq.to(torch::kFloat32)));
-  auto xk_complex =
-      torch::view_as_complex(split_tensor_by_last_dim(xk.to(torch::kFloat32)));
-
-  // (1, seqlen, 1, head_dim/2)
-  freqs_cis = reshape_for_broadcast(freqs_cis, xq_complex);
-  // (bsz, seqlen, n_local_heads, head_dim/2)
-  // -> (bsz, seqlen, n_local_heads, head_dim/2, 2)
-  // -> (bsz, seqlen, n_local_heads, head_dim)
-  auto xq_out = torch::view_as_real(xq_complex * freqs_cis).flatten(3);
-  auto xk_out = torch::view_as_real(xk_complex * freqs_cis).flatten(3);
-
-  xq = xq_out.type_as(xq);
-  xk = xk_out.type_as(xk);
-}
 
 static torch::Tensor repeat_kv(const torch::Tensor& x, int64_t n_rep) {
   const auto bs = x.size(0);
@@ -96,13 +54,15 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
                            args.max_seq_len(),
                            n_local_kv_heads_,
                            head_dim_});
+
+  // initialize positional embedding
+  pos_emb_ = register_module("pos_emb", RotaryPositionalEmbedding(args));
 }
 
 // input: (bsz, seqlen, dim)
 // TODO: move freqs_cis and mask to a separate class
 torch::Tensor AttentionImpl::forward(torch::Tensor x,
                                      int64_t start_pos,
-                                     torch::Tensor freqs_cis,
                                      torch::Tensor mask) {
   const double sqrt_head_dim = std::sqrt(static_cast<double>(head_dim_));
 
@@ -124,7 +84,7 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
   xv = xv.view({bsz, seqlen, n_local_kv_heads_, head_dim_});
 
   // (bsz, seqlen, n_local_heads, head_dim)
-  apply_rotary_emb(xq, xk, freqs_cis);
+  pos_emb_->forward(xq, xk, start_pos, seqlen);
 
   // cache k and v (move to a separate function/class)
   // why query can't be cached?

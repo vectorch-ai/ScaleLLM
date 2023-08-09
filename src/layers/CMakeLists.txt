@@ -8,7 +8,9 @@ cc_library(
     norm.h
     linear.h
     embedding.h
+    pos_embedding.h
   SRCS 
+    pos_embedding.cpp
   DEPS
     :torch_utils
     glog::glog

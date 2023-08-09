@@ -4,7 +4,6 @@ cc_library(
   NAME 
     llama
   HDRS 
-    model_args.h
     attention.h
     feedforward.h
     transformer_block.h

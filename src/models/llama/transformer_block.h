@@ -5,7 +5,7 @@
 #include "attention.h"
 #include "feedforward.h"
 #include "layers/norm.h"
-#include "model_args.h"
+#include "models/model_args.h"
 
 namespace llm {
 
@@ -31,10 +31,9 @@ class TransformerBlockImpl : public torch::nn::Module {
 
   torch::Tensor forward(torch::Tensor x,
                         int64_t start_pos,
-                        torch::Tensor freqs_cis,
                         torch::Tensor mask) {
     auto h = x + attention_->forward(
-                     attention_norm_->forward(x), start_pos, freqs_cis, mask);
+                     attention_norm_->forward(x), start_pos, mask);
     auto out = h + feed_forward_->forward(ffn_norm_->forward(h));
     return out;
   }

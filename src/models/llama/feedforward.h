@@ -5,7 +5,7 @@
 #include <optional>
 
 #include "layers/linear.h"
-#include "model_args.h"
+#include "models/model_args.h"
 
 namespace llm {
 

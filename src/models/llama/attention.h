@@ -2,8 +2,9 @@
 
 #include <torch/torch.h>
 
-#include "model_args.h"
+#include "models/model_args.h"
 #include "layers/linear.h"
+#include "layers/pos_embedding.h"
 
 namespace llm {
 
@@ -13,7 +14,6 @@ class AttentionImpl : public torch::nn::Module {
 
   torch::Tensor forward(torch::Tensor x,
                         int64_t start_pos,
-                        torch::Tensor freqs_cis,
                         torch::Tensor mask);
 
   // load the weight from the checkpoint
@@ -27,6 +27,8 @@ class AttentionImpl : public torch::nn::Module {
   ColumnParallelLinear wv_{nullptr};
 
   RowParallelLinear wo_{nullptr};
+
+  RotaryPositionalEmbedding pos_emb_{nullptr};
 
   // state variable members
   torch::Tensor cache_k_{nullptr};

@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-#include "models/llama/model_args.h"
+#include "models/model_args.h"
 #include "models/llama/transformer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 #include "torch_utils/state_dict.h"
