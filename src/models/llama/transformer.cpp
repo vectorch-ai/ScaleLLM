@@ -30,20 +30,13 @@ TransformerImpl::TransformerImpl(const ModelArgs& args, int64_t world_size) {
       ColumnParallelLinear(args.dim(), args.vocab_size(), world_size));
 }
 
-torch::Tensor TransformerImpl::forward(torch::Tensor tokens,
-                                       int64_t start_pos) {
-  constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
-
-  const auto batch_size = tokens.size(/*dim=*/0);
-  const auto seq_len = tokens.size(/*dim=*/1);
+torch::Tensor TransformerImpl::forward(
+    torch::Tensor tokens,
+    torch::Tensor positions,
+    const std::vector<int64_t>& cu_seq_lens) {
   auto h = tok_embeddings_->forward(tokens);
-  torch::Tensor mask;
-  if (seq_len > 1) {
-    mask = torch::full({1, 1, seq_len, seq_len}, negative_infinity);
-    mask = torch::triu(mask, /*diagonal=*/start_pos + 1).type_as(h);
-  }
   for (auto layer : layers_) {
-    h = layer->forward(h, start_pos, mask);
+    h = layer->forward(h, positions, cu_seq_lens);
   }
   h = norm_->forward(h);
   auto output = output_->forward(h).to(torch::kFloat32);

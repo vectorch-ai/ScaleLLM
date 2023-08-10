@@ -14,8 +14,8 @@ class AttentionImpl : public torch::nn::Module {
   AttentionImpl(const ModelArgs& args, int64_t world_size);
 
   torch::Tensor forward(torch::Tensor x,
-                        int64_t start_pos,
-                        torch::Tensor mask);
+                        torch::Tensor positions,
+                        const std::vector<int64_t>& cu_seq_lens);
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);
@@ -30,8 +30,6 @@ class AttentionImpl : public torch::nn::Module {
   RowParallelLinear wo_{nullptr};
 
   RotaryPositionalEmbedding pos_emb_{nullptr};
-
-  SelfAttention attn_{nullptr};
 
   // state variable members
   torch::Tensor cache_k_{nullptr};

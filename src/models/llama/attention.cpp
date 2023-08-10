@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include "layers/attention.h"
 #include "layers/linear.h"
 
 namespace llm {
@@ -60,58 +61,33 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
       register_module("pos_emb",
                       RotaryPositionalEmbedding(args.dim() / args.n_heads(),
                                                 args.max_seq_len()));
-  // initialize attention
-  attn_ = register_module("attn", SelfAttention());
 }
 
-// input: (bsz, seqlen, dim)
-// TODO: move freqs_cis and mask to a separate class
+// x : [num_tokens, dim]
+// positions : [num_tokens]
 torch::Tensor AttentionImpl::forward(torch::Tensor x,
-                                     int64_t start_pos,
-                                     torch::Tensor mask) {
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
-
-  const auto bsz = x.size(0);
-  const auto seqlen = x.size(1);
-  // (bsz, seqlen, dim) x (dim, n_heads * head_dim)
-  // (bsz, seqlen, n_heads * head_dim
+                                     torch::Tensor positions,
+                                     const std::vector<int64_t>& cu_seq_lens) {
+  const auto num_tokens = x.size(0);
+  // (num_tokens, dim) x (dim, n_heads * head_dim)
+  // => (num_tokens, n_heads * head_dim)
   auto xq = wq_->forward(x);
-  // (bsz, seqlen, n_kv_heads * head_dim)
   auto xk = wk_->forward(x);
-  // (bsz, seqlen, n_kv_heads * head_dim)
   auto xv = wv_->forward(x);
 
-  // (bsz, seqlen, n_local_heads, head_dim)
-  xq = xq.view({bsz, seqlen, n_local_heads_, head_dim_});
-  // (bsz, seqlen, n_local_kv_heads, head_dim)
-  xk = xk.view({bsz, seqlen, n_local_kv_heads_, head_dim_});
-  // (bsz, seqlen, n_local_kv_heads, head_dim)
-  xv = xv.view({bsz, seqlen, n_local_kv_heads_, head_dim_});
+  // (num_tokens, n_local_heads, head_dim)
+  xq = xq.view({num_tokens, n_local_heads_, head_dim_});
+  xk = xk.view({num_tokens, n_local_kv_heads_, head_dim_});
+  xv = xv.view({num_tokens, n_local_kv_heads_, head_dim_});
 
-  // (bsz, seqlen, n_local_heads, head_dim)
-  pos_emb_->forward(xq, xk, start_pos, seqlen);
+  // (num_tokens, n_local_heads, head_dim)
+  pos_emb_->forward(xq, xk, positions);
 
-  // cache k and v (move to a separate function/class)
-  // why query can't be cached?
-  cache_k_ = cache_k_.to(xq);
-  cache_v_ = cache_v_.to(xq);
-  using torch::indexing::Slice;
-  cache_k_.index_put_({Slice(0, bsz), Slice(start_pos, start_pos + seqlen)},
-                      xk);
-  cache_v_.index_put_({Slice(0, bsz), Slice(start_pos, start_pos + seqlen)},
-                      xv);
+  // TODO: add blocked cache support
 
-  auto keys = cache_k_.index({Slice(0, bsz), Slice(0, start_pos + seqlen)});
-  auto values = cache_v_.index({Slice(0, bsz), Slice(0, start_pos + seqlen)});
-
-  if (n_rep_ > 1) {
-    // (bs, seqlen, n_local_heads, head_dim)
-    // -> (bs, seqlen, n_local_kv_heads*n_rep, head_dim)
-    keys = repeat_kv(keys, n_rep_);
-    values = repeat_kv(values, n_rep_);
-  }
-
-  auto output = attn_->forward(xq, keys, values, mask, scale);
+  auto output =
+      attention::varlen_masked_self_attention(xq, xk, xv, cu_seq_lens);
+  output = output.contiguous().view({num_tokens, -1});
   return wo_->forward(output);
 }
 

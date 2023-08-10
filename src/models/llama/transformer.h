@@ -17,7 +17,12 @@ class TransformerImpl : public torch::nn::Module {
  public:
   TransformerImpl(const ModelArgs& args, int64_t world_size);
 
-  torch::Tensor forward(torch::Tensor tokens, int64_t start_pos);
+  // tokens: [num_tokens]
+  // positions: [num_tokens] token pos in the sequence
+  // cu_seq_lens: [batch_size] cumulative sequence length
+  torch::Tensor forward(torch::Tensor tokens,
+                        torch::Tensor positions,
+                        const std::vector<int64_t>& cu_seq_lens);
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict);

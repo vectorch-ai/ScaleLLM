@@ -4,11 +4,11 @@
 #include <iostream>
 #include <string>
 
-#include "models/model_args.h"
+#include "hf_model_downloader.h"
 #include "models/llama/transformer.h"
+#include "models/model_args.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 #include "torch_utils/state_dict.h"
-#include "hf_model_downloader.h"
 
 DEFINE_string(model_path,
               "/home/michael/code/llama/llama-2-7b/consolidated.00.pth",
@@ -20,8 +20,6 @@ DEFINE_string(tokenizer_path,
 DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
 DEFINE_double(top_p, 0.9, "Top p for sampling.");
-
-DEFINE_int32(torch_thread_num, 1, "Number of torch threads.");
 
 torch::Tensor sample_top_p(torch::Tensor logits, float top_p) {
   auto [probs_sort, probs_idx] =
@@ -45,10 +43,10 @@ int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   // test model download
-  // const std::string model_path = llm::download_hf_model("bigscience/bloom-1b1");
-  // LOG(INFO) << "Model downloaded to: " << model_path;
+  // const std::string model_path =
+  // llm::download_hf_model("bigscience/bloom-1b1"); LOG(INFO) << "Model
+  // downloaded to: " << model_path;
 
-  torch::set_num_threads(FLAGS_torch_thread_num);
   torch::manual_seed(1);
 
   llm::SentencePieceTokenizer tokenizer(FLAGS_tokenizer_path);
@@ -85,9 +83,6 @@ int main(int argc, char* argv[]) {
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
 
-  // construct batch input [2, max_seq_len]
-  const auto pad_id = tokenizer.pad_id();
-  auto batch_tensor = torch::full({1, args.max_seq_len()}, pad_id);
   std::string input;
   while (std::getline(std::cin, input) && input != "exit") {
     if (input.empty()) {
@@ -98,20 +93,23 @@ int main(int argc, char* argv[]) {
     auto tokens = tokenizer.encode(input);
     int64_t prev_pos = 0;
     // generate tokens until the end of sentence token is generated
-    for (int64_t cur_pos = tokens.size(); cur_pos < args.max_seq_len();
+    for (auto cur_pos = static_cast<int64_t>(tokens.size());
+         cur_pos < args.max_seq_len();
          ++cur_pos) {
-      // [1, max_seq_len]
-      batch_tensor.index_put_({0, torch::indexing::Slice(0, tokens.size())},
-                              torch::tensor(tokens));
+      auto tokens_tensor = torch::tensor(tokens);
+      // Creating positions based on the length of token_ids
+      // Equivalent to Python's range(len(token_ids))
+      std::vector<int64_t> positions(tokens.size());
+      std::iota(positions.begin(), positions.end(), 0);
+      torch::Tensor positions_tensor = torch::tensor(positions);
+      std::vector<int64_t> cu_seq_lens = {0,
+                                          static_cast<int64_t>(tokens.size())};
 
       // run inference
-      const auto slice_tensor =
-          batch_tensor.index({torch::indexing::Slice(),
-                              torch::indexing::Slice(prev_pos, cur_pos)});
+      const auto logits =
+          transformer->forward(tokens_tensor, positions_tensor, cu_seq_lens);
 
-      const auto logits = transformer->forward(slice_tensor, prev_pos);
-
-      const auto flatten_logits = logits.index({torch::indexing::Slice(), -1});
+      const auto flatten_logits = logits.index({-1});
       // sample the next token
       torch::Tensor next_token;
       if (FLAGS_temperature > 0.0) {
@@ -124,15 +122,11 @@ int main(int argc, char* argv[]) {
 
       const auto flat_tensor = next_token.reshape({-1});
 
-      // add the next token to the batch input
-      batch_tensor.index_put_({torch::indexing::Slice(), cur_pos}, flat_tensor);
-      prev_pos = cur_pos;
-
-      const auto next_token_scalar =
-          static_cast<int>(flat_tensor.item<int64_t>());
+      // add the next token to the list of tokens
+      const auto next_token_scalar = static_cast<int>(flat_tensor.item<int>());
+      tokens.push_back(next_token_scalar);
 
       // decode the output and print it
-      tokens.push_back(next_token_scalar);
       const auto new_output = tokenizer.decode(tokens);
       std::cout << new_output.substr(output.size()) << std::flush;
       output = new_output;

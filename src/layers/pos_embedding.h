@@ -10,11 +10,11 @@ class RotaryPositionalEmbeddingImpl : public torch::nn::Module {
  public:
   RotaryPositionalEmbeddingImpl(int64_t rotary_dim, int64_t seq_len);
 
-  void forward(
-      torch::Tensor& query,  // [batch_size, seq_len, n_heads, head_dim]
-      torch::Tensor& key,    // [batch_size, seq_len, n_heads, head_dim]
-      int64_t start_pos,
-      int64_t seq_len) const;
+  // inplace rotary positional embedding
+  void forward(torch::Tensor& query,    // [num_tokens, n_heads, head_dim]
+               torch::Tensor& key,      // [num_tokens, n_kv_heads, head_dim]
+               torch::Tensor positions  // [num_tokens]
+  ) const;
 
  private:
   torch::Tensor freqs_cis_;

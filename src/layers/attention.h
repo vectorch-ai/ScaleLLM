@@ -4,18 +4,13 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-namespace llm {
+namespace llm::attention {
 
-// Self attention
-class SelfAttentionImpl : public torch::nn::Module {
- public:
-  torch::Tensor forward(
-      torch::Tensor query,  // [batch_size, seq_len, n_heads, head_dim]
-      torch::Tensor key,    // [batch_size, seq_len, n_heads, head_dim]
-      torch::Tensor value,  // [batch_size, seq_len, n_heads, head_dim]
-      torch::Tensor mask,   // [batch_size, seq_len, seq_len]
-      float scale) const;
-};
-TORCH_MODULE(SelfAttention);
+torch::Tensor varlen_masked_self_attention(
+    torch::Tensor query,                     // [num_tokens, n_heads, head_dim]
+    torch::Tensor key,                       // [num_tokens, n_heads, head_dim]
+    torch::Tensor value,                     // [num_tokens, n_heads, head_dim]
+    const std::vector<int64_t>& cu_seq_lens  // cumulative sequence lengths
+);
 
-}  // namespace llm
+}  // namespace llm::attention
