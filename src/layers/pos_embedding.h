@@ -41,14 +41,8 @@ inline std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
     const torch::Tensor& k,
     const torch::Tensor& cos,
     const torch::Tensor& sin) {
-  LOG(ERROR) << "q: " << q;
-  LOG(ERROR) << "k: " << k;
-  LOG(ERROR) << "cos: " << cos;
-  LOG(ERROR) << "sin: " << sin;
   auto q_embed = (q * cos) + (rotate_half(q) * sin);
   auto k_embed = (k * cos) + (rotate_half(k) * sin);
-  LOG(ERROR) << "q_embed: " << q_embed;
-  LOG(ERROR) << "k_embed: " << k_embed;
   return std::make_tuple(q_embed, k_embed);
 }
 
