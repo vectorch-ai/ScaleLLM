@@ -11,7 +11,6 @@ cc_library(
     pos_embedding.h
     attention.h
   SRCS 
-    pos_embedding.cpp
     attention.cpp
   DEPS
     :torch_utils
@@ -25,6 +24,7 @@ cc_test(
     layers_test
   SRCS
     layers_test.cpp
+    pos_embedding_test.cpp
   DEPS
     :layers
     :torch_utils

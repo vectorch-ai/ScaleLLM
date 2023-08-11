@@ -16,3 +16,4 @@ syntaxError
 unmatchedSuppression
 useStlAlgorithm
 preprocessorErrorDirective
+useInitializationList

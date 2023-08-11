@@ -1,6 +1,7 @@
 #include "attention.h"
 
 #include <torch/torch.h>
+#include <tuple>
 
 #include "layers/attention.h"
 #include "layers/linear.h"
@@ -35,8 +36,8 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
   // initialize positional embedding
   pos_emb_ =
       register_module("pos_emb",
-                      RotaryPositionalEmbedding(args.dim() / args.n_heads(),
-                                                args.max_seq_len()));
+                      InterleavedRotaryEmbedding(args.dim() / args.n_heads(),
+                                                 args.max_seq_len()));
 }
 
 // x : [num_tokens, dim]
@@ -57,12 +58,13 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
   value = value.view({num_tokens, n_local_kv_heads_, head_dim_});
 
   // (num_tokens, n_local_heads, head_dim)
-  // inplace update query, key with positional embedding
-  pos_emb_->forward(query, key, positions);
+  // apply positional embedding
+  std::tie(query, key) = pos_emb_->forward(query, key, positions);
 
   // TODO: add blocked cache support
   auto output = torch::zeros_like(query);
-  attention::varlen_masked_self_attention(query, key, value, cu_seq_lens, output);
+  attention::varlen_masked_self_attention(
+      query, key, value, cu_seq_lens, output);
   output = output.contiguous().view({num_tokens, -1});
   return wo_->forward(output);
 }
