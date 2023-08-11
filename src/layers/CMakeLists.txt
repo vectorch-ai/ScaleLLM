@@ -15,6 +15,7 @@ cc_library(
     attention.cpp
   DEPS
     :torch_utils
+    :memory
     glog::glog
     ${TORCH_LIBRARIES}
 )

@@ -36,7 +36,7 @@ void apply_rotary_emb(torch::Tensor& xq,
   auto xk_complex =
       torch::view_as_complex(split_tensor_by_last_dim(xk.to(torch::kFloat32)));
 
-  // (num_tokens, 1 (n_heads), head_dim/2)
+  // reshape for broadcast at n_heads dim => (num_tokens, 1 (n_heads), head_dim/2)
   freqs_cis = freqs_cis.unsqueeze(1);
   // -> (num_tokens, n_heads, head_dim)
   auto xq_out = torch::view_as_real(xq_complex * freqs_cis).flatten(2);

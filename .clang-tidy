@@ -13,6 +13,7 @@ Checks: >
   portability-*,
   readability-*,
   -modernize-use-nodiscard,
+  -modernize-use-auto,
   -modernize-use-trailing-return-type,
   -misc-non-private-member-variables-in-classes,
   -performance-unnecessary-value-param,

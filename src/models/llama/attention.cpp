@@ -7,20 +7,6 @@
 
 namespace llm {
 
-static torch::Tensor repeat_kv(const torch::Tensor& x, int64_t n_rep) {
-  const auto bs = x.size(0);
-  const auto slen = x.size(1);
-  const auto n_kv_heads = x.size(2);
-  const auto head_dim = x.size(3);
-  // (bs, seqlen, n_kv_heads, head_dim)
-  // -> (bs, seqlen, n_kv_heads, 1, head_dim)
-  // -> (bs, seqlen, n_kv_heads, n_rep, head_dim)
-  // -> (bs, seqlen, n_kv_heads * n_rep, head_dim)
-  auto x_expanded =
-      x.unsqueeze(3).expand({bs, slen, n_kv_heads, n_rep, head_dim});
-  return x_expanded.reshape({bs, slen, n_kv_heads * n_rep, head_dim});
-}
-
 AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
     : world_size_(world_size) {
   if (args.n_kv_heads().has_value()) {
@@ -46,16 +32,6 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
   wo_ = register_module(
       "wo", RowParallelLinear(n_heads * head_dim_, dim, world_size));
 
-  // initialize cache (batch_size, seq_len, n_local_kv_heads, head_dim)
-  cache_k_ = torch::zeros({args.max_batch_size(),
-                           args.max_seq_len(),
-                           n_local_kv_heads_,
-                           head_dim_});
-  cache_v_ = torch::zeros({args.max_batch_size(),
-                           args.max_seq_len(),
-                           n_local_kv_heads_,
-                           head_dim_});
-
   // initialize positional embedding
   pos_emb_ =
       register_module("pos_emb",
@@ -71,22 +47,22 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
   const auto num_tokens = x.size(0);
   // (num_tokens, dim) x (dim, n_heads * head_dim)
   // => (num_tokens, n_heads * head_dim)
-  auto xq = wq_->forward(x);
-  auto xk = wk_->forward(x);
-  auto xv = wv_->forward(x);
+  auto query = wq_->forward(x);
+  auto key = wk_->forward(x);
+  auto value = wv_->forward(x);
 
   // (num_tokens, n_local_heads, head_dim)
-  xq = xq.view({num_tokens, n_local_heads_, head_dim_});
-  xk = xk.view({num_tokens, n_local_kv_heads_, head_dim_});
-  xv = xv.view({num_tokens, n_local_kv_heads_, head_dim_});
+  query = query.view({num_tokens, n_local_heads_, head_dim_});
+  key = key.view({num_tokens, n_local_kv_heads_, head_dim_});
+  value = value.view({num_tokens, n_local_kv_heads_, head_dim_});
 
   // (num_tokens, n_local_heads, head_dim)
-  pos_emb_->forward(xq, xk, positions);
+  // inplace update query, key with positional embedding
+  pos_emb_->forward(query, key, positions);
 
   // TODO: add blocked cache support
-
-  auto output =
-      attention::varlen_masked_self_attention(xq, xk, xv, cu_seq_lens);
+  auto output = torch::zeros_like(query);
+  attention::varlen_masked_self_attention(query, key, value, cu_seq_lens, output);
   output = output.contiguous().view({num_tokens, -1});
   return wo_->forward(output);
 }

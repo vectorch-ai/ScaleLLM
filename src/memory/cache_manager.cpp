@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "block_allocator.h"
-#include "cache_planner.h"
+#include "kv_cache.h"
 
 namespace llm {
 

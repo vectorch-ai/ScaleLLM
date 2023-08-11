@@ -31,10 +31,6 @@ class AttentionImpl : public torch::nn::Module {
 
   RotaryPositionalEmbedding pos_emb_{nullptr};
 
-  // state variable members
-  torch::Tensor cache_k_{nullptr};
-  torch::Tensor cache_v_{nullptr};
-
   // configs
   int64_t world_size_;
   int64_t n_kv_heads_;

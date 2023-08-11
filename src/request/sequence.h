@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+
 #include "slice.h"
 
 namespace llm {
@@ -13,18 +14,18 @@ namespace llm {
 // current position in generating tokens, etc.
 struct Sequence {
   // whether the sequence is in prefill stage
-  bool is_prefill() const { return pos == 0; }
+  bool is_prefill() const { return cache_pos == 0; }
 
   // // get token ids
-  // const std::vector<int>& get_token_ids() const { 
+  // const std::vector<int>& get_token_ids() const {
   //   return token_ids;
   // }
 
   // add a new token id to the sequence
   void append_new_token_id(int token_id) {
-    // all tokens before pos should be processed and cached. 
-    pos = token_ids.size();
-    token_ids.push_back(token_id); 
+    // all tokens before pos should be processed and cached.
+    cache_pos = token_ids.size();
+    token_ids.push_back(token_id);
   }
 
   // add new cache blocks
@@ -35,7 +36,7 @@ struct Sequence {
   // release all cache blocks
   std::vector<uint32_t> release_blocks() {
     // reset the current pos to 0 so that the cache can be recomputed next time
-    pos = 0;
+    cache_pos = 0;
     return std::move(blocks);
   }
 
@@ -67,9 +68,9 @@ struct Sequence {
   // the length of the prompt tokens
   size_t prompt_len = 0;
 
-  // the position start to process in next step.
+  // the cache position.
   // all tokens before pos should be processed and cached.
-  size_t pos = 0;
+  size_t cache_pos = 0;
 
   // physical block ids that hold the keys and values cache.
   std::vector<uint32_t> blocks;

@@ -70,6 +70,7 @@ void ContinuousBatchingScheduler::create_batch() {
   // requests in current batch all have precedence over new requests
   if (!batch_.empty() &&
       RequestPtrLess()(batch_.back(), priority_queue_.top())) {
+    // TODO: need to check if we can schedule new requests
     return;
   }
 

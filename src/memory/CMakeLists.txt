@@ -5,9 +5,11 @@ cc_library(
   NAME 
     memory
   HDRS 
+    kv_cache.h
     block_allocator.h
     block_manager.h
   SRCS 
+    kv_cache.cpp
     block_manager.cpp
   DEPS
     glog::glog
