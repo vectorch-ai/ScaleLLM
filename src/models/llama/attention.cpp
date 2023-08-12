@@ -1,6 +1,7 @@
 #include "attention.h"
 
 #include <torch/torch.h>
+
 #include <tuple>
 
 #include "layers/attention.h"
@@ -34,10 +35,9 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
       "wo", RowParallelLinear(n_heads * head_dim_, dim, world_size));
 
   // initialize positional embedding
-  pos_emb_ =
-      register_module("pos_emb",
-                      InterleavedRotaryEmbedding(args.dim() / args.n_heads(),
-                                                 args.max_seq_len()));
+  pos_emb_ = RotaryEmbedding::create(
+      args.dim() / args.n_heads(), args.max_seq_len(), /*interleaved=*/true);
+  register_module("pos_emb", pos_emb_);
 }
 
 // x : [num_tokens, dim]

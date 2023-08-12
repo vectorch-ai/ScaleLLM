@@ -50,14 +50,32 @@ inline std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
 
 inline constexpr float kDefaultTheta = 10000.0f;
 
+class RotaryEmbedding : public torch::nn::Module {
+ public:
+  virtual ~RotaryEmbedding() = default;
+
+  virtual std::tuple<torch::Tensor, torch::Tensor> forward(
+      const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
+      const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
+      const torch::Tensor& positions  // [num_tokens]
+  ) const = 0;
+
+  // static factory method
+  static std::shared_ptr<RotaryEmbedding> create(int64_t rotary_dim,
+                                                 int64_t max_seq_len,
+                                                 bool interleaved);
+};
+
 // Two types of rotary positional embeddings:
 // 1> Interleaved rotation style: rotates pairs of even and odd dimensions
 // (used in GPT-J and LLama).
-class InterleavedRotaryEmbeddingImpl : public torch::nn::Module {
+// 2> Half-half rotation style of rotary positional embedding (as seen in
+// GPT-Neo).
+class InterleavedRotaryEmbedding : public RotaryEmbedding {
  public:
-  InterleavedRotaryEmbeddingImpl(int64_t rotary_dim,
-                                 int64_t max_seq_len,
-                                 float theta = kDefaultTheta) {
+  InterleavedRotaryEmbedding(int64_t rotary_dim,
+                             int64_t max_seq_len,
+                             float theta = kDefaultTheta) {
     // Create cos and sin embeddings.
     const auto slice = torch::arange(0, rotary_dim, 2).to(torch::kFloat32);
     const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
@@ -76,7 +94,7 @@ class InterleavedRotaryEmbeddingImpl : public torch::nn::Module {
       const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
       const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
       const torch::Tensor& positions  // [num_tokens]
-  ) const {
+  ) const override {
     namespace F = torch::nn::functional;
     auto cos_sin = F::embedding(positions, cos_sin_cache_);
     // add a new dimension for n_heads
@@ -89,15 +107,12 @@ class InterleavedRotaryEmbeddingImpl : public torch::nn::Module {
  private:
   torch::Tensor cos_sin_cache_;
 };
-TORCH_MODULE(InterleavedRotaryEmbedding);
 
-// 2> Half-half rotation style of rotary positional embedding (as seen in
-// GPT-Neo).
-class RotaryEmbeddingImpl : public torch::nn::Module {
+class RotatedRotaryEmbedding : public RotaryEmbedding {
  public:
-  RotaryEmbeddingImpl(int64_t rotary_dim,
-                      int64_t max_seq_len,
-                      float theta = kDefaultTheta) {
+  RotatedRotaryEmbedding(int64_t rotary_dim,
+                         int64_t max_seq_len,
+                         float theta = kDefaultTheta) {
     // Create cos and sin embeddings.
     const auto slice = torch::arange(0, rotary_dim, 2).to(torch::kFloat32);
     const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
@@ -115,7 +130,7 @@ class RotaryEmbeddingImpl : public torch::nn::Module {
       const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
       const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
       const torch::Tensor& positions  // [num_tokens]
-  ) const {
+  ) const override {
     namespace F = torch::nn::functional;
     auto cos_sin = F::embedding(positions, cos_sin_cache_);
     // add a new dimension for n_heads
@@ -127,6 +142,5 @@ class RotaryEmbeddingImpl : public torch::nn::Module {
  private:
   torch::Tensor cos_sin_cache_;
 };
-TORCH_MODULE(RotaryEmbedding);
 
 }  // namespace llm

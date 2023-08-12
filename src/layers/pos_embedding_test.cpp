@@ -80,7 +80,7 @@ TEST(RotaryEmbeddingTest, Interleaved) {
 
   // make a copy for inplace operation
   const auto [query_output, key_output] =
-      rotary_embedding->forward(query, key, positions);
+      rotary_embedding.forward(query, key, positions);
 
   // compute the desired output
   auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len);
@@ -105,7 +105,7 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
   const int64_t n_heads = 4;
   const int64_t head_dim = 4;
   const int64_t max_seq_len = 128;
-  RotaryEmbedding rotary_embedding(head_dim, max_seq_len);
+  RotatedRotaryEmbedding rotary_embedding(head_dim, max_seq_len);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});
@@ -113,7 +113,7 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
 
   // make a copy for inplace operation
   const auto [query_output, key_output] =
-      rotary_embedding->forward(query, key, positions);
+      rotary_embedding.forward(query, key, positions);
 
   // compute the desired output
   auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len);

@@ -29,7 +29,7 @@ class AttentionImpl : public torch::nn::Module {
 
   RowParallelLinear wo_{nullptr};
 
-  InterleavedRotaryEmbedding pos_emb_{nullptr};
+  std::shared_ptr<RotaryEmbedding> pos_emb_;
 
   // configs
   int64_t world_size_;

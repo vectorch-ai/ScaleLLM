@@ -3,6 +3,8 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+using torch::indexing::Slice;
+
 namespace llm::attention {
 namespace {
 constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
@@ -46,13 +48,13 @@ void varlen_masked_self_attention(
       mask = torch::full({1, seq_len, seq_len}, negative_infinity);
       mask = torch::triu(mask, /*diagonal=*/1).type_as(query);
     }
-    auto output = masked_self_attention(
+    const auto attn = masked_self_attention(
         query.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
         key.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
         value.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
         mask,
         scale);
-    output[i].copy_(output, /*non_blocking=*/true);
+    output.index_put_({Slice(start_idx, end_idx), Slice(), Slice()}, attn);
   }
 }
 
@@ -78,8 +80,8 @@ void single_token_masked_self_attention(
     const auto context_len = context_lens[i].item<int64_t>();
     // fetch keys/values from cache
     const auto [k, v] = kv_cache.get_kv_cache(block_table, context_len);
-    auto o = masked_self_attention(q, k, v, mask, scale);
-    output[i].copy_(o, /*non_blocking=*/true);
+    const auto attn = masked_self_attention(q, k, v, mask, scale);
+    output.index_put_({i, Slice(), Slice()}, attn);
   }
 }
 

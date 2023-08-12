@@ -12,6 +12,7 @@ cc_library(
     attention.h
   SRCS 
     attention.cpp
+    pos_embedding.cpp
   DEPS
     :torch_utils
     :memory

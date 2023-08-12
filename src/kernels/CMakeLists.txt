@@ -7,6 +7,7 @@ cc_library(
     reduce_kernel_utils.cuh
   SRCS 
     rms_norm_kernel.cu
+    pos_embedding_kernel.cu
   DEPS
     ${TORCH_LIBRARIES}
     Python::Python
