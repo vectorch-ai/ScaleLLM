@@ -35,9 +35,10 @@ AttentionImpl::AttentionImpl(const ModelArgs& args, int64_t world_size)
       "wo", RowParallelLinear(n_heads * head_dim_, dim, world_size));
 
   // initialize positional embedding
-  pos_emb_ = RotaryEmbedding::create(
-      args.dim() / args.n_heads(), args.max_seq_len(), /*interleaved=*/true);
-  register_module("pos_emb", pos_emb_);
+  pos_emb_ = register_module("pos_emb",
+                             RotaryEmbedding(args.dim() / args.n_heads(),
+                                             args.max_seq_len(),
+                                             /*interleaved=*/true));
 }
 
 // x : [num_tokens, dim]
@@ -48,9 +49,9 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
   const auto num_tokens = x.size(0);
   // (num_tokens, dim) x (dim, n_heads * head_dim)
   // => (num_tokens, n_heads * head_dim)
-  auto query = wq_->forward(x);
-  auto key = wk_->forward(x);
-  auto value = wv_->forward(x);
+  auto query = wq_(x);
+  auto key = wk_(x);
+  auto value = wv_(x);
 
   // (num_tokens, n_local_heads, head_dim)
   query = query.view({num_tokens, n_local_heads_, head_dim_});
@@ -59,14 +60,14 @@ torch::Tensor AttentionImpl::forward(torch::Tensor x,
 
   // (num_tokens, n_local_heads, head_dim)
   // apply positional embedding
-  std::tie(query, key) = pos_emb_->forward(query, key, positions);
+  std::tie(query, key) = pos_emb_(query, key, positions);
 
   // TODO: add blocked cache support
   auto output = torch::zeros_like(query);
   attention::varlen_masked_self_attention(
       query, key, value, cu_seq_lens, output);
   output = output.contiguous().view({num_tokens, -1});
-  return wo_->forward(output);
+  return wo_(output);
 }
 
 // load the weight from the checkpoint

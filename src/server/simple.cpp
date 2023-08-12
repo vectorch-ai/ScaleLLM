@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
 
       // run inference
       const auto logits =
-          transformer->forward(tokens_tensor, positions_tensor, cu_seq_lens);
+          transformer(tokens_tensor, positions_tensor, cu_seq_lens);
 
       const auto flatten_logits = logits.index({-1});
       // sample the next token

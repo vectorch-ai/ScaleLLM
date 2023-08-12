@@ -34,12 +34,12 @@ torch::Tensor TransformerImpl::forward(
     torch::Tensor tokens,
     torch::Tensor positions,
     const std::vector<int64_t>& cu_seq_lens) {
-  auto h = tok_embeddings_->forward(tokens);
+  auto h = tok_embeddings_(tokens);
   for (auto layer : layers_) {
-    h = layer->forward(h, positions, cu_seq_lens);
+    h = layer(h, positions, cu_seq_lens);
   }
-  h = norm_->forward(h);
-  auto output = output_->forward(h).to(torch::kFloat32);
+  h = norm_(h);
+  auto output = output_(h).to(torch::kFloat32);
   return output;
 }
 

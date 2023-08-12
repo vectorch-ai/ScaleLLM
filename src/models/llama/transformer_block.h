@@ -32,9 +32,8 @@ class TransformerBlockImpl : public torch::nn::Module {
   torch::Tensor forward(torch::Tensor x,
                         torch::Tensor positions,
                         const std::vector<int64_t>& cu_seq_lens) {
-    auto h = x + attention_->forward(
-                     attention_norm_->forward(x), positions, cu_seq_lens);
-    auto out = h + feed_forward_->forward(ffn_norm_->forward(h));
+    auto h = x + attention_(attention_norm_(x), positions, cu_seq_lens);
+    auto out = h + feed_forward_(ffn_norm_(h));
     return out;
   }
 

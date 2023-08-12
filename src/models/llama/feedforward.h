@@ -33,7 +33,7 @@ class FeedForwardImpl : public torch::nn::Module {
 
   torch::Tensor forward(torch::Tensor x) {
     namespace F = torch::nn::functional;
-    return w2_->forward(F::silu(w1_->forward(x)) * w3_->forward(x));
+    return w2_(F::silu(w1_(x)) * w3_(x));
   }
 
   // load the weight from the checkpoint
