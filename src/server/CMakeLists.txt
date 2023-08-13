@@ -13,6 +13,17 @@ cc_library(
     Python::Python
 )
 
+cc_library(
+  NAME 
+    grpc_server
+  HDRS 
+    grpc_server.h
+  SRCS 
+    grpc_server.cpp
+  DEPS
+    grpc_proto::completion
+)
+
 cc_binary(
   NAME 
     simple

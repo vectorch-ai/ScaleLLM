@@ -22,6 +22,8 @@ Checks: >
   -cppcoreguidelines-avoid-magic-numbers,
   -readability-identifier-length,
   -readability-use-anyofallof,
+  -cppcoreguidelines-special-member-functions
+
 
 HeaderFilterRegex: '.*'
 FormatStyle: 'file'

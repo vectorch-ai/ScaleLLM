@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package scalellm.v1;
+package llm;
 
 message CompletionRequest {
   // unique id for the completion request
@@ -80,6 +80,6 @@ message CompletionResponse {
   repeated Choice choices = 3;
 }
 
-service CompleteService {
+service Completion {
   rpc Complete(CompletionRequest) returns (stream CompletionResponse) {}
 }
