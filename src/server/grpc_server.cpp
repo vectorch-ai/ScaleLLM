@@ -22,20 +22,19 @@ class CallData {
   void proceed() {
     CHECK(ops_in_progress_.exchange(false));
 
-    if (status_ == PROCESS) {
-      // it is notification from cq for new request
-      if (new_request_) {
-        new_request_ = false;
-        // Spawn a new CallData instance to serve new clients while we process
-        // the one for this CallData.
-        CallData::create(service_, cq_);
-        // The actual processing.
-        // TODO: send the request to processor
-        // OnNewRequest(this);
-      }
-    } else {
-      CHECK_EQ(status_, FINISH);
-      // Once in the FINISH state, deallocate ourselves (CallData).
+    // it is notification from cq for new request
+    if (new_request_) {
+      new_request_ = false;
+      // Spawn a new CallData instance to serve new clients while we process
+      // the one for this CallData.
+      CallData::create(service_, cq_);
+      // The actual processing.
+      // TODO: send the request to processor
+      // OnNewRequest(this);
+    }
+
+    if (done_) {
+      // Once request is done, delete this instance.
       delete this;
     }
   }
@@ -48,14 +47,14 @@ class CallData {
 
   void write_and_finish(const Response& response) {
     wait_for_ops();
-    status_ = FINISH;
+    done_ = true;
     responder_.WriteAndFinish(
         response, grpc::WriteOptions(), grpc::Status::OK, this);
   }
 
   void finish() {
     wait_for_ops();
-    status_ = FINISH;
+    done_ = true;
     responder_.Finish(grpc::Status::OK, this);
   }
 
@@ -94,10 +93,7 @@ class CallData {
   // responder for replying to client
   grpc::ServerAsyncWriter<Response> responder_;
 
-  // status of the request
-  enum CallStatus { PROCESS, FINISH };
-  // The current serving state.
-  CallStatus status_{};
+  std::atomic<bool> done_{false};
 
   // it is used to make sure write ops are not called concurrently
   std::atomic<bool> ops_in_progress_{true};

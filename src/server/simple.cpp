@@ -5,6 +5,7 @@
 #include <string>
 
 #include "hf_model_downloader.h"
+#include "models/input_parameters.h"
 #include "models/llama/transformer.h"
 #include "models/model_args.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
@@ -47,8 +48,6 @@ int main(int argc, char* argv[]) {
   // llm::download_hf_model("bigscience/bloom-1b1"); LOG(INFO) << "Model
   // downloaded to: " << model_path;
 
-  torch::manual_seed(1);
-
   llm::SentencePieceTokenizer tokenizer(FLAGS_tokenizer_path);
 
   torch::InferenceMode guard;
@@ -88,6 +87,7 @@ int main(int argc, char* argv[]) {
     if (input.empty()) {
       continue;
     }
+    torch::manual_seed(1);
 
     std::string output;
     auto tokens = tokenizer.encode(input);
@@ -102,12 +102,11 @@ int main(int argc, char* argv[]) {
       std::vector<int64_t> positions(tokens.size());
       std::iota(positions.begin(), positions.end(), 0);
       torch::Tensor positions_tensor = torch::tensor(positions);
-      std::vector<int64_t> cu_seq_lens = {0,
-                                          static_cast<int64_t>(tokens.size())};
-
+      llm::InputParameters input_params;
+      input_params.cu_seq_lens = {0, static_cast<int64_t>(tokens.size())};
       // run inference
       const auto logits =
-          transformer(tokens_tensor, positions_tensor, cu_seq_lens);
+          transformer(tokens_tensor, positions_tensor, input_params);
 
       const auto flatten_logits = logits.index({-1});
       // sample the next token

@@ -6,6 +6,7 @@
 #include "feedforward.h"
 #include "layers/norm.h"
 #include "models/model_args.h"
+#include "models/input_parameters.h"
 
 namespace llm {
 
@@ -31,8 +32,8 @@ class TransformerBlockImpl : public torch::nn::Module {
 
   torch::Tensor forward(torch::Tensor x,
                         torch::Tensor positions,
-                        const std::vector<int64_t>& cu_seq_lens) {
-    auto h = x + attention_(attention_norm_(x), positions, cu_seq_lens);
+                        const InputParameters& input_params) {
+    auto h = x + attention_(attention_norm_(x), positions, input_params);
     auto out = h + feed_forward_(ffn_norm_(h));
     return out;
   }

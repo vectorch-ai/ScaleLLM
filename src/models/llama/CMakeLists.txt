@@ -9,9 +9,9 @@ cc_library(
     transformer_block.h
     transformer.h
   SRCS 
-    attention.cpp
-    transformer.cpp
   DEPS
+    :input_parameters
+    :model_args
     :layers
     glog::glog
     ${TORCH_LIBRARIES}
