@@ -1,3 +1,4 @@
+#include <c10/core/ScalarType.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -5,6 +6,7 @@
 #include <string>
 
 #include "hf_model_downloader.h"
+#include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 #include "models/llama/transformer.h"
 #include "models/model_args.h"
@@ -79,6 +81,30 @@ int main(int argc, char* argv[]) {
   // set the module in evaluation/inference mode
   transformer->eval();
 
+  // calculate cache shapes
+  const auto element_size = sizeof(float);
+  const auto x = 16 / element_size;
+  const int64_t block_size = 4;  // 4 slots per block
+  const int64_t num_heads = args.n_heads();
+  const int64_t head_dim = args.dim() / num_heads;
+  const int64_t num_blocks = args.max_seq_len() / block_size + 1;
+  const std::vector<int64_t> key_cache_shape = {
+      num_blocks, num_heads, static_cast<int64_t>(head_dim / x), block_size, x};
+  const std::vector<int64_t> value_cache_shape = {
+      num_blocks, num_heads, head_dim, block_size};
+
+  // create a KVCache for each layer
+  std::vector<llm::KVCache> kv_caches;
+  kv_caches.reserve(args.n_layers());
+  for (int i = 0; i < args.n_layers(); ++i) {
+    auto key_cache = torch::zeros(key_cache_shape);
+    auto value_cache = torch::zeros(value_cache_shape);
+    kv_caches.emplace_back(key_cache, value_cache);
+  }
+
+  // preallocate slots and blocks for the query
+  auto block_tables = torch::arange(0, num_blocks, torch::kInt).reshape({1, -1});
+
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
 
@@ -87,26 +113,37 @@ int main(int argc, char* argv[]) {
     if (input.empty()) {
       continue;
     }
+    // reset the random seed for each input
     torch::manual_seed(1);
 
     std::string output;
-    auto tokens = tokenizer.encode(input);
+    auto tokens_ids = tokenizer.encode(input);
     int64_t prev_pos = 0;
     // generate tokens until the end of sentence token is generated
-    for (auto cur_pos = static_cast<int64_t>(tokens.size());
+    for (int64_t cur_pos = static_cast<int64_t>(tokens_ids.size());
          cur_pos < args.max_seq_len();
          ++cur_pos) {
-      auto tokens_tensor = torch::tensor(tokens);
-      // Creating positions based on the length of token_ids
-      // Equivalent to Python's range(len(token_ids))
-      std::vector<int64_t> positions(tokens.size());
-      std::iota(positions.begin(), positions.end(), 0);
-      torch::Tensor positions_tensor = torch::tensor(positions);
+      auto tokens = torch::tensor(tokens_ids, torch::kLong);
+      auto slice_tokens =
+          tokens.slice(/*dim=*/0, /*start=*/prev_pos, /*end=*/cur_pos);
+      torch::Tensor positions = torch::arange(prev_pos, cur_pos, torch::kLong);
       llm::InputParameters input_params;
-      input_params.cu_seq_lens = {0, static_cast<int64_t>(tokens.size())};
+      // manually assign the slot ids and block tables
+      input_params.block_tables = block_tables;
+      input_params.slot_ids = torch::arange(prev_pos, cur_pos, torch::kInt);
+      if (prev_pos == 0) {
+        // prefill
+        input_params.cu_seq_lens = {0, cur_pos};
+        input_params.context_lens = torch::tensor({}, torch::kInt);  // empty tensor
+      } else {
+        // generate
+        input_params.cu_seq_lens = {0};
+        input_params.context_lens = torch::tensor({cur_pos}, torch::kInt);
+      }
+
       // run inference
       const auto logits =
-          transformer(tokens_tensor, positions_tensor, input_params);
+          transformer(slice_tokens, positions, kv_caches, input_params);
 
       const auto flatten_logits = logits.index({-1});
       // sample the next token
@@ -123,13 +160,14 @@ int main(int argc, char* argv[]) {
 
       // add the next token to the list of tokens
       const auto next_token_scalar = static_cast<int>(flat_tensor.item<int>());
-      tokens.push_back(next_token_scalar);
+      tokens_ids.push_back(next_token_scalar);
 
       // decode the output and print it
-      const auto new_output = tokenizer.decode(tokens);
+      const auto new_output = tokenizer.decode(tokens_ids);
       std::cout << new_output.substr(output.size()) << std::flush;
       output = new_output;
 
+      prev_pos = cur_pos;
       if (next_token_scalar == tokenizer.eos_id()) {
         break;
       }

@@ -13,9 +13,9 @@ class KVCache final {
   KVCache(torch::Tensor key_cache, torch::Tensor value_cache);
 
   // set key and value cache for the given slot_ids
-  // the slot_ids are the indices of the key/value cache
+  // the slot_ids are the indices of the key/value cache, [num_slots] IntTensor
   // keys/values: [num_slots, num_heads, head_dim]
-  void set_kv_cache(const std::vector<uint32_t>& slot_ids,
+  void set_kv_cache(const torch::Tensor& slot_ids,
                     const torch::Tensor& keys,
                     const torch::Tensor& values);
 
@@ -23,9 +23,10 @@ class KVCache final {
   // the slot_ids are the indices of the key/value cache
   // returns keys/values: [num_slots, num_heads, head_dim]
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
-      const std::vector<int64_t>& slot_ids) const;
+      const std::vector<int>& slot_ids) const;
 
   // get key and value cache for a sequence based on physical memory blocks
+  // block_table: [num_blocks] IntTensor
   // context_len: the length of the sequence
   // returns keys/values: [context_len, num_heads, head_dim]
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(

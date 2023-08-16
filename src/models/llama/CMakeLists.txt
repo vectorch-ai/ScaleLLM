@@ -13,6 +13,7 @@ cc_library(
     :input_parameters
     :model_args
     :layers
+    :memory
     glog::glog
     ${TORCH_LIBRARIES}
 )

@@ -33,6 +33,7 @@ cc_binary(
     :torch_utils
     :llama
     :tokenizer
+    :memory
     :hf_model_downloader
     ${TORCH_LIBRARIES}
     gflags::gflags

@@ -16,17 +16,17 @@ struct InputParameters {
 
   // logical cache slot for each token.
   // used to store kv-cache to right slot/block
-  // [num_prompt_tokens]
-  torch::Tensor slots;
+  // [num_prompt_tokens] IntTensor
+  torch::Tensor slot_ids;
 
   // block ids for each sequence.
   // used in generate stage to fetch cached key-value.
-  // [num_generate_seq, max_num_blocks]
+  // [num_generate_seq, max_num_blocks] IntTensor
   torch::Tensor block_tables;
 
   // number of tokens for each sequence.
   // used in generate stage to determine the range of cache to fetch
-  // [num_generate_seq]
+  // [num_generate_seq] IntTensor
   torch::Tensor context_lens;
 };
 

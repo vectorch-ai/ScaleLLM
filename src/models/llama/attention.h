@@ -5,6 +5,7 @@
 #include "layers/attention.h"
 #include "layers/linear.h"
 #include "layers/pos_embedding.h"
+#include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 #include "models/model_args.h"
 
@@ -46,6 +47,7 @@ class AttentionImpl : public torch::nn::Module {
 
   torch::Tensor forward(torch::Tensor x,
                         torch::Tensor positions,
+                        KVCache& kv_cache,
                         const InputParameters& input_params) {
     const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_heads * head_dim)
@@ -63,10 +65,29 @@ class AttentionImpl : public torch::nn::Module {
     // apply positional embedding
     std::tie(query, key) = pos_emb_(query, key, positions);
 
-    // TODO: add blocked cache support
+    // store k/v into cache based on slots
+    kv_cache.set_kv_cache(input_params.slot_ids, key, value);
+
     auto output = torch::zeros_like(query);
-    attention::varlen_masked_self_attention(
-        query, key, value, input_params.cu_seq_lens, output);
+    const auto num_prompt_tokens = input_params.cu_seq_lens.back();
+    // process sequences with prompt tokens (prefill)
+    if (num_prompt_tokens > 0) {
+      auto sliced_output =
+          output.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+      attention::varlen_masked_self_attention(
+          query, key, value, input_params.cu_seq_lens, sliced_output);
+    }
+
+    if (num_prompt_tokens < num_tokens) {
+      // process sequences without prompt tokens (generate)
+      auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
+      attention::single_token_masked_self_attention(
+          kv_cache,
+          query.slice(/*dim=*/0, /*start=*/num_prompt_tokens),
+          input_params.block_tables,
+          input_params.context_lens,
+          sliced_output);
+    }
     output = output.contiguous().view({num_tokens, -1});
     return wo_(output);
   }

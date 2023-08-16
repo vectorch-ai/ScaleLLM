@@ -9,6 +9,7 @@
 #include "models/model_args.h"
 #include "models/input_parameters.h"
 #include "transformer_block.h"
+#include "memory/kv_cache.h"
 
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py
@@ -38,10 +39,12 @@ class TransformerImpl : public torch::nn::Module {
   // positions: [num_tokens] token pos in the sequence
   torch::Tensor forward(torch::Tensor tokens,
                         torch::Tensor positions,
+                        std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
     auto h = tok_embeddings_(tokens);
-    for (auto layer : layers_) {
-      h = layer(h, positions, input_params);
+    for (size_t i = 0; i < layers_.size(); i++) {
+      auto& layer = layers_[i];
+      h = layer(h, positions, kv_caches[i], input_params);
     }
     h = norm_(h);
     auto output = output_(h).to(torch::kFloat32);

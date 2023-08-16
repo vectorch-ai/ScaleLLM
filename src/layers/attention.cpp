@@ -77,7 +77,7 @@ void single_token_masked_self_attention(
     // [1, n_heads, head_dim]
     const auto q = query[i].unsqueeze(0);
     const auto block_table = block_tables[i];
-    const auto context_len = context_lens[i].item<int64_t>();
+    const auto context_len = context_lens[i].item<int>();
     // fetch keys/values from cache
     const auto [k, v] = kv_cache.get_kv_cache(block_table, context_len);
     const auto attn = masked_self_attention(q, k, v, mask, scale);
