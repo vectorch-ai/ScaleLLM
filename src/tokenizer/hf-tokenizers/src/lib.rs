@@ -28,7 +28,7 @@ impl TokenizerWrapper {
 
     pub fn decode(&mut self, ids: Vec<u32>, skip_special_tokens: bool) {
         // Decode the ids and store the string
-        self.decode_str = self.tokenizer.decode(ids, skip_special_tokens).unwrap();
+        self.decode_str = self.tokenizer.decode(&ids, skip_special_tokens).unwrap();
     }
 }
 

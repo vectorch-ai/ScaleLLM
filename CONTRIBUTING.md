@@ -12,13 +12,13 @@ Thanks for your interest in contributing to this project! We welcome contributio
 
 Let's assume you have a Linux machine with Nvidia GPU. You can follow the steps below to get started.
 
-### Install cuda toolkit 11.8
+### Install cuda toolkit 12.1
 
-Since this project depends on libtorch 2.0.0, which is built with cuda 11.7 and 11.8. You can download the cuda toolkit from nvidia website <https://developer.nvidia.com/cuda-downloads>. You can leverage the script to install it as well.
+Since this project depends on libtorch 2.0 (nightly), which is built with cuda 12.1. You can download the cuda toolkit from nvidia website <https://developer.nvidia.com/cuda-downloads>. You can leverage the script to install it as well.
 
 ``` bash
-wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
-sudo sh cuda_11.8.0_520.61.05_linux.run
+wget https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run
+sudo sh cuda_12.1.0_530.30.02_linux.run
 ```
 
 ### Install build tools
@@ -27,7 +27,7 @@ Before you start building the project, you need to install the build tools. You 
 [to be updated]
 
 ``` bash
-sudo apt-get install build-essential ninja-build cmake python3-dev
+sudo apt-get install build-essential ninja-build cmake python3-dev zip pkg-config libssl-dev
 ```
 
 ### Install rust

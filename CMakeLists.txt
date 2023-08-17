@@ -47,8 +47,11 @@ find_package(folly CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(SentencePiece REQUIRED)
 
-find_package(Jemalloc REQUIRED)
-link_libraries(Jemalloc::jemalloc)
+find_package(Jemalloc)
+if(Jemalloc_FOUND)
+  message(STATUS "jemalloc found, linking to jemalloc")
+  link_libraries(Jemalloc::jemalloc)
+endif()
 
 # enable testing in this directory so we can do a top-level `make test`.
 # this also includes the BUILD_TESTING option, which is on by default.
