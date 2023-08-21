@@ -1,28 +1,51 @@
 #pragma once
 
 #include <torch/torch.h>
+#include <vector>
+#include "input_parameters.h"
+#include "memory/kv_cache.h"
 
 namespace llm {
 
-// TODO: add detailed logics
-// Question: Where to put sampler?
-class CausalLMImpl : public torch::nn::Module {
+class ICausalLM : public torch::nn::Module {
  public:
-  // CausalLMImpl(const ModelArgs& args, int64_t world_size);
-  // TODO: what is the ouput type?
-  torch::Tensor forward(
-      const torch::Tensor& tokens,     // [num_tokens]
-      const torch::Tensor& positions,  // [num_tokens]
-      const torch::Tensor& slots,      // [num_tokens] key value cache slots
-      const InputParameters& parameters) {
+  ~ICausalLM() override = default;
 
-    // output dim: [num_tokens, vocab_size]
-    return torch::zeros({1, 1});
+  virtual torch::Tensor forward(const torch::Tensor& tokens,     // [num_tokens]
+                                const torch::Tensor& positions,  // [num_tokens]
+                                std::vector<KVCache>& kv_caches,
+                                const InputParameters& parameters) const = 0;
+};
+
+template <typename Model, typename Sampler>
+class CausalLM : public ICausalLM {
+ public:
+  CausalLM(Model model) : model_(std::move(model)) {}
+
+  torch::Tensor forward(const torch::Tensor& tokens,     // [num_tokens]
+                        const torch::Tensor& positions,  // [num_tokens]
+                        std::vector<KVCache>& kv_caches,
+                        const InputParameters& parameters) const override {
+    // get the logits for the next token
+    auto logits = model_.forward(tokens, positions, kv_caches, parameters);
+    // select the logits for the last token of each sequence
+    auto selected_logits = logits.index_select(0, parameters.sample_idx);
+    // call samplers
+    auto output_tokens = sampler_.sample(selected_logits, parameters);
+
+    return torch::Tensor();
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {}
-};
-TORCH_MODULE(CausalLM);
+  // operator() allows us to use the module as a function.
+  template <typename... Args>
+  torch::Tensor operator()(Args&&... args) {
+    return this->forward(::std::forward<Args>(args)...);
+  }
+
+ private:
+  Model model_;
+
+  Sampler sampler_;
+}
 
 }  // namespace llm

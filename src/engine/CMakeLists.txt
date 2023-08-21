@@ -16,6 +16,7 @@ cc_library(
   DEPS
     :request
     :torch_utils
+    :causal_lm
     glog::glog
     Folly::folly
     absl::synchronization

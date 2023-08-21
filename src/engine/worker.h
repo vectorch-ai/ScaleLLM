@@ -7,12 +7,11 @@
 #include <utility>
 
 #include "executor.h"
+#include "models/input_parameters.h"
 #include "torch_utils/state_dict.h"
 
 namespace llm {
 // class CacheManager;
-
-struct InputParameters {};
 
 class Worker final {
  public:
@@ -31,14 +30,10 @@ class Worker final {
   //          [s0_0, s0_1, s0_2, s1_*, s2_*, ..., sN_*, | g0, g1, g2, ..., gM]
   // positions: the position of the tokens in the sequence
   //          [0,    1,   2,     0..., 0..., ...,  0...,| 3,  2,   8, ..., 10]
-  // slots: the key value cache physical slots for each token, only used for
-  // generate requests
-  //                                                     [4,  3,   2, ..., 5]
   // input parameters:
   folly::SemiFuture<bool> execute_model_async(
       const torch::Tensor& tokens,     // [num_tokens]
       const torch::Tensor& positions,  // [num_tokens]
-      const torch::Tensor& slots,      // [num_tokens] key value cache slots
       const InputParameters& parameters);
 
   // initialize model, cache manager. async call
@@ -48,7 +43,6 @@ class Worker final {
   void execute_model(
       const torch::Tensor& tokens,     // [num_tokens]
       const torch::Tensor& positions,  // [num_tokens]
-      const torch::Tensor& slots,      // [num_tokens] key value cache slots
       const InputParameters& parameters) const;
 
   // initialize model, cache manager. blocking call
@@ -69,6 +63,8 @@ class Worker final {
 
   // model
   // std::unique_ptr<Transformer> model_;
+
+  // sampler: together with model to reduce transfer overhead
 };
 
 }  // namespace llm

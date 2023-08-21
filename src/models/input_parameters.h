@@ -12,6 +12,7 @@ struct InputParameters {
   // [num_prompt_seq + 1]
   // for example: 3 sequences with length 2, 3, 4, the cu_seq_lens is [0, 2, 5,
   // 9]
+  // TODO: change to IntTensor
   std::vector<int64_t> cu_seq_lens;
 
   // logical cache slot for each token.
@@ -28,6 +29,20 @@ struct InputParameters {
   // used in generate stage to determine the range of cache to fetch
   // [num_generate_seq] IntTensor
   torch::Tensor context_lens;
+
+  // the index of the last token of each sequence in the batch.
+  torch::Tensor sample_idx;
+};
+
+// output parameters for the model that encapsulates all the necessary
+// output information. The output parameters should be as small as possible
+// to avoid transferring large tensors between host and device.
+struct OutputParameters {
+
+  torch::Tensor logits;
+
+  // the index of the last token of each sequence in the batch.
+  torch::Tensor output_tokens;
 };
 
 }  // namespace llm

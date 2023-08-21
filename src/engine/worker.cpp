@@ -9,6 +9,7 @@
 
 #include "executor.h"
 #include "torch_utils/state_dict.h"
+#include "models/input_parameters.h"
 
 namespace llm {
 
@@ -32,18 +33,16 @@ bool Worker::load_state_dict(const StateDict& state_dict) {
 folly::SemiFuture<bool> Worker::execute_model_async(
     const torch::Tensor& tokens,     // [num_tokens]
     const torch::Tensor& positions,  // [num_tokens]
-    const torch::Tensor& slots,      // [num_tokens] key value cache slots
     const InputParameters& parameters) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule([this,
                       tokens,
                       positions,
-                      slots,
                       parameters,
                       promise = std::move(promise)]() mutable {
     // run the model on the given input in working thread
-    this->execute_model(tokens, positions, slots, parameters);
+    this->execute_model(tokens, positions, parameters);
     promise.setValue(true);
   });
   return future;
@@ -61,15 +60,12 @@ folly::SemiFuture<bool> Worker::init_async() {
   return future;
 }
 
-void Worker::execute_model(
-    const torch::Tensor& tokens,     // [num_tokens]
-    const torch::Tensor& positions,  // [num_tokens]
-    const torch::Tensor& slots,      // [num_tokens] key value cache slots
-    const InputParameters& parameters) const {
+void Worker::execute_model(const torch::Tensor& tokens,     // [num_tokens]
+                           const torch::Tensor& positions,  // [num_tokens]
+                           const InputParameters& parameters) const {
   // all tensors should be on the same device as model
   auto d_tokens = tokens.to(device_);
   auto d_positions = positions.to(device_);
-  auto d_slots = slots.to(device_);
 
   // call model forward and return the result
 }

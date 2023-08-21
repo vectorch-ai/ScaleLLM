@@ -22,7 +22,8 @@ Checks: >
   -cppcoreguidelines-avoid-magic-numbers,
   -readability-identifier-length,
   -readability-use-anyofallof,
-  -cppcoreguidelines-special-member-functions
+  -cppcoreguidelines-special-member-functions,
+  -readability-magic-numbers,
 
 
 HeaderFilterRegex: '.*'
