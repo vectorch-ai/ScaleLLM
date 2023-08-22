@@ -7,9 +7,8 @@ Key features:
 
 - **High performance**:
 - **Tensor parallelism**:
-- **Pipeline parallelism**:
-- **Production ready**:
 - **Customizable**:
+- **Production ready**:
 
 
 If you have any questions, feel free to ask questions on the ["Discussions" forum](https://github.com/vectorch-ai/ScaleLLM/discussions) or ["Discord" chat room](https://discord.gg/csyXycWU).
