@@ -11,4 +11,4 @@ Key features:
 - **Production ready**:
 
 
-If you have any questions, feel free to ask questions on the ["Discussions" forum](https://github.com/vectorch-ai/ScaleLLM/discussions) or ["Discord" chat room](https://discord.gg/csyXycWU).
+If you have any questions, feel free to ask questions on the ["Discussions" forum](https://github.com/vectorch-ai/ScaleLLM/discussions) or ["Discord" chat room](https://discord.gg/PKe5gvBZfn).
