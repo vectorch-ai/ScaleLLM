@@ -14,7 +14,8 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
  public:
   ColumnParallelLinearImpl(int64_t in_features,
                            int64_t out_features,
-                           int64_t world_size)
+                           int64_t world_size,
+                           const torch::Device& device)
       : world_size_(world_size) {
     CHECK(out_features % world_size == 0)
         << "out_features " << out_features << " not divisible by world_size "
@@ -25,7 +26,7 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
     // we allocate the transpose.
     weight_ = register_parameter(
         "weight",
-        torch::empty({out_features_per_partition, in_features}),
+        torch::empty({out_features_per_partition, in_features}, device),
         /*requires_grad=*/false);
   }
 
@@ -79,7 +80,8 @@ class RowParallelLinearImpl : public torch::nn::Module {
  public:
   RowParallelLinearImpl(int64_t in_features,
                         int64_t out_features,
-                        int64_t world_size)
+                        int64_t world_size,
+                        const torch::Device& device)
       : world_size_(world_size) {
     CHECK(in_features % world_size == 0)
         << "in_features " << in_features << " not divisible by world_size "
@@ -88,7 +90,7 @@ class RowParallelLinearImpl : public torch::nn::Module {
     // Allocate the transpose since linear performs XA^T.
     weight_ = register_parameter(
         "weight",
-        torch::empty({out_features, in_features_per_partition}),
+        torch::empty({out_features, in_features_per_partition}, device),
         /*requires_grad=*/false);
   }
 

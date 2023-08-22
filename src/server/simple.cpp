@@ -1,3 +1,4 @@
+#include <c10/core/Device.h>
 #include <c10/core/ScalarType.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -54,6 +55,11 @@ int main(int argc, char* argv[]) {
 
   torch::InferenceMode guard;
 
+  // set the default dtype to half/float16
+  // N.B. float16 is not supported on CPUs
+  torch::set_default_dtype(
+      torch::scalarTypeToTypeMeta(torch::ScalarType::Half));
+
   llm::ModelArgs args;
   args.max_seq_len(128).max_batch_size(4);
   // TODO: read from params.json
@@ -67,7 +73,9 @@ int main(int argc, char* argv[]) {
       .vocab_size(-1);
   args.vocab_size(tokenizer.n_words());
 
-  llm::Transformer transformer(args, 1);
+  torch::Device device(torch::kCPU);
+
+  llm::Transformer transformer(args, 1, device);
 
   // load the weights from the checkpoint
   {
@@ -103,7 +111,8 @@ int main(int argc, char* argv[]) {
   }
 
   // preallocate slots and blocks for the query
-  auto block_tables = torch::arange(0, num_blocks, torch::kInt).reshape({1, -1});
+  auto block_tables =
+      torch::arange(0, num_blocks, torch::kInt).reshape({1, -1});
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -134,7 +143,8 @@ int main(int argc, char* argv[]) {
       if (prev_pos == 0) {
         // prefill
         input_params.cu_seq_lens = {0, cur_pos};
-        input_params.context_lens = torch::tensor({}, torch::kInt);  // empty tensor
+        input_params.context_lens =
+            torch::tensor({}, torch::kInt);  // empty tensor
       } else {
         // generate
         input_params.cu_seq_lens = {0};

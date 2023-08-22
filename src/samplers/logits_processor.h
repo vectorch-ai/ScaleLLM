@@ -54,14 +54,11 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
   FrequencyPresencePenaltyLogitsProcessor(
       const std::vector<float>& frequency_penalties,
       const std::vector<float>& presence_penalties,
-      const torch::Dtype& dtype = torch::kFloat32,
-      const torch::Device& device = torch::kCPU) {
-    torch::TensorOptions options;
-    options.dtype(dtype).device(device);
+      const torch::Device& device) {
     frequency_penalties_ =
-        torch::tensor(frequency_penalties, options).unsqueeze(1);
+        torch::tensor(frequency_penalties, device).unsqueeze(1);
     presence_penalties_ =
-        torch::tensor(presence_penalties, options).unsqueeze(1);
+        torch::tensor(presence_penalties, device).unsqueeze(1);
   }
 
   torch::Tensor forward(const torch::Tensor& token_ids,
@@ -95,11 +92,8 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
 class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
  public:
   RepetitionPenaltyLogitsProcessor(const std::vector<float>& penalties,
-                                   const torch::Dtype& dtype = torch::kFloat32,
-                                   const torch::Device& device = torch::kCPU) {
-    penalties_ =
-        torch::tensor(penalties, torch::TensorOptions(dtype).device(device))
-            .unsqueeze(1);
+                                   const torch::Device& device) {
+    penalties_ = torch::tensor(penalties, device).unsqueeze(1);
   }
 
   torch::Tensor forward(const torch::Tensor& token_ids,
@@ -125,13 +119,9 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
  public:
   // Constructor
   TemperatureLogitsProcessor(const std::vector<float>& temperatures,
-                             const torch::Dtype& dtype = torch::kFloat32,
-                             const torch::Device& device = torch::kCPU) {
+                             const torch::Device& device) {
     // Convert temperature to a tensor and unsqueeze it for broadcasting
-    temperatures_ =
-        torch::tensor(temperatures,
-                      torch::TensorOptions().dtype(dtype).device(device))
-            .unsqueeze(1);
+    temperatures_ = torch::tensor(temperatures, device).unsqueeze(1);
 
     // Replace 0. with 1. to avoid division by 0
     temperatures_ =
@@ -152,15 +142,11 @@ class TopPLogitsProcessor : public LogitsProcessor {
  public:
   TopPLogitsProcessor(
       const std::vector<float>& top_p,
-      const torch::Dtype& dtype = torch::kFloat32,
-      const torch::Device& device = torch::kCPU,
+      const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
       int min_tokens_to_keep = 1)
       : filter_value(filter_value), min_tokens_to_keep(min_tokens_to_keep) {
-    top_p_opposite =
-        1.0 -
-        torch::tensor(top_p, torch::TensorOptions().dtype(dtype).device(device))
-            .unsqueeze(1);
+    top_p_opposite = 1.0 - torch::tensor(top_p, device).unsqueeze(1);
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
@@ -203,7 +189,7 @@ class TopKLogitsProcessor : public LogitsProcessor {
   // top_k: input is 1-based, 0 means no filtering or disable filtering
   TopKLogitsProcessor(
       const std::vector<int64_t>& top_k,
-      const torch::Device& device = torch::kCPU,
+      const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
       int64_t min_tokens_to_keep = 1)
       : filter_value_(filter_value),
@@ -222,10 +208,7 @@ class TopKLogitsProcessor : public LogitsProcessor {
       disabled.push_back(val == 0 ? 1 : 0);
     }
 
-    top_k_ = torch::tensor(
-                 adjusted_top_k,
-                 torch::TensorOptions().dtype(torch::kInt64).device(device))
-                 .unsqueeze(1);
+    top_k_ = torch::tensor(adjusted_top_k, device).unsqueeze(1);
 
     if (std::any_of(
             disabled.begin(), disabled.end(), [](bool v) { return v == 1; })) {

@@ -1,5 +1,6 @@
 #include "pos_embedding.h"
 
+#include <c10/core/Device.h>
 #include <c10/core/TensorImpl.h>
 #include <gtest/gtest.h>
 
@@ -72,7 +73,8 @@ TEST(RotaryEmbeddingTest, Interleaved) {
   const int64_t n_heads = 4;
   const int64_t head_dim = 4;
   const int64_t max_seq_len = 128;
-  InterleavedRotaryEmbedding rotary_embedding(head_dim, max_seq_len);
+  torch::Device device(torch::kCPU);
+  InterleavedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, device);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});
@@ -105,7 +107,8 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
   const int64_t n_heads = 4;
   const int64_t head_dim = 4;
   const int64_t max_seq_len = 128;
-  RotatedRotaryEmbedding rotary_embedding(head_dim, max_seq_len);
+  torch::Device device(torch::kCPU);
+  RotatedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, device);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});

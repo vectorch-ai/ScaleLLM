@@ -15,7 +15,8 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
  public:
   ParallelEmbeddingImpl(int64_t num_embeddings,
                         int64_t embedding_dim,
-                        int64_t world_size)
+                        int64_t world_size,
+                        const torch::Device& device)
       : world_size_(world_size) {
     CHECK(embedding_dim % world_size == 0)
         << "out_features " << embedding_dim << " not divisible by world_size "
@@ -25,7 +26,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings, embedding_dim_per_partition}),
+        torch::empty({num_embeddings, embedding_dim_per_partition}, device),
         /*requires_grad=*/false);
   }
 
@@ -70,14 +71,15 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
  public:
   VocabParallelEmbeddingImpl(int64_t num_embeddings,
                              int64_t embedding_dim,
-                             int64_t world_size)
+                             int64_t world_size,
+                             const torch::Device& device)
       : world_size_(world_size) {
     const int64_t num_embeddings_per_partition = num_embeddings / world_size;
 
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings_per_partition, embedding_dim}),
+        torch::empty({num_embeddings_per_partition, embedding_dim}, device),
         /*requires_grad=*/false);
   }
 

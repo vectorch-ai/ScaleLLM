@@ -17,22 +17,22 @@ namespace llm {
 
 class TransformerImpl : public torch::nn::Module {
  public:
-  TransformerImpl(const ModelArgs& args, int64_t world_size) {
+  TransformerImpl(const ModelArgs& args, int64_t world_size, const torch::Device& device) {
     // register submodules
     tok_embeddings_ = register_module(
         "tok_embeddings",
-        ParallelEmbedding(args.vocab_size(), args.dim(), world_size));
+        ParallelEmbedding(args.vocab_size(), args.dim(), world_size, device));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int i = 0; i < args.n_layers(); i++) {
-      auto block = TransformerBlock(i, args, world_size);
+      auto block = TransformerBlock(i, args, world_size, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
-    norm_ = register_module("norm", RMSNorm(args.dim(), args.norm_eps()));
+    norm_ = register_module("norm", RMSNorm(args.dim(), args.norm_eps(), device));
     output_ = register_module(
         "output",
-        ColumnParallelLinear(args.dim(), args.vocab_size(), world_size));
+        ColumnParallelLinear(args.dim(), args.vocab_size(), world_size, device));
   }
 
   // tokens: [num_tokens]

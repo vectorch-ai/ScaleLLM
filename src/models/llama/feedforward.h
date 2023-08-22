@@ -14,7 +14,8 @@ class FeedForwardImpl : public torch::nn::Module {
                   int64_t hidden_dim,
                   int64_t multiple_of,
                   std::optional<float> ffn_dim_multiplier,
-                  int64_t world_size) {
+                  int64_t world_size,
+                  const torch::Device& device) {
     hidden_dim = 2 * hidden_dim / 3;
     // custom dim factor multiplier
     if (ffn_dim_multiplier.has_value()) {
@@ -25,10 +26,10 @@ class FeedForwardImpl : public torch::nn::Module {
 
     // register the weight parameter
     w1_ = register_module("w1",
-                          ColumnParallelLinear(dim, hidden_dim, world_size));
-    w2_ = register_module("w2", RowParallelLinear(hidden_dim, dim, world_size));
+                          ColumnParallelLinear(dim, hidden_dim, world_size, device));
+    w2_ = register_module("w2", RowParallelLinear(hidden_dim, dim, world_size, device));
     w3_ = register_module("w3",
-                          ColumnParallelLinear(dim, hidden_dim, world_size));
+                          ColumnParallelLinear(dim, hidden_dim, world_size, device));
   }
 
   torch::Tensor forward(torch::Tensor x) {

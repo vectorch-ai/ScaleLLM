@@ -10,9 +10,9 @@ namespace llm {
 // Root mean square normalization
 class RMSNormImpl : public torch::nn::Module {
  public:
-  RMSNormImpl(int64_t dim, float eps = 1e-6) : eps_(eps) {
+  RMSNormImpl(int64_t dim, float eps, const torch::Device& device) : eps_(eps) {
     weight_ = register_parameter(
-        "weight", torch::empty({dim}), /*requires_grad=*/false);
+        "weight", torch::empty({dim}, device), /*requires_grad=*/false);
   }
 
   torch::Tensor forward(torch::Tensor input) {
