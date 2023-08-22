@@ -22,7 +22,8 @@ void KVCache::set_kv_cache(const torch::Tensor& slot_ids,
   DCHECK_EQ(slot_ids.size(0), keys.size(0));
   DCHECK_EQ(slot_ids.size(0), values.size(0));
 
-  auto accessor = slot_ids.accessor<int, 1>();
+  auto slot_ids_cpu = slot_ids.cpu();
+  auto accessor = slot_ids_cpu.accessor<int, 1>();
 
   using torch::indexing::Slice;
   for (int64_t i = 0; i < accessor.size(0); ++i) {
@@ -67,11 +68,12 @@ std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
 std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
     const torch::Tensor& block_table,
     int64_t context_len) const {
+  auto block_table_cpu = block_table.cpu();
   // construct slot ids for the sequence
   std::vector<int> slot_ids;
   slot_ids.reserve(context_len);
   for (int64_t i = 0; i < context_len; ++i) {
-    const int block_id = block_table[i / block_size_].item<int>();
+    const int block_id = block_table_cpu[i / block_size_].item<int>();
     const int block_offset = i % block_size_;
     const int slot_id = block_id * block_size_ + block_offset;
     slot_ids.push_back(slot_id);

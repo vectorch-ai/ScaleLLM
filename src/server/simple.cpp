@@ -21,6 +21,8 @@ DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
               "Path to the tokenizer file.");
 
+DEFINE_string(device, "cpu", "Device to run the model on.");
+
 DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
 DEFINE_double(top_p, 0.9, "Top p for sampling.");
@@ -43,7 +45,8 @@ torch::Tensor sample_top_p(torch::Tensor logits, float top_p) {
 }
 
 int main(int argc, char* argv[]) {
-  // initialize gflags
+  // initialize glog and gflags
+  google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   // test model download
@@ -55,10 +58,17 @@ int main(int argc, char* argv[]) {
 
   torch::InferenceMode guard;
 
-  // set the default dtype to half/float16
-  // N.B. float16 is not supported on CPUs
-  torch::set_default_dtype(
-      torch::scalarTypeToTypeMeta(torch::ScalarType::Half));
+  torch::Device device(FLAGS_device);
+  // set the default dtype
+  if (device.is_cpu()) {
+    // always use float32 on CPU since float16 is not supported
+    torch::set_default_dtype(
+        torch::scalarTypeToTypeMeta(torch::ScalarType::Float));
+    LOG(INFO) << "Using float32 on CPU.";
+  } else {
+    torch::set_default_dtype(
+        torch::scalarTypeToTypeMeta(torch::ScalarType::BFloat16));
+  }
 
   llm::ModelArgs args;
   args.max_seq_len(128).max_batch_size(4);
@@ -72,8 +82,6 @@ int main(int argc, char* argv[]) {
       .norm_eps(1e-6)
       .vocab_size(-1);
   args.vocab_size(tokenizer.n_words());
-
-  torch::Device device(torch::kCPU);
 
   llm::Transformer transformer(args, 1, device);
 
@@ -105,14 +113,17 @@ int main(int argc, char* argv[]) {
   std::vector<llm::KVCache> kv_caches;
   kv_caches.reserve(args.n_layers());
   for (int i = 0; i < args.n_layers(); ++i) {
-    auto key_cache = torch::zeros(key_cache_shape);
-    auto value_cache = torch::zeros(value_cache_shape);
+    auto key_cache = torch::zeros(key_cache_shape, device);
+    auto value_cache = torch::zeros(value_cache_shape, device);
     kv_caches.emplace_back(key_cache, value_cache);
   }
 
   // preallocate slots and blocks for the query
   auto block_tables =
-      torch::arange(0, num_blocks, torch::kInt).reshape({1, -1});
+      torch::arange(0,
+                    num_blocks,
+                    torch::TensorOptions().dtype(torch::kInt).device(device))
+          .unsqueeze(0);
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -132,23 +143,36 @@ int main(int argc, char* argv[]) {
     for (int64_t cur_pos = static_cast<int64_t>(tokens_ids.size());
          cur_pos < args.max_seq_len();
          ++cur_pos) {
-      auto tokens = torch::tensor(tokens_ids, torch::kLong);
+      auto tokens = torch::tensor(
+          tokens_ids,
+          torch::TensorOptions().dtype(torch::kLong).device(device));
       auto slice_tokens =
           tokens.slice(/*dim=*/0, /*start=*/prev_pos, /*end=*/cur_pos);
-      torch::Tensor positions = torch::arange(prev_pos, cur_pos, torch::kLong);
+      torch::Tensor positions = torch::arange(
+          prev_pos,
+          cur_pos,
+          torch::TensorOptions().dtype(torch::kLong).device(device));
       llm::InputParameters input_params;
       // manually assign the slot ids and block tables
       input_params.block_tables = block_tables;
-      input_params.slot_ids = torch::arange(prev_pos, cur_pos, torch::kInt);
+      input_params.slot_ids = torch::arange(
+          prev_pos,
+          cur_pos,
+          torch::TensorOptions().dtype(torch::kInt).device(device));
       if (prev_pos == 0) {
         // prefill
         input_params.cu_seq_lens = {0, cur_pos};
         input_params.context_lens =
-            torch::tensor({}, torch::kInt);  // empty tensor
+            torch::tensor({},
+                          torch::TensorOptions()
+                              .dtype(torch::kInt)
+                              .device(device));  // empty tensor
       } else {
         // generate
         input_params.cu_seq_lens = {0};
-        input_params.context_lens = torch::tensor({cur_pos}, torch::kInt);
+        input_params.context_lens = torch::tensor(
+            {cur_pos},
+            torch::TensorOptions().dtype(torch::kInt).device(device));
       }
 
       // run inference
