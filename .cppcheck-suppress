@@ -17,3 +17,4 @@ unmatchedSuppression
 useStlAlgorithm
 preprocessorErrorDirective
 useInitializationList
+unused-result

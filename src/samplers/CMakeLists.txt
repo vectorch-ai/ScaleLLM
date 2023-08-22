@@ -1,0 +1,23 @@
+cc_library(
+  NAME 
+    logits_processor
+  HDRS 
+    logits_processor.h
+  SRCS 
+    logits_processor.cpp
+  DEPS
+    glog::glog
+    ${TORCH_LIBRARIES}
+)
+
+cc_library(
+  NAME 
+    sampler
+  HDRS 
+    sampler.h
+  SRCS 
+    sampler.cpp
+  DEPS
+    glog::glog
+    ${TORCH_LIBRARIES}
+)
