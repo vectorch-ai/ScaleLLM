@@ -1,2 +1,2 @@
-# include(vllm.cmake)
-# include(flash-attention.cmake)
+include(vllm.cmake)
+include(flash-attn.cmake)

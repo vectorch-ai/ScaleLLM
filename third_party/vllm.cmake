@@ -2,7 +2,7 @@ include(cc_library)
 
 cc_library(
   NAME 
-    vllm.custom_ops
+    vllm.kernel_ops
   SRCS 
     vllm/csrc/cache.cpp
     vllm/csrc/cache_kernels.cu

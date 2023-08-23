@@ -16,6 +16,7 @@ cc_library(
   DEPS
     :torch_utils
     :memory
+    :flash-attn.kernel_ops
     glog::glog
     ${TORCH_LIBRARIES}
 )

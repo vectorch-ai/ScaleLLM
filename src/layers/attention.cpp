@@ -5,6 +5,23 @@
 
 using torch::indexing::Slice;
 
+// ref to flash_attn in third_party/flash_attn
+extern std::vector<at::Tensor> mha_varlen_fwd(
+    const at::Tensor& q,
+    const at::Tensor& k,
+    const at::Tensor& v,
+    c10::optional<at::Tensor>& out_,
+    const at::Tensor& cu_seqlens_q,
+    const at::Tensor& cu_seqlens_k,
+    int max_seqlen_q,
+    int max_seqlen_k,
+    float p_dropout,
+    float softmax_scale,
+    bool zero_tensors,
+    bool is_causal,
+    bool return_softmax,
+    c10::optional<at::Generator> gen_);
+
 namespace llm::attention {
 namespace {
 constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
