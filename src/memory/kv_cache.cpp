@@ -1,5 +1,6 @@
 #include "kv_cache.h"
 
+#include <c10/core/TensorImpl.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -23,18 +24,20 @@ void KVCache::set_kv_cache(const torch::Tensor& slot_ids,
   DCHECK_EQ(slot_ids.size(0), values.size(0));
 
   auto slot_ids_cpu = slot_ids.cpu();
-  auto accessor = slot_ids_cpu.accessor<int, 1>();
+  const int64_t num_slots = slot_ids_cpu.numel();
+  const int32_t* ids = slot_ids_cpu.data_ptr<int32_t>();
 
   using torch::indexing::Slice;
-  for (int64_t i = 0; i < accessor.size(0); ++i) {
-    const int slot_id = accessor[i];
+  for (int64_t i = 0; i < num_slots; ++i) {
+    const int32_t slot_id = ids[i];
     const auto block_id = slot_id / block_size_;
     const auto block_offset = slot_id % block_size_;
 
     const auto key = keys[i];
     const auto value = values[i];
 
-    // key_cache_[block_id, :, :, block_offset, :] = key.reshape(-1, head_size_ / x_, x_)
+    // key_cache_[block_id, :, :, block_offset, :] = 
+    // key.reshape(-1, head_size_/ x_, x_)
     key_cache_.index_put_({block_id, Slice(), Slice(), block_offset, Slice()},
                           key.reshape({-1, head_size_ / x_, x_}));
     // value_cache_[block_id, :, :, block_offset] = value
@@ -68,14 +71,15 @@ std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
 std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
     const torch::Tensor& block_table,
     int64_t context_len) const {
-  auto block_table_cpu = block_table.cpu();
+  const torch::Tensor block_table_cpu = block_table.cpu();
+  const int32_t* block_ids = block_table_cpu.data_ptr<int32_t>();
   // construct slot ids for the sequence
-  std::vector<int> slot_ids;
+  std::vector<int32_t> slot_ids;
   slot_ids.reserve(context_len);
   for (int64_t i = 0; i < context_len; ++i) {
-    const int block_id = block_table_cpu[i / block_size_].item<int>();
-    const int block_offset = i % block_size_;
-    const int slot_id = block_id * block_size_ + block_offset;
+    const int32_t block_id = block_ids[i / block_size_];
+    const int32_t block_offset = i % block_size_;
+    const int32_t slot_id = block_id * block_size_ + block_offset;
     slot_ids.push_back(slot_id);
   }
   return get_kv_cache(slot_ids);
