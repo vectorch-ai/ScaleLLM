@@ -14,7 +14,8 @@ void varlen_masked_self_attention(
     const torch::Tensor& key,          // [num_tokens, n_heads, head_dim]
     const torch::Tensor& value,        // [num_tokens, n_heads, head_dim]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
-    torch::Tensor& output              // [num_tokens, n_heads, head_dim]
+    int32_t max_seq_len,               // maximum sequence length
+    torch::Tensor output               // [num_tokens, n_heads, head_dim]
 );
 
 // self attention with single token as query

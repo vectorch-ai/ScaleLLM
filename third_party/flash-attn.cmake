@@ -4,7 +4,7 @@ cc_library(
   NAME 
     flash-attn.kernel_ops
   SRCS
-    flash-attn/csrc/flash_attn/flash_api.cpp
+    flash_api.cpp
     flash-attn/csrc/flash_attn/src/flash_fwd_hdim32_fp16_sm80.cu
     flash-attn/csrc/flash_attn/src/flash_fwd_hdim32_bf16_sm80.cu
     flash-attn/csrc/flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu
@@ -28,4 +28,4 @@ cc_library(
   DEPS
     ${TORCH_LIBRARIES}
     Python::Python
-)
+    )

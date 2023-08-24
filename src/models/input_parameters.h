@@ -17,6 +17,9 @@ struct InputParameters {
   // the cu_seq_lens is [0, 2, 5, 9]
   torch::Tensor cu_seq_lens;
 
+  // maximum sequence length in the prompt.
+  int32_t max_seq_len; 
+
   // logical cache slot for each token.
   // used to store kv-cache to right slot/block
   // [num_prompt_tokens] IntTensor

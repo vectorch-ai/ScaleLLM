@@ -48,33 +48,53 @@ void varlen_masked_self_attention(
     const torch::Tensor& key,          // [num_tokens, n_heads, head_dim]
     const torch::Tensor& value,        // [num_tokens, n_heads, head_dim]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
-    torch::Tensor& output) {           // [num_tokens, n_heads, head_dim]
+    int32_t max_seq_len,               // maximum sequence length
+    torch::Tensor output) {            // [num_tokens, n_heads, head_dim]
+
   const auto head_dim = query.size(-1);
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
-  torch::Tensor cu_seq_lens_cpu = cu_seq_lens.cpu();
-  const size_t num_seqs = cu_seq_lens_cpu.numel() - 1;
-  const int32_t* cu_lens = cu_seq_lens_cpu.data_ptr<int32_t>();
-  std::vector<torch::Tensor> outputs;
-  for (int64_t i = 0; i < num_seqs; ++i) {
-    // calaculate attention for each sequence
-    const int32_t start_idx = cu_lens[i];
-    const int32_t end_idx = cu_lens[i + 1];
-    const int32_t seq_len = end_idx - start_idx;
+  c10::optional<at::Tensor> out = output;
+  mha_varlen_fwd(query,
+                 key,
+                 value,
+                 out,
+                 cu_seq_lens,
+                 cu_seq_lens,
+                 max_seq_len,
+                 max_seq_len,
+                 /*p_dropout=*/0.0f,
+                 /*softmax_scale=*/scale,
+                 /*zero_tensors=*/false,
+                 /*is_causal=*/true,
+                 /*return_softmax=*/false,
+                 /*gen_=*/torch::nullopt);
 
-    // create attention mask based on sequence length
-    torch::Tensor mask;
-    if (seq_len > 1) {
-      mask = torch::full({1, seq_len, seq_len}, negative_infinity);
-      mask = torch::triu(mask, /*diagonal=*/1).type_as(query);
-    }
-    const auto attn = masked_self_attention(
-        query.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
-        key.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
-        value.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
-        mask,
-        scale);
-    output.index_put_({Slice(start_idx, end_idx), Slice(), Slice()}, attn);
-  }
+  // const auto head_dim = query.size(-1);
+  // const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+  // torch::Tensor cu_seq_lens_cpu = cu_seq_lens.cpu();
+  // const size_t num_seqs = cu_seq_lens_cpu.numel() - 1;
+  // const int32_t* cu_lens = cu_seq_lens_cpu.data_ptr<int32_t>();
+  // std::vector<torch::Tensor> outputs;
+  // for (int64_t i = 0; i < num_seqs; ++i) {
+  //   // calaculate attention for each sequence
+  //   const int32_t start_idx = cu_lens[i];
+  //   const int32_t end_idx = cu_lens[i + 1];
+  //   const int32_t seq_len = end_idx - start_idx;
+
+  //   // create attention mask based on sequence length
+  //   torch::Tensor mask;
+  //   if (seq_len > 1) {
+  //     mask = torch::full({1, seq_len, seq_len}, negative_infinity);
+  //     mask = torch::triu(mask, /*diagonal=*/1).type_as(query);
+  //   }
+  //   const auto attn = masked_self_attention(
+  //       query.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
+  //       key.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
+  //       value.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
+  //       mask,
+  //       scale);
+  //   output.index_put_({Slice(start_idx, end_idx), Slice(), Slice()}, attn);
+  // }
 }
 
 void single_token_masked_self_attention(

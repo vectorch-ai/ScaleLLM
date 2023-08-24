@@ -165,6 +165,7 @@ int main(int argc, char* argv[]) {
         input_params.cu_seq_lens = torch::tensor(
             {0, static_cast<int32_t>(cur_pos)},
             torch::TensorOptions().dtype(torch::kInt).device(device));
+        input_params.max_seq_len = cur_pos;
         input_params.context_lens =
             torch::tensor({},
                           torch::TensorOptions()
@@ -175,6 +176,7 @@ int main(int argc, char* argv[]) {
         input_params.num_prompt_tokens = 0;
         input_params.cu_seq_lens = torch::tensor(
             {0}, torch::TensorOptions().dtype(torch::kInt).device(device));
+        input_params.max_seq_len = 0;
         input_params.context_lens = torch::tensor(
             {cur_pos},
             torch::TensorOptions().dtype(torch::kInt).device(device));

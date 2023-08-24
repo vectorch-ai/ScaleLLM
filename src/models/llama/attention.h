@@ -80,8 +80,12 @@ class AttentionImpl : public torch::nn::Module {
     if (num_prompt_tokens > 0) {
       auto sliced_output =
           output.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-      attention::varlen_masked_self_attention(
-          query, key, value, input_params.cu_seq_lens, sliced_output);
+      attention::varlen_masked_self_attention(query,
+                                              key,
+                                              value,
+                                              input_params.cu_seq_lens,
+                                              input_params.max_seq_len,
+                                              sliced_output);
     }
 
     if (num_prompt_tokens < num_tokens) {

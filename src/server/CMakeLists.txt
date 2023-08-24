@@ -11,7 +11,7 @@ cc_library(
   DEPS
     ${TORCH_LIBRARIES}
     Python::Python
-)
+    )
 
 cc_library(
   NAME 
