@@ -96,6 +96,7 @@ class AttentionImpl : public torch::nn::Module {
           query.slice(/*dim=*/0, /*start=*/num_prompt_tokens),
           input_params.block_tables,
           input_params.context_lens,
+          input_params.max_context_len,
           sliced_output);
     }
     output = output.contiguous().view({num_tokens, -1});

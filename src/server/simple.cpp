@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "Using float32 on CPU.";
   } else {
     torch::set_default_dtype(
-        torch::scalarTypeToTypeMeta(torch::ScalarType::Half));
+        torch::scalarTypeToTypeMeta(torch::ScalarType::BFloat16));
   }
 
   llm::ModelArgs args;
@@ -98,9 +98,9 @@ int main(int argc, char* argv[]) {
   transformer->eval();
 
   // calculate cache shapes
-  const auto element_size = sizeof(float);
+  const auto element_size = torch::tensor({}).element_size();
   const auto x = 16 / element_size;
-  const int64_t block_size = 4;  // 4 slots per block
+  const int64_t block_size = 8;  // 8 slots per block
   const int64_t num_heads = args.n_heads();
   const int64_t head_dim = args.dim() / num_heads;
   const int64_t num_blocks = args.max_seq_len() / block_size + 1;
@@ -165,12 +165,13 @@ int main(int argc, char* argv[]) {
         input_params.cu_seq_lens = torch::tensor(
             {0, static_cast<int32_t>(cur_pos)},
             torch::TensorOptions().dtype(torch::kInt).device(device));
-        input_params.max_seq_len = cur_pos;
+        input_params.max_seq_len = static_cast<int32_t>(cur_pos);
         input_params.context_lens =
             torch::tensor({},
                           torch::TensorOptions()
                               .dtype(torch::kInt)
                               .device(device));  // empty tensor
+        input_params.max_context_len = 0;
       } else {
         // generate
         input_params.num_prompt_tokens = 0;
@@ -180,6 +181,7 @@ int main(int argc, char* argv[]) {
         input_params.context_lens = torch::tensor(
             {cur_pos},
             torch::TensorOptions().dtype(torch::kInt).device(device));
+        input_params.max_context_len = static_cast<int32_t>(cur_pos);
       }
 
       // run inference

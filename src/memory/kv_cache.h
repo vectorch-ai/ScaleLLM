@@ -15,9 +15,9 @@ class KVCache final {
   // set key and value cache for the given slot_ids
   // the slot_ids are the indices of the key/value cache, [num_slots] IntTensor
   // keys/values: [num_slots, num_heads, head_dim]
-  void set_kv_cache(const torch::Tensor& slot_ids,
-                    const torch::Tensor& keys,
-                    const torch::Tensor& values);
+  void set_kv_cache(torch::Tensor slot_ids,
+                    torch::Tensor keys,
+                    torch::Tensor values);
 
   // get key and value cache for the given slot_ids
   // the slot_ids are the indices of the key/value cache

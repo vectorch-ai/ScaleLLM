@@ -12,6 +12,7 @@ cc_library(
     kv_cache.cpp
     block_manager.cpp
   DEPS
+    :vllm.kernel_ops
     glog::glog
     ${TORCH_LIBRARIES}
 )

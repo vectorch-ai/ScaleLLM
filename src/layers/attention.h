@@ -22,11 +22,11 @@ void varlen_masked_self_attention(
 // used in generate stage
 void single_token_masked_self_attention(
     const KVCache& kv_cache,     // where to get key and value
-    const torch::Tensor& query,  // [num_tokens/num_seq, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [num_tokens, num_blocks]
-    const torch::Tensor&
-        context_lens,      // [num_tokens] the length of each sequence
-    torch::Tensor& output  // [num_tokens, n_heads, head_dim]
+    torch::Tensor query,         // [num_tokens/num_seq, n_heads, head_dim]
+    torch::Tensor block_tables,  // [num_tokens, num_blocks]
+    torch::Tensor context_lens,  // [num_tokens] the length of each sequence
+    int32_t max_context_len,     // maximum context length
+    torch::Tensor& output        // [num_tokens, n_heads, head_dim]
 );
 
 }  // namespace llm::attention

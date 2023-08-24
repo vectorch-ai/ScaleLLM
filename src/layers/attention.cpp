@@ -22,6 +22,19 @@ extern std::vector<at::Tensor> mha_varlen_fwd(
     bool return_softmax,
     c10::optional<at::Generator> gen_);
 
+extern void single_query_cached_kv_attention(
+    torch::Tensor& out,
+    torch::Tensor& query,
+    torch::Tensor& key_cache,
+    torch::Tensor& value_cache,
+    torch::Tensor& head_mapping,
+    float scale,
+    torch::Tensor& block_tables,
+    torch::Tensor& context_lens,
+    int block_size,
+    int max_context_len,
+    const c10::optional<torch::Tensor>& alibi_slopes);
+
 namespace llm::attention {
 namespace {
 constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
@@ -99,11 +112,40 @@ void varlen_masked_self_attention(
 
 void single_token_masked_self_attention(
     const KVCache& kv_cache,     // where to get key and value
-    const torch::Tensor& query,  // [num_tokens/num_seq, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [num_tokens, num_blocks]
-    const torch::Tensor&
-        context_lens,         // [num_tokens] the length of each sequence
-    torch::Tensor& output) {  // [num_tokens, n_heads, head_dim]
+    torch::Tensor query,         // [num_tokens/num_seq, n_heads, head_dim]
+    torch::Tensor block_tables,  // [num_tokens, num_blocks]
+    torch::Tensor context_lens,  // [num_tokens] the length of each sequence
+    int32_t max_context_len,     // maximum context length
+    torch::Tensor& output) {     // [num_tokens, n_heads, head_dim]
+  // torch::Tensor key_cache = kv_cache.get_key_cache();
+  // torch::Tensor value_cache = kv_cache.get_value_cache();
+  // const auto num_heads = query.size(1);
+  // const auto head_dim = query.size(2);
+  // const auto num_kv_heads = key_cache.size(1);
+  // const auto block_size = key_cache.size(3);
+
+  // // prepare kv_head_mapping
+  // const auto num_group = num_heads / num_kv_heads;
+  // auto kv_head_mapping = torch::arange(
+  //     0,
+  //     num_kv_heads,
+  //     torch::TensorOptions().dtype(torch::kInt).device(query.device()));
+  // kv_head_mapping = kv_head_mapping.repeat_interleave(num_group);
+
+  // const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+
+  // single_query_cached_kv_attention(output,
+  //                                  query,
+  //                                  key_cache,
+  //                                  value_cache,
+  //                                  kv_head_mapping,
+  //                                  scale,
+  //                                  block_tables,
+  //                                  context_lens,
+  //                                  block_size,
+  //                                  max_context_len,
+  //                                  /*alibi_slopes=*/torch::nullopt);
+
   const auto num_seq = query.size(0);
   const auto num_heads = query.size(1);
   const auto head_dim = query.size(2);

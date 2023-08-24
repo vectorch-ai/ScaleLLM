@@ -30,6 +30,9 @@ struct InputParameters {
   // [num_generate_seq, max_num_blocks] IntTensor
   torch::Tensor block_tables;
 
+  // the maximum length of sequences.
+  int32_t max_context_len;
+
   // number of tokens for each sequence.
   // used in generate stage to determine the range of cache to fetch
   // [num_generate_seq] IntTensor

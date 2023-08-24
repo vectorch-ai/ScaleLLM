@@ -7,6 +7,12 @@
 #include <cstdint>
 #include <vector>
 
+extern void reshape_and_cache(torch::Tensor& key,
+                              torch::Tensor& value,
+                              torch::Tensor& key_cache,
+                              torch::Tensor& value_cache,
+                              torch::Tensor& slot_mapping);
+
 namespace llm {
 
 KVCache::KVCache(torch::Tensor key_cache, torch::Tensor value_cache)
@@ -17,11 +23,13 @@ KVCache::KVCache(torch::Tensor key_cache, torch::Tensor value_cache)
       key_cache_(std::move(key_cache)),
       value_cache_(std::move(value_cache)) {}
 
-void KVCache::set_kv_cache(const torch::Tensor& slot_ids,
-                           const torch::Tensor& keys,
-                           const torch::Tensor& values) {
+void KVCache::set_kv_cache(torch::Tensor slot_ids,
+                           torch::Tensor keys,
+                           torch::Tensor values) {
   DCHECK_EQ(slot_ids.size(0), keys.size(0));
   DCHECK_EQ(slot_ids.size(0), values.size(0));
+
+  // reshape_and_cache(keys, values, key_cache_, value_cache_, slot_ids);
 
   auto slot_ids_cpu = slot_ids.cpu();
   const int64_t num_slots = slot_ids_cpu.numel();
@@ -36,7 +44,7 @@ void KVCache::set_kv_cache(const torch::Tensor& slot_ids,
     const auto key = keys[i];
     const auto value = values[i];
 
-    // key_cache_[block_id, :, :, block_offset, :] = 
+    // key_cache_[block_id, :, :, block_offset, :] =
     // key.reshape(-1, head_size_/ x_, x_)
     key_cache_.index_put_({block_id, Slice(), Slice(), block_offset, Slice()},
                           key.reshape({-1, head_size_ / x_, x_}));
