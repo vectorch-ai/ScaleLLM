@@ -63,6 +63,8 @@ int main(int argc, char* argv[]) {
   torch::InferenceMode guard;
 
   torch::Device device(FLAGS_device);
+  torch::DeviceGuard device_guard(device);
+
   // set the default dtype
   if (device.is_cpu()) {
     // always use float32 on CPU since float16 is not supported
