@@ -27,6 +27,10 @@ DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
 DEFINE_double(top_p, 0.9, "Top p for sampling.");
 
+DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
+
+DEFINE_int32(max_batch_size, 4, "Maximum batch size.");
+
 torch::Tensor sample_top_p(torch::Tensor logits, float top_p) {
   auto [probs_sort, probs_idx] =
       torch::sort(logits, /*dim=*/-1, /*descending=*/true);
@@ -71,7 +75,7 @@ int main(int argc, char* argv[]) {
   }
 
   llm::ModelArgs args;
-  args.max_seq_len(128).max_batch_size(4);
+  args.max_seq_len(FLAGS_max_seq_len).max_batch_size(FLAGS_max_batch_size);
   // TODO: read from params.json
   // {"dim": 4096, "multiple_of": 256, "n_heads": 32, "n_layers": 32,
   // "norm_eps": 1e-06, "vocab_size": -1}
@@ -162,25 +166,18 @@ int main(int argc, char* argv[]) {
       if (prev_pos == 0) {
         // prefill
         input_params.num_prompt_tokens = cur_pos;
-        input_params.cu_seq_lens = torch::tensor(
-            {0, static_cast<int32_t>(cur_pos)},
-            torch::TensorOptions().dtype(torch::kInt).device(device));
+        const std::vector<int32_t> cu_seq_lens = {
+            0, static_cast<int32_t>(cur_pos)};
+        input_params.cu_seq_lens =
+            torch::tensor(cu_seq_lens, torch::kInt).to(device);
         input_params.max_seq_len = static_cast<int32_t>(cur_pos);
-        input_params.context_lens =
-            torch::tensor({},
-                          torch::TensorOptions()
-                              .dtype(torch::kInt)
-                              .device(device));  // empty tensor
-        input_params.max_context_len = 0;
       } else {
         // generate
         input_params.num_prompt_tokens = 0;
-        input_params.cu_seq_lens = torch::tensor(
-            {0}, torch::TensorOptions().dtype(torch::kInt).device(device));
-        input_params.max_seq_len = 0;
-        input_params.context_lens = torch::tensor(
-            {cur_pos},
-            torch::TensorOptions().dtype(torch::kInt).device(device));
+        const std::vector<int32_t> context_lens = {
+            static_cast<int32_t>(cur_pos)};
+        input_params.context_lens =
+            torch::tensor(context_lens, torch::kInt).to(device);
         input_params.max_context_len = static_cast<int32_t>(cur_pos);
       }
 

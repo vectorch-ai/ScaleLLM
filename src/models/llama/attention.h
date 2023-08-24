@@ -72,7 +72,7 @@ class AttentionImpl : public torch::nn::Module {
     std::tie(query, key) = pos_emb_(query, key, positions);
 
     // store k/v into cache based on slots
-    kv_cache.set_kv_cache(input_params.slot_ids, key, value);
+    kv_cache.set_kv_cache_cuda(input_params.slot_ids, key, value);
 
     auto output = torch::zeros_like(query);
     const auto num_prompt_tokens = input_params.num_prompt_tokens;

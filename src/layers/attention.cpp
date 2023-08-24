@@ -117,53 +117,52 @@ void single_token_masked_self_attention(
     torch::Tensor context_lens,  // [num_tokens] the length of each sequence
     int32_t max_context_len,     // maximum context length
     torch::Tensor& output) {     // [num_tokens, n_heads, head_dim]
-  // torch::Tensor key_cache = kv_cache.get_key_cache();
-  // torch::Tensor value_cache = kv_cache.get_value_cache();
-  // const auto num_heads = query.size(1);
-  // const auto head_dim = query.size(2);
-  // const auto num_kv_heads = key_cache.size(1);
-  // const auto block_size = key_cache.size(3);
-
-  // // prepare kv_head_mapping
-  // const auto num_group = num_heads / num_kv_heads;
-  // auto kv_head_mapping = torch::arange(
-  //     0,
-  //     num_kv_heads,
-  //     torch::TensorOptions().dtype(torch::kInt).device(query.device()));
-  // kv_head_mapping = kv_head_mapping.repeat_interleave(num_group);
-
-  // const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
-
-  // single_query_cached_kv_attention(output,
-  //                                  query,
-  //                                  key_cache,
-  //                                  value_cache,
-  //                                  kv_head_mapping,
-  //                                  scale,
-  //                                  block_tables,
-  //                                  context_lens,
-  //                                  block_size,
-  //                                  max_context_len,
-  //                                  /*alibi_slopes=*/torch::nullopt);
-
-  const auto num_seq = query.size(0);
+  auto [key_cache, value_cache] = kv_cache.get_kv_cache();
   const auto num_heads = query.size(1);
   const auto head_dim = query.size(2);
+  const auto num_kv_heads = key_cache.size(1);
+  const auto block_size = key_cache.size(3);
+
+  // prepare kv_head_mapping
+  const auto num_group = num_heads / num_kv_heads;
+  auto kv_head_mapping = torch::arange(
+      0,
+      num_kv_heads,
+      torch::TensorOptions().dtype(torch::kInt).device(query.device()));
+  kv_head_mapping = kv_head_mapping.repeat_interleave(num_group);
+
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
-  // process each sequence
-  // don't need attention mask for single token
-  torch::Tensor mask;
-  for (int64_t i = 0; i < num_seq; ++i) {
-    // [1, n_heads, head_dim]
-    const auto q = query[i].unsqueeze(0);
-    const auto block_table = block_tables[i];
-    const auto context_len = context_lens[i].item<int>();
-    // fetch keys/values from cache
-    const auto [k, v] = kv_cache.get_kv_cache(block_table, context_len);
-    const auto attn = masked_self_attention(q, k, v, mask, scale);
-    output.index_put_({i, Slice(), Slice()}, attn);
-  }
+  single_query_cached_kv_attention(output,
+                                   query,
+                                   key_cache,
+                                   value_cache,
+                                   kv_head_mapping,
+                                   scale,
+                                   block_tables,
+                                   context_lens,
+                                   block_size,
+                                   max_context_len,
+                                   /*alibi_slopes=*/torch::nullopt);
+
+  // const auto num_seq = query.size(0);
+  // const auto num_heads = query.size(1);
+  // const auto head_dim = query.size(2);
+  // const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+
+  // // process each sequence
+  // // don't need attention mask for single token
+  // torch::Tensor mask;
+  // for (int64_t i = 0; i < num_seq; ++i) {
+  //   // [1, n_heads, head_dim]
+  //   const auto q = query[i].unsqueeze(0);
+  //   const auto block_table = block_tables[i];
+  //   const auto context_len = context_lens[i].item<int>();
+  //   // fetch keys/values from cache
+  //   const auto [k, v] = kv_cache.get_kv_cache(block_table, context_len);
+  //   const auto attn = masked_self_attention(q, k, v, mask, scale);
+  //   output.index_put_({i, Slice(), Slice()}, attn);
+  // }
 }
 
 }  // namespace llm::attention

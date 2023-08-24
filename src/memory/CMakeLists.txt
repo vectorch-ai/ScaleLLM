@@ -17,12 +17,12 @@ cc_library(
     ${TORCH_LIBRARIES}
 )
 
-# cc_test(
-#   NAME
-#     memory_test
-#   SRCS
-#     block_allocator_test.cpp
-#   DEPS
-#     :memory
-#     GTest::gtest_main
-# )
+cc_test(
+  NAME
+    memory_test
+  SRCS
+    kv_cache_test.cpp
+  DEPS
+    :memory
+    GTest::gtest_main
+)
