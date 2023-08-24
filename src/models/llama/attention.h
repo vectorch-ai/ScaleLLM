@@ -75,7 +75,7 @@ class AttentionImpl : public torch::nn::Module {
     kv_cache.set_kv_cache(input_params.slot_ids, key, value);
 
     auto output = torch::zeros_like(query);
-    const auto num_prompt_tokens = input_params.cu_seq_lens.back();
+    const auto num_prompt_tokens = input_params.num_prompt_tokens;
     // process sequences with prompt tokens (prefill)
     if (num_prompt_tokens > 0) {
       auto sliced_output =

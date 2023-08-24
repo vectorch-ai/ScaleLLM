@@ -44,20 +44,22 @@ torch::Tensor masked_self_attention(
 }  // namespace
 
 void varlen_masked_self_attention(
-    const torch::Tensor& query,               // [num_tokens, n_heads, head_dim]
-    const torch::Tensor& key,                 // [num_tokens, n_heads, head_dim]
-    const torch::Tensor& value,               // [num_tokens, n_heads, head_dim]
-    const std::vector<int64_t>& cu_seq_lens,  // cumulative sequence lengths
-    torch::Tensor& output) {                  // [num_tokens, n_heads, head_dim]
+    const torch::Tensor& query,        // [num_tokens, n_heads, head_dim]
+    const torch::Tensor& key,          // [num_tokens, n_heads, head_dim]
+    const torch::Tensor& value,        // [num_tokens, n_heads, head_dim]
+    const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
+    torch::Tensor& output) {           // [num_tokens, n_heads, head_dim]
   const auto head_dim = query.size(-1);
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
-  const size_t num_seqs = cu_seq_lens.size() - 1;
+  torch::Tensor cu_seq_lens_cpu = cu_seq_lens.cpu();
+  const size_t num_seqs = cu_seq_lens_cpu.numel() - 1;
+  const int32_t* cu_lens = cu_seq_lens_cpu.data_ptr<int32_t>();
   std::vector<torch::Tensor> outputs;
   for (int64_t i = 0; i < num_seqs; ++i) {
     // calaculate attention for each sequence
-    const int64_t start_idx = cu_seq_lens[i];
-    const int64_t end_idx = cu_seq_lens[i + 1];
-    const int64_t seq_len = end_idx - start_idx;
+    const int32_t start_idx = cu_lens[i];
+    const int32_t end_idx = cu_lens[i + 1];
+    const int32_t seq_len = end_idx - start_idx;
 
     // create attention mask based on sequence length
     torch::Tensor mask;

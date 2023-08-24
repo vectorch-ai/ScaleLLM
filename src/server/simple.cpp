@@ -21,7 +21,7 @@ DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
               "Path to the tokenizer file.");
 
-DEFINE_string(device, "cpu", "Device to run the model on.");
+DEFINE_string(device, "cuda", "Device to run the model on.");
 
 DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "Using float32 on CPU.";
   } else {
     torch::set_default_dtype(
-        torch::scalarTypeToTypeMeta(torch::ScalarType::BFloat16));
+        torch::scalarTypeToTypeMeta(torch::ScalarType::Half));
   }
 
   llm::ModelArgs args;
@@ -161,7 +161,10 @@ int main(int argc, char* argv[]) {
           torch::TensorOptions().dtype(torch::kInt).device(device));
       if (prev_pos == 0) {
         // prefill
-        input_params.cu_seq_lens = {0, cur_pos};
+        input_params.num_prompt_tokens = cur_pos;
+        input_params.cu_seq_lens = torch::tensor(
+            {0, static_cast<int32_t>(cur_pos)},
+            torch::TensorOptions().dtype(torch::kInt).device(device));
         input_params.context_lens =
             torch::tensor({},
                           torch::TensorOptions()
@@ -169,7 +172,9 @@ int main(int argc, char* argv[]) {
                               .device(device));  // empty tensor
       } else {
         // generate
-        input_params.cu_seq_lens = {0};
+        input_params.num_prompt_tokens = 0;
+        input_params.cu_seq_lens = torch::tensor(
+            {0}, torch::TensorOptions().dtype(torch::kInt).device(device));
         input_params.context_lens = torch::tensor(
             {cur_pos},
             torch::TensorOptions().dtype(torch::kInt).device(device));

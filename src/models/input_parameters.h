@@ -7,13 +7,15 @@ namespace llm {
 // information required to process a batch efficiently, mainly for
 // cache management.
 struct InputParameters {
+  // number of prompt tokens in the batch.
+  int64_t num_prompt_tokens;
+
   // cumulative sequence length of each sequence.
   // used in prefill stage to determine the token range for each sequence
   // [num_prompt_seq + 1]
-  // for example: 3 sequences with length 2, 3, 4, the cu_seq_lens is [0, 2, 5,
-  // 9]
-  // TODO: change to IntTensor
-  std::vector<int64_t> cu_seq_lens;
+  // for example: 3 sequences with length 2, 3, 4, 
+  // the cu_seq_lens is [0, 2, 5, 9]
+  torch::Tensor cu_seq_lens;
 
   // logical cache slot for each token.
   // used to store kv-cache to right slot/block

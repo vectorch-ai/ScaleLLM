@@ -23,6 +23,7 @@ Checks: >
   -readability-identifier-length,
   -readability-use-anyofallof,
   -cppcoreguidelines-special-member-functions,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -readability-magic-numbers,
 
 
