@@ -15,5 +15,5 @@ cc_library(
     :layers
     :memory
     glog::glog
-    ${TORCH_LIBRARIES}
+    torch
 )

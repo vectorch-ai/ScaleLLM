@@ -14,7 +14,7 @@ cc_library(
   DEPS
     :vllm.kernels
     glog::glog
-    ${TORCH_LIBRARIES}
+    torch
 )
 
 cc_test(

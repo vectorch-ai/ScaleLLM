@@ -7,7 +7,7 @@ cc_library(
   DEPS
     :layers
     glog::glog
-    ${TORCH_LIBRARIES}
+    torch
 )
 
 cc_library(
@@ -17,7 +17,7 @@ cc_library(
     model_args.h
   SRCS 
   DEPS
-    ${TORCH_LIBRARIES}
+    torch
 )
 
 cc_library(
@@ -27,7 +27,7 @@ cc_library(
     input_parameters.h
   SRCS 
   DEPS
-    ${TORCH_LIBRARIES}
+    torch
 )
 
 add_subdirectory(llama)

@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-# add libtorch to CMAKE_PREFIX_PATH
-list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/libtorch")
-
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.vcpkg/scripts/buildsystems/vcpkg.cmake"
@@ -31,10 +28,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# pybind11 requires python headers
+# libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Development)
+find_package(Torch REQUIRED 
+             HINTS ${CMAKE_CURRENT_SOURCE_DIR}/libtorch)
 
-find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 # find all dependencies from vcpkg

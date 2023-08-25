@@ -26,6 +26,6 @@ cc_library(
     flash-attn/csrc/flash_attn/src
     flash-attn/csrc/cutlass/include
   DEPS
-    ${TORCH_LIBRARIES}
+    torch
     Python::Python
-    )
+)

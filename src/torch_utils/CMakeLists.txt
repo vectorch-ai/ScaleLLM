@@ -9,5 +9,5 @@ cc_library(
     state_dict.cpp
   DEPS
     glog::glog
-    ${TORCH_LIBRARIES}
+    torch
 )

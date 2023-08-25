@@ -7,7 +7,7 @@ cc_library(
     logits_processor.cpp
   DEPS
     glog::glog
-    ${TORCH_LIBRARIES}
+    torch
 )
 
 cc_library(
@@ -19,5 +19,5 @@ cc_library(
     sampler.cpp
   DEPS
     glog::glog
-    ${TORCH_LIBRARIES}
+    torch
 )

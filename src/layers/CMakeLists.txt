@@ -19,7 +19,7 @@ cc_library(
     :flash-attn.kernels
     glog::glog
     gflags::gflags
-    ${TORCH_LIBRARIES}
+    torch
 )
 
 cc_test(

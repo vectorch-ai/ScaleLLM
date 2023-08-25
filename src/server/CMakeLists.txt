@@ -9,9 +9,9 @@ cc_library(
   SRCS 
     hf_model_downloader.cpp
   DEPS
-    ${TORCH_LIBRARIES}
+    torch
     Python::Python
-    )
+)
 
 cc_library(
   NAME 
@@ -35,7 +35,7 @@ cc_binary(
     :tokenizer
     :memory
     :hf_model_downloader
-    ${TORCH_LIBRARIES}
+    torch
     gflags::gflags
     glog::glog
 )

@@ -14,13 +14,13 @@ cc_library(
     worker.cpp
     engine.cpp
   DEPS
+    torch
     :request
     :torch_utils
     :causal_lm
     glog::glog
     Folly::folly
     absl::synchronization
-    ${TORCH_LIBRARIES}
 )
 
 cc_test(

@@ -15,7 +15,7 @@ cc_library(
     # vllm/csrc/activation.cpp
     # vllm/csrc/activation_kernels.cu
   DEPS
-    ${TORCH_LIBRARIES}
+    torch
     Python::Python
   COPTS
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"

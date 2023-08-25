@@ -10,7 +10,7 @@ cc_library(
     exllama/exllama_ext/cuda_func/q4_matmul.cu
     exllama/exllama_ext/cuda_func/q4_matrix.cu
   DEPS
-    ${TORCH_LIBRARIES}
+    torch
     Python::Python
   COPTS
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
