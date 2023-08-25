@@ -13,12 +13,12 @@ struct InputParameters {
   // cumulative sequence length of each sequence.
   // used in prefill stage to determine the token range for each sequence
   // [num_prompt_seq + 1]
-  // for example: 3 sequences with length 2, 3, 4, 
+  // for example: 3 sequences with length 2, 3, 4,
   // the cu_seq_lens is [0, 2, 5, 9]
   torch::Tensor cu_seq_lens;
 
   // maximum sequence length in the prompt.
-  int32_t max_seq_len = 0; 
+  int32_t max_seq_len = 0;
 
   // logical cache slot for each token.
   // used to store kv-cache to right slot/block
@@ -26,7 +26,7 @@ struct InputParameters {
   torch::Tensor slot_ids;
 
   // block ids for each sequence.
-  // used in generate stage to fetch cached key-value.
+  // used in decode stage to fetch cached key-value.
   // [num_generate_seq, max_num_blocks] IntTensor
   torch::Tensor block_tables;
 
@@ -34,7 +34,7 @@ struct InputParameters {
   int32_t max_context_len = 0;
 
   // number of tokens for each sequence.
-  // used in generate stage to determine the range of cache to fetch
+  // used in decode stage to determine the range of cache to fetch
   // [num_generate_seq] IntTensor
   torch::Tensor context_lens;
 
@@ -46,7 +46,6 @@ struct InputParameters {
 // output information. The output parameters should be as small as possible
 // to avoid transferring large tensors between host and device.
 struct OutputParameters {
-
   torch::Tensor logits;
 
   // the index of the last token of each sequence in the batch.

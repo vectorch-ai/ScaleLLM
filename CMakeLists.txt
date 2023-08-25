@@ -46,6 +46,7 @@ find_package(gRPC CONFIG REQUIRED)
 find_package(folly CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(SentencePiece REQUIRED)
+find_package(benchmark CONFIG REQUIRED)
 
 find_package(Jemalloc)
 if(Jemalloc_FOUND)

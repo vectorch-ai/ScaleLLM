@@ -1,5 +1,6 @@
 #include "kv_cache.h"
 
+#include <ATen/core/TensorBody.h>
 #include <c10/core/TensorImpl.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
@@ -23,14 +24,24 @@ KVCache::KVCache(torch::Tensor key_cache, torch::Tensor value_cache)
       key_cache_(std::move(key_cache)),
       value_cache_(std::move(value_cache)) {}
 
-void KVCache::set_kv_cache(torch::Tensor slot_ids,
-                           torch::Tensor keys,
-                           torch::Tensor values) {
+void KVCache::set_kv_cache(const torch::Tensor& slot_ids,
+                           const torch::Tensor& keys,
+                           const torch::Tensor& values) {
   DCHECK_EQ(slot_ids.size(0), keys.size(0));
   DCHECK_EQ(slot_ids.size(0), values.size(0));
   DCHECK_EQ(slot_ids.device(), keys.device());
   DCHECK_EQ(slot_ids.device(), values.device());
 
+  if (keys.is_cuda()) {
+    // use cuda kernel
+    return set_kv_cache_cuda(slot_ids, keys, values);
+  }
+  return set_kv_cache_slow(slot_ids, keys, values);
+}
+
+void KVCache::set_kv_cache_slow(const torch::Tensor& slot_ids,
+                                const torch::Tensor& keys,
+                                const torch::Tensor& values) {
   auto slot_ids_cpu = slot_ids.cpu();
   const int32_t* ids = slot_ids_cpu.data_ptr<int32_t>();
   const auto num_tokens = keys.size(0);
@@ -53,16 +64,14 @@ void KVCache::set_kv_cache(torch::Tensor slot_ids,
   }
 }
 
-void KVCache::set_kv_cache_cuda(torch::Tensor slot_ids,
-                                torch::Tensor keys,
-                                torch::Tensor values) {
-  DCHECK_EQ(slot_ids.dtype(), torch::kInt);
-  DCHECK_EQ(slot_ids.size(0), keys.size(0));
-  DCHECK_EQ(slot_ids.size(0), values.size(0));
-  DCHECK_EQ(slot_ids.device(), keys.device());
-  DCHECK_EQ(slot_ids.device(), values.device());
-
-  reshape_and_cache(keys, values, key_cache_, value_cache_, slot_ids);
+void KVCache::set_kv_cache_cuda(const torch::Tensor& slot_ids,
+                                const torch::Tensor& keys,
+                                const torch::Tensor& values) {
+  // make a 'copy' of variables since the kernel is using non-const reference
+  torch::Tensor _slot_ids = slot_ids;
+  torch::Tensor _keys = keys;
+  torch::Tensor _values = values;
+  reshape_and_cache(_keys, _values, key_cache_, value_cache_, _slot_ids);
 }
 
 std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
