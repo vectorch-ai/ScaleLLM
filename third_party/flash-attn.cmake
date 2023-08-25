@@ -2,7 +2,7 @@ include(cc_library)
 
 cc_library(
   NAME 
-    flash-attn.kernel_ops
+    flash-attn.kernels
   SRCS
     flash_api.cpp
     flash-attn/csrc/flash_attn/src/flash_fwd_hdim32_fp16_sm80.cu

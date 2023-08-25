@@ -2,7 +2,7 @@ include(cc_library)
 
 cc_library(
   NAME 
-    exllama.kernel_ops
+    exllama.kernels
   SRCS 
     exllama/exllama_ext/exllama_ext.cpp
     exllama/exllama_ext/cuda_buffers.cu
