@@ -11,4 +11,6 @@ cc_library(
   DEPS
     ${TORCH_LIBRARIES}
     Python::Python
-    )
+  COPTS
+    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
+)

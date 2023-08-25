@@ -29,13 +29,18 @@ Sampler::Sampler(const std::vector<bool>& do_sample,
                  const std::vector<int64_t>& seeds,
                  const torch::Device& device) {
   CHECK_EQ(do_sample.size(), seeds.size());
-  seeds_ = seeds;
   sample_funcs_.reserve(do_sample.size());
   for (size_t i = 0; i < do_sample.size(); ++i) {
     if (do_sample[i]) {
-      // create a generator for each sequence based on device type
-      torch::Generator generator = make_generator(device);
-      generator.set_current_seed(seeds_[i]);
+
+      torch::optional<torch::Generator> generator;
+      // use global generator when seed is 0
+      if (seeds[i] != 0) {
+        // create a generator for each sequence based on device type
+        generator = make_generator(device);
+        generator->set_current_seed(seeds[i]);
+      }
+
       sample_funcs_.emplace_back(
           [generator = std::move(generator)](const torch::Tensor& logits) {
             const auto probs = logits.softmax(/*dim=*/-1);
@@ -46,7 +51,7 @@ Sampler::Sampler(const std::vector<bool>& do_sample,
           });
     } else {
       sample_funcs_.emplace_back(
-          [](const torch::Tensor& logits) { return logits.argmax(-1); });
+          [](const torch::Tensor& logits) { return logits.argmax(/*dim=*/-1); });
     }
   }
 }
