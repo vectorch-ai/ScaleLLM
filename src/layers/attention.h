@@ -1,9 +1,13 @@
 #pragma once
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "memory/kv_cache.h"
+
+DECLARE_string(varlen_masked_self_attention);
+DECLARE_string(single_token_masked_self_attention);
 
 namespace llm::attention {
 

@@ -18,6 +18,7 @@ cc_library(
     :memory
     :flash-attn.kernel_ops
     glog::glog
+    gflags::gflags
     ${TORCH_LIBRARIES}
 )
 

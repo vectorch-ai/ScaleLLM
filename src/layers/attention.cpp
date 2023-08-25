@@ -1,9 +1,21 @@
 #include "attention.h"
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
 using torch::indexing::Slice;
+
+DEFINE_string(varlen_masked_self_attention,
+              "",
+              "type of attention to use for varlen_masked_self_attention, "
+              "slow, cuda, or empty for auto");
+
+DEFINE_string(
+    single_token_masked_self_attention,
+    "",
+    "type of attention to use for single_token_masked_self_attention, slow, "
+    "cuda, or empty for auto");
 
 // ref to flash_attn in third_party/flash_attn
 extern std::vector<at::Tensor> mha_varlen_fwd(
@@ -64,8 +76,11 @@ void varlen_masked_self_attention(
     const torch::Tensor& output) {
   if (query.is_cuda()) {
     // use cuda kernel
-    return varlen_masked_self_attention_cuda(
-        query, key, value, cu_seq_lens, max_seq_len, output);
+    if (FLAGS_varlen_masked_self_attention.empty() ||
+        FLAGS_varlen_masked_self_attention == "cuda") {
+      return varlen_masked_self_attention_cuda(
+          query, key, value, cu_seq_lens, max_seq_len, output);
+    }
   }
   return varlen_masked_self_attention_slow(
       query, key, value, cu_seq_lens, max_seq_len, output);
@@ -156,8 +171,11 @@ void single_token_masked_self_attention(
     const torch::Tensor& output) {
   if (query.is_cuda()) {
     // use cuda kernel
-    return single_token_masked_self_attention_cuda(
-        kv_cache, query, block_tables, context_lens, max_context_len, output);
+    if (FLAGS_single_token_masked_self_attention.empty() ||
+        FLAGS_single_token_masked_self_attention == "cuda") {
+      return single_token_masked_self_attention_cuda(
+          kv_cache, query, block_tables, context_lens, max_context_len, output);
+    }
   }
   return single_token_masked_self_attention_slow(
       kv_cache, query, block_tables, context_lens, max_context_len, output);
