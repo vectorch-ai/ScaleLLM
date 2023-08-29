@@ -63,7 +63,10 @@ function(grpc_proto_library)
   )
 
   # Compile protobuf and grpc files
-  protobuf_generate(TARGET ${PROTO_LIB_NAME} LANGUAGE cpp)
+  protobuf_generate(
+    TARGET ${PROTO_LIB_NAME} 
+    IMPORT_DIRS .
+    LANGUAGE cpp)
 
   # Get grpc_cpp_plugin location
   get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
@@ -72,6 +75,7 @@ function(grpc_proto_library)
   protobuf_generate(
     TARGET ${PROTO_LIB_NAME}
     LANGUAGE grpc
+    IMPORT_DIRS .
     GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
     PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}"
   )

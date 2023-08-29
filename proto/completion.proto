@@ -1,5 +1,9 @@
 syntax = "proto3";
 
+// well know type by google, gRPC gateway uses HTTP annotation.
+import "google/api/annotations.proto";
+
+option go_package = "github.com/vectorch-ai/scalellm;scalellm";
 package llm;
 
 message CompletionRequest {
@@ -81,5 +85,10 @@ message CompletionResponse {
 }
 
 service Completion {
-  rpc Complete(CompletionRequest) returns (stream CompletionResponse) {}
+  rpc Complete(CompletionRequest) returns (stream CompletionResponse) {
+    option (google.api.http) = {
+      post: "/v1/completions"
+      body: "*"
+    };
+  }
 }

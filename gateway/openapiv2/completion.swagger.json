@@ -1,0 +1,202 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "completion.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Completion"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/completions": {
+      "post": {
+        "operationId": "Completion_Complete",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/llmCompletionResponse"
+                },
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of llmCompletionResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/llmCompletionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Completion"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "llmChoice": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "title": "the generated completion"
+        },
+        "logprobs": {
+          "type": "number",
+          "format": "float",
+          "title": "the log probability of the completion"
+        },
+        "index": {
+          "type": "integer",
+          "format": "int64",
+          "title": "the index of the generated completion"
+        },
+        "finishReason": {
+          "type": "string",
+          "description": "the finish reason of the completion."
+        }
+      }
+    },
+    "llmCompletionRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uint64",
+          "title": "unique id for the completion request"
+        },
+        "prompt": {
+          "type": "string",
+          "title": "the prompt to generate completions for"
+        },
+        "maxTokens": {
+          "type": "integer",
+          "format": "int64",
+          "description": "number of tokens to generate\nthe prompt token count + max_tokens can't exceed the model's max context length."
+        },
+        "temperature": {
+          "type": "number",
+          "format": "float",
+          "description": "temperature of the sampling, between [0, 2]. default = 1.0\nhigher value will make the ouput more random."
+        },
+        "topP": {
+          "type": "number",
+          "format": "float",
+          "title": "top_p sampling cutoff, between [0, 1.0]. default = 1.0"
+        },
+        "n": {
+          "type": "integer",
+          "format": "int64",
+          "title": "number of completions to return for each prompt. default = 1"
+        },
+        "stream": {
+          "type": "boolean",
+          "title": "whether to stream partial completions back as they are generated"
+        },
+        "logprobs": {
+          "type": "integer",
+          "format": "int64",
+          "description": "include the log probabilities of the chosen tokens. the maximum value is 5."
+        },
+        "echo": {
+          "type": "boolean",
+          "title": "whether to include the original prompt in the completion response"
+        },
+        "presencePenalty": {
+          "type": "number",
+          "format": "float",
+          "title": "presence penalty to reduce the likelihood of generating words already in the prompt.\nvalues between [-2.0, 2.0]. Positive values penalize new tokens based on their existing\nin the prompt. default = 0.0"
+        },
+        "frequencyPenalty": {
+          "type": "number",
+          "format": "float",
+          "description": "frequency penalty to reduce the likelihood of generating the same word multiple times.\nvalues between [0.0, 2.0]. 0.0 means no penalty. default = 0.0\nPositive values penalize new tokens based on their existing frequency in the text."
+        },
+        "bestOf": {
+          "type": "integer",
+          "format": "int64",
+          "title": "Generates best_of completions server-side and returns the \"best\" (the one with the lowest log probability per token).\nResults can't be streamed once set.\nwhen used with n, best_of controls the number of candidate completions and n specifies how many to return\nbest_of must be \u003e= n"
+        },
+        "useLogitBias": {
+          "type": "boolean",
+          "title": "whether to use the logit bias specified in the model configuration"
+        }
+      }
+    },
+    "llmCompletionResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uint64",
+          "title": "unique id for the completion request"
+        },
+        "model": {
+          "type": "string",
+          "title": "the model used for the completion"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/llmChoice"
+          },
+          "title": "list of generated completion choices for the input prompt"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    }
+  }
+}
