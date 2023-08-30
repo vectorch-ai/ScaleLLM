@@ -5,4 +5,6 @@ grpc_proto_library(
     completion
   SRCS
     completion.proto
+    google/api/annotations.proto
+    google/api/http.proto
 )

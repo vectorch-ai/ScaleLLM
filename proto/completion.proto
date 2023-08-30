@@ -6,15 +6,26 @@ import "google/api/annotations.proto";
 option go_package = "github.com/vectorch-ai/scalellm;scalellm";
 package llm;
 
-message CompletionRequest {
-  // unique id for the completion request
-  uint64 id = 1;
+message Usage {
+  // the number of tokens in the prompt.
+  int32 prompt_tokens = 1;
 
-  // the prompt to generate completions for
+  // the number of tokens in the generated completion.
+  int32 completion_tokens = 2;
+
+  // the total number of tokens used in the request (prompt + completion).
+  int32 total_tokens = 3;  
+}
+
+message CompletionRequest {
+  // ID of the model to use. (required)
+  string model = 1;
+
+  // the prompt to generate completions for. (required)
   string prompt = 2;
 
-  // the prompt tokens
-  // repeated int32 prompt_tokens = 3;
+  // TODO: the suffix that comes after a completion of inserted text. default = null
+  // string suffix = 3;
 
   // number of tokens to generate
   // the prompt token count + max_tokens can't exceed the model's max context length.
@@ -39,24 +50,31 @@ message CompletionRequest {
   // whether to include the original prompt in the completion response
   bool echo = 10;
 
+  // TODO: stop string/array/null. default = null
+  // up to 4 sequences where the API will stop generating further tokens.
+
   // presence penalty to reduce the likelihood of generating words already in the prompt.
   // values between [-2.0, 2.0]. Positive values penalize new tokens based on their existing
   // in the prompt. default = 0.0
-  float presence_penalty = 11;
+  float presence_penalty = 12;
 
   // frequency penalty to reduce the likelihood of generating the same word multiple times.
   // values between [0.0, 2.0]. 0.0 means no penalty. default = 0.0
   // Positive values penalize new tokens based on their existing frequency in the text.
-  float frequency_penalty = 12;
+  float frequency_penalty = 13;
 
   // Generates best_of completions server-side and returns the "best" (the one with the lowest log probability per token).
   // Results can't be streamed once set.
   // when used with n, best_of controls the number of candidate completions and n specifies how many to return
   // best_of must be >= n
-  uint32 best_of = 13;
+  uint32 best_of = 14;
 
-  // whether to use the logit bias specified in the model configuration
-  bool use_logit_bias = 14;
+  // TODO: logit_bias
+  // modify the likelihood of specified tokens appearing in the completion.
+  // map<int64, float> logit_bias = 15;
+
+  // A unique identifier representing your end-user, which can help system to monitor and detect abuse.
+  string user = 16;
 }
 
 message Choice {
@@ -75,19 +93,137 @@ message Choice {
 
 message CompletionResponse {
   // unique id for the completion request
-  uint64 id = 1;
+  string id = 1;
+
+  // the object type, which is always "text_completion".
+  string object = 2;
+
+  // the unix timestamp (in seconds) of when the completion was created.
+  int64 created = 3;
 
   // the model used for the completion
-  string model = 2;
+  string model = 4;
 
   // list of generated completion choices for the input prompt
-  repeated Choice choices = 3;
+  repeated Choice choices = 5;
+
+  // usage statistics for the completion request.
+  Usage usage = 6;
+}
+
+message ChatMessage {
+  // the role of the messages author. One of "system", "user", "assistant".
+  string role = 1;
+
+  // the content of the message. null for assistant messages with function calls.
+  string content = 2;
+
+  // the name of the messages author. only used for function calls.
+  // string name = 3;
+
+  // TODO: add function call support
+  // FunctionCall function_call = 4;
+}
+
+message ChatRequest {
+  // unique id for the completion request
+  string id = 1;
+
+  // A list of messages comprising the conversation so far.
+  repeated ChatMessage messages = 2;
+
+  // TODO: a list of functions the model may generate JSON inputs for.
+  // repeated Function function = 3;
+
+  // TODO: Controls how the model responses to function calls. default = "none"
+  // "none" - the model will ignore function calls.
+  // "auto" - the model can pick between an end-user or calling a function.
+  // string function_call = 4;
+
+  // temperature of the sampling, between [0, 2]. default = 1.0
+  // higher value will make the ouput more random, while a lower value will make it more deterministic.
+  // it is recommended altering this or top_p but not both.
+  float temperature = 5;
+
+  // top_p sampling cutoff, between [0, 1.0]. default = 1.0
+  float top_p = 6;
+
+  // number of chat completion choices to generate for each input message. default = 1
+  uint32 n = 7;
+
+  // whether to stream partial completions back as they are generated
+  bool stream = 8;
+
+  // TODO: stop string/array/null. default = null
+  // up to 4 sequences where the API will stop generating further tokens.
+  
+  // the maximum number of tokens to generate in the chat completion. default = infinity
+  int32 max_tokens = 10;
+
+  // values between [-2.0, 2.0]. default = 0.0
+  // Positive values penalize new tokens based on their existing in the text so far, increasing 
+  // the model's likelihood to talk about new topics.
+  float presence_penalty = 11;
+
+  // values between [0.0, 2.0]. default = 0.0
+  // Positive values penalize new tokens based on their existing frequency in the text so far,
+  // decreasing the model's likelihood to repeat the same line verbatim.
+  float frequency_penalty = 12;
+
+  // TODO: logit_bias
+  // modify the likelihood of specified tokens appearing in the completion.
+  // map<int64, float> logit_bias = 13;
+
+  // A unique identifier representing your end-user, which can help system to monitor and detect abuse.
+  string user = 14;
+}
+
+message ChatChoice {
+  // the index of the choice in the list of choices.
+  int32 index = 1;
+
+  // A chat completion message generated by the model.
+  ChatMessage message = 2;
+
+  // the reason of the model stoped generating tokens.
+  // "stop" - the model hit a natural stop point or a provided stop sequence.
+  // "length" - the maximum number of tokens specified in the request was reached.
+  // "function_call" - the model called a function.
+  string finish_reason = 3;
+}
+
+message ChatResponse {
+  // unique id for the chat completion.
+  string id = 1;
+
+  // the object type, which is always "chat.completion".
+  // string object = 2;
+
+  // the unix timestamp (in seconds) of when the chat completion was created.
+  int64 created = 3;
+
+  // the model used for the completion
+  string model = 4;
+
+  // list of generated completion choices for the input prompt
+  repeated ChatChoice choices = 5;
+
+  // usage statistics for the completion request.
+  Usage usage = 6;
 }
 
 service Completion {
+  // legacy API
   rpc Complete(CompletionRequest) returns (stream CompletionResponse) {
     option (google.api.http) = {
       post: "/v1/completions"
+      body: "*"
+    };
+  }
+
+  rpc Chat(ChatRequest) returns (stream ChatResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/completions"
       body: "*"
     };
   }
