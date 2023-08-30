@@ -1,13 +1,13 @@
 
-…
-completion.protollmgoogle/api/annotations.proto"|
+ç
+completion.protollmgoogle/api/annotations.protogoogle/api/field_behavior.proto.protoc-gen-openapiv2/options/annotations.proto"|
 Usage#
 prompt_tokens (RpromptTokens+
 completion_tokens (RcompletionTokens!
-total_tokens (RtotalTokens"Ú
-CompletionRequest
-model (	Rmodel
-prompt (	Rprompt
+total_tokens (RtotalTokens"˛
+CompletionRequest
+model (	B‚ARmodel
+prompt (	B‚ARprompt
 
 max_tokens (R	maxTokens 
 temperature (Rtemperature
@@ -36,10 +36,10 @@ max_tokens (R	maxTokens
 .llm.UsageRusage";
 ChatMessage
 role (	Rrole
-content (	Rcontent"≥
-ChatRequest
-id (	Rid,
-messages (2.llm.ChatMessageRmessages 
+content (	Rcontent"≈
+ChatRequest
+model (	B‚ARmodel2
+messages (2.llm.ChatMessageB‚ARmessages 
 temperature (Rtemperature
 top_p (RtopP
 n (Rn
@@ -49,20 +49,21 @@ max_tokens
  (R	maxTokens)
 presence_penalty (RpresencePenalty+
 frequency_penalty (RfrequencyPenalty
-user (	Ruser"s
+user (	Ruser"õ
 
 ChatChoice
-index (Rindex*
-message (2.llm.ChatMessageRmessage#
-finish_reason (	RfinishReason"õ
+index (Rindex&
+delta (2.llm.ChatMessageRdelta*
+message (2.llm.ChatMessageRmessage#
+finish_reason (	RfinishReason"õ
 ChatResponse
 id (	Rid
 created (Rcreated
 model (	Rmodel)
 choices (2.llm.ChatChoiceRchoices 
 usage (2
-.llm.UsageRusage2∑
+.llm.UsageRusage2„
 
-CompletionY
-Complete.llm.CompletionRequest.llm.CompletionResponse"Ç”‰ì"/v1/completions:*0N
-Chat.llm.ChatRequest.llm.ChatResponse"Ç”‰ì"/v1/chat/completions:*0B*Z(github.com/vectorch-ai/scalellm;scalellmbproto3
+Completiono
+Complete.llm.CompletionRequest.llm.CompletionResponse"0íA:text/event-streamÇ”‰ì"/v1/completions:*0d
+Chat.llm.ChatRequest.llm.ChatResponse"5íA:text/event-streamÇ”‰ì"/v1/chat/completions:*0B*Z(github.com/vectorch-ai/scalellm;scalellmbproto3
