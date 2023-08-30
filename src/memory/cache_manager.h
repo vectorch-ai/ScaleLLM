@@ -16,7 +16,7 @@ struct CacheArg {};
 // CacheManager is responsible for managing the cache of the LLM model.
 class CacheManager final {
  public:
-  CacheManager(const CacheArg& cache_arg);
+  explicit CacheManager(const CacheArg& cache_arg);
 
   const KVCache& get_kv_cache(uint32_t layer_id) {
     CHECK_LT(layer_id, kv_caches_.size());
