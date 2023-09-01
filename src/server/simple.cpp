@@ -12,11 +12,12 @@
 #include "models/input_parameters.h"
 #include "models/llama/transformer.h"
 #include "models/model_args.h"
+#include "models/model_loader.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 #include "torch_utils/state_dict.h"
 
 DEFINE_string(model_path,
-              "/home/michael/code/llama/llama-2-7b/consolidated.00.pth",
+              "/home/michael/code/llama/llama-2-7b",
               "Path to the model file.");
 DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
@@ -76,27 +77,21 @@ int main(int argc, char* argv[]) {
         torch::scalarTypeToTypeMeta(torch::ScalarType::BFloat16));
   }
 
-  llm::ModelArgs args;
+  llm::ModelLoader model_loader(FLAGS_model_path);
+
+  llm::ModelArgs args = model_loader.model_args();
+  if (args.vocab_size() == -1) {
+    args.vocab_size(tokenizer.n_words());
+  }
+  // TODO: remove this two from model args
   args.max_seq_len(FLAGS_max_seq_len).max_batch_size(FLAGS_max_batch_size);
-  // TODO: read from params.json
-  // {"dim": 4096, "multiple_of": 256, "n_heads": 32, "n_layers": 32,
-  // "norm_eps": 1e-06, "vocab_size": -1}
-  args.dim(4096)
-      .multiple_of(256)
-      .n_heads(32)
-      .n_layers(32)
-      .norm_eps(1e-6)
-      .vocab_size(-1);
-  args.vocab_size(tokenizer.n_words());
 
   llm::Worker worker(device);
   worker.init(args);
 
   // load the weights from the checkpoint
-  {
-    const auto weights =
-        llm::StateDict::load_from_file(FLAGS_model_path, torch::kCPU);
-    worker.load_state_dict(weights);
+  for (const auto& state_dict : model_loader) {
+    worker.load_state_dict(state_dict);
   }
 
   const int64_t block_size = 8;  // 8 slots per block

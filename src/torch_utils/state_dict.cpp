@@ -4,10 +4,13 @@
 #include <torch/csrc/jit/serialization/import_read.h>
 #include <torch/torch.h>
 
+#include <memory>
+
 namespace llm {
 
-StateDict StateDict::load_from_file(const std::string& model_path,
-                                    torch::DeviceType device_type) {
+std::unique_ptr<StateDict> StateDict::load_from_file(
+    const std::string& model_path,
+    torch::DeviceType device_type) {
   using caffe2::serialize::PyTorchStreamReader;
 
   torch::Device device(device_type);
@@ -27,7 +30,7 @@ StateDict StateDict::load_from_file(const std::string& model_path,
     const auto& value = kv.value();
     dict[key.toStringRef()] = value.toTensor();
   }
-  return StateDict(std::move(dict));
+  return std::make_unique<StateDict>(std::move(dict));
 }
 
 torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {

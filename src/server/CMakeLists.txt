@@ -36,6 +36,8 @@ cc_binary(
     :memory
     :engine
     :hf_model_downloader
+    :model_args
+    :model_loader
     torch
     gflags::gflags
     glog::glog

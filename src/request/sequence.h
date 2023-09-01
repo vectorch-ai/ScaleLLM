@@ -5,8 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "slice.h"
-
 namespace llm {
 
 // The sequence encapsulates all the necessary

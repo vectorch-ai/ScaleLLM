@@ -5,6 +5,7 @@ cc_library(
     common
   HDRS
     metrics.h
+    slice.h
   SRCS
   DEPS
     prometheus-cpp::core

@@ -40,6 +40,11 @@
       "name": "prometheus-cpp",
       "version>=": "1.1.0",
       "default-features": false
+    },
+    {
+      "name": "nlohmann-json",
+      "version>=": "3.11.2",
+      "default-features": false
     }
   ],
   "builtin-baseline": "f6a5d4e8eb7476b8d7fc12a56dff300c1c986131"

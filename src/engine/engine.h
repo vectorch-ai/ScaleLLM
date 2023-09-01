@@ -21,10 +21,15 @@ namespace llm {
 
 class Engine {
  public:
+  // create an engine with the given devices
+  Engine(const std::vector<torch::Device>& devices);
+
   virtual ~Engine() = default;
 
+  bool init(const ModelArgs& args, const std::string& model_weights_path);
+
   // step the engine forward by one step with the batch
-  virtual void forward(const std::vector<Request*>& batch) {}
+  void forward(const std::vector<Request*>& batch);
 
  private:
   // a list of workers, with each worker handling a partial of model

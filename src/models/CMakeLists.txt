@@ -17,8 +17,10 @@ cc_library(
   HDRS 
     model_args.h
   SRCS 
+    model_args.cpp
   DEPS
     torch
+    nlohmann_json::nlohmann_json
 )
 
 cc_library(
@@ -28,6 +30,18 @@ cc_library(
     input_parameters.h
   SRCS 
   DEPS
+    torch
+)
+
+cc_library(
+  NAME 
+    model_loader
+  HDRS 
+    model_loader.h
+  SRCS 
+    model_loader.cpp
+  DEPS
+    :model_args
     torch
 )
 

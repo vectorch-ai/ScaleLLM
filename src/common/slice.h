@@ -14,7 +14,7 @@ class Slice final {
 
   Slice(const T* data, size_t size) : data_(data), size_(size) {}
 
-  Slice(const std::vector<T>& data, size_t stat_pos)
+  Slice(const std::vector<T>& data, size_t stat_pos = 0)
       : data_(data.data() + stat_pos), size_(data.size() - stat_pos) {}
 
   // iterator for the slice

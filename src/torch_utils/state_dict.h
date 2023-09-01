@@ -1,6 +1,7 @@
 #
 #pragma once
 #include <torch/torch.h>
+
 #include <unordered_map>
 
 namespace llm {
@@ -8,8 +9,9 @@ namespace llm {
 // A wrapper around torch::Dict<torch::IValue, torch::IValue>.
 class StateDict final {
  public:
-  static StateDict load_from_file(const std::string& model_path,
-                                  torch::DeviceType device_type = torch::kCPU);
+  static std::unique_ptr<StateDict> load_from_file(
+      const std::string& model_path,
+      torch::DeviceType device_type = torch::kCPU);
 
   explicit StateDict(std::unordered_map<std::string, torch::Tensor> dict)
       : dict_(std::move(dict)) {}

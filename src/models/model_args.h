@@ -1,12 +1,14 @@
 #pragma once
 
 #include <torch/torch.h>
+
 #include <optional>
 
 namespace llm {
 
 class ModelArgs {
  public:
+  bool load_from_file(const std::string& file_path);
 
   TORCH_ARG(std::string, model_name);
 

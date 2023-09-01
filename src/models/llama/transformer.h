@@ -6,10 +6,10 @@
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/norm.h"
-#include "models/model_args.h"
-#include "models/input_parameters.h"
-#include "transformer_block.h"
 #include "memory/kv_cache.h"
+#include "models/input_parameters.h"
+#include "models/model_args.h"
+#include "transformer_block.h"
 
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py
@@ -17,7 +17,9 @@ namespace llm {
 
 class TransformerImpl : public torch::nn::Module {
  public:
-  TransformerImpl(const ModelArgs& args, int64_t world_size, const torch::Device& device) {
+  TransformerImpl(const ModelArgs& args,
+                  int64_t world_size,
+                  const torch::Device& device) {
     // register submodules
     tok_embeddings_ = register_module(
         "tok_embeddings",
@@ -29,10 +31,12 @@ class TransformerImpl : public torch::nn::Module {
       layers_.push_back(block);
       blocks_->push_back(block);
     }
-    norm_ = register_module("norm", RMSNorm(args.dim(), args.norm_eps(), device));
-    output_ = register_module(
-        "output",
-        ColumnParallelLinear(args.dim(), args.vocab_size(), world_size, device));
+    norm_ =
+        register_module("norm", RMSNorm(args.dim(), args.norm_eps(), device));
+    output_ =
+        register_module("output",
+                        ColumnParallelLinear(
+                            args.dim(), args.vocab_size(), world_size, device));
   }
 
   // tokens: [num_tokens]
