@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 
+#include "engine/worker.h"
 #include "hf_model_downloader.h"
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
@@ -63,7 +64,6 @@ int main(int argc, char* argv[]) {
   torch::InferenceMode guard;
 
   torch::Device device(FLAGS_device);
-  torch::DeviceGuard device_guard(device);
 
   // set the default dtype
   if (device.is_cpu()) {
@@ -89,47 +89,21 @@ int main(int argc, char* argv[]) {
       .vocab_size(-1);
   args.vocab_size(tokenizer.n_words());
 
-  llm::Transformer transformer(args, 1, device);
+  llm::Worker worker(device);
+  worker.init(args);
 
   // load the weights from the checkpoint
   {
     const auto weights =
         llm::StateDict::load_from_file(FLAGS_model_path, torch::kCPU);
-    transformer->load_state_dict(weights);
-    LOG(INFO) << "Successfully loaded model. " << transformer;
+    worker.load_state_dict(weights);
   }
-  // move the model to the GPU
-  // transformer->to(torch::kCUDA);
-  // set the module in evaluation/inference mode
-  transformer->eval();
 
-  // calculate cache shapes
-  const auto element_size = torch::tensor({}).element_size();
-  const auto x = 16 / element_size;
   const int64_t block_size = 8;  // 8 slots per block
-  const int64_t num_heads = args.n_heads();
-  const int64_t head_dim = args.dim() / num_heads;
   const int64_t num_blocks = args.max_seq_len() / block_size + 1;
-  const std::vector<int64_t> key_cache_shape = {
-      num_blocks, num_heads, static_cast<int64_t>(head_dim / x), block_size, x};
-  const std::vector<int64_t> value_cache_shape = {
-      num_blocks, num_heads, head_dim, block_size};
-
-  // create a KVCache for each layer
-  std::vector<llm::KVCache> kv_caches;
-  kv_caches.reserve(args.n_layers());
-  for (int i = 0; i < args.n_layers(); ++i) {
-    auto key_cache = torch::zeros(key_cache_shape, device);
-    auto value_cache = torch::zeros(value_cache_shape, device);
-    kv_caches.emplace_back(key_cache, value_cache);
-  }
 
   // preallocate slots and blocks for the query
-  auto block_tables =
-      torch::arange(0,
-                    num_blocks,
-                    torch::TensorOptions().dtype(torch::kInt).device(device))
-          .unsqueeze(0);
+  auto block_tables = torch::arange(0, num_blocks, torch::kInt).unsqueeze(0);
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -139,8 +113,6 @@ int main(int argc, char* argv[]) {
     if (input.empty()) {
       continue;
     }
-    // reset the random seed for each input
-    torch::manual_seed(1);
 
     std::string output;
     auto tokens_ids = tokenizer.encode(input);
@@ -149,55 +121,50 @@ int main(int argc, char* argv[]) {
     for (int64_t cur_pos = static_cast<int64_t>(tokens_ids.size());
          cur_pos < args.max_seq_len();
          ++cur_pos) {
-      auto tokens = torch::tensor(
-          tokens_ids,
-          torch::TensorOptions().dtype(torch::kLong).device(device));
+      auto tokens = torch::tensor(tokens_ids, torch::kLong);
       auto slice_tokens =
           tokens.slice(/*dim=*/0, /*start=*/prev_pos, /*end=*/cur_pos);
-      torch::Tensor positions = torch::arange(
-          prev_pos,
-          cur_pos,
-          torch::TensorOptions().dtype(torch::kLong).device(device));
+      torch::Tensor positions = torch::arange(prev_pos, cur_pos, torch::kLong);
       llm::InputParameters input_params;
       // manually assign the slot ids and block tables
       input_params.block_tables = block_tables;
-      input_params.slot_ids = torch::arange(
-          prev_pos,
-          cur_pos,
-          torch::TensorOptions().dtype(torch::kInt).device(device));
+      input_params.slot_ids = torch::arange(prev_pos, cur_pos, torch::kInt);
       if (prev_pos == 0) {
         // prefill
         input_params.num_prompt_tokens = cur_pos;
         const std::vector<int32_t> cu_seq_lens = {
             0, static_cast<int32_t>(cur_pos)};
-        input_params.cu_seq_lens =
-            torch::tensor(cu_seq_lens, torch::kInt).to(device);
+        input_params.cu_seq_lens = torch::tensor(cu_seq_lens, torch::kInt);
+        input_params.context_lens = torch::tensor({0}, torch::kInt);
         input_params.max_seq_len = static_cast<int32_t>(cur_pos);
+        input_params.sample_idx = torch::tensor({cur_pos - 1}, torch::kInt);
+        input_params.token_ids =
+            torch::tensor(tokens_ids, torch::kInt).unsqueeze(0);
       } else {
         // generate
         input_params.num_prompt_tokens = 0;
         const std::vector<int32_t> context_lens = {
             static_cast<int32_t>(cur_pos)};
-        input_params.context_lens =
-            torch::tensor(context_lens, torch::kInt).to(device);
+        input_params.cu_seq_lens = torch::tensor({0}, torch::kInt);
+        input_params.context_lens = torch::tensor(context_lens, torch::kInt);
         input_params.max_context_len = static_cast<int32_t>(cur_pos);
+        input_params.sample_idx = torch::tensor({0}, torch::kInt);
+        input_params.token_ids =
+            torch::tensor(tokens_ids, torch::kInt).unsqueeze(0);
       }
+
+      llm::SamplingParameters sampling_params;
+      llm::SamplingParameter param;
+      param.temperature = FLAGS_temperature;
+      param.top_p = FLAGS_top_p;
+      param.seed = 1;
+      sampling_params.add(param);
 
       // run inference
-      const auto logits =
-          transformer(slice_tokens, positions, kv_caches, input_params);
+      const auto output_params = worker.execute_model(
+          slice_tokens, positions, input_params, sampling_params);
 
-      const auto flatten_logits = logits.index({-1});
-      // sample the next token
-      torch::Tensor next_token;
-      if (FLAGS_temperature > 0.0) {
-        const auto logits_scaled = flatten_logits / FLAGS_temperature;
-        const auto probs = torch::softmax(logits_scaled, /*dim=*/-1);
-        next_token = sample_top_p(probs, FLAGS_top_p);
-      } else {
-        next_token = torch::argmax(flatten_logits, /*dim=*/-1);
-      }
-
+      torch::Tensor next_token = output_params.next_tokens;
       const auto flat_tensor = next_token.reshape({-1});
 
       // add the next token to the list of tokens

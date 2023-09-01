@@ -10,8 +10,8 @@ namespace llm {
 class Sampler final {
  public:
   Sampler(const std::vector<bool>& do_sample,
-          const std::vector<int64_t>& seeds,
-          const torch::Device& device = torch::kCPU);
+          const std::vector<uint64_t>& seeds,
+          const torch::Device& device);
 
   torch::Tensor sample(const torch::Tensor& logits) const;
 

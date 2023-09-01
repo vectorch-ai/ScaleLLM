@@ -1,51 +1,54 @@
 #pragma once
 
 #include <torch/torch.h>
+
 #include <vector>
+
 #include "input_parameters.h"
 #include "memory/kv_cache.h"
+#include "models/model_args.h"
+#include "torch_utils/state_dict.h"
 
 namespace llm {
 
-class ICausalLM : public torch::nn::Module {
+// An interface for causal language models that can hold different models.
+class CausalLM : public torch::nn::Module {
  public:
-  ~ICausalLM() override = default;
+  ~CausalLM() override = default;
 
+  // returns logits of shape [num_tokens, vocab_size]
   virtual torch::Tensor forward(const torch::Tensor& tokens,     // [num_tokens]
                                 const torch::Tensor& positions,  // [num_tokens]
                                 std::vector<KVCache>& kv_caches,
-                                const InputParameters& parameters) const = 0;
+                                const InputParameters& parameters) = 0;
+
+  // load the model from the given state_dict
+  virtual void load_state_dict(const StateDict& state_dict) = 0;
+
+  // factory method to create a causal language model
+  static std::unique_ptr<CausalLM> create(const ModelArgs& args,
+                                          const torch::Device& device);
 };
 
-template <typename Model, typename Sampler>
-class CausalLM : public ICausalLM {
+// an template class to hold different models without using virtual functions.
+template <typename Model>
+class CausalLMImpl : public CausalLM {
  public:
-  CausalLM(Model model) : model_(std::move(model)) {}
+  CausalLMImpl(Model model) : model_(std::move(model)) {}
 
   torch::Tensor forward(const torch::Tensor& tokens,     // [num_tokens]
                         const torch::Tensor& positions,  // [num_tokens]
                         std::vector<KVCache>& kv_caches,
-                        const InputParameters& parameters) const override {
-    // get the logits for the next token
-    auto logits = model_.forward(tokens, positions, kv_caches, parameters);
-    // select the logits for the last token of each sequence
-    auto selected_logits = logits.index_select(0, parameters.sample_idx);
-    // call samplers
-    auto output_tokens = sampler_.sample(selected_logits, parameters);
-
-    return torch::Tensor();
+                        const InputParameters& parameters) override {
+    return model_->forward(tokens, positions, kv_caches, parameters);
   }
 
-  // operator() allows us to use the module as a function.
-  template <typename... Args>
-  torch::Tensor operator()(Args&&... args) {
-    return this->forward(::std::forward<Args>(args)...);
+  void load_state_dict(const StateDict& state_dict) override {
+    model_->load_state_dict(state_dict);
   }
 
  private:
   Model model_;
-
-  Sampler sampler_;
-}
+};
 
 }  // namespace llm

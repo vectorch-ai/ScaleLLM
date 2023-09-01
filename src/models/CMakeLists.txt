@@ -3,9 +3,10 @@ cc_library(
     causal_lm
   HDRS 
     causal_lm.h
-  SRCS 
+  SRCS
+    causal_lm.cpp 
   DEPS
-    :layers
+    :llama
     glog::glog
     torch
 )

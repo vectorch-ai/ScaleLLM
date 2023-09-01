@@ -34,6 +34,7 @@ cc_binary(
     :llama
     :tokenizer
     :memory
+    :engine
     :hf_model_downloader
     torch
     gflags::gflags

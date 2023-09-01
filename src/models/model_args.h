@@ -7,7 +7,8 @@ namespace llm {
 
 class ModelArgs {
  public:
-  ModelArgs() = default;
+
+  TORCH_ARG(std::string, model_name);
 
   TORCH_ARG(int64_t, dim) = 4096;
 
@@ -27,6 +28,7 @@ class ModelArgs {
 
   TORCH_ARG(float, norm_eps) = 1e-5;
 
+  // TODO: following two should not be part of model args
   TORCH_ARG(int64_t, max_batch_size) = 32;
 
   TORCH_ARG(int64_t, max_seq_len) = 2048;

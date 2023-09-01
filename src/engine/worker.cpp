@@ -1,84 +1,133 @@
 #include "worker.h"
 
 #include <c10/cuda/CUDAGuard.h>
+#include <folly/Unit.h>
 #include <folly/futures/Future.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "executor.h"
-#include "torch_utils/state_dict.h"
 #include "models/input_parameters.h"
+#include "samplers/logits_processor.h"
+#include "samplers/sampler.h"
+#include "torch_utils/state_dict.h"
 
 namespace llm {
 
-bool Worker::load_state_dict(const StateDict& state_dict) {
-  folly::Promise<bool> promise;
-  auto future = promise.getSemiFuture();
-  executor_.schedule(
-      [this, &state_dict, promise = std::move(promise)]() mutable {
-        // load the model from the given path within the working thread
-        // const bool success = this->load_state_dict(state_dict);
-        promise.setValue(true);
-      });
-  // wait for the model to be loaded
-  future.wait();
-  if (!future.value()) {
-    LOG(ERROR) << "Failed to load model from " << model_path_;
+bool Worker::init(const ModelArgs& args) {
+  // initialize model
+  model_ = CausalLM::create(args, device_);
+
+  // initialize kv caches
+  // calculate cache shapes
+  const auto element_size = torch::tensor({}).element_size();
+  const auto x = 16 / element_size;
+  const int64_t block_size = 8;  // 8 slots per block
+  const int64_t num_heads = args.n_heads();
+  const int64_t head_dim = args.dim() / num_heads;
+  const int64_t num_blocks = args.max_seq_len() / block_size + 1;
+  const std::vector<int64_t> key_cache_shape = {
+      num_blocks, num_heads, static_cast<int64_t>(head_dim / x), block_size, x};
+  const std::vector<int64_t> value_cache_shape = {
+      num_blocks, num_heads, head_dim, block_size};
+
+  // create a KVCache for each layer
+  kv_caches_.reserve(args.n_layers());
+  for (int i = 0; i < args.n_layers(); ++i) {
+    auto key_cache = torch::zeros(key_cache_shape, device_);
+    auto value_cache = torch::zeros(value_cache_shape, device_);
+    kv_caches_.emplace_back(key_cache, value_cache);
   }
-  return future.value();
+
+  return true;
 }
 
-folly::SemiFuture<bool> Worker::execute_model_async(
-    const torch::Tensor& tokens,     // [num_tokens]
-    const torch::Tensor& positions,  // [num_tokens]
-    const InputParameters& parameters) {
-  folly::Promise<bool> promise;
+void Worker::load_state_dict(const StateDict& state_dict) {
+  CHECK(model_ != nullptr);
+  model_->load_state_dict(state_dict);
+}
+
+OutputParameters Worker::execute_model(
+    torch::Tensor tokens,     // [num_tokens]
+    torch::Tensor positions,  // [num_tokens]
+    const InputParameters& params,
+    const SamplingParameters& sampling_params) {
+  torch::DeviceGuard device_guard(device_);
+
+  // all tensors should be on the same device as model
+  tokens = tokens.to(device_);
+  positions = positions.to(device_);
+  InputParameters d_params = params.to(device_);
+
+  // call model forward and return the result
+  auto logits = model_->forward(tokens, positions, kv_caches_, d_params);
+
+  // select logits for each sequence
+  logits = logits.index_select(/*dim=*/0, d_params.sample_idx);
+
+  // create and call logits processors
+  auto logits_processor = LogitsProcessor::create(sampling_params, device_);
+  logits = logits_processor->forward(d_params.token_ids, logits);
+
+  // create and call sampler
+  auto sampler = std::make_unique<Sampler>(
+      sampling_params.do_sample, sampling_params.seeds, device_);
+  auto next_tokens = sampler->sample(logits);
+
+  // prepare output parameters
+  OutputParameters output_params;
+  output_params.next_tokens = next_tokens;
+  return output_params;
+}
+
+folly::SemiFuture<OutputParameters> Worker::execute_model_async(
+    torch::Tensor tokens,     // [num_tokens]
+    torch::Tensor positions,  // [num_tokens]
+    const InputParameters& params,
+    const SamplingParameters& sampling_params) {
+  folly::Promise<OutputParameters> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule([this,
-                      tokens,
-                      positions,
-                      parameters,
+                      tokens = tokens,
+                      positions = positions,
+                      parameters = params,
+                      sampling_params = sampling_params,
                       promise = std::move(promise)]() mutable {
     // run the model on the given input in working thread
-    this->execute_model(tokens, positions, parameters);
-    promise.setValue(true);
+    const auto output =
+        this->execute_model(tokens, positions, parameters, sampling_params);
+    promise.setValue(output);
   });
   return future;
 }
 
 // initialize model, cache manager. async call
-folly::SemiFuture<bool> Worker::init_async() {
+folly::SemiFuture<bool> Worker::init_async(const ModelArgs& args) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
-  executor_.schedule([this, promise = std::move(promise)]() mutable {
-    // initialize model and cache manager within the working thread
-    const bool success = this->init();
-    promise.setValue(success);
-  });
+  executor_.schedule(
+      [this, &args = args, promise = std::move(promise)]() mutable {
+        const bool success = this->init(args);
+        promise.setValue(success);
+      });
   return future;
 }
 
-void Worker::execute_model(const torch::Tensor& tokens,     // [num_tokens]
-                           const torch::Tensor& positions,  // [num_tokens]
-                           const InputParameters& parameters) const {
-  // all tensors should be on the same device as model
-  auto d_tokens = tokens.to(device_);
-  auto d_positions = positions.to(device_);
-
-  // call model forward and return the result
-}
-
-bool Worker::init() {
-  if (device_.is_cuda()) {
-    // set device for the working thread. the cuda runtime API is thread safe.
-    // it maintains a thread local state for each thread.
-    // just need to set once for each working thread.
-    at::cuda::set_device(device_.index());
-  }
-
-  return true;
+folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
+    const StateDict& state_dict) {
+  folly::Promise<folly::Unit> promise;
+  auto future = promise.getSemiFuture();
+  executor_.schedule(
+      [this, &state_dict = state_dict, promise = std::move(promise)]() mutable {
+        // load the model weights from state_dict within the working thread
+        this->load_state_dict(state_dict);
+        promise.setValue();
+      });
+  return future;
 }
 
 }  // namespace llm

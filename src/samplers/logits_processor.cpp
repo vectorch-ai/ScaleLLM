@@ -2,10 +2,57 @@
 
 #include <torch/torch.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
 namespace llm {
-// TODO: add a constructor that takes args and creates the logits processor list
+std::unique_ptr<LogitsProcessor> LogitsProcessor::create(
+    const SamplingParameters& params,
+    const torch::Device& device) {
+  std::vector<std::unique_ptr<LogitsProcessor>> processors;
+
+  // construct logits processors based on the given parameters
+  // always try to skip creating a processor if possible
+  if (std::any_of(params.frequency_penalties.begin(),
+                  params.frequency_penalties.end(),
+                  [](float t) { return t != 0.0; }) ||
+      std::any_of(params.presence_penalties.begin(),
+                  params.presence_penalties.end(),
+                  [](float t) { return t != 0.0; })) {
+    processors.push_back(
+        std::make_unique<FrequencyPresencePenaltyLogitsProcessor>(
+            params.frequency_penalties, params.presence_penalties, device));
+  }
+  if (std::any_of(params.repetition_penalties.begin(),
+                  params.repetition_penalties.end(),
+                  [](float t) { return t != 1.0; })) {
+    processors.push_back(
+        std::make_unique<RepetitionPenaltyLogitsProcessor>(
+            params.repetition_penalties, device));
+  }
+  if (std::any_of(params.temperatures.begin(),
+                  params.temperatures.end(),
+                  [](float t) { return t != 1.0; })) {
+    processors.push_back(std::make_unique<TemperatureLogitsProcessor>(
+        params.temperatures, device));
+  }
+
+  if (std::any_of(params.top_k.begin(), params.top_k.end(), [](int64_t t) {
+        return t != 0;
+      })) {
+    processors.push_back(
+        std::make_unique<TopKLogitsProcessor>(params.top_k, device));
+  }
+
+  if (std::any_of(params.top_p.begin(), params.top_p.end(), [](float t) {
+        return t != 1.0;
+      })) {
+    processors.push_back(
+        std::make_unique<TopPLogitsProcessor>(params.top_p, device));
+  }
+
+  return std::make_unique<LogitsProcessorList>(std::move(processors));
+}
 
 }  // namespace llm

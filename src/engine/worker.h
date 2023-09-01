@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "executor.h"
+#include "models/causal_lm.h"
 #include "models/input_parameters.h"
 #include "torch_utils/state_dict.h"
 
@@ -15,56 +16,51 @@ namespace llm {
 
 class Worker final {
  public:
-  Worker(std::string model_path, uint32_t rank)
-      : model_path_(std::move(model_path)) {}
+  Worker(const torch::Device& device) : device_(device) {}
 
   ~Worker() = default;
 
-  // Load the model from the given path. blocking call
+  // initialize model, cache manager. blocking call
+  bool init(const ModelArgs& args);
+
+  // Load the model weights from state_dict. blocking call
   // can be called multiple times to reload the model with different parameters
-  bool load_state_dict(const StateDict& state_dict);
-
-  // Run the model on the given input. async call
-  // input contains prefill and generate requests with the following format:
-  // tokens: tokens from all input sequences concatenated together to 1D tensor
-  //          [s0_0, s0_1, s0_2, s1_*, s2_*, ..., sN_*, | g0, g1, g2, ..., gM]
-  // positions: the position of the tokens in the sequence
-  //          [0,    1,   2,     0..., 0..., ...,  0...,| 3,  2,   8, ..., 10]
-  // input parameters:
-  folly::SemiFuture<bool> execute_model_async(
-      const torch::Tensor& tokens,     // [num_tokens]
-      const torch::Tensor& positions,  // [num_tokens]
-      const InputParameters& parameters);
-
-  // initialize model, cache manager. async call
-  folly::SemiFuture<bool> init_async();
+  void load_state_dict(const StateDict& state_dict);
 
   // Run the model on the given input. blocking call
-  void execute_model(
-      const torch::Tensor& tokens,     // [num_tokens]
-      const torch::Tensor& positions,  // [num_tokens]
-      const InputParameters& parameters) const;
+  OutputParameters execute_model(torch::Tensor tokens,     // [num_tokens]
+                                 torch::Tensor positions,  // [num_tokens]
+                                 const InputParameters& params,
+                                 const SamplingParameters& sampling_params);
 
-  // initialize model, cache manager. blocking call
-  bool init();
+  // initialize model, cache manager. async call
+  folly::SemiFuture<bool> init_async(const ModelArgs& args);
+
+  // Load the model weights from state_dict. async call
+  // the future returns a successfull status with no meaningful value
+  folly::SemiFuture<folly::Unit> load_state_dict_async(
+      const StateDict& state_dict);
+
+  // Run the model on the given input. async call
+  // the future returns a successfull status with no meaningful value
+  folly::SemiFuture<OutputParameters> execute_model_async(
+      torch::Tensor tokens,     // [num_tokens]
+      torch::Tensor positions,  // [num_tokens]
+      const InputParameters& params,
+      const SamplingParameters& sampling_params);
 
  private:
-  // model path
-  std::string model_path_;
-
   // working thread
   Executor executor_;
 
   // device to run the model on
-  torch::Device device_{"cpu"};
+  torch::Device device_;
 
-  // cache manager
-  // std::unique_ptr<CacheManager> cache_manager_;
+  // kv caches
+  std::vector<llm::KVCache> kv_caches_;
 
   // model
-  // std::unique_ptr<Transformer> model_;
-
-  // sampler: together with model to reduce transfer overhead
+  std::unique_ptr<CausalLM> model_;
 };
 
 }  // namespace llm

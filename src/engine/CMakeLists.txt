@@ -18,6 +18,8 @@ cc_library(
     :request
     :torch_utils
     :causal_lm
+    :logits_processor
+    :sampler
     glog::glog
     Folly::folly
     absl::synchronization
@@ -28,6 +30,7 @@ cc_test(
     engine_test
   SRCS
     executor_test.cpp
+    worker_test.cpp
   DEPS
     :engine
     absl::time

@@ -10,6 +10,8 @@
 #include <tuple>
 #include <vector>
 
+#include "models/input_parameters.h"
+
 namespace llm {
 
 // supported logits processors:
@@ -41,6 +43,29 @@ class LogitsProcessor {
   torch::Tensor operator()(Args&&... args) {
     return this->forward(::std::forward<Args>(args)...);
   }
+
+  // factory method to create a logits processor
+  static std::unique_ptr<LogitsProcessor> create(
+      const SamplingParameters& params,
+      const torch::Device& device);
+};
+
+class LogitsProcessorList : public LogitsProcessor {
+ public:
+  LogitsProcessorList(std::vector<std::unique_ptr<LogitsProcessor>> processors)
+      : processors_(std::move(processors)) {}
+
+  torch::Tensor forward(const torch::Tensor& token_ids,
+                        const torch::Tensor& logits) const override {
+    torch::Tensor output = logits;
+    for (const auto& processor : processors_) {
+      output = processor->forward(token_ids, output);
+    }
+    return output;
+  }
+
+ private:
+  std::vector<std::unique_ptr<LogitsProcessor>> processors_;
 };
 
 // https://platform.openai.com/docs/api-reference/parameter-details
