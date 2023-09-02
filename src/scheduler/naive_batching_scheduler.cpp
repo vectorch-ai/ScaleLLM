@@ -1,7 +1,7 @@
 #include "naive_batching_scheduler.h"
 
-#include <absl/time/time.h>
 #include <absl/time/clock.h>
+#include <absl/time/time.h>
 #include <folly/MPMCQueue.h>
 
 #include <cstdint>
@@ -86,7 +86,8 @@ bool NaiveBatchingScheduler::is_batch_finished() {
 void NaiveBatchingScheduler::step(const absl::Duration& /*timeout*/) {
   // check if all requests in the batch have been fulfilled
   if (!is_batch_finished()) {
-    return engine_->forward(batch_);
+    engine_->execute_model(batch_);
+    return;
   }
 
   // process finished requests
@@ -100,7 +101,7 @@ void NaiveBatchingScheduler::step(const absl::Duration& /*timeout*/) {
 
   // get a new batch of requests
   batch_ = get_batch(absl::Milliseconds(max_batch_delay_ns_));
-  engine_->forward(batch_);
+  engine_->execute_model(batch_);
 }
 
 }  // namespace llm

@@ -1,8 +1,13 @@
 #pragma once
 
-#include "worker.h"
-#include "request/request.h"
+#include <ATen/core/TensorBody.h>
 
+#include <memory>
+
+#include "request/request.h"
+#include "tokenizer/tokenizer.h"
+#include "worker.h"
+#include "models/input_parameters.h"
 
 namespace llm {
 
@@ -26,14 +31,28 @@ class Engine {
 
   virtual ~Engine() = default;
 
-  bool init(const ModelArgs& args, const std::string& model_weights_path);
+  bool init(const std::string& model_weights_path,
+            const std::string& tokenizer_path);
 
   // step the engine forward by one step with the batch
-  void forward(const std::vector<Request*>& batch);
+  OutputParameters execute_model(const std::vector<Request*>& batch);
+
+  const Tokenizer* tokenizer() const { return tokenizer_.get(); }
+
+  const ModelArgs& model_args() const { return args_; }
 
  private:
+  std::tuple<torch::Tensor, torch::Tensor, InputParameters, SamplingParameters>
+  prepare_inputs(const std::vector<Request*>& batch);
+
   // a list of workers, with each worker handling a partial of model
   std::vector<std::unique_ptr<Worker>> workers_;
+
+  // tokenizer
+  std::unique_ptr<Tokenizer> tokenizer_;
+
+  // model args
+  ModelArgs args_;
 };
 
 }  // namespace llm

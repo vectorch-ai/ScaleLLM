@@ -236,12 +236,14 @@ void single_token_masked_self_attention_cuda(
 
   // prepare kv_head_mapping
   // TODO: move it to outside of the function
-  const auto num_group = num_heads / num_kv_heads;
   auto kv_head_mapping = torch::arange(
       0,
       num_kv_heads,
       torch::TensorOptions().dtype(torch::kInt).device(query.device()));
-  kv_head_mapping = kv_head_mapping.repeat_interleave(num_group);
+  const auto num_group = num_heads / num_kv_heads;
+  if (num_group > 1) {
+    kv_head_mapping = kv_head_mapping.repeat_interleave(/*repeats=*/num_group);
+  }
 
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   // make a 'copy' of variable since the api is using non-const reference

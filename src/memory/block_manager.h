@@ -9,9 +9,10 @@
 namespace llm {
 class Request;
 
+// TODO: move this into scheduler
 class BlockManager final {
  public:
-  BlockManager(uint32_t num_blocks, uint32_t block_size);
+  BlockManager(uint32_t num_blocks, int32_t block_size);
 
   // try to allocat slots for the request
   bool allocate_slots_for_request(Request* request);
@@ -22,7 +23,7 @@ class BlockManager final {
 
  private:
   // number of slots per block
-  uint32_t slots_per_block_ = 0;
+  int32_t slots_per_block_ = 0;
 
   // the block allocator that manages the memory blocks
   BlockAllocator block_allocator_;

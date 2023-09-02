@@ -5,11 +5,13 @@ cc_library(
   NAME 
     engine
   HDRS
+    utils.h
     concurrent_queue.h
     executor.h
     worker.h
     engine.h
   SRCS
+    utils.cpp
     executor.cpp 
     worker.cpp
     engine.cpp
@@ -20,6 +22,7 @@ cc_library(
     :causal_lm
     :logits_processor
     :sampler
+    :tokenizer
     glog::glog
     Folly::folly
     absl::synchronization

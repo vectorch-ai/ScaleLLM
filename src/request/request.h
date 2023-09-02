@@ -37,6 +37,17 @@ enum class RequestStatus {
 // The higher the priority, the sooner the request is processed.
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
+struct SamplingParameter {
+  float frequency_penalty = 0.0;
+  float presence_penalty = 0.0;
+  float repetition_penalty = 1.0;
+  float temperature = 1.0;
+  float top_p = 1.0;
+  int64_t top_k = 0;
+  bool do_sample = false;
+  uint64_t seed = 0;
+};
+
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
 // container, holding essential data, such as input parameters, configuration
@@ -46,10 +57,11 @@ struct Request {
   // The unique id of the request.
   uint64_t request_id = 0;
 
-
-
   // list of sequences to generate completions for the prompt
   std::vector<Sequence> sequences;
+
+  // sampling parameters
+  SamplingParameter sampling_param;
 
   // the maximum number of tokens to generate.
   int max_tokens = 0;

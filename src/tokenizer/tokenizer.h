@@ -26,6 +26,8 @@ class Tokenizer {
   virtual std::vector<int> encode(const std::string_view& text) const = 0;
 
   virtual std::string decode(const std::vector<int>& tokens) const = 0;
+
+  virtual size_t vocab_size() const = 0;
 };
 
 }  // namespace llm

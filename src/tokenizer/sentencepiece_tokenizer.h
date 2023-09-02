@@ -15,7 +15,7 @@ class SentencePieceTokenizer : public Tokenizer {
 
   std::string decode(const std::vector<int>& ids) const override;
 
-  int n_words() const { return sp_processor_.GetPieceSize(); }
+  size_t vocab_size() const override { return sp_processor_.GetPieceSize(); }
 
   int unk_id() const { return sp_processor_.unk_id(); }
 

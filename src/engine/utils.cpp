@@ -1,0 +1,117 @@
+#include "utils.h"
+
+#include <torch/torch.h>
+
+#include <vector>
+
+#include "models/input_parameters.h"
+#include "request/request.h"
+
+namespace llm {
+
+void Utils::prepare_inputs(const std::vector<Request*>& batch,
+                           torch::Tensor* input_token_ids,
+                           torch::Tensor* input_positions,
+                           InputParameters* input_params,
+                           SamplingParameters* sampling_params) {
+  std::vector<int32_t> flat_tokens;
+  std::vector<int32_t> flat_positions;
+  std::vector<int32_t> sample_idx;
+  std::vector<std::vector<int32_t>> token_ids;
+  int32_t max_num_tokens = 0;
+
+  // process prefill requests
+  int32_t num_prompt_tokens = 0;
+  int32_t max_seq_len = 0;
+  std::vector<int32_t> cu_seq_lens = {0};
+  std::vector<int32_t> slot_ids;
+  for (const auto& request : batch) {
+    for (const auto& sequence : request->sequences) {
+      if (!sequence.is_prefill()) {
+        continue;
+      }
+      const int32_t num_tokens =
+          static_cast<int32_t>(sequence.token_ids.size());
+      max_num_tokens = std::max(max_num_tokens, num_tokens);
+      token_ids.push_back(sequence.token_ids);
+      for (int32_t i = 0; i < num_tokens; ++i) {
+        flat_tokens.push_back(sequence.token_ids[i]);
+        flat_positions.push_back(i);
+      }
+
+      num_prompt_tokens += num_tokens;
+      max_seq_len = std::max(max_seq_len, num_tokens);
+      cu_seq_lens.push_back(num_prompt_tokens);
+      sampling_params->add(request->sampling_param);
+      // only sample against the last token of the prompt
+      sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
+
+      // assign slot ids for each token
+      const auto slots = sequence.slots();
+      slot_ids.insert(slot_ids.end(), slots.begin(), slots.end());
+    }
+  }
+
+  // process decode requests
+  int32_t max_context_len = 0;
+  std::vector<int32_t> context_lens;
+  std::vector<std::vector<int32_t>> block_tables;
+  int32_t max_block_table_len = 0;
+  for (const auto& request : batch) {
+    for (const auto& sequence : request->sequences) {
+      if (sequence.is_prefill()) {
+        continue;
+      }
+      const int32_t num_tokens =
+          static_cast<int32_t>(sequence.token_ids.size());
+      max_num_tokens = std::max(max_num_tokens, num_tokens);
+      token_ids.push_back(sequence.token_ids);
+
+      flat_tokens.push_back(sequence.token_ids.back());
+      flat_positions.push_back(num_tokens - 1);
+      context_lens.push_back(num_tokens);
+      max_context_len = std::max(max_context_len, num_tokens);
+      sampling_params->add(request->sampling_param);
+      sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
+      block_tables.push_back(sequence.blocks);
+      max_block_table_len = std::max(
+          max_block_table_len, static_cast<int32_t>(sequence.blocks.size()));
+
+      slot_ids.push_back(sequence.last_slot_id());
+    }
+  }
+
+  using torch::indexing::Slice;
+  // padding token ids to the same length
+  auto token_ids_tensor = torch::empty(
+      {static_cast<int64_t>(token_ids.size()), max_num_tokens}, torch::kInt);
+  for (int64_t i = 0; i < token_ids.size(); ++i) {
+    auto& ids = token_ids[i];
+    ids.resize(max_num_tokens, /*pad_id=*/0);
+    token_ids_tensor.index_put_({i, Slice()}, torch::tensor(ids, torch::kInt));
+  }
+  auto block_tables_tensor = torch::empty(
+      {static_cast<int64_t>(block_tables.size()), max_block_table_len},
+      torch::kInt);
+  for (int64_t i = 0; i < block_tables.size(); ++i) {
+    auto& block_table = block_tables[i];
+    block_table.resize(max_block_table_len, /*pad_id=*/0);
+    block_tables_tensor.index_put_({i, Slice()},
+                                   torch::tensor(block_table, torch::kInt));
+  }
+
+  *input_token_ids = torch::tensor(flat_tokens, torch::kInt);
+  *input_positions = torch::tensor(flat_positions, torch::kInt);
+
+  input_params->num_prompt_tokens = num_prompt_tokens;
+  input_params->max_seq_len = max_seq_len;
+  input_params->max_context_len = max_context_len;
+  input_params->cu_seq_lens = torch::tensor(cu_seq_lens, torch::kInt);
+  input_params->slot_ids = torch::tensor(slot_ids, torch::kInt);
+  input_params->block_tables = block_tables_tensor;
+  input_params->context_lens = torch::tensor(context_lens, torch::kInt);
+  input_params->sample_idx = torch::tensor(sample_idx, torch::kInt);
+  input_params->token_ids = token_ids_tensor;
+}
+
+}  // namespace llm

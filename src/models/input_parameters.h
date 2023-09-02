@@ -1,13 +1,13 @@
 #pragma once
 
 #include <torch/torch.h>
+#include <request/request.h>
 
 namespace llm {
 // input parameters for the model that encapsulates all the necessary
 // information required to process a batch efficiently, mainly for
 // self-attention and kv-cache.
 struct InputParameters {
-
   InputParameters to(const torch::Device& device) const {
     InputParameters params;
     params.num_prompt_tokens = num_prompt_tokens;
@@ -64,18 +64,6 @@ struct InputParameters {
   // used in logit processor to calculate frequency of each token
   // [num_seq (num_prompt_seq + num_decode_seq), max_tokens_len]
   torch::Tensor token_ids;
-};
-
-// TODO: move to a better place
-struct SamplingParameter {
-  float frequency_penalty = 0.0;
-  float presence_penalty = 0.0;
-  float repetition_penalty = 1.0;
-  float temperature = 1.0;
-  float top_p = 1.0;
-  int64_t top_k = 0;
-  bool do_sample = false;
-  uint64_t seed = 0;
 };
 
 struct SamplingParameters {

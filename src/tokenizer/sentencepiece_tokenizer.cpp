@@ -7,7 +7,8 @@ namespace llm {
 SentencePieceTokenizer::SentencePieceTokenizer(const std::string& model_path) {
   const auto status = sp_processor_.Load(model_path);
   if (!status.ok()) {
-    LOG(FATAL) << "Failed to load SentencePiece model: " << status.ToString();
+    LOG(FATAL) << "Failed to load SentencePiece model from " << model_path
+               << ": " << status.ToString() << ", error " << status.ToString();
   }
 }
 
