@@ -11,16 +11,25 @@
       "version>=": "1.8.0"
     },
     {
+      "name": "protobuf",
+      "version>=": "3.21.12"
+    },
+    {
+      "name": "folly",
+      "version>=": "2023.05.22.00",
+      "default-features": false
+    },
+    {
+      "name": "gflags",
+      "version>=": "2.2.2#7"
+    },
+    {
       "name": "gtest",
       "version>=": "1.13.0"
     },
     {
       "name": "glog",
       "version>=": "0.6.0#2"
-    },
-    {
-      "name": "protobuf",
-      "version>=": "3.21.12"
     },
     {
       "name": "grpc",
@@ -30,11 +39,6 @@
     {
       "name": "sentencepiece",
       "version>=": "0.1.97"
-    },
-    {
-      "name": "folly",
-      "version>=": "2023.05.22.00",
-      "default-features": false
     },
     {
       "name": "prometheus-cpp",

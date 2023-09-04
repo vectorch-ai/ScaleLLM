@@ -21,6 +21,8 @@ cc_library(
   SRCS 
     grpc_server.cpp
   DEPS
+    absl::strings
+    glog::glog
     grpc_proto::completion
 )
 
@@ -30,15 +32,20 @@ cc_binary(
   SRCS 
     simple.cpp
   DEPS
-    :torch_utils
-    :llama
-    :tokenizer
-    :memory
     :engine
-    :hf_model_downloader
-    :model_args
-    :model_loader
     torch
     gflags::gflags
     glog::glog
+)
+
+cc_binary(
+  NAME 
+    scalellm
+  SRCS 
+    main.cpp
+  DEPS
+    :grpc_server
+    gflags::gflags
+    glog::glog
+    Folly::folly
 )

@@ -28,30 +28,34 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# libtorch requires python headers
-find_package(Python REQUIRED COMPONENTS Development)
-find_package(Torch REQUIRED 
-             HINTS ${CMAKE_CURRENT_SOURCE_DIR}/libtorch)
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
-
+find_package(Threads REQUIRED)
 # find all dependencies from vcpkg
 find_package(glog CONFIG REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
-find_package(Protobuf REQUIRED)
+find_package(protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(folly CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(SentencePiece REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+# libtorch requires python headers
+find_package(Python REQUIRED COMPONENTS Development)
 
 find_package(Jemalloc)
 if(Jemalloc_FOUND)
   message(STATUS "jemalloc found, linking to jemalloc")
   link_libraries(Jemalloc::jemalloc)
 endif()
+
+# Important Note: Always invoke find_package for other dependencies
+# before including libtorch, as doing so afterwards may lead to
+# unexpected linker errors.
+find_package(Torch REQUIRED 
+             HINTS ${CMAKE_CURRENT_SOURCE_DIR}/libtorch)
+# carry over torch flags to the rest of the project
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 # enable testing in this directory so we can do a top-level `make test`.
 # this also includes the BUILD_TESTING option, which is on by default.
