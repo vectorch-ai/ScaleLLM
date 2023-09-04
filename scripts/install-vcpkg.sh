@@ -14,7 +14,7 @@ if [[ -d "$VCPKG_DIR" ]]; then
 else
     echo ".vcpkg folder does not exist. Cloning Vcpkg into $VCPKG_DIR"
     # install Vcpkg
-    git clone -b 2023.06.20 https://github.com/Microsoft/vcpkg.git ${VCPKG_DIR}
+    git clone -b 2023.08.09 https://github.com/Microsoft/vcpkg.git ${VCPKG_DIR}
 fi
 
 # bootstrap Vcpkg
