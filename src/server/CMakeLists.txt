@@ -49,3 +49,15 @@ cc_binary(
     glog::glog
     Folly::folly
 )
+
+cc_binary(
+  NAME 
+    grpc_client
+  HDRS 
+  SRCS 
+    grpc_client.cpp
+  DEPS
+    glog::glog
+    gflags::gflags
+    grpc_proto::completion
+)
