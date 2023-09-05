@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "completion.grpc.pb.h"
+#include "completion_handler.h"
 
 namespace llm {
 
@@ -17,7 +18,8 @@ class GrpcServer final {
     int32_t port = 8888;
   };
 
-  GrpcServer() = default;
+  GrpcServer(std::unique_ptr<CompletionHandler> completion_handler)
+      : completion_handler_(std::move(completion_handler)) {}
 
   ~GrpcServer();
 
@@ -27,6 +29,9 @@ class GrpcServer final {
 
  private:
   void handle_rpcs();
+
+  // handler for completion requests
+  std::unique_ptr<CompletionHandler> completion_handler_;
 
   // registed service
   Completion::AsyncService service_;

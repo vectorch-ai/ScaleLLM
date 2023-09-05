@@ -12,8 +12,8 @@ int main(int argc, char** argv) {
   // glog and glfag will be initialized in folly::init
   folly::Init init(&argc, &argv);
 
-  GrpcServer server;
-
+  auto completion_handler = std::make_unique<CompletionHandler>();
+  GrpcServer server(std::move(completion_handler));
   GrpcServer::Options options;
   options.address = "localhost";
   options.port = 8888;

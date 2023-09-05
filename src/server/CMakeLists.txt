@@ -15,12 +15,26 @@ cc_library(
 
 cc_library(
   NAME 
+    completion_handler
+  HDRS 
+    call_data.h
+    completion_handler.h
+  SRCS 
+    completion_handler.cpp
+  DEPS
+    glog::glog
+    grpc_proto::completion
+)
+
+cc_library(
+  NAME 
     grpc_server
   HDRS 
     grpc_server.h
   SRCS 
     grpc_server.cpp
   DEPS
+    :completion_handler
     absl::strings
     glog::glog
     grpc_proto::completion
