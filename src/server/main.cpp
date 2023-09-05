@@ -10,7 +10,7 @@ using namespace llm;
 
 int main(int argc, char** argv) {
   // glog and glfag will be initialized in folly::init
-  folly::init(&argc, &argv);
+  folly::Init init(&argc, &argv);
 
   GrpcServer server;
 

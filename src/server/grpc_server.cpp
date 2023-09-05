@@ -4,6 +4,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <memory>
+#include <thread>
 
 namespace llm {
 
@@ -31,6 +32,17 @@ class CallData {
       // The actual processing.
       // TODO: send the request to processor
       // OnNewRequest(this);
+      std::thread([this]() {
+        const std::string& prompt = this->request_.prompt();
+        for (int i = 0; i < 1000; ++i) {
+          Response response;
+          auto* choice = response.add_choices();
+          const std::string text = prompt + std::to_string(i);
+          choice->set_text(text);
+          write(response);
+        }
+        finish();
+      }).detach();
     }
 
     if (done_) {

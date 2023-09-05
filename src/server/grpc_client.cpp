@@ -40,10 +40,11 @@ class ChatClient final {
 
     CompletionResponse message;
     while (reader->Read(&message)) {
+      // LOG(ERROR) << "got response: " << message.DebugString();
       // pretty print the response
       for (const auto& choice : message.choices()) {
-        LOG(INFO) << choice.DebugString();
-        // std::cout << choice.text() << std::endl;
+        // LOG(INFO) << choice.DebugString();
+        std::cout << choice.text();
       }
     }
 
