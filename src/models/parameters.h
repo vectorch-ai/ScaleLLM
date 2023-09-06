@@ -66,65 +66,20 @@ struct InputParameters {
   torch::Tensor token_ids;
 };
 
-struct SamplingParameters {
-  void add(const SamplingParameter& p) {
-    frequency_penalties.push_back(p.frequency_penalty);
-    presence_penalties.push_back(p.presence_penalty);
-    repetition_penalties.push_back(p.repetition_penalty);
-    temperatures.push_back(p.temperature);
-    top_p.push_back(p.top_p);
-    top_k.push_back(p.top_k);
-    seeds.push_back(p.seed);
-
-    // need to do sample if any of following is true
-    // * do_sample = true (from user input)
-    // * temperature != 0.0
-    // * top_p != 1.0 (default)
-    // * top_k != 0 (default)
-    const bool sample =
-        p.do_sample || p.temperature != 0.0 || p.top_p != 1.0 || p.top_k != 0;
-    do_sample.push_back(sample);
-  }
-
-  // following are used for sampling, with shape [num_request]
-  // default = 0.0
-  std::vector<float> frequency_penalties;
-
-  // default = 0.0
-  std::vector<float> presence_penalties;
-
-  // default = 1.0
-  std::vector<float> repetition_penalties;
-
-  // default = 0.0
-  std::vector<float> temperatures;
-
-  // default = 1.0
-  std::vector<float> top_p;
-
-  // default = 0
-  std::vector<int64_t> top_k;
-
-  // need to be set to true if any of following is true
-  // * do_sample = true (from user input)
-  // * temperature != 0.0
-  // * top_p != 1.0 (default)
-  // * top_k != 0 (default)
-  std::vector<bool> do_sample;
-
-  // default = 0, use global generator
-  std::vector<uint64_t> seeds;
-};
-
 // output parameters for the model that encapsulates all the necessary
 // output information. The output parameters should be as small as possible
 // to avoid transferring large tensors between host and device.
 struct OutputParameters {
+  // rerang the next tokens and next logprob according to the seq_idx
+  void index_select(const torch::Tensor& seq_idx) {
+    next_tokens = next_tokens.index_select(/*dim=*/0, seq_idx);
+    // next_logprob = next_logprob.index_select(/*dim=*/0, seq_idx);
+  }
   // [num_seq]
   torch::Tensor next_tokens;
 
   // [num_seq]
-  torch::Tensor next_logprob;
+  // torch::Tensor next_logprob;
 };
 
 }  // namespace llm

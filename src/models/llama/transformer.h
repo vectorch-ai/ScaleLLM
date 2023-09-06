@@ -7,8 +7,8 @@
 #include "layers/linear.h"
 #include "layers/norm.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
+#include "models/parameters.h"
 #include "transformer_block.h"
 
 // port LLAMA's model to C++ API:

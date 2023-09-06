@@ -86,7 +86,7 @@ bool NaiveBatchingScheduler::is_batch_finished() {
 void NaiveBatchingScheduler::step(const absl::Duration& /*timeout*/) {
   // check if all requests in the batch have been fulfilled
   if (!is_batch_finished()) {
-    engine_->execute_model(batch_);
+    // engine_->execute_model(batch_);
     return;
   }
 
@@ -101,7 +101,7 @@ void NaiveBatchingScheduler::step(const absl::Duration& /*timeout*/) {
 
   // get a new batch of requests
   batch_ = get_batch(absl::Milliseconds(max_batch_delay_ns_));
-  engine_->execute_model(batch_);
+  // engine_->execute_model(batch_);
 }
 
 }  // namespace llm

@@ -4,10 +4,10 @@
 
 #include <vector>
 
-#include "input_parameters.h"
 #include "memory/kv_cache.h"
 #include "models/llama/transformer.h"
 #include "models/model_args.h"
+#include "parameters.h"
 #include "torch_utils/state_dict.h"
 
 namespace llm {
@@ -18,7 +18,8 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
   llm::Transformer transformer(args, /*world_size=*/1, device);
   // set the module in evaluation/inference mode
   transformer->eval();
-  return std::make_unique<llm::CausalLMImpl<llm::Transformer>>(std::move(transformer));
+  return std::make_unique<llm::CausalLMImpl<llm::Transformer>>(
+      std::move(transformer));
 }
 
 }  // namespace llm

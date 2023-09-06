@@ -8,7 +8,7 @@
 
 #include "executor.h"
 #include "models/causal_lm.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 #include "torch_utils/state_dict.h"
 
 namespace llm {

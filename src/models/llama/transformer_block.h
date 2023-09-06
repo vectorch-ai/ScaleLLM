@@ -5,9 +5,9 @@
 #include "attention.h"
 #include "feedforward.h"
 #include "layers/norm.h"
-#include "models/input_parameters.h"
-#include "models/model_args.h"
 #include "memory/kv_cache.h"
+#include "models/model_args.h"
+#include "models/parameters.h"
 
 namespace llm {
 
@@ -19,7 +19,8 @@ class TransformerBlockImpl : public torch::nn::Module {
                        const torch::Device& device)
       : world_size_(world_size) {
     // register submodules
-    attention_ = register_module("attention", Attention(args, world_size, device));
+    attention_ =
+        register_module("attention", Attention(args, world_size, device));
     feed_forward_ = register_module("feed_forward",
                                     FeedForward(/*dim=*/args.dim(),
                                                 /*hidden_dim=*/4 * args.dim(),
@@ -27,10 +28,10 @@ class TransformerBlockImpl : public torch::nn::Module {
                                                 args.ffn_dim_multiplier(),
                                                 world_size,
                                                 device));
-    attention_norm_ =
-        register_module("attention_norm", RMSNorm(args.dim(), args.norm_eps(), device));
-    ffn_norm_ =
-        register_module("ffn_norm", RMSNorm(args.dim(), args.norm_eps(), device));
+    attention_norm_ = register_module(
+        "attention_norm", RMSNorm(args.dim(), args.norm_eps(), device));
+    ffn_norm_ = register_module("ffn_norm",
+                                RMSNorm(args.dim(), args.norm_eps(), device));
   }
 
   torch::Tensor forward(torch::Tensor x,

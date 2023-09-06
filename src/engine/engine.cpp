@@ -71,21 +71,27 @@ bool Engine::init(const std::string& model_weights_path,
   return true;
 }
 
-OutputParameters Engine::execute_model(const std::vector<Request*>& batch) {
+OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   // prepare inputs for workers
   torch::Tensor input_token_ids;
   torch::Tensor input_positions;
+  // track the sequence indices in the batch
+  torch::Tensor seq_indices;
   InputParameters input_params;
   SamplingParameters sampling_params;
   Utils::prepare_inputs(batch,
                         &input_token_ids,
                         &input_positions,
+                        &seq_indices,
                         &input_params,
                         &sampling_params);
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
-    return workers_[0]->execute_model(
+    auto output = workers_[0]->execute_model(
         input_token_ids, input_positions, input_params, sampling_params);
+    // mapping outout back to the original request order in the batch
+    output.index_select(seq_indices);
+    return output;
   }
   
   std::vector<folly::SemiFuture<OutputParameters>> futures;
@@ -97,9 +103,10 @@ OutputParameters Engine::execute_model(const std::vector<Request*>& batch) {
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
   // return the result from the first worker
-  return results[0].value();
-  //TODO: mapping back to the original request in the batch
-  
+  auto output = results[0].value();
+  // mapping output back to the original request order in the batch
+  output.index_select(seq_indices);
+  return output;
 }
 
 }  // namespace llm

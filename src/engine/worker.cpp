@@ -1,5 +1,6 @@
 #include "worker.h"
 
+#include <c10/core/Device.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <folly/Unit.h>
 #include <folly/futures/Future.h>
@@ -11,7 +12,7 @@
 #include <utility>
 
 #include "executor.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 #include "samplers/logits_processor.h"
 #include "samplers/sampler.h"
 #include "torch_utils/state_dict.h"
@@ -58,6 +59,8 @@ OutputParameters Worker::execute_model(
     const SamplingParameters& sampling_params) {
   torch::DeviceGuard device_guard(device_);
 
+  torch::Device input_device = tokens.device();
+
   // all tensors should be on the same device as model
   tokens = tokens.to(device_);
   positions = positions.to(device_);
@@ -80,7 +83,7 @@ OutputParameters Worker::execute_model(
 
   // prepare output parameters
   OutputParameters output_params;
-  output_params.next_tokens = next_tokens;
+  output_params.next_tokens = next_tokens.to(input_device);
   return output_params;
 }
 

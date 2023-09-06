@@ -11,10 +11,13 @@
 #include "hf_model_downloader.h"
 #include "memory/block_manager.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/llama/transformer.h"
 #include "models/model_args.h"
 #include "models/model_loader.h"
+#include "models/parameters.h"
+#include "request/sampling_parameter.h"
+#include "request/sequence.h"
+#include "request/stopping_criteria.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 #include "torch_utils/state_dict.h"
 
@@ -63,6 +66,14 @@ int main(int argc, char* argv[]) {
   const int64_t num_blocks = FLAGS_max_seq_len / block_size + 1;
   llm::BlockManager block_manager(num_blocks, block_size);
 
+  llm::SamplingParameter sampling_param;
+  sampling_param.temperature = FLAGS_temperature;
+  sampling_param.top_p = FLAGS_top_p;
+
+  llm::StoppingCriteria stopping_criteria;
+  stopping_criteria.max_tokens = FLAGS_max_seq_len;
+  stopping_criteria.ignore_eos_token = true;
+
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
 
@@ -75,34 +86,38 @@ int main(int argc, char* argv[]) {
     // create a request
     auto tokens_ids = tokenizer->encode(input);
     int64_t prompt_token_len = tokens_ids.size();
-    llm::Sequence sequence(std::move(input), std::move(tokens_ids));
-    llm::Request request;
-    request.sequences.push_back(std::move(sequence));
-    request.sampling_param.temperature = FLAGS_temperature;
-    request.sampling_param.top_p = FLAGS_top_p;
+
+    llm::Sequence sequence(std::move(input),
+                           std::move(tokens_ids),
+                           &sampling_param,
+                           &stopping_criteria);
 
     // generate tokens until the end of sentence token is generated
-    for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
+    for (int64_t cur_pos = prompt_token_len; ;
          ++cur_pos) {
-      // allocate slots for the request
-      block_manager.allocate_slots_for_request(&request);
+      // allocate slots for the sequence
+      CHECK(block_manager.allocate_slots_for_sequence(&sequence));
 
       // run inference
-      const auto output_params = engine.execute_model({&request});
+      const auto output_params = engine.execute_model({&sequence});
 
       torch::Tensor next_token = output_params.next_tokens;
       const auto flat_tensor = next_token.reshape({-1});
 
       // add the next token to the list of tokens
       const auto next_token_scalar = static_cast<int>(flat_tensor.item<int>());
-      request.sequences[0].append_new_token_id(next_token_scalar);
+      sequence.append_new_token_id(next_token_scalar);
 
       // decode the output and print delta
-      std::cout << request.sequences[0].decode_delta_text(*tokenizer) << std::flush;
+      std::cout << sequence.decode_delta_text(*tokenizer) << std::flush;
+
+      if (sequence.check_stopping_creteria()) {
+        break;
+      }
     }
 
-    // release the slots for the request
-    block_manager.release_slots_for_request(&request);
+    // release the slots for the sequence
+    block_manager.release_slots_for_sequence(&sequence);
 
     // print the prompt and wait for the next input
     std::cout << std::endl << prompt;

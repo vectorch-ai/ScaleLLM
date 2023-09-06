@@ -27,7 +27,7 @@ cc_library(
   NAME 
     input_parameters
   HDRS 
-    input_parameters.h
+    parameters.h
   SRCS 
   DEPS
     torch

@@ -4,14 +4,15 @@
 
 #include <vector>
 
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 #include "request/request.h"
 
 namespace llm {
 
-void Utils::prepare_inputs(const std::vector<Request*>& batch,
+void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
                            torch::Tensor* input_token_ids,
                            torch::Tensor* input_positions,
+                           torch::Tensor* seq_indices,
                            InputParameters* input_params,
                            SamplingParameters* sampling_params) {
   std::vector<int32_t> flat_tokens;
@@ -20,36 +21,44 @@ void Utils::prepare_inputs(const std::vector<Request*>& batch,
   std::vector<std::vector<int32_t>> token_ids;
   int32_t max_num_tokens = 0;
 
+  // track the sequence indices in the batch
+  // used to map the output back to the original sequence order
+  std::vector<int32_t> seq_indices_vec;
+  // from original sequence index to the index in the new order
+  seq_indices_vec.resize(batch.size());
+
   // process prefill requests
   int32_t num_prompt_tokens = 0;
   int32_t max_seq_len = 0;
   std::vector<int32_t> cu_seq_lens = {0};
   std::vector<int32_t> slot_ids;
-  for (const auto& request : batch) {
-    for (const auto& sequence : request->sequences) {
-      if (!sequence.is_prefill()) {
-        continue;
-      }
-      const int32_t num_tokens = sequence.num_tokens();
-      max_num_tokens = std::max(max_num_tokens, num_tokens);
-      const auto& tokens = sequence.token_ids();
-      token_ids.push_back(tokens);
-      for (int32_t i = 0; i < num_tokens; ++i) {
-        flat_tokens.push_back(tokens[i]);
-        flat_positions.push_back(i);
-      }
-
-      num_prompt_tokens += num_tokens;
-      max_seq_len = std::max(max_seq_len, num_tokens);
-      cu_seq_lens.push_back(num_prompt_tokens);
-      sampling_params->add(request->sampling_param);
-      // only sample against the last token of the prompt
-      sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
-
-      // assign slot ids for each token
-      const auto slots = sequence.slots();
-      slot_ids.insert(slot_ids.end(), slots.begin(), slots.end());
+  for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
+    const auto* sequence = batch[i];
+    CHECK(!sequence->is_finished());
+    if (!sequence->is_prefill()) {
+      continue;
     }
+    seq_indices_vec[i] = static_cast<int32_t>(token_ids.size());
+
+    const auto& seq_token_ids = sequence->token_ids();
+    const int32_t num_tokens = static_cast<int32_t>(seq_token_ids.size());
+    max_num_tokens = std::max(max_num_tokens, num_tokens);
+    token_ids.push_back(seq_token_ids);
+    for (int32_t i = 0; i < num_tokens; ++i) {
+      flat_tokens.push_back(seq_token_ids[i]);
+      flat_positions.push_back(i);
+    }
+
+    num_prompt_tokens += num_tokens;
+    max_seq_len = std::max(max_seq_len, num_tokens);
+    cu_seq_lens.push_back(num_prompt_tokens);
+    sampling_params->add(sequence->sampling_param());
+    // only sample against the last token of the prompt
+    sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
+
+    // assign slot ids for each token
+    const auto slots = sequence->slots();
+    slot_ids.insert(slot_ids.end(), slots.begin(), slots.end());
   }
 
   // process decode requests
@@ -57,30 +66,30 @@ void Utils::prepare_inputs(const std::vector<Request*>& batch,
   std::vector<int32_t> context_lens;
   std::vector<std::vector<int32_t>> block_tables;
   int32_t max_block_table_len = 0;
-  for (const auto& request : batch) {
-    for (const auto& sequence : request->sequences) {
-      if (sequence.is_prefill()) {
-        continue;
-      }
-      const auto& seq_token_ids = sequence.token_ids();
-      const int32_t num_tokens =
-          static_cast<int32_t>(seq_token_ids.size());
-      max_num_tokens = std::max(max_num_tokens, num_tokens);
-      token_ids.push_back(seq_token_ids);
-
-      flat_tokens.push_back(seq_token_ids.back());
-      flat_positions.push_back(num_tokens - 1);
-      context_lens.push_back(num_tokens);
-      max_context_len = std::max(max_context_len, num_tokens);
-      sampling_params->add(request->sampling_param);
-      sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
-      const auto& seq_blocks = sequence.blocks();
-      block_tables.push_back(seq_blocks);
-      max_block_table_len = std::max(
-          max_block_table_len, static_cast<int32_t>(seq_blocks.size()));
-
-      slot_ids.push_back(sequence.last_slot_id());
+  for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
+    const auto* sequence = batch[i];
+    if (sequence->is_prefill()) {
+      continue;
     }
+    seq_indices_vec[i] = static_cast<int32_t>(token_ids.size());
+
+    const auto& seq_token_ids = sequence->token_ids();
+    const int32_t num_tokens = static_cast<int32_t>(seq_token_ids.size());
+    max_num_tokens = std::max(max_num_tokens, num_tokens);
+    token_ids.push_back(seq_token_ids);
+    flat_tokens.push_back(seq_token_ids.back());
+    flat_positions.push_back(num_tokens - 1);
+
+    context_lens.push_back(num_tokens);
+    max_context_len = std::max(max_context_len, num_tokens);
+    sampling_params->add(sequence->sampling_param());
+    sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
+    const auto& seq_blocks = sequence->blocks();
+    block_tables.push_back(seq_blocks);
+    max_block_table_len =
+        std::max(max_block_table_len, static_cast<int32_t>(seq_blocks.size()));
+
+    slot_ids.push_back(sequence->last_slot_id());
   }
 
   using torch::indexing::Slice;
@@ -104,6 +113,7 @@ void Utils::prepare_inputs(const std::vector<Request*>& batch,
 
   *input_token_ids = torch::tensor(flat_tokens, torch::kInt);
   *input_positions = torch::tensor(flat_positions, torch::kInt);
+  *seq_indices = torch::tensor(seq_indices_vec, torch::kInt);
 
   input_params->num_prompt_tokens = num_prompt_tokens;
   input_params->max_seq_len = max_seq_len;

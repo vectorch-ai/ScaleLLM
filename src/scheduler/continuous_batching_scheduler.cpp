@@ -140,7 +140,7 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   }
 
   CHECK(!batch_.empty());
-  auto output_parameters = engine_->execute_model(batch_);
+  // auto output_parameters = engine_->execute_model(batch_);
 
   // TODO: process finished requests
   for (auto& request : batch_) {

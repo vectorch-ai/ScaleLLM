@@ -4,10 +4,10 @@
 
 #include <memory>
 
+#include "models/parameters.h"
 #include "request/request.h"
 #include "tokenizer/tokenizer.h"
 #include "worker.h"
-#include "models/input_parameters.h"
 
 namespace llm {
 
@@ -35,7 +35,7 @@ class Engine {
             const std::string& tokenizer_path);
 
   // step the engine forward by one step with the batch
-  OutputParameters execute_model(const std::vector<Request*>& batch);
+  OutputParameters execute_model(const std::vector<Sequence*>& batch);
 
   const Tokenizer* tokenizer() const { return tokenizer_.get(); }
 

@@ -24,6 +24,11 @@ bool BlockManager::allocate_slots_for_request(Request* request) {
     num_blocks_to_allocate += sequence.num_blocks_to_allocate();
   }
 
+  if (num_blocks_to_allocate == 0) {
+    // no need to allocate more blocks
+    return true;
+  }
+
   if (num_blocks_to_allocate > block_allocator_.free_block_count()) {
     // not enough blocks
     return false;
@@ -46,6 +51,31 @@ void BlockManager::release_slots_for_request(Request* request) {
     // add block ids back to the block allocator
     block_allocator_.free(block_ids);
   }
+}
+
+bool BlockManager::allocate_slots_for_sequence(Sequence* sequence) {
+  DCHECK(sequence != nullptr);
+  sequence->slots_per_block_ = slots_per_block_;
+  const uint32_t blocks_to_allocate = sequence->num_blocks_to_allocate();
+  if (blocks_to_allocate == 0) {
+    // no need to allocate more blocks
+    return true;
+  }
+  
+  if (blocks_to_allocate > block_allocator_.free_block_count()) {
+    // not enough blocks
+    return false;
+  }
+  const auto block_ids = block_allocator_.allocate(blocks_to_allocate);
+  sequence->add_blocks(block_ids);
+  return true;
+}
+
+void BlockManager::release_slots_for_sequence(Sequence* sequence) {
+  DCHECK(sequence != nullptr);
+  const auto block_ids = sequence->release_blocks();
+  // add block ids back to the block allocator
+  block_allocator_.free(block_ids);
 }
 
 }  // namespace llm

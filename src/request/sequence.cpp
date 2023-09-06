@@ -9,4 +9,6 @@
 
 namespace llm {
 
+std::atomic<int64_t> Sequence::next_id_{1};
+
 }  // namespace llm

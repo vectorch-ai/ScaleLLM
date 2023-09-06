@@ -4,9 +4,9 @@
 
 #include <vector>
 
-#include "input_parameters.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
+#include "parameters.h"
 #include "torch_utils/state_dict.h"
 
 namespace llm {
