@@ -98,6 +98,8 @@ OutputParameters Engine::execute_model(const std::vector<Request*>& batch) {
   auto results = folly::collectAll(futures).get();
   // return the result from the first worker
   return results[0].value();
+  //TODO: mapping back to the original request in the batch
+  
 }
 
 }  // namespace llm

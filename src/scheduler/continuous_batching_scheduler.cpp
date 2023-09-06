@@ -140,7 +140,7 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   }
 
   CHECK(!batch_.empty());
-  engine_->execute_model(batch_);
+  auto output_parameters = engine_->execute_model(batch_);
 
   // TODO: process finished requests
   for (auto& request : batch_) {
@@ -149,6 +149,10 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
     // notify the request context that the request has finished
     // TODO: response to the client earlier
     // request->finish();
+
+    // update batch status, next token ids.
+    // 1> response to client if stream is enabled
+    // 2> remove request from batch if it is finished
   }
 }
 

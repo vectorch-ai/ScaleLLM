@@ -75,16 +75,12 @@ int main(int argc, char* argv[]) {
     // create a request
     auto tokens_ids = tokenizer->encode(input);
     int64_t prompt_token_len = tokens_ids.size();
-    llm::Sequence sequence;
-    sequence.prompt = input;
-    sequence.token_ids = std::move(tokens_ids);
+    llm::Sequence sequence(std::move(input), std::move(tokens_ids));
     llm::Request request;
     request.sequences.push_back(std::move(sequence));
     request.sampling_param.temperature = FLAGS_temperature;
     request.sampling_param.top_p = FLAGS_top_p;
 
-    std::string output;
-    int64_t prev_pos = 0;
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
@@ -101,12 +97,8 @@ int main(int argc, char* argv[]) {
       const auto next_token_scalar = static_cast<int>(flat_tensor.item<int>());
       request.sequences[0].append_new_token_id(next_token_scalar);
 
-      // decode the output and print it
-      const auto new_output = tokenizer->decode(request.sequences[0].token_ids);
-      std::cout << new_output.substr(output.size()) << std::flush;
-      output = new_output;
-
-      prev_pos = cur_pos;
+      // decode the output and print delta
+      std::cout << request.sequences[0].decode_delta_text(*tokenizer) << std::flush;
     }
 
     // release the slots for the request

@@ -30,12 +30,12 @@ void Utils::prepare_inputs(const std::vector<Request*>& batch,
       if (!sequence.is_prefill()) {
         continue;
       }
-      const int32_t num_tokens =
-          static_cast<int32_t>(sequence.token_ids.size());
+      const int32_t num_tokens = sequence.num_tokens();
       max_num_tokens = std::max(max_num_tokens, num_tokens);
-      token_ids.push_back(sequence.token_ids);
+      const auto& tokens = sequence.token_ids();
+      token_ids.push_back(tokens);
       for (int32_t i = 0; i < num_tokens; ++i) {
-        flat_tokens.push_back(sequence.token_ids[i]);
+        flat_tokens.push_back(tokens[i]);
         flat_positions.push_back(i);
       }
 
@@ -62,20 +62,22 @@ void Utils::prepare_inputs(const std::vector<Request*>& batch,
       if (sequence.is_prefill()) {
         continue;
       }
+      const auto& seq_token_ids = sequence.token_ids();
       const int32_t num_tokens =
-          static_cast<int32_t>(sequence.token_ids.size());
+          static_cast<int32_t>(seq_token_ids.size());
       max_num_tokens = std::max(max_num_tokens, num_tokens);
-      token_ids.push_back(sequence.token_ids);
+      token_ids.push_back(seq_token_ids);
 
-      flat_tokens.push_back(sequence.token_ids.back());
+      flat_tokens.push_back(seq_token_ids.back());
       flat_positions.push_back(num_tokens - 1);
       context_lens.push_back(num_tokens);
       max_context_len = std::max(max_context_len, num_tokens);
       sampling_params->add(request->sampling_param);
       sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
-      block_tables.push_back(sequence.blocks);
+      const auto& seq_blocks = sequence.blocks();
+      block_tables.push_back(seq_blocks);
       max_block_table_len = std::max(
-          max_block_table_len, static_cast<int32_t>(sequence.blocks.size()));
+          max_block_table_len, static_cast<int32_t>(seq_blocks.size()));
 
       slot_ids.push_back(sequence.last_slot_id());
     }
