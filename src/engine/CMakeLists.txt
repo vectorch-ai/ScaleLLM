@@ -6,17 +6,15 @@ cc_library(
     engine
   HDRS
     utils.h
-    concurrent_queue.h
-    executor.h
     worker.h
     engine.h
   SRCS
     utils.cpp
-    executor.cpp 
     worker.cpp
     engine.cpp
   DEPS
     torch
+    :common
     :request
     :torch_utils
     :causal_lm
@@ -34,7 +32,6 @@ cc_test(
   NAME
     engine_test
   SRCS
-    executor_test.cpp
     worker_test.cpp
   DEPS
     :engine

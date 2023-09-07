@@ -33,10 +33,12 @@ DEFINE_string(device, "cuda", "Device to run the model on.");
 DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
 DEFINE_double(top_p, 0.9, "Top p for sampling.");
+DEFINE_int64(top_k, 0, "Top k for sampling.");
 
-DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
+DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
 
-DEFINE_int32(max_batch_size, 4, "Maximum batch size.");
+DEFINE_double(frequency_penalty, 0.0, "Frequency penalty for sampling.");
+DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
 
 int main(int argc, char* argv[]) {
   // initialize glog and gflags
@@ -58,21 +60,22 @@ int main(int argc, char* argv[]) {
   }
 
   llm::Engine engine({device});
-  engine.init(FLAGS_model_path, FLAGS_tokenizer_path);
-  const auto args = engine.model_args();
+  CHECK(engine.init(FLAGS_model_path, FLAGS_tokenizer_path));
   const auto* tokenizer = engine.tokenizer();
-
-  const int64_t block_size = 8;  // 8 slots per block
-  const int64_t num_blocks = FLAGS_max_seq_len / block_size + 1;
-  llm::BlockManager block_manager(num_blocks, block_size);
+  llm::BlockManager* block_manager = engine.block_manager();
 
   llm::SamplingParameter sampling_param;
   sampling_param.temperature = FLAGS_temperature;
   sampling_param.top_p = FLAGS_top_p;
+  sampling_param.top_k = FLAGS_top_k;
+  sampling_param.repetition_penalty = FLAGS_repetition_penalty;
+  sampling_param.frequency_penalty = FLAGS_frequency_penalty;
+  sampling_param.presence_penalty = FLAGS_presence_penalty;
 
   llm::StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = FLAGS_max_seq_len;
-  stopping_criteria.ignore_eos_token = true;
+  stopping_criteria.ignore_eos_token = false;
+  stopping_criteria.eos_token_id = tokenizer->eos_id();
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -93,10 +96,10 @@ int main(int argc, char* argv[]) {
                            &stopping_criteria);
 
     // generate tokens until the end of sentence token is generated
-    for (int64_t cur_pos = prompt_token_len; ;
+    for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
       // allocate slots for the sequence
-      CHECK(block_manager.allocate_slots_for_sequence(&sequence));
+      CHECK(block_manager->allocate_slots_for_sequence(&sequence));
 
       // run inference
       const auto output_params = engine.execute_model({&sequence});
@@ -117,7 +120,7 @@ int main(int argc, char* argv[]) {
     }
 
     // release the slots for the sequence
-    block_manager.release_slots_for_sequence(&sequence);
+    block_manager->release_slots_for_sequence(&sequence);
 
     // print the prompt and wait for the next input
     std::cout << std::endl << prompt;

@@ -44,7 +44,7 @@ class AttentionImpl : public torch::nn::Module {
         "wo", RowParallelLinear(n_heads * head_dim_, dim, world_size, device));
 
     // initialize positional embedding
-    // TODO: need to adjust the max_seq_len
+    // TODO:need to adjust the max_seq_len
     pos_emb_ = register_module("pos_emb",
                                RotaryEmbedding(args.dim() / args.n_heads(),
                                                args.max_seq_len(),

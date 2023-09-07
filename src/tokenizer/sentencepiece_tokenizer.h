@@ -17,11 +17,11 @@ class SentencePieceTokenizer : public Tokenizer {
 
   size_t vocab_size() const override { return sp_processor_.GetPieceSize(); }
 
+  int eos_id() const override { return sp_processor_.eos_id(); }
+  
   int unk_id() const { return sp_processor_.unk_id(); }
 
   int bos_id() const { return sp_processor_.bos_id(); }
-
-  int eos_id() const { return sp_processor_.eos_id(); }
 
   int pad_id() const { return sp_processor_.pad_id(); }
 

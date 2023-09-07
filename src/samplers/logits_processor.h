@@ -121,8 +121,9 @@ class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
     penalties_ = torch::tensor(penalties, device).unsqueeze(1);
   }
 
+  // token_ids, [num_seqs, max_num_tokens] LongTensor
   torch::Tensor forward(const torch::Tensor& token_ids,
-                        const torch::Tensor& logits) const override {
+                        const torch::Tensor& logits) const override {    
     // select the logits for tokens of each sequence
     auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
 

@@ -22,14 +22,13 @@ class BlockManager final {
   // requests.
   void release_slots_for_request(Request* request);
 
-
   bool allocate_slots_for_sequence(Sequence* sequence);
 
   void release_slots_for_sequence(Sequence* sequence);
 
  private:
   // number of slots per block
-  int32_t slots_per_block_ = 0;
+  int32_t block_size_ = 0;
 
   // the block allocator that manages the memory blocks
   BlockAllocator block_allocator_;

@@ -40,6 +40,8 @@ find_package(GTest CONFIG REQUIRED)
 find_package(SentencePiece REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(prometheus-cpp CONFIG REQUIRED)
+
 # libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Development)
 

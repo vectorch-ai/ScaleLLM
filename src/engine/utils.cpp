@@ -95,11 +95,11 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   using torch::indexing::Slice;
   // padding token ids to the same length
   auto token_ids_tensor = torch::empty(
-      {static_cast<int64_t>(token_ids.size()), max_num_tokens}, torch::kInt);
+      {static_cast<int64_t>(token_ids.size()), max_num_tokens}, torch::kLong);
   for (int64_t i = 0; i < token_ids.size(); ++i) {
     auto& ids = token_ids[i];
     ids.resize(max_num_tokens, /*pad_id=*/0);
-    token_ids_tensor.index_put_({i, Slice()}, torch::tensor(ids, torch::kInt));
+    token_ids_tensor.index_put_({i, Slice()}, torch::tensor(ids, torch::kLong));
   }
   auto block_tables_tensor = torch::empty(
       {static_cast<int64_t>(block_tables.size()), max_block_table_len},

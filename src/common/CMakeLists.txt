@@ -6,7 +6,10 @@ cc_library(
   HDRS
     metrics.h
     slice.h
+    concurrent_queue.h
+    executor.h
   SRCS
+    executor.cpp
   DEPS
     prometheus-cpp::core
 )

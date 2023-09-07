@@ -4,10 +4,18 @@
 
 #include <memory>
 
+#include "memory/block_manager.h"
+#include "memory/cache_args.h"
 #include "models/parameters.h"
 #include "request/request.h"
 #include "tokenizer/tokenizer.h"
 #include "worker.h"
+
+DECLARE_int32(max_seq_len);
+DECLARE_int32(max_batch_size);
+DECLARE_int32(block_size);
+DECLARE_int64(max_cache_size);
+DECLARE_double(max_memory_utilization);
 
 namespace llm {
 
@@ -39,11 +47,19 @@ class Engine {
 
   const Tokenizer* tokenizer() const { return tokenizer_.get(); }
 
+  BlockManager* block_manager() const { return block_manager_.get(); }
+
   const ModelArgs& model_args() const { return args_; }
 
+  const CacheArgs& cache_args() const { return cache_args_; }
+
  private:
-  std::tuple<torch::Tensor, torch::Tensor, InputParameters, SamplingParameters>
-  prepare_inputs(const std::vector<Request*>& batch);
+  bool init_model(const std::string& model_weights_path);
+
+  bool init_kv_cache();
+
+  // model args
+  ModelArgs args_;
 
   // a list of workers, with each worker handling a partial of model
   std::vector<std::unique_ptr<Worker>> workers_;
@@ -51,8 +67,11 @@ class Engine {
   // tokenizer
   std::unique_ptr<Tokenizer> tokenizer_;
 
-  // model args
-  ModelArgs args_;
+  // cache args
+  CacheArgs cache_args_;
+
+  // block manager
+  std::unique_ptr<BlockManager> block_manager_;
 };
 
 }  // namespace llm

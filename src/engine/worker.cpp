@@ -11,7 +11,7 @@
 #include <string>
 #include <utility>
 
-#include "executor.h"
+#include "common/executor.h"
 #include "models/parameters.h"
 #include "samplers/logits_processor.h"
 #include "samplers/sampler.h"
@@ -19,31 +19,23 @@
 
 namespace llm {
 
-bool Worker::init(const ModelArgs& args) {
+bool Worker::init_model(const ModelArgs& args) {
   // initialize model
+  args_ = args;
   model_ = CausalLM::create(args, device_);
+  return true;
+}
 
-  // initialize kv caches
-  // calculate cache shapes
-  const auto element_size = torch::tensor({}).element_size();
-  const auto x = 16 / element_size;
-  const int64_t block_size = 8;  // 8 slots per block
-  const int64_t num_heads = args.n_heads();
-  const int64_t head_dim = args.dim() / num_heads;
-  const int64_t num_blocks = args.max_seq_len() / block_size + 1;
-  const std::vector<int64_t> key_cache_shape = {
-      num_blocks, num_heads, static_cast<int64_t>(head_dim / x), block_size, x};
-  const std::vector<int64_t> value_cache_shape = {
-      num_blocks, num_heads, head_dim, block_size};
-
+bool Worker::init_kv_cache(const std::vector<int64_t>& key_cache_shape,
+                           const std::vector<int64_t>& value_cache_shape) {
   // create a KVCache for each layer
-  kv_caches_.reserve(args.n_layers());
-  for (int i = 0; i < args.n_layers(); ++i) {
+  const int64_t num_layers = args_.n_layers();
+  kv_caches_.reserve(num_layers);
+  for (int64_t i = 0; i < num_layers; ++i) {
     auto key_cache = torch::zeros(key_cache_shape, device_);
     auto value_cache = torch::zeros(value_cache_shape, device_);
     kv_caches_.emplace_back(key_cache, value_cache);
   }
-
   return true;
 }
 
@@ -109,14 +101,30 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
 }
 
 // initialize model, cache manager. async call
-folly::SemiFuture<bool> Worker::init_async(const ModelArgs& args) {
+folly::SemiFuture<bool> Worker::init_model_async(const ModelArgs& args) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule(
       [this, &args = args, promise = std::move(promise)]() mutable {
-        const bool success = this->init(args);
+        const bool success = this->init_model(args);
         promise.setValue(success);
       });
+  return future;
+}
+
+folly::SemiFuture<bool> Worker::init_kv_cache_async(
+    const std::vector<int64_t>& key_cache_shape,
+    const std::vector<int64_t>& value_cache_shape) {
+  folly::Promise<bool> promise;
+  auto future = promise.getSemiFuture();
+  executor_.schedule([this,
+                      &key_cache_shape = key_cache_shape,
+                      &value_cache_shape = value_cache_shape,
+                      promise = std::move(promise)]() mutable {
+    const bool success =
+        this->init_kv_cache(key_cache_shape, value_cache_shape);
+    promise.setValue(success);
+  });
   return future;
 }
 

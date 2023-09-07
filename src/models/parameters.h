@@ -1,7 +1,7 @@
 #pragma once
 
-#include <torch/torch.h>
 #include <request/request.h>
+#include <torch/torch.h>
 
 namespace llm {
 // input parameters for the model that encapsulates all the necessary
@@ -31,7 +31,7 @@ struct InputParameters {
   // used in prefill stage to determine the token range for each sequence
   // [num_prompt_seq + 1]
   // for example: 3 sequences with length 2, 3, 4,
-  // the cu_seq_lens is [0, 2, 5, 9]
+  // the cu_seq_lens is [0, 2, 5, 9] IntTensor
   torch::Tensor cu_seq_lens;
 
   // maximum sequence length for prompt sequences.
@@ -58,11 +58,12 @@ struct InputParameters {
   // the index of the last token of each sequence in the tokens.
   // for prompt sequence, it is the index of last token in the prompt.
   // for decode sequence, it is the index of the token. (only one token)
+  // IntTensor
   torch::Tensor sample_idx;
 
   // the token ids of the prompt.
   // used in logit processor to calculate frequency of each token
-  // [num_seq (num_prompt_seq + num_decode_seq), max_tokens_len]
+  // [num_seq (num_prompt_seq + num_decode_seq), max_tokens_len] LongTensor
   torch::Tensor token_ids;
 };
 
