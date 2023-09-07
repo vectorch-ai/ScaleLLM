@@ -37,6 +37,7 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
   // chose right implementation based on the args.
   RotaryEmbedding(int64_t rotary_dim,
                   int64_t max_seq_len,
+                  float scaling_factor,
                   bool interleaved,
                   const torch::Device& device);
 };
@@ -90,12 +91,16 @@ class InterleavedRotaryEmbedding : public RotaryEmbeddingImpl {
  public:
   InterleavedRotaryEmbedding(int64_t rotary_dim,
                              int64_t max_seq_len,
+                             float scaling_factor,
                              const torch::Device& device,
                              float theta = kDefaultTheta) {
     // Create cos and sin embeddings.
     const auto slice = torch::arange(0, rotary_dim, 2);
     const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
-    const auto t = torch::arange(0, max_seq_len, 1);
+    auto t = torch::arange(0, max_seq_len, 1);
+    if (scaling_factor != 0) {
+      t /= scaling_factor;
+    }
     const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
     // [a, b, c, d] => [a, a, b, b, c, c, d, d]
     auto emd = torch::repeat_interleave(freqs, /*repeats=*/2, /*dim=*/-1);
@@ -128,12 +133,16 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
  public:
   RotatedRotaryEmbedding(int64_t rotary_dim,
                          int64_t max_seq_len,
+                         float scaling_factor,
                          const torch::Device& device,
                          float theta = kDefaultTheta) {
     // Create cos and sin embeddings.
     const auto slice = torch::arange(0, rotary_dim, 2);
     const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
-    const auto t = torch::arange(0, max_seq_len, 1);
+    auto t = torch::arange(0, max_seq_len, 1);
+    if (scaling_factor != 0) {
+      t /= scaling_factor;
+    }
     const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
     // [a, b, c, d] => [a, b, c, d, a, b, c, d]
     const auto emd = torch::cat({freqs, freqs}, /*dim=*/-1);

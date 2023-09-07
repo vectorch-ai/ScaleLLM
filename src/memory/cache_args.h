@@ -12,7 +12,7 @@ inline constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 class CacheArgs {
  public:
   // number of slots per block, each slot is for one token
-  TORCH_ARG(int64_t, block_size) = 0;
+  TORCH_ARG(int32_t, block_size) = 0;
 
   // number of blocks in the cache
   TORCH_ARG(int64_t, num_blocks) = 0;

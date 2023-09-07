@@ -98,7 +98,7 @@ bool Engine::init_kv_cache() {
   // init kv cache
   const auto dtype_size = torch::tensor({}).element_size();
   // key + value for all layers
-  const int64_t block_size_in_bytes = 2 * cache_args_.block_size() *
+  const int64_t block_size_in_bytes = int64_t(2) * cache_args_.block_size() *
                                       args_.dim() * args_.n_layers() *
                                       dtype_size;
   LOG(INFO) << "Block size in bytes: " << block_size_in_bytes
@@ -188,6 +188,7 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   InputParameters input_params;
   SamplingParameters sampling_params;
   Utils::prepare_inputs(batch,
+                        cache_args_.block_size(),
                         &input_token_ids,
                         &input_positions,
                         &seq_indices,

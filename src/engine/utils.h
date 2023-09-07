@@ -12,6 +12,7 @@ namespace llm {
 class Utils {
  public:
   static void prepare_inputs(const std::vector<Sequence*>& batch,
+                             int32_t block_size,
                              torch::Tensor* input_token_ids,
                              torch::Tensor* input_positions,
                              torch::Tensor* seq_indices,

@@ -8,8 +8,44 @@
 #include "request/request.h"
 
 namespace llm {
+namespace {
+
+std::vector<int32_t> cache_slots(const Sequence& sequence, int32_t block_size) {
+  const size_t num_tokens = sequence.num_tokens();
+  const auto& blocks = sequence.blocks();
+  std::vector<int32_t> slots;
+  slots.reserve(num_tokens);
+  for (const auto& block_id : blocks) {
+    for (int32_t i = 0; i < block_size; ++i) {
+      slots.push_back(block_id * block_size + i);
+      if (slots.size() == num_tokens) {
+        break;
+      }
+    }
+  }
+  return slots;
+}
+
+int32_t last_slot_id(const Sequence& sequence, int32_t block_size) {
+  const size_t num_tokens = sequence.num_tokens();
+  const auto& blocks = sequence.blocks();
+
+  const int32_t block_offset =
+      static_cast<int32_t>(num_tokens - 1) % block_size;
+  const int32_t last_block_id = blocks.back();
+  return last_block_id * block_size + block_offset;
+}
+
+bool has_enough_cache_slots(const Sequence& sequence, int32_t block_size) {
+  const size_t num_tokens = sequence.num_tokens();
+  const size_t num_blocks = sequence.num_blocks();
+  return num_tokens <= num_blocks * block_size;
+}
+
+}  // namespace
 
 void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
+                           int32_t block_size,
                            torch::Tensor* input_token_ids,
                            torch::Tensor* input_positions,
                            torch::Tensor* seq_indices,
@@ -35,6 +71,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
     const auto* sequence = batch[i];
     CHECK(!sequence->is_finished());
+    CHECK(has_enough_cache_slots(*sequence, block_size));
+
     if (!sequence->is_prefill()) {
       continue;
     }
@@ -57,7 +95,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     sample_idx.push_back(static_cast<int32_t>(flat_tokens.size() - 1));
 
     // assign slot ids for each token
-    const auto slots = sequence->slots();
+    const auto slots = cache_slots(*sequence, block_size);
     slot_ids.insert(slot_ids.end(), slots.begin(), slots.end());
   }
 
@@ -89,7 +127,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     max_block_table_len =
         std::max(max_block_table_len, static_cast<int32_t>(seq_blocks.size()));
 
-    slot_ids.push_back(sequence->last_slot_id());
+    slot_ids.push_back(last_slot_id(*sequence, block_size));
   }
 
   using torch::indexing::Slice;
