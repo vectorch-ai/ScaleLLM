@@ -13,16 +13,17 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string& model_path) {
   }
 }
 
-std::vector<int> SentencePieceTokenizer::encode(
-    const std::string_view& text) const {
-  std::vector<int> tokens;
-  const auto status = sp_processor_.Encode(text, &tokens);
+bool SentencePieceTokenizer::encode(const std::string_view& text,
+                                    std::vector<int>* ids) const {
+  const auto status = sp_processor_.Encode(text, ids);
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to encode text: " << status.ToString();
+    LOG(ERROR) << "Failed to encode text: " << text << ", error "
+               << status.ToString();
+    return false;
   }
   // prepend bos token
-  tokens.insert(tokens.begin(), sp_processor_.bos_id());
-  return tokens;
+  ids->insert(ids->begin(), sp_processor_.bos_id());
+  return true;
 }
 
 std::string SentencePieceTokenizer::decode(const std::vector<int>& ids) const {

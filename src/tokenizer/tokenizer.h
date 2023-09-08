@@ -23,7 +23,8 @@ class Tokenizer {
  public:
   virtual ~Tokenizer() = default;
 
-  virtual std::vector<int> encode(const std::string_view& text) const = 0;
+  virtual bool encode(const std::string_view& text,
+                      std::vector<int>* ids) const = 0;
 
   virtual std::string decode(const std::vector<int>& tokens) const = 0;
 

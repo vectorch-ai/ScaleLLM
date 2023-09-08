@@ -10,7 +10,7 @@
 
 namespace llm {
 
-// Interface for the classes that are used to handle grpc requests. 
+// Interface for the classes that are used to handle grpc requests.
 class ICallData {
  public:
   virtual ~ICallData() = default;
@@ -48,17 +48,17 @@ class CallData : public ICallData {
     responder_.Write(response, this);
   }
 
-  void write_and_finish(const Response& response) {
+  void write_and_finish(const Response& response,
+                        const grpc::Status& status = grpc::Status::OK) {
     wait_for_ops();
     done_ = true;
-    responder_.WriteAndFinish(
-        response, grpc::WriteOptions(), grpc::Status::OK, this);
+    responder_.WriteAndFinish(response, grpc::WriteOptions(), status, this);
   }
 
-  void finish() {
+  void finish(const grpc::Status& status = grpc::Status::OK) {
     wait_for_ops();
     done_ = true;
-    responder_.Finish(grpc::Status::OK, this);
+    responder_.Finish(status, this);
   }
 
   // proceed to the next state.

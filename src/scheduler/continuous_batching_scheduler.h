@@ -16,7 +16,7 @@ namespace llm {
 
 class ContinuousBatchingScheduler final : public Scheduler {
  public:
-  ContinuousBatchingScheduler();
+  ContinuousBatchingScheduler(Engine* engine);
 
   ~ContinuousBatchingScheduler();
 
@@ -30,7 +30,16 @@ class ContinuousBatchingScheduler final : public Scheduler {
 
  private:
   // get a batch of requests from the priority queue
-  void create_batch();
+  std::vector<Sequence*> create_sequence_batch();
+
+  // the engine to run the batch
+  Engine* engine_;
+
+  // the block manager to manage the cache blocks
+  BlockManager* block_manager_;
+
+  // tokenizer
+  const Tokenizer* tokenizer_;
 
   // a thread safe queue of requests, bounded by kRequestQueueSize
   // the schedule owns the requests and manages their lifetimes.
@@ -44,16 +53,10 @@ class ContinuousBatchingScheduler final : public Scheduler {
   MinHeap priority_queue_;
 
   // a batch of requests to be processed
-  std::vector<Request*> batch_;
+  std::vector<Request*> running_;
 
-  // maximum number of requests in a batch
-  size_t max_batch_size_ = 0;
-
-  // the engine to run the batch
-  std::unique_ptr<Engine> engine_;
-
-  // the block manager to manage the cache blocks
-  std::unique_ptr<BlockManager> block_manager_;
+  // the executor to handle responses
+  Executor response_executor_;
 };
 
 }  // namespace llm

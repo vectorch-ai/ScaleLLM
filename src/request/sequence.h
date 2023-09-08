@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,6 +23,9 @@ enum class FinishReason {
   FUNCTION_CALL,
 };
 
+using OnStream =
+    std::function<void(const std::string& delta, const FinishReason& reason)>;
+
 // The sequence encapsulates all the necessary
 // information for a sequence, including the prompt, the token ids, and the
 // current position in generating tokens, etc.
@@ -30,13 +34,15 @@ class Sequence final {
   Sequence(std::string prompt,
            std::vector<int32_t> token_ids,
            const SamplingParameter* sampling_param,
-           const StoppingCriteria* stopping_criteria)
+           const StoppingCriteria* stopping_criteria,
+           OnStream on_stream)
       : id_(next_id_.fetch_add(1)),
         prompt_(std::move(prompt)),
         token_ids_(std::move(token_ids)),
         num_prompt_tokens_(token_ids_.size()),
         sampling_param_(sampling_param),
-        stopping_criteria_(stopping_criteria) {}
+        stopping_criteria_(stopping_criteria),
+        on_stream_(on_stream) {}
 
   // get the id of the sequence
   int64_t id() const { return id_; }
@@ -96,6 +102,16 @@ class Sequence final {
   // decode the sequence to get delta text using the tokenizer
   std::string decode_delta_text(const Tokenizer& tokenizer);
 
+  // check if streaming is enabled
+  bool is_streaming() const { return on_stream_ != nullptr; }
+
+  // stream the delta text to the client
+  void stream_delta(const std::string& delta, const FinishReason& reason) {
+    if (on_stream_) {
+      on_stream_(delta, reason);
+    }
+  }
+
  private:
   std::vector<int32_t> sub_token_ids(size_t start, size_t end) {
     return {token_ids_.begin() + static_cast<long>(start),
@@ -140,11 +156,10 @@ class Sequence final {
   size_t prefix_offset_ = 0;
   size_t read_offset_ = 0;
 
-  // TODO: Add logits results.
-
   // function to call when new tokens are generated. (only for streaming)
-  // std::function<void(const std::string& delta, const
-  // std::string&finish_reason)> OnNewToken = nullptr;
+  OnStream on_stream_;
+
+  // TODO: Add logits results.
 
   // id allocator for sequences
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)

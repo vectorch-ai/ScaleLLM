@@ -8,6 +8,7 @@ cc_library(
     sampling_parameter.h 
     stopping_criteria.h
     sequence.h
+    status.h
     request.h
   SRCS 
     sequence.cpp

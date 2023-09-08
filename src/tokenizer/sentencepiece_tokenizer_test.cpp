@@ -6,7 +6,8 @@ namespace llm {
 
 TEST(SentencePieceTokenizerTest, EncodeTest) {
   SentencePieceTokenizer tokenizer("src/tokenizer/test_model.model");
-  const auto ids = tokenizer.encode("Hello, world!");
+  std::vector<int> ids;
+  ASSERT_TRUE(tokenizer.encode("Hello, world!", &ids));
   const std::vector<int> desired_ids = {1, 151, 88, 21, 5, 887, 147};
   EXPECT_EQ(ids, desired_ids);
 }

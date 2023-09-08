@@ -145,8 +145,8 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
     }
     const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
     // [a, b, c, d] => [a, b, c, d, a, b, c, d]
-    const auto emd = torch::cat({freqs, freqs}, /*dim=*/-1);
-    emd.to(device);
+    auto emd = torch::cat({freqs, freqs}, /*dim=*/-1);
+    emd = emd.to(device);
     const auto cos_sin = torch::cat({emd.cos(), emd.sin()}, /*dim=*/-1);
     cos_sin_cache_ = register_buffer("cos_sin_cached", cos_sin);
   }

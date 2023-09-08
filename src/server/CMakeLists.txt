@@ -17,11 +17,14 @@ cc_library(
   NAME 
     completion_handler
   HDRS 
-    call_data.h
     completion_handler.h
   SRCS 
     completion_handler.cpp
   DEPS
+    :common
+    :tokenizer
+    :scheduler
+    absl::time
     glog::glog
     grpc_proto::completion
 )
@@ -30,6 +33,7 @@ cc_library(
   NAME 
     grpc_server
   HDRS 
+    call_data.h
     grpc_server.h
   SRCS 
     grpc_server.cpp
@@ -58,6 +62,7 @@ cc_binary(
   SRCS 
     main.cpp
   DEPS
+    :completion_handler
     :grpc_server
     gflags::gflags
     glog::glog

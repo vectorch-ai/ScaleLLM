@@ -5,14 +5,15 @@
 #include <string>
 #include <vector>
 
-#include "sequence.h"
 #include "sampling_parameter.h"
+#include "sequence.h"
+#include "status.h"
 #include "stopping_criteria.h"
 
 namespace llm {
 
 // Status of the request.
-enum class RequestStatus {
+enum class ScheduleStatus {
   // The request is waiting to be processed.
   // still waiting in the queue.
   WAITING,
@@ -39,14 +40,29 @@ enum class RequestStatus {
 // The higher the priority, the sooner the request is processed.
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
+using OnFinish =
+    std::function<void(const std::string& output_text, const Status& status)>;
+
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
 // container, holding essential data, such as input parameters, configuration
 // settings, and any additional context-specific details related to the
 // request's handling.
 struct Request {
+ public:
+  Request() = default;
+
+  void add_sequence(std::string prompt,
+                    std::vector<int32_t> token_ids,
+                    OnStream on_stream) {
+    sequences.emplace_back(std::move(prompt),
+                           std::move(token_ids),
+                           &sampling_param,
+                           &stopping_criteria,
+                           on_stream);
+  }
   // The unique id of the request.
-  uint64_t request_id = 0;
+  std::string id;
 
   // list of sequences to generate completions for the prompt
   std::vector<Sequence> sequences;
@@ -61,18 +77,25 @@ struct Request {
   bool stream = false;
 
   // The status of the request.
-  RequestStatus status = RequestStatus::WAITING;
+  // ScheduleStatus status = ScheduleStatus::WAITING;
 
   // the priority of the request.
   RequestPriority priority = RequestPriority::MEDIUM;
 
   // Scheduled time of the request.
-  uint64_t scheduled_time = 0;
+  int64_t created_time = 0;
 
-  // this function will be called when the request is finished.
-  void finish();
+  // function to call when the request is finished.
+  OnFinish on_finish;
 
-  bool is_finished() const { return status == RequestStatus::COMPLETED; }
+  bool is_finished() const {
+    for (const auto& seq : sequences) {
+      if (!seq.is_finished()) {
+        return false;
+      }
+    }
+    return true;
+  }
 };
 
 // Compare two request contexts based on priority then scheduled time.
@@ -80,7 +103,7 @@ struct Request {
 struct RequestPtrLess {
   bool operator()(const Request* a, const Request* b) const {
     if (a->priority == b->priority) {
-      return a->scheduled_time < b->scheduled_time;
+      return a->created_time < b->created_time;
     }
     return a->priority < b->priority;
   }
@@ -91,7 +114,7 @@ struct RequestPtrLess {
 struct RequestPtrGreater {
   bool operator()(const Request* a, const Request* b) const {
     if (a->priority == b->priority) {
-      return a->scheduled_time > b->scheduled_time;
+      return a->created_time > b->created_time;
     }
     return a->priority > b->priority;
   }

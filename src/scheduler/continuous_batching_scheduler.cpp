@@ -16,8 +16,14 @@ constexpr size_t kMaxBatchSize = 100;
 
 constexpr uint64_t kStepSleepTimeMs = 10;
 
-ContinuousBatchingScheduler::ContinuousBatchingScheduler()
-    : request_queue_(kRequestQueueSize) {}
+ContinuousBatchingScheduler::ContinuousBatchingScheduler(Engine* engine)
+    : engine_(engine), request_queue_(kRequestQueueSize) {
+  CHECK(engine_ != nullptr);
+  block_manager_ = engine_->block_manager();
+  tokenizer_ = engine_->tokenizer();
+  CHECK(block_manager_ != nullptr);
+  CHECK(tokenizer_ != nullptr);
+}
 
 ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
   // release all requests in the queue
@@ -35,10 +41,10 @@ ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
   }
 
   // release all requests in the batch
-  for (Request* request : batch_) {
+  for (Request* request : running_) {
     std::unique_ptr<Request> request_ptr(request);
   }
-  batch_.clear();
+  running_.clear();
 }
 
 bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
@@ -52,69 +58,95 @@ bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
   return false;
 }
 
-void ContinuousBatchingScheduler::create_batch() {
+std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
   // propogate new requests to priority_queue_
   while (!request_queue_.isEmpty()) {
     Request* request = nullptr;
-    // read from request then then push to priority queue
+    // read from request queue then push to priority queue
     request_queue_.read(request);
     CHECK(request != nullptr);
     priority_queue_.push(request);
   }
 
-  // fast paths
-  // no new requests
-  if (priority_queue_.empty()) {
-    return;
-  }
-  // requests in current batch all have precedence over new requests
-  if (!batch_.empty() &&
-      RequestPtrLess()(batch_.back(), priority_queue_.top())) {
-    // TODO: need to check if we can schedule new requests
-    return;
-  }
-
-  // add requests in current batch back to the priority queue
-  std::unordered_map<Request*, size_t> request_to_idx;
-  for (size_t i = 0; i < batch_.size(); ++i) {
-    Request* request = batch_[i];
-    // TODO: skip finished requests
-    request_to_idx[request] = i;
-    priority_queue_.push(request);
-  }
-
-  std::vector<Request*> new_batch;
-  // request in [begin_idx, end_idx) are in current batch but not in new batch.
+  // requests in [begin_idx, end_idx) are holding cache blocks, which are
+  // preemptable
   size_t begin_idx = 0;
-  size_t end_idx = batch_.size();
+  size_t end_idx = running_.size();
+  for (size_t i = 0; i < end_idx;) {
+    Request* request = running_[i];
+    if (request->is_finished()) {
+      // release all blocks for the finished request
+      block_manager_->release_slots_for_request(request);
+      // take over the ownership of the request
+      std::unique_ptr<Request> finished_request(request);
+      response_executor_.schedule([request = std::move(finished_request)]() {
+        // TODO: add finish handling logic
+        request->on_finish("", Status());
+      });
+      // swap with the last request
+      running_[i] = running_[--end_idx];
+      continue;
+    }
+
+    // push the request back to the priority queue
+    priority_queue_.push(request);
+    ++i;
+  }
+
+  // schedule sequence by sequence but preempt whole request if necessary
+  std::vector<Sequence*> sequences_batch;
+  std::vector<Request*> request_batch;
   while (!priority_queue_.empty()) {
     Request* candidate = priority_queue_.top();
-    // no more slots available
-    if (!block_manager_->allocate_slots_for_request(candidate)) {
-      // try to preempt requests in current batch
-      if (begin_idx == end_idx) {
-        // no requests left to preempt
-        break;
+    bool has_enough_slots = true;
+    std::vector<Sequence*> sequence_candiadtes;
+    sequence_candiadtes.reserve(candidate->sequences.size());
+    for (Sequence& sequence : candidate->sequences) {
+      if (block_manager_->allocate_slots_for_sequence(&sequence)) {
+        sequence_candiadtes.push_back(&sequence);
       }
-      // preempt the lowest priority (last) request in current batch
+    }
+
+    if (sequence_candiadtes.size() == candidate->sequences.size()) {
+      // add request to new batch
+      priority_queue_.pop();
+      request_batch.push_back(candidate);
+      sequences_batch.insert(sequences_batch.end(),
+                             sequence_candiadtes.begin(),
+                             sequence_candiadtes.end());
+      if (candidate == running_[begin_idx]) {
+        // the request has been scheduled and can't be preempted
+        ++begin_idx;
+      }
+      continue;
+    }
+
+    // try to preempt lowest priority request in current batch
+    if (begin_idx < end_idx) {
       CHECK(end_idx > begin_idx);
-      Request* request_to_preempt = batch_[--end_idx];
+      Request* request_to_preempt = running_[--end_idx];
       block_manager_->release_slots_for_request(request_to_preempt);
       continue;
     }
-    // update index range for current batch
-    auto it = request_to_idx.find(candidate);
-    if (it != request_to_idx.end()) {
-      CHECK(it->second >= begin_idx);
-      begin_idx = it->second;
-    }
 
-    // add candidate to new batch
-    new_batch.push_back(candidate);
-    priority_queue_.pop();
+    // no requests left to preempt
+    CHECK(begin_idx == end_idx);
+
+    // partially schedule the request
+    if (!sequence_candiadtes.empty()) {
+      priority_queue_.pop();
+      request_batch.push_back(candidate);
+      sequences_batch.insert(sequences_batch.end(),
+                             sequence_candiadtes.begin(),
+                             sequence_candiadtes.end());
+    }
+    break;
   }
+
   CHECK(begin_idx == end_idx);
-  batch_ = std::move(new_batch);
+  running_ = std::move(request_batch);
+  // DCHECK(running_.sorted())
+  return sequences_batch;
 }
 
 // step the scheduler forward by one step
@@ -122,9 +154,10 @@ void ContinuousBatchingScheduler::create_batch() {
 void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   // get a new batch of requests
   const auto deadline = absl::Now() + timeout;
+  std::vector<Sequence*> seqs_batch;
   while (true) {
-    create_batch();
-    if (!batch_.empty()) {
+    seqs_batch = std::move(create_sequence_batch());
+    if (!seqs_batch.empty()) {
       // find one batch of requests to process
       break;
     }
@@ -139,20 +172,33 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
     absl::SleepFor(time_to_sleep);
   }
 
-  CHECK(!batch_.empty());
-  // auto output_parameters = engine_->execute_model(batch_);
+  CHECK(!seqs_batch.empty());
+  auto output_parameters = engine_->execute_model(seqs_batch);
 
-  // TODO: process finished requests
-  for (auto& request : batch_) {
-    // release the ownership of the request
-    // std::unique_ptr<Request> request_ptr(request);
-    // notify the request context that the request has finished
-    // TODO: response to the client earlier
-    // request->finish();
+  const auto& next_tokens = output_parameters.next_tokens;
+  const int* new_token_ids = next_tokens.data_ptr<int>();
+  const int64_t num_seqs = next_tokens.numel();
+  CHECK(num_seqs == seqs_batch.size());
 
-    // update batch status, next token ids.
-    // 1> response to client if stream is enabled
-    // 2> remove request from batch if it is finished
+  // process sequence in batch
+  for (int64_t i = 0; i < num_seqs; ++i) {
+    Sequence* seq = seqs_batch[i];
+    // append new token id to the sequence
+    seq->append_new_token_id(new_token_ids[i]);
+
+    // check if the sequence is finished and update its status
+    seq->check_stopping_creteria();
+
+    // stream delta to client if streaming is enabled
+    if (seq->is_streaming()) {
+      // TODO: move this into executor
+      auto detla = seq->decode_delta_text(*tokenizer_);
+      const auto finish_reason = seq->finish_reason();
+      response_executor_.schedule(
+          [seq, detla = std::move(detla), finish_reason = finish_reason]() {
+            seq->stream_delta(detla, finish_reason);
+          });
+    }
   }
 }
 

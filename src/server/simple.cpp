@@ -18,7 +18,7 @@
 #include "request/sampling_parameter.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
-#include "tokenizer/sentencepiece_tokenizer.h"
+// #include "tokenizer/sentencepiece_tokenizer.h"
 #include "torch_utils/state_dict.h"
 
 DEFINE_string(model_path,
@@ -87,13 +87,15 @@ int main(int argc, char* argv[]) {
     }
 
     // create a request
-    auto tokens_ids = tokenizer->encode(input);
+    std::vector<int> tokens_ids;
+    tokenizer->encode(input, &tokens_ids);
     int64_t prompt_token_len = tokens_ids.size();
 
     llm::Sequence sequence(std::move(input),
                            std::move(tokens_ids),
                            &sampling_param,
-                           &stopping_criteria);
+                           &stopping_criteria,
+                           nullptr);
 
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;

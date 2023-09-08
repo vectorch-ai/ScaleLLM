@@ -15,6 +15,7 @@ Checks: >
   -modernize-use-nodiscard,
   -modernize-use-auto,
   -modernize-use-trailing-return-type,
+  -modernize-pass-by-value,
   -misc-non-private-member-variables-in-classes,
   -performance-unnecessary-value-param,
   -bugprone-easily-swappable-parameters,
@@ -24,6 +25,7 @@ Checks: >
   -readability-use-anyofallof,
   -cppcoreguidelines-special-member-functions,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-prefer-member-initializer,
   -readability-magic-numbers,
 
 
