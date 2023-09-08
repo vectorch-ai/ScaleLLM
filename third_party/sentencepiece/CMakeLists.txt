@@ -1,0 +1,56 @@
+include(proto_library)
+include(cc_library)
+
+proto_library(
+  NAME
+    proto_sentencepiece_model
+  SRCS
+    sentencepiece_model.proto
+)
+
+proto_library(
+  NAME
+    proto_sentencepiece
+  SRCS
+    sentencepiece.proto
+)
+
+cc_library(
+  NAME 
+    sentencepiece
+  HDRS 
+    common.h
+    init.h
+    util.h
+    freelist.h
+    config.h
+    darts.h
+    filesystem.h
+    model_factory.h
+    model_interface.h
+    normalizer.h
+    unigram_model.h
+    bpe_model.h
+    char_model.h
+    word_model.h
+    sentencepiece_processor.h
+  SRCS 
+    util.cc
+    error.cc
+    filesystem.cc
+    model_factory.cc
+    model_interface.cc
+    normalizer.cc
+    unigram_model.cc
+    bpe_model.cc
+    char_model.cc
+    word_model.cc
+    sentencepiece_processor.cc
+  DEPS
+    proto_sentencepiece
+    proto_sentencepiece_model
+    absl::strings
+    absl::container_common
+    absl::memory
+    absl::flags
+)

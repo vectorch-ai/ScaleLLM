@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sentencepiece_processor.h>
+#include "sentencepiece/sentencepiece_processor.h"
 
 #include "tokenizer.h"
 

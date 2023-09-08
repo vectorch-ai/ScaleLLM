@@ -11,8 +11,8 @@ cc_library(
   SRCS 
     sentencepiece_tokenizer.cpp
   DEPS
+    :sentencepiece
     glog::glog
-    SentencePiece::sentencepiece
     hf-tokenizers
 )
 

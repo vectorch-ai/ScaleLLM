@@ -1,5 +1,6 @@
 #include "sentencepiece_tokenizer.h"
 
+#include "sentencepiece/sentencepiece_processor.h"
 #include <glog/logging.h>
 
 namespace llm {
