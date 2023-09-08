@@ -76,7 +76,7 @@ struct OutputParameters {
     next_tokens = next_tokens.index_select(/*dim=*/0, seq_idx);
     // next_logprob = next_logprob.index_select(/*dim=*/0, seq_idx);
   }
-  // [num_seq]
+  // [num_seq] LongTensor
   torch::Tensor next_tokens;
 
   // [num_seq]

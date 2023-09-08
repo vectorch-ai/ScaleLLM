@@ -114,7 +114,7 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
       sequences_batch.insert(sequences_batch.end(),
                              sequence_candiadtes.begin(),
                              sequence_candiadtes.end());
-      if (candidate == running_[begin_idx]) {
+      if (begin_idx < end_idx && candidate == running_[begin_idx]) {
         // the request has been scheduled and can't be preempted
         ++begin_idx;
       }
@@ -142,8 +142,23 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
     }
     break;
   }
-
   CHECK(begin_idx == end_idx);
+
+  if (sequences_batch.empty() && !priority_queue_.empty()) {
+    // don't have enough memory to schedule one sequence
+    LOG(ERROR) << "Not enough memory to schedule one sequence";
+    Request* request = priority_queue_.top();
+    priority_queue_.pop();
+    // release all blocks for the finished request
+    block_manager_->release_slots_for_request(request);
+    // take over the ownership of the request
+    std::unique_ptr<Request> finished_request(request);
+    response_executor_.schedule([request = std::move(finished_request)]() {
+      // TODO: add finish handling logic
+      request->on_finish("", Status());
+    });
+  }
+
   running_ = std::move(request_batch);
   // DCHECK(running_.sorted())
   return sequences_batch;
@@ -176,15 +191,15 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   auto output_parameters = engine_->execute_model(seqs_batch);
 
   const auto& next_tokens = output_parameters.next_tokens;
-  const int* new_token_ids = next_tokens.data_ptr<int>();
   const int64_t num_seqs = next_tokens.numel();
   CHECK(num_seqs == seqs_batch.size());
 
+  const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
   // process sequence in batch
   for (int64_t i = 0; i < num_seqs; ++i) {
     Sequence* seq = seqs_batch[i];
     // append new token id to the sequence
-    seq->append_new_token_id(new_token_ids[i]);
+    seq->append_new_token_id(static_cast<int>(new_token_ids[i]));
 
     // check if the sequence is finished and update its status
     seq->check_stopping_creteria();

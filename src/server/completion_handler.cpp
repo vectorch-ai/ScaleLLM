@@ -1,8 +1,9 @@
 #include "completion_handler.h"
 
+#include <absl/time/time.h>
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
-#include <absl/time/time.h>
+#include <torch/torch.h>
 
 #include <string>
 #include <thread>
@@ -15,9 +16,27 @@ constexpr int kStepTimeoutMs = 500;
 
 DEFINE_int32(num_converter_threads, 1, "number of converter threads");
 
+DECLARE_int32(max_seq_len);
+
 namespace llm {
 
 namespace {
+
+RequestPriority grpc_priority_to_priority(Priority priority) {
+  switch (priority) {
+    case Priority::DEFAULT:
+      return RequestPriority::MEDIUM;
+    case Priority::LOW:
+      return RequestPriority::LOW;
+    case Priority::MEDIUM:
+      return RequestPriority::MEDIUM;
+    case Priority::HIGH:
+      return RequestPriority::HIGH;
+    default:
+      LOG(WARNING) << "Unknown priority: " << static_cast<int>(priority);
+  }
+  return RequestPriority::MEDIUM;
+}
 
 std::unique_ptr<Request> grpc_completion_request_to_request(
     CompletionCallData* call_data,
@@ -52,12 +71,18 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
 
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
-  stopping_criteria.max_tokens = grpc_request.max_tokens();
+  // TODO: add better protection
+  auto max_tokens = static_cast<uint32_t>(FLAGS_max_seq_len - token_ids.size());
+  if (grpc_request.max_tokens() != 0) {
+    max_tokens = std::min(max_tokens, grpc_request.max_tokens());
+  }
+  stopping_criteria.max_tokens = max_tokens;
+
   // stopping_criteria.ignore_eos_token = grpc_request.ignore_eos_token();
   stopping_criteria.eos_token_id = tokenizer->eos_id();
 
   request->stream = grpc_request.stream();
-  // request->priority = grpc_request.priority();
+  request->priority = grpc_priority_to_priority(grpc_request.priority());
   request->created_time = absl::ToUnixMicros(absl::Now());
 
   // TODO: handle best_of and n
@@ -107,6 +132,7 @@ CompletionHandler::CompletionHandler(Scheduler* scheduler,
   CHECK(tokenizer_ != nullptr);
   // start the scheduler loop
   scheduler_thread_ = std::thread([this]() {
+    torch::InferenceMode guard;
     const auto timeout = absl::Milliseconds(kStepTimeoutMs);
     while (true) {
       scheduler_->step(timeout);

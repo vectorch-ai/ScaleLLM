@@ -82,9 +82,15 @@ class AttentionImpl : public torch::nn::Module {
       // process sequences with prompt tokens (prefill)
       auto sliced_output =
           output.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-      attention::varlen_masked_self_attention(query,
-                                              key,
-                                              value,
+      auto sliced_query =
+          query.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+      auto sliced_key =
+          key.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+      auto sliced_value =
+          value.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+      attention::varlen_masked_self_attention(sliced_query,
+                                              sliced_key,
+                                              sliced_value,
                                               input_params.cu_seq_lens,
                                               input_params.max_seq_len,
                                               sliced_output);
@@ -93,9 +99,10 @@ class AttentionImpl : public torch::nn::Module {
     if (num_prompt_tokens < num_tokens) {
       // process sequences without prompt tokens (decode)
       auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
+      auto sliced_query = query.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
       attention::single_token_masked_self_attention(
           kv_cache,
-          query.slice(/*dim=*/0, /*start=*/num_prompt_tokens),
+          sliced_query,
           input_params.block_tables,
           input_params.context_lens,
           input_params.max_context_len,

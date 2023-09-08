@@ -93,6 +93,9 @@ void varlen_masked_self_attention_slow(
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
     int32_t /*max_seq_len*/,           // maximum sequence length
     torch::Tensor output) {
+  DCHECK(query.size(0) == key.size(0));
+  DCHECK(query.size(0) == value.size(0));
+
   const auto head_dim = query.size(-1);
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   torch::Tensor cu_seq_lens_cpu = cu_seq_lens.cpu();

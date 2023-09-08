@@ -19,6 +19,16 @@ message Usage {
   int32 total_tokens = 3;  
 }
 
+enum Priority {
+  DEFAULT = 0;
+
+  HIGH = 1;
+
+  MEDIUM = 2;
+
+  LOW = 3;
+}
+
 message CompletionRequest {
   // ID of the model to use. (required)
   string model = 1 [(google.api.field_behavior) = REQUIRED];
@@ -77,6 +87,9 @@ message CompletionRequest {
 
   // A unique identifier representing your end-user, which can help system to monitor and detect abuse.
   string user = 16;
+
+  // request priority. default = DEFAULT
+  Priority priority = 17;
 }
 
 message Choice {
@@ -178,6 +191,9 @@ message ChatRequest {
 
   // A unique identifier representing your end-user, which can help system to monitor and detect abuse.
   string user = 14;
+
+  // request priority. default = DEFAULT
+  Priority priority = 15;
 }
 
 message ChatChoice {

@@ -23,6 +23,8 @@ using llm::Completion;
 using llm::CompletionRequest;
 using llm::CompletionResponse;
 
+DEFINE_string(priority, "DEFAULT", "priority of the request, DEFAULT, LOW, MEDIUM, HIGH");
+
 class ChatClient final {
  public:
   ChatClient(std::shared_ptr<Channel> channel)
@@ -32,6 +34,9 @@ class ChatClient final {
     // Create a message to send to the server
     CompletionRequest request;
     request.set_prompt(prompt);
+    llm::Priority priority{};
+    CHECK(llm::Priority_Parse(FLAGS_priority, &priority));
+    request.set_priority(priority);
 
     // Create a stream for receiving messages
     ClientContext context;
@@ -44,7 +49,7 @@ class ChatClient final {
       // pretty print the response
       for (const auto& choice : message.choices()) {
         // LOG(INFO) << choice.DebugString();
-        std::cout << choice.text();
+        std::cout << choice.text() << std::flush;
       }
     }
 
