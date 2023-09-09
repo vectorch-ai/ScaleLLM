@@ -8,15 +8,17 @@
 
 #include "common/executor.h"
 #include "models/causal_lm.h"
+#include "models/parallel_args.h"
 #include "models/parameters.h"
 #include "torch_utils/state_dict.h"
 
 namespace llm {
-// class CacheManager;
 
 class Worker final {
  public:
-  Worker(const torch::Device& device) : device_(device) {}
+  Worker(const ParallelArgs& parallel_args,
+         const torch::ScalarType& dtype,
+         const torch::Device& device);
 
   ~Worker() = default;
 
@@ -64,9 +66,16 @@ class Worker final {
   // working thread
   Executor executor_;
 
+  // dtype of the model
+  torch::ScalarType dtype_;
+
   // device to run the model on
   torch::Device device_;
 
+  // parallel args
+  ParallelArgs parallel_args_;
+
+  // model args
   ModelArgs args_;
 
   // kv caches

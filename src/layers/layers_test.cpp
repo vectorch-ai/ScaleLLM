@@ -1,10 +1,10 @@
-#include "linear.h"
-
 #include <c10/core/Device.h>
+#include <c10/core/ScalarType.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
+#include "linear.h"
 #include "torch_utils/state_dict.h"
 
 namespace llm {
@@ -15,7 +15,10 @@ TEST(LayersTest, TestLoadStateDict) {
   const int64_t out_features = 20;
 
   torch::Device device(torch::kCPU);
-  ColumnParallelLinear linear(in_features, out_features, 1, device);
+  torch::ScalarType dtype(torch::kFloat);
+  ParallelArgs parallel_args(0, 1);
+  ColumnParallelLinear linear(
+      in_features, out_features, parallel_args, dtype, device);
   std::unordered_map<std::string, torch::Tensor> state_dict_data;
   // Allocate transposed weight matrix
   state_dict_data["weight"] = torch::randn({out_features, in_features});

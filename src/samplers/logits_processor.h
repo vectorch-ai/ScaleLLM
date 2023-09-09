@@ -47,6 +47,7 @@ class LogitsProcessor {
   // factory method to create a logits processor
   static std::unique_ptr<LogitsProcessor> create(
       const SamplingParameters& params,
+      const torch::ScalarType& dtype,
       const torch::Device& device);
 };
 
@@ -79,11 +80,14 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
   FrequencyPresencePenaltyLogitsProcessor(
       const std::vector<float>& frequency_penalties,
       const std::vector<float>& presence_penalties,
+      const torch::ScalarType& dtype,
       const torch::Device& device) {
     frequency_penalties_ =
-        torch::tensor(frequency_penalties, device).unsqueeze(1);
+        torch::tensor(frequency_penalties, torch::dtype(dtype).device(device))
+            .unsqueeze(1);
     presence_penalties_ =
-        torch::tensor(presence_penalties, device).unsqueeze(1);
+        torch::tensor(presence_penalties, torch::dtype(dtype).device(device))
+            .unsqueeze(1);
   }
 
   torch::Tensor forward(const torch::Tensor& token_ids,
@@ -117,13 +121,15 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
 class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
  public:
   RepetitionPenaltyLogitsProcessor(const std::vector<float>& penalties,
+                                   const torch::ScalarType& dtype,
                                    const torch::Device& device) {
-    penalties_ = torch::tensor(penalties, device).unsqueeze(1);
+    penalties_ = torch::tensor(penalties, torch::dtype(dtype).device(device))
+                     .unsqueeze(1);
   }
 
   // token_ids, [num_seqs, max_num_tokens] LongTensor
   torch::Tensor forward(const torch::Tensor& token_ids,
-                        const torch::Tensor& logits) const override {    
+                        const torch::Tensor& logits) const override {
     // select the logits for tokens of each sequence
     auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
 
@@ -145,9 +151,12 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
  public:
   // Constructor
   TemperatureLogitsProcessor(const std::vector<float>& temperatures,
+                             const torch::ScalarType& dtype,
                              const torch::Device& device) {
     // Convert temperature to a tensor and unsqueeze it for broadcasting
-    temperatures_ = torch::tensor(temperatures, device).unsqueeze(1);
+    temperatures_ =
+        torch::tensor(temperatures, torch::dtype(dtype).device(device))
+            .unsqueeze(1);
 
     // Replace 0. with 1. to avoid division by 0
     temperatures_ =
@@ -168,11 +177,14 @@ class TopPLogitsProcessor : public LogitsProcessor {
  public:
   TopPLogitsProcessor(
       const std::vector<float>& top_p,
+      const torch::ScalarType& dtype,
       const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
       int min_tokens_to_keep = 1)
       : filter_value(filter_value), min_tokens_to_keep(min_tokens_to_keep) {
-    top_p_opposite = 1.0 - torch::tensor(top_p, device).unsqueeze(1);
+    top_p_opposite =
+        1.0 -
+        torch::tensor(top_p, torch::dtype(dtype).device(device)).unsqueeze(1);
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
@@ -215,6 +227,7 @@ class TopKLogitsProcessor : public LogitsProcessor {
   // top_k: input is 1-based, 0 means no filtering or disable filtering
   TopKLogitsProcessor(
       const std::vector<int64_t>& top_k,
+      const torch::ScalarType& dtype,
       const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
       int64_t min_tokens_to_keep = 1)
@@ -234,14 +247,13 @@ class TopKLogitsProcessor : public LogitsProcessor {
       disabled.push_back(val == 0 ? 1 : 0);
     }
 
-    top_k_ = torch::tensor(adjusted_top_k, device).unsqueeze(1);
+    top_k_ = torch::tensor(adjusted_top_k, torch::dtype(dtype).device(device))
+                 .unsqueeze(1);
 
     if (std::any_of(
             disabled.begin(), disabled.end(), [](bool v) { return v == 1; })) {
       top_k_disabled_mask_ =
-          torch::tensor(
-              disabled,
-              torch::TensorOptions().dtype(torch::kBool).device(device))
+          torch::tensor(disabled, torch::dtype(torch::kBool).device(device))
               .unsqueeze(1);
     }
   }

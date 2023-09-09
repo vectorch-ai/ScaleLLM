@@ -1,5 +1,6 @@
 #pragma once
 
+#include <c10/core/ScalarType.h>
 #include <torch/torch.h>
 
 #include "attention.h"
@@ -8,6 +9,7 @@
 #include "layers/norm.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
+#include "models/parallel_args.h"
 #include "models/parameters.h"
 #include "transformer_block.h"
 
@@ -18,25 +20,27 @@ namespace llm {
 class TransformerImpl : public torch::nn::Module {
  public:
   TransformerImpl(const ModelArgs& args,
-                  int64_t world_size,
+                  const ParallelArgs& parallel_args,
+                  const torch::ScalarType& dtype,
                   const torch::Device& device) {
     // register submodules
     tok_embeddings_ = register_module(
         "tok_embeddings",
-        ParallelEmbedding(args.vocab_size(), args.dim(), world_size, device));
+        ParallelEmbedding(
+            args.vocab_size(), args.dim(), parallel_args, dtype, device));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int i = 0; i < args.n_layers(); i++) {
-      auto block = TransformerBlock(i, args, world_size, device);
+      auto block = TransformerBlock(args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
-    norm_ =
-        register_module("norm", RMSNorm(args.dim(), args.norm_eps(), device));
-    output_ =
-        register_module("output",
-                        ColumnParallelLinear(
-                            args.dim(), args.vocab_size(), world_size, device));
+    norm_ = register_module(
+        "norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
+    output_ = register_module(
+        "output",
+        ColumnParallelLinear(
+            args.dim(), args.vocab_size(), parallel_args, dtype, device));
   }
 
   // tokens: [num_tokens]

@@ -3,6 +3,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "models/parallel_args.h"
 #include "torch_utils/state_dict.h"
 
 namespace llm {
@@ -14,9 +15,11 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
  public:
   ColumnParallelLinearImpl(int64_t in_features,
                            int64_t out_features,
-                           int64_t world_size,
+                           const ParallelArgs& parallel_args,
+                           const torch::ScalarType& dtype,
                            const torch::Device& device)
-      : world_size_(world_size) {
+      : parallel_args_(parallel_args) {
+    const auto world_size = parallel_args_.world_size();
     CHECK(out_features % world_size == 0)
         << "out_features " << out_features << " not divisible by world_size "
         << world_size;
@@ -26,14 +29,15 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
     // we allocate the transpose.
     weight_ = register_parameter(
         "weight",
-        torch::empty({out_features_per_partition, in_features}, device),
+        torch::empty({out_features_per_partition, in_features},
+                     torch::dtype(dtype).device(device)),
         /*requires_grad=*/false);
   }
 
   torch::Tensor forward(torch::Tensor input) {
     namespace F = torch::nn::functional;
     auto output = F::linear(input, weight_);
-    if (world_size_ > 1) {
+    if (parallel_args_.world_size() > 1) {
       // call all reduce or all gather with concat
       // torch::distributed::all_reduce(input_);
     }
@@ -61,8 +65,8 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   // A^T: [out_features_per_partition, in_features]
   torch::Tensor weight_{nullptr};
 
-  // configs
-  int64_t world_size_;
+  // parallel args
+  ParallelArgs parallel_args_;
 };
 TORCH_MODULE(ColumnParallelLinear);
 
@@ -80,9 +84,11 @@ class RowParallelLinearImpl : public torch::nn::Module {
  public:
   RowParallelLinearImpl(int64_t in_features,
                         int64_t out_features,
-                        int64_t world_size,
+                        const ParallelArgs& parallel_args,
+                        const torch::ScalarType& dtype,
                         const torch::Device& device)
-      : world_size_(world_size) {
+      : parallel_args_(parallel_args) {
+    const auto world_size = parallel_args_.world_size();
     CHECK(in_features % world_size == 0)
         << "in_features " << in_features << " not divisible by world_size "
         << world_size;
@@ -90,14 +96,15 @@ class RowParallelLinearImpl : public torch::nn::Module {
     // Allocate the transpose since linear performs XA^T.
     weight_ = register_parameter(
         "weight",
-        torch::empty({out_features, in_features_per_partition}, device),
+        torch::empty({out_features, in_features_per_partition},
+                     torch::dtype(dtype).device(device)),
         /*requires_grad=*/false);
   }
 
   torch::Tensor forward(torch::Tensor input) {
     namespace F = torch::nn::functional;
     auto output = F::linear(input, weight_);
-    if (world_size_ > 1) {
+    if (parallel_args_.world_size() > 1) {
       // call all reduce or all gather with concat
       // torch::distributed::all_reduce(input_);
     }
@@ -125,8 +132,8 @@ class RowParallelLinearImpl : public torch::nn::Module {
   // A^T: [out_features, in_features_per_partition]
   torch::Tensor weight_{nullptr};
 
-  // configs
-  int64_t world_size_;
+  // parallel args
+  ParallelArgs parallel_args_;
 };
 TORCH_MODULE(RowParallelLinear);
 }  // namespace llm

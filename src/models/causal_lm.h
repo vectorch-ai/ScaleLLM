@@ -6,6 +6,7 @@
 
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
+#include "models/parallel_args.h"
 #include "parameters.h"
 #include "torch_utils/state_dict.h"
 
@@ -27,6 +28,8 @@ class CausalLM : public torch::nn::Module {
 
   // factory method to create a causal language model
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
+                                          const ParallelArgs& parallel_args,
+                                          const torch::ScalarType& dtype,
                                           const torch::Device& device);
 };
 

@@ -94,6 +94,7 @@ void GrpcServer::handle_rpcs() {
   // Block waiting to read the next event from the completion queue.
   // returns false if there is any kind of event or cq_ is shutting down.
   while (cq_->Next(&tag, &ok)) {
+    // TODO: handle client connection error
     GPR_ASSERT(ok);
     static_cast<ICallData*>(tag)->proceed();
   }

@@ -5,6 +5,7 @@
 #include "memory/cache_args.h"
 #include "memory/memory.h"
 #include "models/model_loader.h"
+#include "models/parallel_args.h"
 #include "request/request.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 #include "utils.h"
@@ -24,12 +25,18 @@ DEFINE_double(max_memory_utilization,
 
 namespace llm {
 
-Engine::Engine(const std::vector<torch::Device>& devices) {
+Engine::Engine(const torch::ScalarType& dtype,
+               const std::vector<torch::Device>& devices)
+    : dtype_(dtype), devices_(devices) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   // create a worker for each device
-  for (const auto& device : devices) {
-    workers_.emplace_back(std::make_unique<Worker>(device));
+  ParallelArgs parallel_args(0, static_cast<int64_t>(devices.size()));
+  for (size_t i = 0; i < devices.size(); ++i) {
+    const auto& device = devices[i];
+    parallel_args.rank(static_cast<int64_t>(i));
+    workers_.emplace_back(
+        std::make_unique<Worker>(parallel_args, dtype, device));
   }
 }
 
@@ -81,7 +88,8 @@ bool Engine::init_model(const std::string& model_weights_path) {
 
   // load the weights from the checkpoint
   // each worker loads one model weights file
-  // TODO: add support for loading multiple model weights files for each worker
+  // TODO: add support for loading multiple model weights files for each
+  // worker
   size_t i = 0;
   for (const auto& state_dict : model_loader) {
     workers_[i++]->load_state_dict(state_dict);
@@ -96,7 +104,7 @@ bool Engine::init_kv_cache() {
   cache_args_.max_memory_utilization(FLAGS_max_memory_utilization);
 
   // init kv cache
-  const auto dtype_size = torch::tensor({}).element_size();
+  const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
   // key + value for all layers
   const int64_t block_size_in_bytes = int64_t(2) * cache_args_.block_size() *
                                       args_.dim() * args_.n_layers() *

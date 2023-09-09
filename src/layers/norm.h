@@ -10,12 +10,19 @@ namespace llm {
 // Root mean square normalization
 class RMSNormImpl : public torch::nn::Module {
  public:
-  RMSNormImpl(int64_t dim, float eps, const torch::Device& device) : eps_(eps) {
+  RMSNormImpl(int64_t dim,
+              float eps,
+              const torch::ScalarType& dtype,
+              const torch::Device& device)
+      : eps_(eps) {
     weight_ = register_parameter(
-        "weight", torch::empty({dim}, device), /*requires_grad=*/false);
+        "weight",
+        torch::empty({dim}, torch::dtype(dtype).device(device)),
+        /*requires_grad=*/false);
   }
 
   torch::Tensor forward(torch::Tensor input) {
+    // TODO: do we really need to cast to float?
     auto output = norm(input.to(torch::kFloat)).type_as(input);
     return output * weight_;
   }
@@ -37,7 +44,9 @@ class RMSNormImpl : public torch::nn::Module {
 
  private:
   torch::Tensor norm(const torch::Tensor& x) {
-    return x * torch::rsqrt(x.pow(2).mean(-1, /*keepdim*/ true) + eps_);
+    return x *
+           torch::rsqrt(
+               x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true) + eps_);
   }
 
   // parameter members, must be registered

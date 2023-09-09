@@ -14,42 +14,46 @@ namespace llm {
 class AttentionImpl : public torch::nn::Module {
  public:
   AttentionImpl(const ModelArgs& args,
-                int64_t world_size,
-                const torch::Device& device)
-      : world_size_(world_size) {
-    if (args.n_kv_heads().has_value()) {
-      n_kv_heads_ = args.n_kv_heads().value();
-    } else {
-      n_kv_heads_ = args.n_heads();
-    }
-    n_local_heads_ = args.n_heads() / world_size_;
-    n_local_kv_heads_ = n_kv_heads_ / world_size_;
-    n_rep_ = n_local_heads_ / n_local_kv_heads_;
-    head_dim_ = args.dim() / args.n_heads();
-
+                const ParallelArgs& parallel_args,
+                const torch::ScalarType& dtype,
+                const torch::Device& device) {
+    const auto world_size = parallel_args.world_size();
     const int64_t dim = args.dim();
     const int64_t n_heads = args.n_heads();
+    const int64_t n_kv_heads = args.n_kv_heads().value_or(args.n_heads());
+
+    n_local_heads_ = n_heads / world_size;
+    n_local_kv_heads_ = n_kv_heads / world_size;
+    head_dim_ = dim / n_heads;
 
     // register submodules
+    // TODO: fuse wq, wk, wv into one linear layer
     wq_ = register_module(
         "wq",
-        ColumnParallelLinear(dim, n_heads * head_dim_, world_size, device));
+        ColumnParallelLinear(
+            dim, n_heads * head_dim_, parallel_args, dtype, device));
     wk_ = register_module(
         "wk",
-        ColumnParallelLinear(dim, n_kv_heads_ * head_dim_, world_size, device));
+        ColumnParallelLinear(
+            dim, n_kv_heads * head_dim_, parallel_args, dtype, device));
     wv_ = register_module(
         "wv",
-        ColumnParallelLinear(dim, n_kv_heads_ * head_dim_, world_size, device));
+        ColumnParallelLinear(
+            dim, n_kv_heads * head_dim_, parallel_args, dtype, device));
     wo_ = register_module(
-        "wo", RowParallelLinear(n_heads * head_dim_, dim, world_size, device));
+        "wo",
+        RowParallelLinear(
+            n_heads * head_dim_, dim, parallel_args, dtype, device));
 
     // initialize positional embedding
     // TODO: need to adjust the max_seq_len
+    const auto rotary_dim = args.dim() / args.n_heads();
     pos_emb_ = register_module("pos_emb",
-                               RotaryEmbedding(args.dim() / args.n_heads(),
+                               RotaryEmbedding(rotary_dim,
                                                args.max_seq_len(),
                                                /*scaling_factor=*/0.0f,
                                                /*interleaved=*/true,
+                                               dtype,
                                                device));
   }
 
@@ -133,12 +137,9 @@ class AttentionImpl : public torch::nn::Module {
 
   RotaryEmbedding pos_emb_{nullptr};
 
-  // configs
-  int64_t world_size_;
-  int64_t n_kv_heads_;
+  // configs used in forward
   int64_t n_local_heads_;
   int64_t n_local_kv_heads_;
-  int64_t n_rep_;
   int64_t head_dim_;
 };
 

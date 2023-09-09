@@ -19,10 +19,15 @@
 
 namespace llm {
 
+Worker::Worker(const ParallelArgs& parallel_args,
+               const torch::ScalarType& dtype,
+               const torch::Device& device)
+    : parallel_args_(parallel_args), dtype_(dtype), device_(device) {}
+
 bool Worker::init_model(const ModelArgs& args) {
   // initialize model
   args_ = args;
-  model_ = CausalLM::create(args, device_);
+  model_ = CausalLM::create(args, parallel_args_, dtype_, device_);
   return true;
 }
 
@@ -32,8 +37,10 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& key_cache_shape,
   const int64_t num_layers = args_.n_layers();
   kv_caches_.reserve(num_layers);
   for (int64_t i = 0; i < num_layers; ++i) {
-    auto key_cache = torch::zeros(key_cache_shape, device_);
-    auto value_cache = torch::zeros(value_cache_shape, device_);
+    auto key_cache =
+        torch::empty(key_cache_shape, torch::dtype(dtype_).device(device_));
+    auto value_cache =
+        torch::empty(value_cache_shape, torch::dtype(dtype_).device(device_));
     kv_caches_.emplace_back(key_cache, value_cache);
   }
   return true;
@@ -65,7 +72,8 @@ OutputParameters Worker::execute_model(
   logits = logits.index_select(/*dim=*/0, d_params.sample_idx);
 
   // create and call logits processors
-  auto logits_processor = LogitsProcessor::create(sampling_params, device_);
+  auto logits_processor =
+      LogitsProcessor::create(sampling_params, dtype_, device_);
   logits = logits_processor->forward(d_params.token_ids, logits);
 
   // create and call sampler

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <c10/core/Device.h>
+#include <c10/core/ScalarType.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -39,6 +40,7 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
                   int64_t max_seq_len,
                   float scaling_factor,
                   bool interleaved,
+                  const torch::ScalarType& dtype,
                   const torch::Device& device);
 };
 
@@ -92,6 +94,7 @@ class InterleavedRotaryEmbedding : public RotaryEmbeddingImpl {
   InterleavedRotaryEmbedding(int64_t rotary_dim,
                              int64_t max_seq_len,
                              float scaling_factor,
+                             const torch::ScalarType& dtype,
                              const torch::Device& device,
                              float theta = kDefaultTheta) {
     // Create cos and sin embeddings.
@@ -104,7 +107,7 @@ class InterleavedRotaryEmbedding : public RotaryEmbeddingImpl {
     const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
     // [a, b, c, d] => [a, a, b, b, c, c, d, d]
     auto emd = torch::repeat_interleave(freqs, /*repeats=*/2, /*dim=*/-1);
-    emd = emd.to(device);
+    emd = emd.to(torch::dtype(dtype).device(device));
     // [max_seq_len, rotary_dim] => [max_seq_len, rotary_dim*2]
     const auto cos_sin = torch::cat({emd.cos(), emd.sin()}, /*dim=*/-1);
     cos_sin_cache_ = register_buffer("cos_sin_cached", cos_sin);
@@ -134,6 +137,7 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
   RotatedRotaryEmbedding(int64_t rotary_dim,
                          int64_t max_seq_len,
                          float scaling_factor,
+                         const torch::ScalarType& dtype,
                          const torch::Device& device,
                          float theta = kDefaultTheta) {
     // Create cos and sin embeddings.
@@ -146,7 +150,7 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
     const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
     // [a, b, c, d] => [a, b, c, d, a, b, c, d]
     auto emd = torch::cat({freqs, freqs}, /*dim=*/-1);
-    emd = emd.to(device);
+    emd = emd.to(torch::dtype(dtype).device(device));
     const auto cos_sin = torch::cat({emd.cos(), emd.sin()}, /*dim=*/-1);
     cos_sin_cache_ = register_buffer("cos_sin_cached", cos_sin);
   }

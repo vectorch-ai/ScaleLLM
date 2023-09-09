@@ -5,31 +5,35 @@
 #include <optional>
 
 #include "layers/linear.h"
+#include "models/model_args.h"
+#include "models/parallel_args.h"
 
 namespace llm {
 
 class FeedForwardImpl : public torch::nn::Module {
  public:
-  FeedForwardImpl(int64_t dim,
-                  int64_t hidden_dim,
-                  int64_t multiple_of,
-                  std::optional<float> ffn_dim_multiplier,
-                  int64_t world_size,
+  FeedForwardImpl(const ModelArgs& args,
+                  const ParallelArgs& parallel_args,
+                  const torch::ScalarType& dtype,
                   const torch::Device& device) {
+    const int64_t dim = args.dim();
+    const int64_t multiple_of = args.multiple_of();
+    const float ffn_dim_multiplier = args.ffn_dim_multiplier().value_or(1.0f);
+    int64_t hidden_dim = 4 * dim;
     hidden_dim = 2 * hidden_dim / 3;
     // custom dim factor multiplier
-    if (ffn_dim_multiplier.has_value()) {
-      hidden_dim =
-          static_cast<int64_t>(ffn_dim_multiplier.value() * hidden_dim);
-    }
+    hidden_dim *= ffn_dim_multiplier;
     hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
 
     // register the weight parameter
-    w1_ = register_module("w1",
-                          ColumnParallelLinear(dim, hidden_dim, world_size, device));
-    w2_ = register_module("w2", RowParallelLinear(hidden_dim, dim, world_size, device));
-    w3_ = register_module("w3",
-                          ColumnParallelLinear(dim, hidden_dim, world_size, device));
+    w1_ = register_module(
+        "w1",
+        ColumnParallelLinear(dim, hidden_dim, parallel_args, dtype, device));
+    w2_ = register_module(
+        "w2", RowParallelLinear(hidden_dim, dim, parallel_args, dtype, device));
+    w3_ = register_module(
+        "w3",
+        ColumnParallelLinear(dim, hidden_dim, parallel_args, dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x) {

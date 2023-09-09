@@ -28,17 +28,17 @@ int main(int argc, char** argv) {
   torch::Device device(FLAGS_device);
 
   // set the default dtype
+  torch::ScalarType dtype{};
   if (device.is_cpu()) {
     // always use float32 on CPU since float16 is not supported
-    torch::set_default_dtype(
-        torch::scalarTypeToTypeMeta(torch::ScalarType::Float));
+    dtype = torch::kFloat;
     LOG(INFO) << "Using float32 on CPU.";
   } else {
-    torch::set_default_dtype(
-        torch::scalarTypeToTypeMeta(torch::ScalarType::BFloat16));
+    dtype = torch::kHalf;
   }
 
-  auto engine = std::make_unique<Engine>(std::vector<torch::Device>{device});
+  auto engine =
+      std::make_unique<Engine>(dtype, std::vector<torch::Device>{device});
   CHECK(engine->init(FLAGS_model_path, FLAGS_tokenizer_path));
 
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());

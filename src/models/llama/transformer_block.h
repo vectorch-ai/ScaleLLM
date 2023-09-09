@@ -13,25 +13,19 @@ namespace llm {
 
 class TransformerBlockImpl : public torch::nn::Module {
  public:
-  TransformerBlockImpl(int32_t layer_id,
-                       const ModelArgs& args,
-                       int64_t world_size,
-                       const torch::Device& device)
-      : world_size_(world_size) {
+  TransformerBlockImpl(const ModelArgs& args,
+                       const ParallelArgs& parallel_args,
+                       const torch::ScalarType& dtype,
+                       const torch::Device& device) {
     // register submodules
-    attention_ =
-        register_module("attention", Attention(args, world_size, device));
-    feed_forward_ = register_module("feed_forward",
-                                    FeedForward(/*dim=*/args.dim(),
-                                                /*hidden_dim=*/4 * args.dim(),
-                                                args.multiple_of(),
-                                                args.ffn_dim_multiplier(),
-                                                world_size,
-                                                device));
+    attention_ = register_module("attention",
+                                 Attention(args, parallel_args, dtype, device));
+    feed_forward_ = register_module(
+        "feed_forward", FeedForward(args, parallel_args, dtype, device));
     attention_norm_ = register_module(
-        "attention_norm", RMSNorm(args.dim(), args.norm_eps(), device));
-    ffn_norm_ = register_module("ffn_norm",
-                                RMSNorm(args.dim(), args.norm_eps(), device));
+        "attention_norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
+    ffn_norm_ = register_module(
+        "ffn_norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -62,9 +56,6 @@ class TransformerBlockImpl : public torch::nn::Module {
   RMSNorm attention_norm_{nullptr};
 
   RMSNorm ffn_norm_{nullptr};
-
-  // configs
-  int64_t world_size_;
 };
 TORCH_MODULE(TransformerBlock);
 
