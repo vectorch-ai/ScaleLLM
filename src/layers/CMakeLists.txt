@@ -5,12 +5,14 @@ cc_library(
   NAME 
     layers
   HDRS 
+    model_parallel.h
     norm.h
     linear.h
     embedding.h
     pos_embedding.h
     attention.h
   SRCS 
+    model_parallel.cpp
     attention.cpp
     pos_embedding.cpp
   DEPS

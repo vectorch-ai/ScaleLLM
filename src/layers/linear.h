@@ -3,6 +3,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "model_parallel.h"
 #include "models/parallel_args.h"
 #include "torch_utils/state_dict.h"
 
@@ -15,10 +16,11 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
  public:
   ColumnParallelLinearImpl(int64_t in_features,
                            int64_t out_features,
+                           bool gather_output,
                            const ParallelArgs& parallel_args,
                            const torch::ScalarType& dtype,
                            const torch::Device& device)
-      : parallel_args_(parallel_args) {
+      : gather_output_(gather_output), parallel_args_(parallel_args) {
     const auto world_size = parallel_args_.world_size();
     CHECK(out_features % world_size == 0)
         << "out_features " << out_features << " not divisible by world_size "
@@ -37,9 +39,8 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   torch::Tensor forward(torch::Tensor input) {
     namespace F = torch::nn::functional;
     auto output = F::linear(input, weight_);
-    if (parallel_args_.world_size() > 1) {
-      // call all reduce or all gather with concat
-      // torch::distributed::all_reduce(input_);
+    if (parallel_args_.world_size() > 1 && gather_output_) {
+      output = gather_from_model_parallel_region(output, parallel_args_);
     }
     return output;
   }
@@ -67,6 +68,9 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
 
   // parallel args
   ParallelArgs parallel_args_;
+
+  // whether to gather the output
+  bool gather_output_;
 };
 TORCH_MODULE(ColumnParallelLinear);
 
@@ -84,10 +88,12 @@ class RowParallelLinearImpl : public torch::nn::Module {
  public:
   RowParallelLinearImpl(int64_t in_features,
                         int64_t out_features,
+                        bool input_is_parallelized,
                         const ParallelArgs& parallel_args,
                         const torch::ScalarType& dtype,
                         const torch::Device& device)
-      : parallel_args_(parallel_args) {
+      : input_is_parallelized_(input_is_parallelized),
+        parallel_args_(parallel_args) {
     const auto world_size = parallel_args_.world_size();
     CHECK(in_features % world_size == 0)
         << "in_features " << in_features << " not divisible by world_size "
@@ -103,10 +109,12 @@ class RowParallelLinearImpl : public torch::nn::Module {
 
   torch::Tensor forward(torch::Tensor input) {
     namespace F = torch::nn::functional;
+    if (!input_is_parallelized_) {
+      input = scatter_to_model_parallel_region(input, parallel_args_);
+    }
     auto output = F::linear(input, weight_);
     if (parallel_args_.world_size() > 1) {
-      // call all reduce or all gather with concat
-      // torch::distributed::all_reduce(input_);
+      output = reduce_from_model_parallel_region(output, parallel_args_);
     }
     return output;
   }
@@ -134,6 +142,9 @@ class RowParallelLinearImpl : public torch::nn::Module {
 
   // parallel args
   ParallelArgs parallel_args_;
+
+  // whether the input is already parallelized
+  bool input_is_parallelized_;
 };
 TORCH_MODULE(RowParallelLinear);
 }  // namespace llm

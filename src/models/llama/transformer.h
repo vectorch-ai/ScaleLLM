@@ -37,10 +37,13 @@ class TransformerImpl : public torch::nn::Module {
     }
     norm_ = register_module(
         "norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
-    output_ = register_module(
-        "output",
-        ColumnParallelLinear(
-            args.dim(), args.vocab_size(), parallel_args, dtype, device));
+    output_ = register_module("output",
+                              ColumnParallelLinear(args.dim(),
+                                                   args.vocab_size(),
+                                                   /*gather_output=*/true,
+                                                   parallel_args,
+                                                   dtype,
+                                                   device));
   }
 
   // tokens: [num_tokens]

@@ -28,22 +28,34 @@ class AttentionImpl : public torch::nn::Module {
 
     // register submodules
     // TODO: fuse wq, wk, wv into one linear layer
-    wq_ = register_module(
-        "wq",
-        ColumnParallelLinear(
-            dim, n_heads * head_dim_, parallel_args, dtype, device));
-    wk_ = register_module(
-        "wk",
-        ColumnParallelLinear(
-            dim, n_kv_heads * head_dim_, parallel_args, dtype, device));
-    wv_ = register_module(
-        "wv",
-        ColumnParallelLinear(
-            dim, n_kv_heads * head_dim_, parallel_args, dtype, device));
-    wo_ = register_module(
-        "wo",
-        RowParallelLinear(
-            n_heads * head_dim_, dim, parallel_args, dtype, device));
+    wq_ = register_module("wq",
+                          ColumnParallelLinear(dim,
+                                               n_heads * head_dim_,
+                                               /*gather_output=*/false,
+                                               parallel_args,
+                                               dtype,
+                                               device));
+    wk_ = register_module("wk",
+                          ColumnParallelLinear(dim,
+                                               n_kv_heads * head_dim_,
+                                               /*gather_output=*/false,
+                                               parallel_args,
+                                               dtype,
+                                               device));
+    wv_ = register_module("wv",
+                          ColumnParallelLinear(dim,
+                                               n_kv_heads * head_dim_,
+                                               /*gather_output=*/false,
+                                               parallel_args,
+                                               dtype,
+                                               device));
+    wo_ = register_module("wo",
+                          RowParallelLinear(n_heads * head_dim_,
+                                            dim,
+                                            /*input_is_parallel=*/true,
+                                            parallel_args,
+                                            dtype,
+                                            device));
 
     // initialize positional embedding
     // TODO: need to adjust the max_seq_len

@@ -26,14 +26,27 @@ class FeedForwardImpl : public torch::nn::Module {
     hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
 
     // register the weight parameter
-    w1_ = register_module(
-        "w1",
-        ColumnParallelLinear(dim, hidden_dim, parallel_args, dtype, device));
-    w2_ = register_module(
-        "w2", RowParallelLinear(hidden_dim, dim, parallel_args, dtype, device));
-    w3_ = register_module(
-        "w3",
-        ColumnParallelLinear(dim, hidden_dim, parallel_args, dtype, device));
+    w1_ = register_module("w1",
+                          ColumnParallelLinear(dim,
+                                               hidden_dim,
+                                               /*gather_output=*/false,
+                                               parallel_args,
+                                               dtype,
+                                               device));
+    w2_ = register_module("w2",
+                          RowParallelLinear(hidden_dim,
+                                            dim,
+                                            /*input_is_parallel=*/true,
+                                            parallel_args,
+                                            dtype,
+                                            device));
+    w3_ = register_module("w3",
+                          ColumnParallelLinear(dim,
+                                               hidden_dim,
+                                               /*gather_output=*/false,
+                                               parallel_args,
+                                               dtype,
+                                               device));
   }
 
   torch::Tensor forward(torch::Tensor x) {

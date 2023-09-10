@@ -31,10 +31,11 @@ Engine::Engine(const torch::ScalarType& dtype,
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   // create a worker for each device
-  ParallelArgs parallel_args(0, static_cast<int64_t>(devices.size()));
   for (size_t i = 0; i < devices.size(); ++i) {
     const auto& device = devices[i];
-    parallel_args.rank(static_cast<int64_t>(i));
+    // TODO: construct process group for each device for each worker
+    ParallelArgs parallel_args(
+        static_cast<int64_t>(i), static_cast<int64_t>(devices.size()), nullptr);
     workers_.emplace_back(
         std::make_unique<Worker>(parallel_args, dtype, device));
   }

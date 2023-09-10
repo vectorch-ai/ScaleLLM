@@ -5,6 +5,7 @@
 
 #include "models/parallel_args.h"
 #include "torch_utils/state_dict.h"
+#include "model_parallel.h"
 
 namespace llm {
 
@@ -40,8 +41,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
     namespace F = torch::nn::functional;
     auto output = F::embedding(input, weight_);
     if (parallel_args_.world_size() > 1) {
-      // call all gather
-      // torch::distributed::all_gather(input_);
+      output = gather_from_model_parallel_region(output, parallel_args_);
     }
     return output;
   }
@@ -96,8 +96,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
     namespace F = torch::nn::functional;
     auto output = F::embedding(input, weight_);
     if (parallel_args_.world_size() > 1) {
-      // call all gather
-      // torch::distributed::all_gather(input_);
+      output = reduce_from_model_parallel_region(output, parallel_args_);
     }
     return output;
   }
