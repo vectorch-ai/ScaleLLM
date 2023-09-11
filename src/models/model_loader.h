@@ -34,7 +34,10 @@ class ModelLoader {
         : loader_(loader), index_(index) {}
 
     // load the next model weights file
-    void operator++() { index_++; }
+    void operator++() {
+      index_++;
+      state_dict_.reset();
+    }
 
     // return the current model weights file
     const StateDict& operator*() const { return *get_state_dict(); }

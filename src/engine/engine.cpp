@@ -1,6 +1,14 @@
 #include "engine.h"
 
+#include <c10/core/Backend.h>
+
 #include <memory>
+#include <torch/csrc/distributed/c10d/Backend.hpp>
+#include <torch/csrc/distributed/c10d/FileStore.hpp>
+#include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
+#include <torch/csrc/distributed/c10d/Store.hpp>
+#include <torch/csrc/distributed/c10d/TCPStore.hpp>
+#include <torch/csrc/distributed/c10d/HashStore.hpp>
 
 #include "memory/cache_args.h"
 #include "memory/memory.h"
@@ -25,19 +33,52 @@ DEFINE_double(max_memory_utilization,
 
 namespace llm {
 
+namespace {
+
+std::unique_ptr<c10d::Backend> create_backend(int32_t rank,
+                                              int32_t world_size,
+                                              const c10::intrusive_ptr<c10d::Store>& store,
+                                              const torch::Device& device) {
+  if (world_size == 1) {
+    // only one worker, no need for process group
+    return nullptr;
+  }
+
+  if (device.is_cuda()) {
+    // using nccl for cuda
+    // auto store = create_store(rank, world_size);
+    c10::intrusive_ptr<c10d::ProcessGroupNCCL::Options> opts =
+        c10::make_intrusive<c10d::ProcessGroupNCCL::Options>();
+    // set as high priority stream
+    opts->is_high_priority_stream = true;
+    opts->timeout = std::chrono::milliseconds(60 * 1000);
+    return std::make_unique<::c10d::ProcessGroupNCCL>(
+        store, rank, world_size, std::move(opts));
+  }
+
+  LOG(FATAL) << "Only support CUDA device for now.";
+  return nullptr;
+}
+
+}  // namespace
+
 Engine::Engine(const torch::ScalarType& dtype,
                const std::vector<torch::Device>& devices)
     : dtype_(dtype), devices_(devices) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
+  auto store = c10::make_intrusive<c10d::HashStore>();
   // create a worker for each device
   for (size_t i = 0; i < devices.size(); ++i) {
     const auto& device = devices[i];
+    auto backend = create_backend(i, devices.size(), store, device);
     // TODO: construct process group for each device for each worker
-    ParallelArgs parallel_args(
-        static_cast<int64_t>(i), static_cast<int64_t>(devices.size()), nullptr);
+    ParallelArgs parallel_args(static_cast<int64_t>(i),
+                               static_cast<int64_t>(devices.size()),
+                               backend.get());
     workers_.emplace_back(
         std::make_unique<Worker>(parallel_args, dtype, device));
+    process_groups_.emplace_back(std::move(backend));
   }
 }
 

@@ -12,7 +12,9 @@ std::unique_ptr<StateDict> StateDict::load_from_file(
     const std::string& model_path,
     torch::DeviceType device_type) {
   using caffe2::serialize::PyTorchStreamReader;
-
+  LOG(INFO) << "Loading model weights from " << model_path << " to "
+            << torch::DeviceTypeName(device_type);
+            
   torch::Device device(device_type);
   PyTorchStreamReader stream_reader(model_path);
   const torch::IValue data =

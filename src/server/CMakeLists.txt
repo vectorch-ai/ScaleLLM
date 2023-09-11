@@ -52,6 +52,7 @@ cc_binary(
   DEPS
     :engine
     torch
+    absl::strings
     gflags::gflags
     glog::glog
 )

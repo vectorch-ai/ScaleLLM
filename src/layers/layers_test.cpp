@@ -7,6 +7,7 @@
 #include <memory>
 #include <thread>
 #include <torch/csrc/distributed/c10d/FileStore.hpp>
+#include <torch/csrc/distributed/c10d/HashStore.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
 
 #include "linear.h"
@@ -23,8 +24,7 @@ TEST(LayersTest, TestGroupNCCL) {
   torch::DeviceGuard device_guard(device);
   const int64_t world_size = 2;
   const int64_t rank = 0;
-  const std::string path_ = "/tmp/test_group_nccl1";
-  auto store = c10::make_intrusive<::c10d::FileStore>(path_, world_size);
+  auto store = c10::make_intrusive<c10d::HashStore>();
   c10::intrusive_ptr<c10d::ProcessGroupNCCL::Options> opts =
       c10::make_intrusive<c10d::ProcessGroupNCCL::Options>();
   auto pg = std::make_unique<::c10d::ProcessGroupNCCL>(
@@ -33,15 +33,13 @@ TEST(LayersTest, TestGroupNCCL) {
   auto tensor0 = torch::rand({10, 20});
   auto tensor1 = torch::rand({10, 20});
 
-  std::thread rank1_thread([tensor0, tensor1]() {
+  std::thread rank1_thread([tensor0, tensor1, store]() {
     // on device 1
     torch::Device device(torch::kCUDA, 1);
     torch::DeviceGuard device_guard(device);
 
     const int64_t world_size = 2;
     const int64_t rank = 1;
-    const std::string path_ = "/tmp/test_group_nccl1";
-    auto store = c10::make_intrusive<::c10d::FileStore>(path_, world_size);
     c10::intrusive_ptr<c10d::ProcessGroupNCCL::Options> opts =
         c10::make_intrusive<c10d::ProcessGroupNCCL::Options>();
     auto pg = std::make_unique<::c10d::ProcessGroupNCCL>(
