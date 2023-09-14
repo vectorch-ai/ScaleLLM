@@ -1,6 +1,6 @@
 [package]
 name = "hf-safetensors"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 
 [lib]
@@ -12,4 +12,4 @@ lto = "fat"
 
 [dependencies]
 thiserror = "1.0"
-safetensors = { path = "../../../third_party/safetensors/safetensors" }
+safetensors = "0.3.3"

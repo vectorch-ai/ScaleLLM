@@ -1,4 +1,5 @@
 // A simple C wrapper of safetensors library
+// adapted from https://github.com/huggingface/safetensors/tree/c_bindings
 use core::ffi::c_uint;
 use core::str::Utf8Error;
 use safetensors::tensor::{SafeTensorError, SafeTensors};
@@ -7,12 +8,15 @@ use std::ffi::{c_char, CStr, CString};
 use std::mem::forget;
 use thiserror::Error;
 
+// Status codes should be in sync with the ones defined in `tensor.rs`
+// https://github.com/huggingface/safetensors/blob/main/safetensors/src/tensor.rs#L15
 #[repr(C)]
 pub enum Status {
     NullPointer = -2,
     Utf8Error,
     Ok,
     InvalidHeader,
+    InvalidHeaderStart,
     InvalidHeaderDeserialization,
     HeaderTooLarge,
     HeaderTooSmall,
@@ -47,6 +51,7 @@ impl Into<Status> for CError {
             CError::Utf8Error(_) => Status::Utf8Error,
             CError::SafeTensorError(err) => match err {
                 SafeTensorError::InvalidHeader => Status::InvalidHeader,
+                SafeTensorError::InvalidHeaderStart => Status::InvalidHeaderStart,
                 SafeTensorError::InvalidHeaderDeserialization => {
                     Status::InvalidHeaderDeserialization
                 }
@@ -67,6 +72,8 @@ impl Into<Status> for CError {
 }
 
 /// The various available dtypes. They MUST be in increasing alignment order
+// the Dtype has to be in sync with the one defined in `tensor.rs`
+// https://github.com/huggingface/safetensors/blob/main/safetensors/src/tensor.rs#L631
 #[repr(C)]
 pub enum Dtype {
     /// Boolan type
