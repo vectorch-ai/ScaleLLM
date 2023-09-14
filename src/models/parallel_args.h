@@ -3,9 +3,8 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include <torch/csrc/distributed/c10d/Backend.hpp>
-
 #include "common/arg.h"
+#include "common/process_group.h"
 
 namespace llm {
 
@@ -13,7 +12,7 @@ class ParallelArgs {
  public:
   ParallelArgs() = default;
 
-  ParallelArgs(int32_t rank, int32_t world_size, c10d::Backend* process_group)
+  ParallelArgs(int32_t rank, int32_t world_size, ProcessGroup* process_group)
       : rank_(rank), world_size_(world_size), process_group_(process_group) {
   }
 
@@ -24,7 +23,7 @@ class ParallelArgs {
   DEFINE_ARG(int32_t, world_size) = 0;
 
     // pointer to process group, nullptr if world size is 1
-  DEFINE_PTR_ARG(c10d::Backend, process_group) = nullptr;
+  DEFINE_PTR_ARG(ProcessGroup, process_group) = nullptr;
 };
 
 }  // namespace llm

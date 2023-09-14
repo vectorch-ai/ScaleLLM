@@ -1,9 +1,6 @@
 #include "engine.h"
 
-#include <c10/core/Backend.h>
-
 #include <memory>
-#include <torch/csrc/distributed/c10d/HashStore.hpp>
 
 #include "memory/cache_args.h"
 #include "memory/memory.h"
@@ -34,11 +31,17 @@ Engine::Engine(const torch::ScalarType& dtype,
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   const int32_t world_size = static_cast<int32_t>(devices.size());
+  if (world_size > 1) {
+    // create a process group for each device if there are multiple gpus
+    process_groups_ = ProcessGroup::create_process_groups(devices);
+  }
   // create a worker for each device
   for (size_t i = 0; i < devices.size(); ++i) {
     const int32_t rank = static_cast<int32_t>(i);
+    ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
+    ParallelArgs parallel_args(rank, world_size, pg);
     workers_.emplace_back(
-        std::make_unique<Worker>(rank, world_size, dtype, devices[i]));
+        std::make_unique<Worker>(parallel_args, dtype, devices[i]));
   }
 }
 
@@ -79,9 +82,8 @@ bool Engine::init_model(const std::string& model_weights_path) {
   // multiple workers, call async init
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
-  auto store = c10::make_intrusive<c10d::HashStore>();
   for (auto& worker : workers_) {
-    futures.push_back(worker->init_model_async(store, args_));
+    futures.push_back(worker->init_model_async(args_));
   }
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();

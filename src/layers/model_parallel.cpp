@@ -9,28 +9,6 @@
 #include "models/parallel_args.h"
 
 namespace llm {
-namespace distributed {
-// gathers tensors from the whole group in a list.
-// tensors: list of tensors to gather. Output list.
-// input: tensor to be broadcasted from current thread.
-// process_group: process group to work on.
-void all_gather(std::vector<torch::Tensor> outputs,
-                torch::Tensor input,
-                c10d::Backend* process_group) {
-  CHECK_NOTNULL(process_group);
-  std::vector<std::vector<torch::Tensor>> output_tensors{outputs};
-  std::vector<torch::Tensor> input_tensors{input};
-  auto work = process_group->allgather(output_tensors, input_tensors);
-  CHECK(work->wait()) << "allgather failed";
-}
-
-void all_reduce(torch::Tensor input, c10d::Backend* process_group) {
-  CHECK_NOTNULL(process_group);
-  std::vector<torch::Tensor> tensors{input};
-  auto work = process_group->allreduce(tensors);
-  CHECK(work->wait()) << "allreduce failed";
-}
-}  // namespace distributed
 
 torch::Tensor gather_from_model_parallel_region(
     torch::Tensor input,
@@ -45,9 +23,10 @@ torch::Tensor gather_from_model_parallel_region(
   auto* process_group = parallel_args.process_group();
   std::vector<torch::Tensor> tensors(world_size);
   for (int64_t i = 0; i < world_size; ++i) {
-    tensors[i] = (i == rank) ? input : torch::empty_like(input);
+    tensors[i] = torch::empty_like(input);
   }
-  distributed::all_gather(tensors, input, process_group);
+  // blocking call
+  process_group->allgather(input, tensors);
   return torch::cat(tensors, /*dim=*/-1).contiguous();
 }
 
@@ -59,8 +38,8 @@ torch::Tensor reduce_from_model_parallel_region(
     // bypass if only have one gpu
     return input;
   }
-
-  distributed::all_reduce(input, parallel_args.process_group());
+  auto* process_group = parallel_args.process_group();
+  process_group->allreduce(input);
   return input;
 }
 

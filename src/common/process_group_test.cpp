@@ -45,7 +45,7 @@ void run_collective_test(
 
 TEST(ProcessGroupTest, NCCLAllReduce) {
   // skip test if less than two gpus
-  for (int i = 2; i <= torch::cuda::device_count(); i += 2) {
+  for (int i = 2; i <= torch::cuda::device_count(); i *= 2) {
     run_collective_test(
         i, [](const std::vector<torch::Tensor>& tensors, ProcessGroup* pg) {
           const int rank = pg->rank();
@@ -66,7 +66,7 @@ TEST(ProcessGroupTest, NCCLAllReduce) {
 
 TEST(ProcessGroupTest, NCCLAllGather) {
   // skip test if less than two gpus
-  for (int i = 2; i <= torch::cuda::device_count(); i += 2) {
+  for (int i = 2; i <= torch::cuda::device_count(); i *= 2) {
     run_collective_test(
         i, [](const std::vector<torch::Tensor>& tensors, ProcessGroup* pg) {
           const int rank = pg->rank();

@@ -68,6 +68,9 @@ class Engine {
   // model args
   ModelArgs args_;
 
+  // a list of process groups, with each process group handling a single device
+  std::vector<std::unique_ptr<ProcessGroup>> process_groups_;
+
   // a list of workers, with each worker handling a partial of model
   std::vector<std::unique_ptr<Worker>> workers_;
 

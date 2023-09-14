@@ -23,6 +23,7 @@ cc_library(
     :tokenizer
     :model_args
     :model_loader
+    :process_group
     glog::glog
     Folly::folly
     absl::synchronization

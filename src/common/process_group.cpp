@@ -155,7 +155,6 @@ void ProcessGroupNCCL::allgather(torch::Tensor input,
   DCHECK(input.device() == device())
       << "input should be on the same device as the process group";
 
-  // LOG(ERROR) << "allgather input " << input;
   torch::DeviceGuard device_guard(device());
   torch::Tensor flattened_output = flatten_for_scatter_gather(outputs);
 
