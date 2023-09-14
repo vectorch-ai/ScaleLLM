@@ -5,22 +5,10 @@
 
 namespace llm {
 
-void all_reduce_test(std::vector<torch::Tensor>& tensors, ProcessGroup* pg) {
-  const int rank = pg->rank();
-  const int world_size = pg->world_size();
-  const auto& device = pg->device();
-  for (int i = 0; i <= tensors.size() - world_size; ++i) {
-    auto tensor = tensors[i + rank].to(device);
-    pg->allreduce(tensor);
-    auto expected = torch::zeros_like(tensors[i]);
-    for (int j = 0; j < world_size; ++j) {
-      expected += tensors[i + j];
-    }
-    EXPECT_TRUE(torch::equal(tensor.cpu(), expected));
-  }
-}
-
-void run_all_reduce(int world_size) {
+void run_collective_test(
+    int world_size,
+    std::function<void(const std::vector<torch::Tensor>& tensors,
+                       ProcessGroup* pg)> func) {
   // create process groups
   std::vector<torch::Device> devices;
   devices.reserve(world_size);
@@ -42,8 +30,8 @@ void run_all_reduce(int world_size) {
   std::vector<std::thread> threads;
   threads.reserve(process_groups.size());
   for (int i = 0; i < world_size; ++i) {
-    threads.emplace_back([&tensors, pg = process_groups[i].get()]() {
-      all_reduce_test(tensors, pg);
+    threads.emplace_back([func, &tensors, pg = process_groups[i].get()]() {
+      func(tensors, pg);
     });
   }
 
@@ -58,7 +46,44 @@ void run_all_reduce(int world_size) {
 TEST(ProcessGroupTest, NCCLAllReduce) {
   // skip test if less than two gpus
   for (int i = 2; i <= torch::cuda::device_count(); i += 2) {
-    run_all_reduce(i);
+    run_collective_test(
+        i, [](const std::vector<torch::Tensor>& tensors, ProcessGroup* pg) {
+          const int rank = pg->rank();
+          const int world_size = pg->world_size();
+          const auto& device = pg->device();
+          for (int i = 0; i <= tensors.size() - world_size; ++i) {
+            auto tensor = tensors[i + rank].to(device);
+            pg->allreduce(tensor);
+            auto expected = torch::zeros_like(tensors[i]);
+            for (int j = 0; j < world_size; ++j) {
+              expected += tensors[i + j];
+            }
+            EXPECT_TRUE(torch::equal(tensor.cpu(), expected));
+          }
+        });
+  }
+}
+
+TEST(ProcessGroupTest, NCCLAllGather) {
+  // skip test if less than two gpus
+  for (int i = 2; i <= torch::cuda::device_count(); i += 2) {
+    run_collective_test(
+        i, [](const std::vector<torch::Tensor>& tensors, ProcessGroup* pg) {
+          const int rank = pg->rank();
+          const int world_size = pg->world_size();
+          const auto& device = pg->device();
+          for (int i = 0; i <= tensors.size() - world_size; ++i) {
+            auto tensor = tensors[i + rank].to(device);
+            std::vector<torch::Tensor> outputs(world_size);
+            for (int j = 0; j < world_size; ++j) {
+              outputs[j] = torch::empty_like(tensor);
+            }
+            pg->allgather(tensor, outputs);
+            for (int j = 0; j < world_size; ++j) {
+              EXPECT_TRUE(torch::equal(tensors[i + j], outputs[j].cpu()));
+            }
+          }
+        });
   }
 }
 

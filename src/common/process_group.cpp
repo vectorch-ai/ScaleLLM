@@ -2,6 +2,7 @@
 
 #include <c10/core/Device.h>
 #include <torch/torch.h>
+#include <cuda_runtime.h>
 
 #include <memory>
 #include <vector>
@@ -28,13 +29,6 @@ namespace {
                  << " " << cudaGetErrorString(err);                      \
     }                                                                    \
   } while (0)
-
-// RAII helper to manage NCCL group.
-class NcclGroupGuard {
- public:
-  NcclGroupGuard() { ncclGroupStart(); }
-  ~NcclGroupGuard() { ncclGroupEnd(); }
-};
 
 at::Tensor flatten_for_scatter_gather(std::vector<at::Tensor>& tensors) {
   auto& t = tensors[0];
@@ -138,10 +132,8 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
   // inplace all reduce
   const auto count = input.numel();
   const auto data_type = to_nccl_data_type(input);
-  const auto& device = input.device();
 
-  torch::DeviceGuard device_guard(device);
-  NcclGroupGuard nccl_group_guard;  // optional
+  torch::DeviceGuard device_guard(device());
   NCCLCHECK(ncclAllReduce(
       /*sendbuff=*/input.data_ptr(),
       /*recvbuff=*/input.data_ptr(),
@@ -164,15 +156,12 @@ void ProcessGroupNCCL::allgather(torch::Tensor input,
       << "input should be on the same device as the process group";
 
   // LOG(ERROR) << "allgather input " << input;
-
-  const auto& device = input.device();
-  torch::DeviceGuard device_guard(device);
+  torch::DeviceGuard device_guard(device());
   torch::Tensor flattened_output = flatten_for_scatter_gather(outputs);
 
   const auto count = input.numel();
   const auto data_type = to_nccl_data_type(input);
 
-  NcclGroupGuard nccl_group_guard;  // optional
   NCCLCHECK(ncclAllGather(
       /*sendbuff=*/input.data_ptr(),
       /*recvbuff=*/flattened_output.data_ptr(),
