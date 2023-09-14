@@ -11,10 +11,9 @@
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
 
 #include "linear.h"
-#include "torch_utils/state_dict.h"
+#include "model_loader/state_dict.h"
 
 namespace llm {
-
 
 TEST(LayersTest, TestLoadStateDict) {
   // test load state dict for linear

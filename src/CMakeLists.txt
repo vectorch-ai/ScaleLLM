@@ -1,5 +1,4 @@
 add_subdirectory(common)
-add_subdirectory(torch_utils)
 add_subdirectory(kernels)
 add_subdirectory(tokenizer)
 add_subdirectory(layers)

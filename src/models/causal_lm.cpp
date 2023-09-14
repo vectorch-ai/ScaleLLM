@@ -5,11 +5,11 @@
 #include <vector>
 
 #include "memory/kv_cache.h"
+#include "model_loader/state_dict.h"
 #include "models/llama/transformer.h"
 #include "models/model_args.h"
 #include "models/parallel_args.h"
 #include "parameters.h"
-#include "torch_utils/state_dict.h"
 
 namespace llm {
 

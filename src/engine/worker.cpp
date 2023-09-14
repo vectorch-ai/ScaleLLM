@@ -12,10 +12,10 @@
 #include <utility>
 
 #include "common/executor.h"
+#include "model_loader/state_dict.h"
 #include "models/parameters.h"
 #include "samplers/logits_processor.h"
 #include "samplers/sampler.h"
-#include "torch_utils/state_dict.h"
 
 namespace llm {
 

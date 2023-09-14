@@ -5,8 +5,8 @@
 #include <filesystem>
 #include <vector>
 
+#include "model_loader/state_dict.h"
 #include "models/model_args.h"
-#include "torch_utils/state_dict.h"
 
 namespace llm {
 

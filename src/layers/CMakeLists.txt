@@ -16,7 +16,7 @@ cc_library(
     attention.cpp
     pos_embedding.cpp
   DEPS
-    :torch_utils
+    :state_dict
     :memory
     :flash-attn.kernels
     glog::glog
@@ -32,6 +32,6 @@ cc_test(
     pos_embedding_test.cpp
   DEPS
     :layers
-    :torch_utils
+    :state_dict
     GTest::gtest_main
 )

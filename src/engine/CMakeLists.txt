@@ -16,7 +16,7 @@ cc_library(
     torch
     :common
     :request
-    :torch_utils
+    :state_dict
     :causal_lm
     :logits_processor
     :sampler

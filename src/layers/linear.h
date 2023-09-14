@@ -4,9 +4,9 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "model_loader/state_dict.h"
 #include "model_parallel.h"
 #include "models/parallel_args.h"
-#include "torch_utils/state_dict.h"
 
 namespace llm {
 
@@ -62,9 +62,7 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   }
 
   // return the weight (for testing)
-  torch::Tensor weight() const {
-    return weight_;
-  }
+  torch::Tensor weight() const { return weight_; }
 
  private:
   // parameter members, must be registered
@@ -141,9 +139,7 @@ class RowParallelLinearImpl : public torch::nn::Module {
   }
 
   // return the weight (for testing)
-  torch::Tensor weight() const {
-    return weight_;
-  }
+  torch::Tensor weight() const { return weight_; }
 
  private:
   // parameter members, must be registered

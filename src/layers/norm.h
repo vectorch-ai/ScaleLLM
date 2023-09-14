@@ -3,7 +3,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "torch_utils/state_dict.h"
+#include "model_loader/state_dict.h"
 
 namespace llm {
 

@@ -20,7 +20,7 @@
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 // #include "tokenizer/sentencepiece_tokenizer.h"
-#include "torch_utils/state_dict.h"
+#include "model_loader/state_dict.h"
 
 DEFINE_string(model_path,
               "/home/michael/code/llama/llama-2-7b",
