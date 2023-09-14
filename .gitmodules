@@ -7,3 +7,6 @@
 [submodule "third_party/exllama"]
 	path = third_party/exllama
 	url = https://github.com/turboderp/exllama.git
+[submodule "third_party/safetensors"]
+	path = third_party/safetensors
+	url = https://github.com/huggingface/safetensors.git
