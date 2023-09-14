@@ -15,59 +15,6 @@
 
 namespace llm {
 
-// TODO: Remove this test
-TEST(LayersTest, TestGroupNCCL) {
-  // test group nccl in multiple threads environment
-  // each thread has its own group instance
-  // on device 0
-  torch::Device device(torch::kCUDA, 0);
-  torch::DeviceGuard device_guard(device);
-  const int64_t world_size = 2;
-  const int64_t rank = 0;
-  auto store = c10::make_intrusive<c10d::HashStore>();
-  c10::intrusive_ptr<c10d::ProcessGroupNCCL::Options> opts =
-      c10::make_intrusive<c10d::ProcessGroupNCCL::Options>();
-  auto pg = std::make_unique<::c10d::ProcessGroupNCCL>(
-      store, rank, world_size, std::move(opts));
-
-  auto tensor0 = torch::rand({10, 20});
-  auto tensor1 = torch::rand({10, 20});
-
-  std::thread rank1_thread([tensor0, tensor1, store]() {
-    // on device 1
-    torch::Device device(torch::kCUDA, 1);
-    torch::DeviceGuard device_guard(device);
-
-    const int64_t world_size = 2;
-    const int64_t rank = 1;
-    c10::intrusive_ptr<c10d::ProcessGroupNCCL::Options> opts =
-        c10::make_intrusive<c10d::ProcessGroupNCCL::Options>();
-    auto pg = std::make_unique<::c10d::ProcessGroupNCCL>(
-        store, rank, world_size, std::move(opts));
-
-    // for (int i = 0; i < 10; ++i) {
-    std::vector<at::Tensor> tensors = {tensor1.to(device)};
-    auto work = pg->allreduce(tensors);
-    work->wait();
-
-    auto result = tensors[0].cpu();
-    EXPECT_TRUE(torch::equal(result, tensor0 + tensor1));
-    // }
-  });
-
-  // for (int i = 0; i < 10; ++i) {
-  std::vector<at::Tensor> tensors = {tensor0.to(device)};
-  auto work = pg->allreduce(tensors);
-  work->wait();
-
-  auto result = tensors[0].cpu();
-  EXPECT_TRUE(torch::equal(result, tensor0 + tensor1));
-  // }
-
-  if (rank1_thread.joinable()) {
-    rank1_thread.join();
-  }
-}
 
 TEST(LayersTest, TestLoadStateDict) {
   // test load state dict for linear

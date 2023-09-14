@@ -1,3 +1,4 @@
+#include <absl/strings/str_split.h>
 #include <folly/init/Init.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -25,11 +26,23 @@ int main(int argc, char** argv) {
   // glog and glfag will be initialized in folly::init
   folly::Init init(&argc, &argv);
 
-  torch::Device device(FLAGS_device);
+  // split device into chunks
+  const std::vector<std::string> device_strs =
+      absl::StrSplit(FLAGS_device, ',');
+  std::vector<torch::Device> devices;
+  devices.reserve(device_strs.size());
+  std::set<torch::DeviceType> device_types;
+  for (const auto& device_str : device_strs) {
+    devices.emplace_back(device_str);
+    device_types.insert(devices.back().type());
+  }
+  CHECK(!devices.empty()) << "No devices specified.";
+  CHECK(device_types.size() == 1)
+      << "All devices must be of the same type. Got: " << FLAGS_device;
 
   // set the default dtype
   torch::ScalarType dtype{};
-  if (device.is_cpu()) {
+  if (devices[0].is_cpu()) {
     // always use float32 on CPU since float16 is not supported
     dtype = torch::kFloat;
     LOG(INFO) << "Using float32 on CPU.";
@@ -37,8 +50,7 @@ int main(int argc, char** argv) {
     dtype = torch::kHalf;
   }
 
-  auto engine =
-      std::make_unique<Engine>(dtype, std::vector<torch::Device>{device});
+  auto engine = std::make_unique<Engine>(dtype, devices);
   CHECK(engine->init(FLAGS_model_path, FLAGS_tokenizer_path));
 
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());

@@ -3,9 +3,9 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "model_parallel.h"
 #include "models/parallel_args.h"
 #include "torch_utils/state_dict.h"
-#include "model_parallel.h"
 
 namespace llm {
 
@@ -61,6 +61,9 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
+  // return the weight (for testing)
+  torch::Tensor weight() const { return weight_; }
+
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
@@ -115,6 +118,9 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
+
+  // return the weight (for testing)
+  torch::Tensor weight() const { return weight_; }
 
  private:
   // parameter members, must be registered

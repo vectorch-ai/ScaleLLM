@@ -13,10 +13,12 @@ namespace llm {
 
 class AttentionImpl : public torch::nn::Module {
  public:
-  AttentionImpl(const ModelArgs& args,
+  AttentionImpl(uint32_t layer_id,
+                const ModelArgs& args,
                 const ParallelArgs& parallel_args,
                 const torch::ScalarType& dtype,
-                const torch::Device& device) {
+                const torch::Device& device)
+      : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
     const int64_t dim = args.dim();
     const int64_t n_heads = args.n_heads();
@@ -148,6 +150,10 @@ class AttentionImpl : public torch::nn::Module {
   RowParallelLinear wo_{nullptr};
 
   RotaryEmbedding pos_emb_{nullptr};
+
+  uint32_t layer_id_;
+  
+  ParallelArgs parallel_args_;
 
   // configs used in forward
   int64_t n_local_heads_;

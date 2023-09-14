@@ -68,34 +68,31 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
     priority_queue_.push(request);
   }
 
-  // requests in [begin_idx, end_idx) are holding cache blocks, which are
-  // preemptable
-  size_t begin_idx = 0;
-  size_t end_idx = running_.size();
-  for (size_t i = 0; i < end_idx;) {
-    Request* request = running_[i];
-    if (request->is_finished()) {
-      // release all blocks for the finished request
-      block_manager_->release_slots_for_request(request);
-      // take over the ownership of the request
-      std::unique_ptr<Request> finished_request(request);
-      response_executor_.schedule([request = std::move(finished_request)]() {
-        // TODO: add finish handling logic
-        request->on_finish("", Status());
-      });
-      // swap with the last request
-      running_[i] = running_[--end_idx];
+  std::vector<Request*> preemptable_candidates;
+  for (Request* request : running_) {
+    if (!request->is_finished()) {
+      // the request is still holding cache slots
+      preemptable_candidates.emplace_back(request);
+      // push the request back to the priority queue
+      priority_queue_.push(request);
       continue;
     }
 
-    // push the request back to the priority queue
-    priority_queue_.push(request);
-    ++i;
+    // release all blocks for the finished request
+    block_manager_->release_slots_for_request(request);
+    // take over the ownership of the request
+    std::unique_ptr<Request> finished_request(request);
+    response_executor_.schedule([request = std::move(finished_request)]() {
+      // TODO: add finish handling logic
+      request->on_finish("", Status());
+    });
   }
 
   // schedule sequence by sequence but preempt whole request if necessary
   std::vector<Sequence*> sequences_batch;
   std::vector<Request*> request_batch;
+  size_t begin_idx = 0;
+  size_t end_idx = preemptable_candidates.size();
   while (!priority_queue_.empty()) {
     Request* candidate = priority_queue_.top();
     bool has_enough_slots = true;
@@ -107,6 +104,7 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
       }
     }
 
+    // all sequences in the request have enough slots
     if (sequence_candiadtes.size() == candidate->sequences.size()) {
       // add request to new batch
       priority_queue_.pop();
@@ -114,7 +112,8 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
       sequences_batch.insert(sequences_batch.end(),
                              sequence_candiadtes.begin(),
                              sequence_candiadtes.end());
-      if (begin_idx < end_idx && candidate == running_[begin_idx]) {
+      if (begin_idx < end_idx &&
+          candidate == preemptable_candidates[begin_idx]) {
         // the request has been scheduled and can't be preempted
         ++begin_idx;
       }
@@ -124,8 +123,12 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
     // try to preempt lowest priority request in current batch
     if (begin_idx < end_idx) {
       CHECK(end_idx > begin_idx);
-      Request* request_to_preempt = running_[--end_idx];
-      block_manager_->release_slots_for_request(request_to_preempt);
+      Request* request_to_preempt = preemptable_candidates[--end_idx];
+      // avoid preempting the candidate request
+      if (request_to_preempt != candidate) {
+        block_manager_->release_slots_for_request(request_to_preempt);
+        CHECK(begin_idx == end_idx);
+      }
       continue;
     }
 
@@ -149,7 +152,8 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
     LOG(ERROR) << "Not enough memory to schedule one sequence";
     Request* request = priority_queue_.top();
     priority_queue_.pop();
-    // release all blocks for the finished request
+    // TODO: optimize the logic to only release blocks for sequences one by one
+    // release all blocks for the request
     block_manager_->release_slots_for_request(request);
     // take over the ownership of the request
     std::unique_ptr<Request> finished_request(request);

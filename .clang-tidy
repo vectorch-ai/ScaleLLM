@@ -26,6 +26,8 @@ Checks: >
   -cppcoreguidelines-special-member-functions,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-prefer-member-initializer,
+  -cppcoreguidelines-pro-type-member-init,
+  -cppcoreguidelines-avoid-do-while,
   -readability-magic-numbers,
 
 

@@ -13,13 +13,15 @@ namespace llm {
 
 class TransformerBlockImpl : public torch::nn::Module {
  public:
-  TransformerBlockImpl(const ModelArgs& args,
+  TransformerBlockImpl(uint32_t layer_id,
+                       const ModelArgs& args,
                        const ParallelArgs& parallel_args,
                        const torch::ScalarType& dtype,
-                       const torch::Device& device) {
+                       const torch::Device& device)
+      : layer_id_(layer_id), parallel_args_(parallel_args) {
     // register submodules
-    attention_ = register_module("attention",
-                                 Attention(args, parallel_args, dtype, device));
+    attention_ = register_module(
+        "attention", Attention(layer_id, args, parallel_args, dtype, device));
     feed_forward_ = register_module(
         "feed_forward", FeedForward(args, parallel_args, dtype, device));
     attention_norm_ = register_module(
@@ -56,6 +58,10 @@ class TransformerBlockImpl : public torch::nn::Module {
   RMSNorm attention_norm_{nullptr};
 
   RMSNorm ffn_norm_{nullptr};
+
+  uint32_t layer_id_;
+
+  ParallelArgs parallel_args_;
 };
 TORCH_MODULE(TransformerBlock);
 

@@ -66,6 +66,7 @@ cc_binary(
     :completion_handler
     :grpc_server
     :engine
+    absl::strings
     gflags::gflags
     glog::glog
     Folly::folly

@@ -16,14 +16,16 @@ namespace llm {
 
 class Worker final {
  public:
-  Worker(const ParallelArgs& parallel_args,
+  Worker(int32_t rank,
+         int32_t world_size,
          const torch::ScalarType& dtype,
          const torch::Device& device);
 
   ~Worker() = default;
 
   // initialize model, cache manager. blocking call
-  bool init_model(const ModelArgs& args);
+  bool init_model(const c10::intrusive_ptr<c10d::Store>& store,
+                  const ModelArgs& args);
 
   // Load the model weights from state_dict. blocking call
   // can be called multiple times to reload the model with different parameters
@@ -40,7 +42,9 @@ class Worker final {
                                  const SamplingParameters& sampling_params);
 
   // initialize model, cache manager. async call
-  folly::SemiFuture<bool> init_model_async(const ModelArgs& args);
+  folly::SemiFuture<bool> init_model_async(
+      const c10::intrusive_ptr<c10d::Store>& store,
+      const ModelArgs& args);
 
   // Load the model weights from state_dict. async call
   // the future returns a successfull status with no meaningful value
@@ -71,6 +75,8 @@ class Worker final {
 
   // device to run the model on
   torch::Device device_;
+
+  std::unique_ptr<c10d::Backend> process_group_;
 
   // parallel args
   ParallelArgs parallel_args_;

@@ -1,6 +1,3 @@
-// a simple thread-safe queue that supports multiple producers and multiple
-// consumers concurrently the queue is implemented as a queue with condition
-// variable and mutex lock
 #pragma once
 
 #include <absl/synchronization/mutex.h>
@@ -15,6 +12,9 @@
 
 namespace llm {
 
+// a simple thread-safe queue that supports multiple producers and multiple
+// consumers concurrently the queue is implemented as a queue with condition
+// variable and mutex lock
 template <typename T>
 class ConcurrentQueue {
  public:

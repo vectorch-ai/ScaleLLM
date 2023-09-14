@@ -41,6 +41,9 @@ find_package(benchmark CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(prometheus-cpp CONFIG REQUIRED)
 
+# set(USE_STATIC_NCCL ON)
+find_package(NCCL REQUIRED)
+
 # libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Development)
 

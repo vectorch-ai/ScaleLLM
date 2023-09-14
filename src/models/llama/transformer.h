@@ -22,7 +22,8 @@ class TransformerImpl : public torch::nn::Module {
   TransformerImpl(const ModelArgs& args,
                   const ParallelArgs& parallel_args,
                   const torch::ScalarType& dtype,
-                  const torch::Device& device) {
+                  const torch::Device& device)
+      : parallel_args_(parallel_args) {
     // register submodules
     tok_embeddings_ = register_module(
         "tok_embeddings",
@@ -30,8 +31,8 @@ class TransformerImpl : public torch::nn::Module {
             args.vocab_size(), args.dim(), parallel_args, dtype, device));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
-    for (int i = 0; i < args.n_layers(); i++) {
-      auto block = TransformerBlock(args, parallel_args, dtype, device);
+    for (int32_t i = 0; i < args.n_layers(); i++) {
+      auto block = TransformerBlock(i, args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -85,6 +86,8 @@ class TransformerImpl : public torch::nn::Module {
   RMSNorm norm_{nullptr};
 
   ColumnParallelLinear output_{nullptr};
+
+  ParallelArgs parallel_args_;
 };
 TORCH_MODULE(Transformer);
 

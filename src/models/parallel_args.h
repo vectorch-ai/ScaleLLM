@@ -5,34 +5,26 @@
 
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 
+#include "common/arg.h"
+
 namespace llm {
 
 class ParallelArgs {
  public:
+  ParallelArgs() = default;
+
   ParallelArgs(int32_t rank, int32_t world_size, c10d::Backend* process_group)
       : rank_(rank), world_size_(world_size), process_group_(process_group) {
-    if (world_size_ > 1) {
-      CHECK_NOTNULL(process_group_);
-    }
   }
 
-  // returns pointer to process group
-  c10d::Backend* process_group() const { return process_group_; }
-
-  // returns rank of current process
-  int32_t rank() const { return rank_; }
-
-  // returns world size
-  int32_t world_size() const { return world_size_; }
-
- private:
   // rank of current process
-  int32_t rank_ = 0;
-  // world size
-  int32_t world_size_ = 1;
+  DEFINE_ARG(int32_t, rank) = 0;
 
-  // pointer to process group, not null if world_size > 1
-  c10d::Backend* process_group_ = nullptr;
+  // world size
+  DEFINE_ARG(int32_t, world_size) = 0;
+
+    // pointer to process group, nullptr if world size is 1
+  DEFINE_PTR_ARG(c10d::Backend, process_group) = nullptr;
 };
 
 }  // namespace llm

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ATen/core/TensorBody.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -58,6 +59,11 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();
+  }
+
+  // return the weight (for testing)
+  torch::Tensor weight() const {
+    return weight_;
   }
 
  private:
@@ -132,6 +138,11 @@ class RowParallelLinearImpl : public torch::nn::Module {
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();
+  }
+
+  // return the weight (for testing)
+  torch::Tensor weight() const {
+    return weight_;
   }
 
  private:

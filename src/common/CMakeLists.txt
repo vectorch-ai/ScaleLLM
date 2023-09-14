@@ -1,4 +1,5 @@
 include(cc_library)
+include(cc_test)
 
 cc_library(
   NAME 
@@ -13,3 +14,27 @@ cc_library(
   DEPS
     prometheus-cpp::core
 )
+
+cc_library(
+  NAME 
+    process_group
+  HDRS
+    process_group.h
+  SRCS
+    process_group.cpp
+  DEPS
+    torch
+    NCCL::nccl
+    glog::glog
+)
+
+cc_test(
+  NAME
+    process_group_test
+  SRCS
+    process_group_test.cpp
+  DEPS
+    :process_group
+    GTest::gtest_main
+)
+

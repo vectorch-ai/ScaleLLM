@@ -65,9 +65,6 @@ class Engine {
   // devices
   std::vector<torch::Device> devices_;
 
-  // process groups
-  std::vector<std::unique_ptr<c10d::Backend>> process_groups_;
-
   // model args
   ModelArgs args_;
 

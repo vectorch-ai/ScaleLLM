@@ -25,6 +25,16 @@ using llm::CompletionResponse;
 
 DEFINE_string(priority, "DEFAULT", "priority of the request, DEFAULT, LOW, MEDIUM, HIGH");
 
+DEFINE_double(temperature, 0.6, "Temperature for sampling.");
+
+DEFINE_double(top_p, 0.9, "Top p for sampling.");
+// DEFINE_int64(top_k, 0, "Top k for sampling.");
+
+// DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
+
+DEFINE_double(frequency_penalty, 0.0, "Frequency penalty for sampling.");
+DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
+
 class ChatClient final {
  public:
   ChatClient(std::shared_ptr<Channel> channel)
@@ -34,6 +44,11 @@ class ChatClient final {
     // Create a message to send to the server
     CompletionRequest request;
     request.set_prompt(prompt);
+    request.set_temperature(FLAGS_temperature);
+    request.set_top_p(FLAGS_top_p);
+    request.set_frequency_penalty(FLAGS_frequency_penalty);
+    request.set_presence_penalty(FLAGS_presence_penalty);
+
     llm::Priority priority{};
     CHECK(llm::Priority_Parse(FLAGS_priority, &priority));
     request.set_priority(priority);

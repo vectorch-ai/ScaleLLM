@@ -9,6 +9,8 @@
 
 #include <memory>
 #include <string>
+#include <torch/csrc/distributed/c10d/HashStore.hpp>
+#include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
 #include <utility>
 
 #include "common/executor.h"
@@ -19,12 +21,71 @@
 
 namespace llm {
 
-Worker::Worker(const ParallelArgs& parallel_args,
+namespace {
+
+std::unique_ptr<c10d::Backend> create_backend(
+    int32_t rank,
+    int32_t world_size,
+    const c10::intrusive_ptr<c10d::Store>& store,
+    const torch::Device& device) {
+  if (device.is_cuda()) {
+    at::cuda::set_device(device.index());
+    // using nccl for cuda
+    c10::intrusive_ptr<c10d::ProcessGroupNCCL::Options> opts =
+        c10::make_intrusive<c10d::ProcessGroupNCCL::Options>();
+    // set as high priority stream
+    // opts->is_high_priority_stream = true;
+    opts->timeout = std::chrono::milliseconds(60 * 1000);
+    return std::make_unique<::c10d::ProcessGroupNCCL>(
+        store, rank, world_size, std::move(opts));
+  }
+
+  LOG(FATAL) << "Only support CUDA device for now.";
+  return nullptr;
+}
+}  // namespace
+
+Worker::Worker(int32_t rank,
+               int32_t world_size,
                const torch::ScalarType& dtype,
                const torch::Device& device)
-    : parallel_args_(parallel_args), dtype_(dtype), device_(device) {}
+    : dtype_(dtype), device_(device) {
+  parallel_args_.rank(rank);
+  parallel_args_.world_size(world_size);
+}
 
-bool Worker::init_model(const ModelArgs& args) {
+bool Worker::init_model(const c10::intrusive_ptr<c10d::Store>& store,
+                        const ModelArgs& args) {
+  // initialize process group if needed
+  if (parallel_args_.world_size() > 1) {
+    process_group_ = create_backend(
+        parallel_args_.rank(), parallel_args_.world_size(), store, device_);
+
+    torch::DeviceGuard device_guard(device_);
+    // warm up the process group
+    {
+      std::vector<at::Tensor> dummy_tensors{torch::ones({10}, device_)};
+      process_group_->allreduce(dummy_tensors)->wait();
+    }
+
+    {
+      auto input = torch::ones({10}, device_);
+      std::vector<torch::Tensor> output;
+      output.reserve(parallel_args_.world_size());
+      for (int i = 0; i < parallel_args_.world_size(); ++i) {
+        output.emplace_back(torch::empty_like(input));
+      }
+      std::vector<at::Tensor> inputs{input};
+      std::vector<std::vector<at::Tensor>> outputs{output};
+      process_group_->allgather(outputs, inputs)->wait();
+    }
+
+    LOG(INFO) << "Process group initialized for rank: " << parallel_args_.rank()
+              << " world size: " << parallel_args_.world_size();
+
+    parallel_args_.process_group(process_group_.get());
+  }
+
   // initialize model
   args_ = args;
   model_ = CausalLM::create(args, parallel_args_, dtype_, device_);
@@ -109,12 +170,14 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
 }
 
 // initialize model, cache manager. async call
-folly::SemiFuture<bool> Worker::init_model_async(const ModelArgs& args) {
+folly::SemiFuture<bool> Worker::init_model_async(
+    const c10::intrusive_ptr<c10d::Store>& store,
+    const ModelArgs& args) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule(
-      [this, &args = args, promise = std::move(promise)]() mutable {
-        const bool success = this->init_model(args);
+      [this, store, &args, promise = std::move(promise)]() mutable {
+        const bool success = this->init_model(store, args);
         promise.setValue(success);
       });
   return future;
@@ -126,8 +189,8 @@ folly::SemiFuture<bool> Worker::init_kv_cache_async(
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule([this,
-                      &key_cache_shape = key_cache_shape,
-                      &value_cache_shape = value_cache_shape,
+                      &key_cache_shape,
+                      &value_cache_shape,
                       promise = std::move(promise)]() mutable {
     const bool success =
         this->init_kv_cache(key_cache_shape, value_cache_shape);
@@ -141,7 +204,7 @@ folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
   folly::Promise<folly::Unit> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule(
-      [this, &state_dict = state_dict, promise = std::move(promise)]() mutable {
+      [this, &state_dict, promise = std::move(promise)]() mutable {
         // load the model weights from state_dict within the working thread
         this->load_state_dict(state_dict);
         promise.setValue();

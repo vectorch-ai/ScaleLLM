@@ -22,6 +22,8 @@ class ICallData {
 template <typename Request, typename Response>
 class CallData : public ICallData {
  public:
+  enum class Status { CREATE, PROCESS, FINISH, DESTROY };
+
   // callback for registering itself to the service
   using OnRegister =
       std::function<void(grpc::ServerContext* context,
@@ -45,19 +47,20 @@ class CallData : public ICallData {
   // call following methods to reply to client
   void write(const Response& response) {
     wait_for_ops();
+    status_ = Status::PROCESS;
     responder_.Write(response, this);
   }
 
   void write_and_finish(const Response& response,
                         const grpc::Status& status = grpc::Status::OK) {
     wait_for_ops();
-    done_ = true;
+    status_ = Status::FINISH;
     responder_.WriteAndFinish(response, grpc::WriteOptions(), status, this);
   }
 
   void finish(const grpc::Status& status = grpc::Status::OK) {
     wait_for_ops();
-    done_ = true;
+    status_ = Status::FINISH;
     responder_.Finish(status, this);
   }
 
@@ -67,18 +70,18 @@ class CallData : public ICallData {
     CHECK(ops_in_progress_.exchange(false));
 
     // it is notification from cq for new request
-    if (new_request_) {
-      new_request_ = false;
+    if (status_ == Status::CREATE) {
       // Spawn a new CallData instance to serve new clients while we process
       // the one for this CallData.
       CallData::create(cq_, on_register_, on_new_request_);
 
       // The actual processing.
       on_new_request_(this);
-    }
-
-    if (done_) {
-      // Once request is done, delete this instance.
+      status_ = Status::PROCESS;
+    } else if (status_ == Status::PROCESS) {
+      // do nothing
+    } else if (status_ == Status::FINISH) {
+      status_ = Status::DESTROY;
       delete this;
     }
   }
@@ -104,8 +107,7 @@ class CallData : public ICallData {
     }
   }
 
-  // got new request
-  bool new_request_ = true;
+  Status status_ = Status::CREATE;
 
   // completion queue: the producer-consumer queue where for asynchronous server
   // notifications.
@@ -119,8 +121,6 @@ class CallData : public ICallData {
 
   // responder for replying to client
   grpc::ServerAsyncWriter<Response> responder_;
-
-  std::atomic<bool> done_{false};
 
   // it is used to make sure write ops are not called concurrently
   std::atomic<bool> ops_in_progress_{true};
