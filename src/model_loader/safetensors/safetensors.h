@@ -59,10 +59,10 @@ struct Handle;
 
 struct View {
   Dtype dtype;
-  uintptr_t rank;
-  const uintptr_t* shape;
-  uintptr_t start;
-  uintptr_t stop;
+  size_t rank;
+  const size_t* shape;
+  size_t start;
+  size_t stop;
 };
 
 extern "C" {
@@ -131,7 +131,7 @@ Status safetensors_free_names(const char* const* names, size_t len);
 /// of tensors of.
 ///
 /// returns: usize Number of tensors in the safetensors
-uintptr_t safetensors_num_tensors(const Handle* handle);
+size_t safetensors_num_tensors(const Handle* handle);
 
 /// Return the number of bytes required to represent a single element from the
 /// specified dtype
@@ -141,7 +141,7 @@ uintptr_t safetensors_num_tensors(const Handle* handle);
 /// * `dtype`: The data type we want to know the number of bytes required
 ///
 /// returns: usize Number of bytes for this specific `dtype`
-uintptr_t safetensors_dtype_size(Dtype dtype);
+size_t safetensors_dtype_size(Dtype dtype);
 
 /// Attempt to retrieve the metadata and content for the tensor associated with
 /// `name` storing the result to the memory location pointed by `view` pointer.

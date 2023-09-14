@@ -1,5 +1,5 @@
 [package]
-name = "hf-safetensors"
+name = "safetensors"
 version = "0.3.3"
 edition = "2021"
 

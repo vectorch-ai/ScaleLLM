@@ -1,3 +1,4 @@
+include(cc_test)
 include(cc_library)
 
 cc_library(
@@ -8,8 +9,20 @@ cc_library(
   SRCS 
     state_dict.cpp
   DEPS
-    glog::glog
+    safetensors
     torch
+    glog::glog
+    Folly::folly
+)
+
+cc_test(
+  NAME
+    state_dict_test
+  SRCS
+    state_dict_test.cpp
+  DEPS
+    :state_dict
+    GTest::gtest_main
 )
 
 cc_library(

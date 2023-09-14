@@ -7,6 +7,8 @@
 
 #include <memory>
 
+#include "safetensors/safetensors.h"
+
 namespace llm {
 
 namespace {
@@ -32,15 +34,55 @@ torch::IValue pickle_load(const std::string& model_path,
       /*storage_context=*/std::move(storage_context));
 }
 
+torch::ScalarType get_dtype(const Dtype& dtype) {
+  switch (dtype) {
+    case Dtype::BOOL:
+      return torch::kBool;
+    case Dtype::U8:
+      return torch::kUInt8;
+    case Dtype::I8:
+      return torch::kInt8;
+    case Dtype::I16:
+      return torch::kInt16;
+    case Dtype::F16:
+      return torch::kFloat16;
+    case Dtype::BF16:
+      return torch::kBFloat16;
+    case Dtype::I32:
+      return torch::kInt32;
+    case Dtype::F32:
+      return torch::kFloat32;
+    case Dtype::F64:
+      return torch::kFloat64;
+    case Dtype::I64:
+      return torch::kInt64;
+    case Dtype::U16:
+    case Dtype::U32:
+    case Dtype::U64:
+    default:
+      LOG(FATAL) << "Unsupported dtype " << static_cast<int>(dtype);
+  }
+}
+
+std::vector<int64_t> get_sizes(const View* view) {
+  std::vector<int64_t> sizes;
+  sizes.reserve(view->rank);
+  for (size_t i = 0; i < view->rank; i++) {
+    sizes.push_back(view->shape[i]);
+  }
+  return sizes;
+}
+
 }  // namespace
 
-std::unique_ptr<StateDict> StateDict::load_from_file(
-    const std::string& model_path,
+std::unique_ptr<StateDict> StateDict::load_pickle_file(
+    const std::string& weights_file,
     const torch::Device& device) {
   using caffe2::serialize::PyTorchStreamReader;
-  LOG(INFO) << "Loading model weights from " << model_path << " to " << device;
+  LOG(INFO) << "Loading model weights from " << weights_file << " to "
+            << device;
 
-  const torch::IValue data = pickle_load(model_path, device);
+  const torch::IValue data = pickle_load(weights_file, device);
 
   // convert to typed dict
   std::unordered_map<std::string, torch::Tensor> dict;
@@ -50,6 +92,62 @@ std::unique_ptr<StateDict> StateDict::load_from_file(
     dict[key.toStringRef()] = value.toTensor();
   }
   return std::make_unique<StateDict>(std::move(dict));
+}
+
+std::unique_ptr<StateDict> StateDict::load_safetensors(
+    const std::string& weights_file,
+    const torch::Device& device) {
+  LOG(INFO) << "Loading model weights from " << weights_file << " to "
+            << device;
+  folly::MemoryMapping::Options options;
+  options.setPrefault(true).setReadable(true);
+  auto mem_map = std::make_unique<folly::MemoryMapping>(weights_file.c_str(),
+                                                        0,   // offset
+                                                        -1,  // length
+                                                        options);
+  // lock it to memory
+  mem_map->mlock(folly::MemoryMapping::LockMode::MUST_LOCK);
+  const folly::ByteRange content = mem_map->range();
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  const uint8_t* data = reinterpret_cast<const uint8_t*>(content.data());
+  const size_t size = content.size();
+
+  std::unordered_map<std::string, torch::Tensor> dict;
+  // safetensors
+  Handle* handle = nullptr;
+  CHECK(safetensors_deserialize(&handle, data, size) == Status::Ok)
+      << "Failed to open safetensors file " << weights_file;
+
+  const char* const* tensor_names = nullptr;
+  size_t num_tensors = 0;
+  CHECK(safetensors_names(handle, &tensor_names, &num_tensors) == Status::Ok)
+      << "Failed to get tensor names from safetensors file " << weights_file;
+
+  for (size_t i = 0; i < num_tensors; i++) {
+    const char* tensor_name = tensor_names[i];
+    View* tensor_view = nullptr;
+    CHECK(safetensors_get_tensor(handle, &tensor_view, tensor_name) ==
+          Status::Ok)
+        << "Failed to get tensor " << tensor_name << " from safetensors file "
+        << weights_file;
+
+    const auto scalar_type = get_dtype(tensor_view->dtype);
+    const void* tensor_data = data + tensor_view->start;
+    const std::vector<int64_t> tensor_sizes = get_sizes(tensor_view);
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
+    const auto tensor = at::from_blob(const_cast<void*>(tensor_data),
+                                      tensor_sizes,
+                                      torch::dtype(scalar_type).device(device));
+    CHECK(safetensors_free_tensor(tensor_view) == Status::Ok)
+        << "Failed to free tensor view";
+    dict[tensor_name] = tensor;
+  }
+  CHECK(safetensors_free_names(tensor_names, num_tensors) == Status::Ok)
+      << "Failed to free tensor names";
+  CHECK(safetensors_destroy(handle) == Status::Ok)
+      << "Failed to destroy safetensors handle";
+
+  return std::make_unique<StateDict>(std::move(mem_map), std::move(dict));
 }
 
 torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {

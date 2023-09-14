@@ -1,7 +1,7 @@
 include(CMakeCargo)
 cargo_build(
   NAME 
-    hf-safetensors
+    safetensors
   HDRS
     safetensors.h
 )
