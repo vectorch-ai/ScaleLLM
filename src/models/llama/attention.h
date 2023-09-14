@@ -22,7 +22,7 @@ class AttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t dim = args.dim();
     const int64_t n_heads = args.n_heads();
-    const int64_t n_kv_heads = args.n_kv_heads().value_or(args.n_heads());
+    const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
 
     n_local_heads_ = n_heads / world_size;
     n_local_kv_heads_ = n_kv_heads / world_size;
@@ -152,7 +152,7 @@ class AttentionImpl : public torch::nn::Module {
   RotaryEmbedding pos_emb_{nullptr};
 
   uint32_t layer_id_;
-  
+
   ParallelArgs parallel_args_;
 
   // configs used in forward

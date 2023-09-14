@@ -166,15 +166,18 @@ bool Engine::init_kv_cache() {
             << ", block size: " << cache_args_.block_size();
 
   // init kv cache for each worker
+  const int world_size = static_cast<int>(workers_.size());
   const int64_t x = 16 / dtype_size;
-  const int64_t num_heads = args_.n_heads();
-  const int64_t head_dim = args_.dim() / num_heads;
+  const int64_t n_heads = args_.n_heads();
+  const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
+  const int64_t local_kv_heads = n_kv_heads / world_size;
+  const int64_t head_dim = args_.dim() / n_heads;
   const int64_t block_size = cache_args_.block_size();
   const int64_t num_blocks = cache_args_.num_blocks();
   const std::vector<int64_t> key_cache_shape = {
-      num_blocks, num_heads, head_dim / x, block_size, x};
+      num_blocks, local_kv_heads, head_dim / x, block_size, x};
   const std::vector<int64_t> value_cache_shape = {
-      num_blocks, num_heads, head_dim, block_size};
+      num_blocks, local_kv_heads, head_dim, block_size};
   LOG(INFO) << "Initializing kv cache with key shape: [" << key_cache_shape
             << "], value shape: [" << value_cache_shape << "]";
 
@@ -235,7 +238,8 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   auto first_output = results.front().value();
   for (size_t i = 1; i < results.size(); ++i) {
     const auto& output = results[i].value();
-    // DCHECK(output.next_tokens.equal(first_output.next_tokens));
+    // CHECK(output.next_tokens.equal(first_output.next_tokens));
+    CHECK(output.logits.equal(first_output.logits));
   }
   // mapping output back to the original request order in the batch
   first_output.index_select(seq_indices);

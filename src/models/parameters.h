@@ -79,6 +79,8 @@ struct OutputParameters {
   // [num_seq] LongTensor
   torch::Tensor next_tokens;
 
+  torch::Tensor logits;
+
   // [num_seq]
   // torch::Tensor next_logprob;
 };
