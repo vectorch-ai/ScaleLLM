@@ -1,0 +1,15 @@
+[package]
+name = "hf-safetensors"
+version = "0.3.2"
+edition = "2021"
+
+[lib]
+name = "safetensors"
+crate-type = ["staticlib"]
+
+[profile.release]
+lto = "fat"
+
+[dependencies]
+thiserror = "1.0"
+safetensors = { path = "../../../third_party/safetensors/safetensors" }

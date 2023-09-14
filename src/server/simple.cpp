@@ -1,8 +1,8 @@
+#include <absl/strings/str_split.h>
 #include <c10/core/Device.h>
 #include <c10/core/ScalarType.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <absl/strings/str_split.h>
 
 #include <iostream>
 #include <string>
@@ -12,9 +12,9 @@
 #include "hf_model_downloader.h"
 #include "memory/block_manager.h"
 #include "memory/kv_cache.h"
+#include "model_loader/model_loader.h"
 #include "models/llama/transformer.h"
 #include "models/model_args.h"
-#include "models/model_loader.h"
 #include "models/parameters.h"
 #include "request/sampling_parameter.h"
 #include "request/sequence.h"
@@ -49,7 +49,8 @@ int main(int argc, char* argv[]) {
   torch::InferenceMode guard;
 
   // split device into chunks
-  const std::vector<std::string> device_strs = absl::StrSplit(FLAGS_device, ',');
+  const std::vector<std::string> device_strs =
+      absl::StrSplit(FLAGS_device, ',');
   std::vector<torch::Device> devices;
   devices.reserve(device_strs.size());
   std::set<torch::DeviceType> device_types;

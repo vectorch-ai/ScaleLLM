@@ -5,7 +5,7 @@ cc_library(
   NAME 
     tokenizer
   HDRS 
-    hf-tokenizers.h
+    hf-tokenizers/tokenizers.h
     tokenizer.h
     sentencepiece_tokenizer.h
   SRCS 

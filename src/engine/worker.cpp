@@ -84,7 +84,6 @@ OutputParameters Worker::execute_model(
   // prepare output parameters
   OutputParameters output_params;
   output_params.next_tokens = next_tokens.to(input_device);
-  output_params.logits = logits.to(input_device);
   return output_params;
 }
 

@@ -1,3 +1,4 @@
+include(cc_library)
 cc_library(
   NAME 
     causal_lm
@@ -30,18 +31,6 @@ cc_library(
     parameters.h
   SRCS 
   DEPS
-    torch
-)
-
-cc_library(
-  NAME 
-    model_loader
-  HDRS 
-    model_loader.h
-  SRCS 
-    model_loader.cpp
-  DEPS
-    :model_args
     torch
 )
 

@@ -1,6 +1,13 @@
 # ported from https://github.com/Devolutions/CMakeRust
 function(cargo_build)
-    cmake_parse_arguments(CARGO "" "NAME" "" ${ARGN})
+    cmake_parse_arguments(
+        CARGO # prefix
+        "" # options
+        "NAME" # one value args
+        "HDRS" # multi value args
+        ${ARGN}
+    )
+
     string(REPLACE "-" "_" LIB_NAME ${CARGO_NAME})
 
     set(CARGO_TARGET_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -68,4 +75,5 @@ function(cargo_build)
     add_library(${CARGO_NAME} STATIC IMPORTED GLOBAL)
     add_dependencies(${CARGO_NAME} ${CARGO_NAME}_target)
     set_target_properties(${CARGO_NAME} PROPERTIES IMPORTED_LOCATION ${LIB_FILE})
+    target_sources(${CARGO_NAME} INTERFACE ${CARGO_HDRS})
 endfunction()
