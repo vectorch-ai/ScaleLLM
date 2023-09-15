@@ -41,9 +41,16 @@ function(cc_test)
     CC_TEST # prefix
     "" # options
     "NAME" # one value args
-    "SRCS;COPTS;LINKOPTS;DEPS;ARGS" # multi value args
+    "SRCS;COPTS;LINKOPTS;DEPS;ARGS;DATA" # multi value args
     ${ARGN}
   )
+
+  # place test data in build directory
+  if(CC_TEST_DATA)
+    foreach(data ${CC_TEST_DATA})
+      configure_file(${data} ${CMAKE_CURRENT_BINARY_DIR}/${data} COPYONLY)
+    endforeach()
+  endif()
 
   add_executable(${CC_TEST_NAME})
   target_sources(${CC_TEST_NAME} PRIVATE ${CC_TEST_SRCS})
@@ -63,6 +70,6 @@ function(cc_test)
   gtest_add_tests(
     TARGET ${CC_TEST_NAME}
     EXTRA_ARGS ${CC_TEST_ARGS}
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   )
 endfunction()

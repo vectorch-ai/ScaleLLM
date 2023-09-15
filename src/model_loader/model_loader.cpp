@@ -29,8 +29,8 @@ const StateDict* ModelLoader::Iterator::get_state_dict() const {
   CHECK(index_ < loader_->model_weights_files_.size());
   // lazy loading
   if (!state_dict_) {
-    state_dict_ = StateDict::load_pickle_file(
-        loader_->model_weights_files_[index_], torch::kCPU);
+    state_dict_ =
+        StateDict::load_pickle_file(loader_->model_weights_files_[index_]);
     LOG(INFO) << "Loaded model weights from "
               << loader_->model_weights_files_[index_];
   }

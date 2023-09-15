@@ -11,12 +11,10 @@ namespace llm {
 class StateDict final {
  public:
   static std::unique_ptr<StateDict> load_pickle_file(
-      const std::string& weights_file,
-      const torch::Device& device = torch::kCPU);
+      const std::string& weights_file);
 
   static std::unique_ptr<StateDict> load_safetensors(
-      const std::string& weights_file,
-      const torch::Device& device = torch::kCPU);
+      const std::string& weights_file);
 
   explicit StateDict(std::unordered_map<std::string, torch::Tensor> dict)
       : dict_(std::move(dict)) {}
@@ -32,14 +30,27 @@ class StateDict final {
   // the returned tensor name will be the suffix of the original name.
   StateDict select(const std::string_view& prefix) const;
 
+  size_t size() const { return dict_.size(); }
+
   // support range-based for loop
   auto begin() const { return dict_.begin(); }
   auto end() const { return dict_.end(); }
+
+  void set_shard(int shard_id, int num_shards) {
+    shard_id_ = shard_id;
+    num_shards_ = num_shards;
+  }
 
  private:
   // memory mapping for safetensors
   std::unique_ptr<folly::MemoryMapping> mem_map_;
 
   std::unordered_map<std::string, torch::Tensor> dict_;
+
+  // configs for data shards
+  // data shard id of this weight file, valid range [0, num_shards)
+  int shard_id_ = 0;
+  // total number of data shards
+  int num_shards_ = 1;
 };
 }  // namespace llm

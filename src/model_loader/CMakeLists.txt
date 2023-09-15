@@ -23,6 +23,9 @@ cc_test(
   DEPS
     :state_dict
     GTest::gtest_main
+  DATA 
+    data/test.pth 
+    data/test.safetensors
 )
 
 cc_library(

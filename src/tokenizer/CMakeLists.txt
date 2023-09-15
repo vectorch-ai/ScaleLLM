@@ -24,6 +24,8 @@ cc_test(
   DEPS
     :tokenizer
     GTest::gtest_main
+  DATA 
+    data/test_model.model
 )
 
 # build huggingface tokenizers (rust)

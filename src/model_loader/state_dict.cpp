@@ -15,8 +15,7 @@ namespace {
 // adapt from
 // https://github.com/pytorch/pytorch/blob/main/torch/csrc/jit/serialization/pickle.cpp#L98
 // but with different parameters for efficiency
-torch::IValue pickle_load(const std::string& model_path,
-                          const torch::Device& device) {
+torch::IValue pickle_load(const std::string& model_path) {
   using caffe2::serialize::PyTorchStreamReader;
   PyTorchStreamReader stream_reader(model_path);
   // add storage context to enable sharing of storage
@@ -28,7 +27,7 @@ torch::IValue pickle_load(const std::string& model_path,
       /*tensor_prefix=*/"",
       /*type_resolver=*/c10::nullopt,
       /*obj_loader=*/c10::nullopt,
-      /*device=*/device,
+      /*device=*/c10::nullopt,
       /*stream_reader=*/stream_reader,
       /*type_parser=*/torch::jit::Unpickler::defaultTypeParser,
       /*storage_context=*/std::move(storage_context));
@@ -62,6 +61,7 @@ torch::ScalarType get_dtype(const Dtype& dtype) {
     default:
       LOG(FATAL) << "Unsupported dtype " << static_cast<int>(dtype);
   }
+  __builtin_unreachable();
 }
 
 std::vector<int64_t> get_sizes(const View* view) {
@@ -76,13 +76,11 @@ std::vector<int64_t> get_sizes(const View* view) {
 }  // namespace
 
 std::unique_ptr<StateDict> StateDict::load_pickle_file(
-    const std::string& weights_file,
-    const torch::Device& device) {
+    const std::string& weights_file) {
   using caffe2::serialize::PyTorchStreamReader;
-  LOG(INFO) << "Loading model weights from " << weights_file << " to "
-            << device;
+  LOG(INFO) << "Loading model weights from " << weights_file;
 
-  const torch::IValue data = pickle_load(weights_file, device);
+  const torch::IValue data = pickle_load(weights_file);
 
   // convert to typed dict
   std::unordered_map<std::string, torch::Tensor> dict;
@@ -95,10 +93,8 @@ std::unique_ptr<StateDict> StateDict::load_pickle_file(
 }
 
 std::unique_ptr<StateDict> StateDict::load_safetensors(
-    const std::string& weights_file,
-    const torch::Device& device) {
-  LOG(INFO) << "Loading model weights from " << weights_file << " to "
-            << device;
+    const std::string& weights_file) {
+  LOG(INFO) << "Loading model weights from " << weights_file;
   folly::MemoryMapping::Options options;
   options.setPrefault(true).setReadable(true);
   auto mem_map = std::make_unique<folly::MemoryMapping>(weights_file.c_str(),
@@ -137,7 +133,7 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     const auto tensor = at::from_blob(const_cast<void*>(tensor_data),
                                       tensor_sizes,
-                                      torch::dtype(scalar_type).device(device));
+                                      torch::dtype(scalar_type));
     CHECK(safetensors_free_tensor(tensor_view) == Status::Ok)
         << "Failed to free tensor view";
     dict[tensor_name] = tensor;

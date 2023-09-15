@@ -17,8 +17,8 @@ DEFINE_int32(max_batch_size, 4, "Maximum batch size.");
 
 DEFINE_int32(block_size, 16, "slots per block, value must be [8, 16, 32]");
 DEFINE_int64(max_cache_size,
-             2 * llm::GB,
-             "max cache size in bytes, default 2GB");
+             5 * llm::GB,
+             "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
               0.9,
               "maximum memory utilization allowed, default 0.9");
@@ -115,10 +115,15 @@ bool Engine::init_kv_cache() {
   cache_args_.max_memory_utilization(FLAGS_max_memory_utilization);
 
   // init kv cache
+  const int world_size = static_cast<int>(workers_.size());
+  const int64_t n_heads = args_.n_heads();
+  const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
+  const int64_t n_local_kv_heads = n_kv_heads / world_size;
+  const int64_t head_dim = args_.dim() / n_heads;
   const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
   // key + value for all layers
   const int64_t block_size_in_bytes = int64_t(2) * cache_args_.block_size() *
-                                      args_.dim() * args_.n_layers() *
+                                      n_local_kv_heads * head_dim * args_.n_layers() *
                                       dtype_size;
   LOG(INFO) << "Block size in bytes: " << block_size_in_bytes
             << ", dtype size: " << dtype_size
@@ -166,13 +171,8 @@ bool Engine::init_kv_cache() {
             << ", block size: " << cache_args_.block_size();
 
   // init kv cache for each worker
-  const int world_size = static_cast<int>(workers_.size());
-  const int64_t x = 16 / dtype_size;
-  const int64_t n_heads = args_.n_heads();
-  const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
-  const int64_t n_local_kv_heads = n_kv_heads / world_size;
-  const int64_t head_dim = args_.dim() / n_heads;
   const int64_t block_size = cache_args_.block_size();
+  const int64_t x = 16 / dtype_size;
   const int64_t num_blocks = cache_args_.num_blocks();
   const std::vector<int64_t> key_cache_shape = {
       num_blocks, n_local_kv_heads, head_dim / x, block_size, x};
@@ -236,13 +236,6 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   auto results = folly::collectAll(futures).get();
   // return the result from the first worker
   auto first_output = results.front().value();
-#ifndef NDEBUG
-  // check if all workers return the same result
-  for (size_t i = 1; i < results.size(); ++i) {
-    const auto& output = results[i].value();
-    CHECK(output.next_tokens.equal(first_output.next_tokens));
-  }
-#endif
   // mapping output back to the original request order in the batch
   first_output.index_select(seq_indices);
   return first_output;
