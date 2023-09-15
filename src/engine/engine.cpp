@@ -65,9 +65,6 @@ bool Engine::init(const std::string& model_weights_path,
 
 bool Engine::init_model(const std::string& model_weights_path) {
   ModelLoader model_loader(model_weights_path);
-  CHECK_EQ(workers_.size(), model_loader.weights_files_count())
-      << "The number of workers should be the same as the number of model "
-         "weights files";
 
   LOG(INFO) << "Initializing model from: " << model_weights_path;
 
@@ -93,13 +90,21 @@ bool Engine::init_model(const std::string& model_weights_path) {
     }
   }
 
-  // load the weights from the checkpoint
-  // each worker loads one model weights file
-  // TODO: add support for loading multiple model weights files for each
-  // worker
+  // load the weights from the checkpoint in parallel
   size_t i = 0;
   for (const auto& state_dict : model_loader) {
-    workers_[i++]->load_state_dict(state_dict);
+    std::vector<folly::SemiFuture<folly::Unit>> futures;
+    futures.reserve(workers_.size());
+    for (auto& worker : workers_) {
+      futures.push_back(worker->load_state_dict_async(state_dict));
+    }
+    // wait for all futures to complete
+    auto results = folly::collectAll(futures).get();
+    for (const auto& result : results) {
+      if (result.hasException()) {
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -123,12 +128,14 @@ bool Engine::init_kv_cache() {
   const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
   // key + value for all layers
   const int64_t block_size_in_bytes = int64_t(2) * cache_args_.block_size() *
-                                      n_local_kv_heads * head_dim * args_.n_layers() *
-                                      dtype_size;
+                                      n_local_kv_heads * head_dim *
+                                      args_.n_layers() * dtype_size;
   LOG(INFO) << "Block size in bytes: " << block_size_in_bytes
-            << ", dtype size: " << dtype_size
-            << ", block size: " << cache_args_.block_size()
-            << ", dim: " << args_.dim() << ", num layers: " << args_.n_layers();
+            << ", block_size: " << cache_args_.block_size()
+            << ", head_dim: " << head_dim
+            << ", n_local_kv_heads: " << n_local_kv_heads
+            << ", n_layers: " << args_.n_layers()
+            << ", dtype_size: " << dtype_size;
 
   // use first device to profile memory usage
   const auto& device = workers_[0]->device();

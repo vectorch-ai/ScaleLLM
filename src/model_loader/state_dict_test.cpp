@@ -42,4 +42,39 @@ TEST(StateDictTest, LoadSafeTensors) {
   }
 }
 
+TEST(StateDictTest, SharedTensor) {
+  // TODO: add more tests
+  // create a list of tensors with same size
+  std::vector<torch::Tensor> tensors;
+  for (int i = 0; i < 8; ++i) {
+    tensors.push_back(torch::ones({2, 2})*i);
+  }
+  torch::Tensor tensor = torch::cat(tensors, /*dim=*/0);
+  EXPECT_EQ(tensor.sizes(), torch::IntArrayRef({16, 2}));
+  StateDict state_dict({{"tensor", tensor}});
+  state_dict.set_shard(0, 1);
+  EXPECT_EQ(state_dict.size(), 1);
+
+  // test get_tensor
+  auto tensor1 = state_dict.get_tensor("tensor");
+  EXPECT_TRUE(tensor1.equal(tensor));
+
+  // test get_sharded_tensor
+  auto chunks = tensor.chunk(2, /*dim=*/0);
+  auto rank0_tensor = state_dict.get_sharded_tensor("tensor",
+                                               /*dim=*/0,
+                                               /*rank=*/0,
+                                               /*world_size=*/2);
+  LOG(ERROR) << rank0_tensor;
+  EXPECT_EQ(rank0_tensor.sizes(), torch::IntArrayRef({8, 2}));
+  EXPECT_TRUE(rank0_tensor.equal(chunks[0]));
+  auto rank1_tensor = state_dict.get_sharded_tensor("tensor",
+                                               /*dim=*/0,
+                                               /*rank=*/1,
+                                               /*world_size=*/2);
+  LOG(ERROR) << rank1_tensor;
+  EXPECT_EQ(rank1_tensor.sizes(), torch::IntArrayRef({8, 2}));
+  EXPECT_TRUE(rank1_tensor.equal(chunks[1]));
+}
+
 }  // namespace llm

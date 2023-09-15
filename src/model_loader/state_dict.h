@@ -26,6 +26,12 @@ class StateDict final {
   // get the tensor with the given name. return nullptr if not found.
   torch::Tensor get_tensor(const std::string_view& tensor_name) const;
 
+  // get the sharded tensor with the given name for the given rank.
+  torch::Tensor get_sharded_tensor(const std::string_view& tensor_name,
+                                   int64_t dim,
+                                   int rank,
+                                   int world_size) const;
+
   // select all the tensors whose name starts with prefix.
   // the returned tensor name will be the suffix of the original name.
   StateDict select(const std::string_view& prefix) const;
@@ -36,10 +42,7 @@ class StateDict final {
   auto begin() const { return dict_.begin(); }
   auto end() const { return dict_.end(); }
 
-  void set_shard(int shard_id, int num_shards) {
-    shard_id_ = shard_id;
-    num_shards_ = num_shards;
-  }
+  void set_shard(int shard_id, int num_shards);
 
  private:
   // memory mapping for safetensors
