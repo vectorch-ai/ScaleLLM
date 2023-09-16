@@ -28,11 +28,11 @@ ModelLoader::ModelLoader(std::string model_weights_path)
 const StateDict* ModelLoader::Iterator::get_state_dict() const {
   const int num_data_shards = loader_->model_weights_files_.size();
   CHECK(index_ < num_data_shards);
+  const int data_shard_id = index_;
   // lazy loading
   if (!state_dict_) {
-    state_dict_ =
-        StateDict::load_pickle_file(loader_->model_weights_files_[index_]);
-    state_dict_->set_shard(index_, num_data_shards);
+    state_dict_ = StateDict::load_pickle_file(
+        loader_->model_weights_files_[index_], data_shard_id, num_data_shards);
     LOG(INFO) << "Loaded model weights from "
               << loader_->model_weights_files_[index_];
   }

@@ -76,7 +76,12 @@ std::vector<int64_t> get_sizes(const View* view) {
 }  // namespace
 
 std::unique_ptr<StateDict> StateDict::load_pickle_file(
-    const std::string& weights_file) {
+    const std::string& weights_file,
+    int shard_id,
+    int num_shards) {
+  CHECK(shard_id >= 0 && shard_id < num_shards)
+      << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
+
   using caffe2::serialize::PyTorchStreamReader;
   LOG(INFO) << "Loading model weights from " << weights_file;
 
@@ -89,11 +94,16 @@ std::unique_ptr<StateDict> StateDict::load_pickle_file(
     const auto& value = kv.value();
     dict[key.toStringRef()] = value.toTensor();
   }
-  return std::make_unique<StateDict>(std::move(dict));
+  return std::make_unique<StateDict>(std::move(dict), shard_id, num_shards);
 }
 
 std::unique_ptr<StateDict> StateDict::load_safetensors(
-    const std::string& weights_file) {
+    const std::string& weights_file,
+    int shard_id,
+    int num_shards) {
+  CHECK(shard_id >= 0 && shard_id < num_shards)
+      << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
+
   LOG(INFO) << "Loading model weights from " << weights_file;
   folly::MemoryMapping::Options options;
   options.setPrefault(true).setReadable(true);
@@ -143,7 +153,29 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
   CHECK(safetensors_destroy(handle) == Status::Ok)
       << "Failed to destroy safetensors handle";
 
-  return std::make_unique<StateDict>(std::move(mem_map), std::move(dict));
+  return std::make_unique<StateDict>(
+      std::move(mem_map), std::move(dict), shard_id, num_shards);
+}
+
+StateDict::StateDict(std::unordered_map<std::string, torch::Tensor> dict,
+                     int shard_id,
+                     int num_shards)
+    : dict_(std::move(dict)), shard_id_(shard_id), num_shards_(num_shards) {
+  CHECK(shard_id_ >= 0 && shard_id_ < num_shards_)
+      << "Invalid shard id " << shard_id_ << " for " << num_shards_
+      << " shards";
+}
+
+StateDict::StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
+                     std::unordered_map<std::string, torch::Tensor> dict,
+                     int shard_id,
+                     int num_shards)
+    : mem_map_(std::move(mem_map)),
+      dict_(std::move(dict)),
+      shard_id_(shard_id),
+      num_shards_(num_shards) {
+  CHECK(shard_id >= 0 && shard_id < num_shards)
+      << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
 }
 
 torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
@@ -153,13 +185,6 @@ torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
     return torch::Tensor{nullptr};
   }
   return it->second;
-}
-
-void StateDict::set_shard(int shard_id, int num_shards) {
-  CHECK(shard_id >= 0 && shard_id < num_shards)
-      << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
-  shard_id_ = shard_id;
-  num_shards_ = num_shards;
 }
 
 torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
@@ -207,7 +232,7 @@ StateDict StateDict::select(const std::string_view& prefix) const {
       selected[name.substr(prefix.length())] = tensor;
     }
   }
-  return StateDict(std::move(selected));
+  return {std::move(selected), shard_id_, num_shards_};
 }
 
 }  // namespace llm

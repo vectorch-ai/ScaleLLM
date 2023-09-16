@@ -33,7 +33,7 @@ TEST(LayersTest, TestLoadStateDict) {
   // Allocate transposed weight matrix
   state_dict_data["weight"] = torch::randn({out_features, in_features});
 
-  StateDict state_dict(state_dict_data);
+  StateDict state_dict(state_dict_data, 0, 1);
   // test load state dict for transformer
   linear->load_state_dict(state_dict);
 

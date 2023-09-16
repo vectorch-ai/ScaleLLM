@@ -11,17 +11,23 @@ namespace llm {
 class StateDict final {
  public:
   static std::unique_ptr<StateDict> load_pickle_file(
-      const std::string& weights_file);
+      const std::string& weights_file,
+      int shard_id,
+      int num_shards);
 
   static std::unique_ptr<StateDict> load_safetensors(
-      const std::string& weights_file);
+      const std::string& weights_file,
+      int shard_id,
+      int num_shards);
 
-  explicit StateDict(std::unordered_map<std::string, torch::Tensor> dict)
-      : dict_(std::move(dict)) {}
+  StateDict(std::unordered_map<std::string, torch::Tensor> dict,
+            int shard_id,
+            int num_shards);
 
   StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
-            std::unordered_map<std::string, torch::Tensor> dict)
-      : mem_map_(std::move(mem_map)), dict_(std::move(dict)) {}
+            std::unordered_map<std::string, torch::Tensor> dict,
+            int shard_id,
+            int num_shards);
 
   // get the tensor with the given name. return nullptr if not found.
   torch::Tensor get_tensor(const std::string_view& tensor_name) const;
@@ -41,8 +47,6 @@ class StateDict final {
   // support range-based for loop
   auto begin() const { return dict_.begin(); }
   auto end() const { return dict_.end(); }
-
-  void set_shard(int shard_id, int num_shards);
 
  private:
   // memory mapping for safetensors
