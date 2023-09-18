@@ -68,9 +68,6 @@ OutputParameters Worker::execute_model(
   // call model forward and return the result
   auto logits = model_->forward(tokens, positions, kv_caches_, d_params);
 
-  // select logits for each sequence
-  logits = logits.index_select(/*dim=*/0, d_params.sample_idx);
-
   // create and call logits processors
   auto logits_processor =
       LogitsProcessor::create(sampling_params, dtype_, device_);

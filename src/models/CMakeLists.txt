@@ -6,6 +6,7 @@ cc_library(
     models
   HDRS 
     llama2.h
+    hf_llama2.h
   SRCS 
   DEPS
     :input_parameters

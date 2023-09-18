@@ -18,10 +18,10 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
                                            const torch::ScalarType& dtype,
                                            const torch::Device& device) {
   // TODO: create models based on model name;
-  llm::Llama2 llama2(args, parallel_args, dtype, device);
+  llama2::Model llama2(args, parallel_args, dtype, device);
   // set the module in evaluation/inference mode
   llama2->eval();
-  return std::make_unique<llm::CausalLMImpl<llm::Llama2>>(
+  return std::make_unique<llm::CausalLMImpl<llama2::Model>>(
       std::move(llama2));
 }
 

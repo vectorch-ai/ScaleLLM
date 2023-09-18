@@ -19,7 +19,7 @@ struct InputParameters {
     params.slot_ids = slot_ids.to(device);
     params.block_tables = block_tables.to(device);
     params.context_lens = context_lens.to(device);
-    params.sample_idx = sample_idx.to(device);
+    params.last_token_indicies = last_token_indicies.to(device);
     params.token_ids = token_ids.to(device);
     return params;
   }
@@ -59,7 +59,7 @@ struct InputParameters {
   // for prompt sequence, it is the index of last token in the prompt.
   // for decode sequence, it is the index of the token. (only one token)
   // IntTensor
-  torch::Tensor sample_idx;
+  torch::Tensor last_token_indicies;
 
   // the token ids of the prompt.
   // used in logit processor to calculate frequency of each token

@@ -14,7 +14,7 @@
 
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py
-namespace llm {
+namespace llm::llama2 {
 
 class AttentionImpl : public torch::nn::Module {
  public:
@@ -183,6 +183,7 @@ class FeedForwardImpl : public torch::nn::Module {
     hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
 
     // register the weight parameter
+    // TODO: fuse w1 and w3 into one linear layer
     w1_ = register_module("w1",
                           ColumnParallelLinear(dim,
                                                hidden_dim,
@@ -281,12 +282,12 @@ class TransformerBlockImpl : public torch::nn::Module {
 };
 TORCH_MODULE(TransformerBlock);
 
-class Llama2Impl : public torch::nn::Module {
+class ModelImpl : public torch::nn::Module {
  public:
-  Llama2Impl(const ModelArgs& args,
-             const ParallelArgs& parallel_args,
-             const torch::ScalarType& dtype,
-             const torch::Device& device)
+  ModelImpl(const ModelArgs& args,
+            const ParallelArgs& parallel_args,
+            const torch::ScalarType& dtype,
+            const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
     tok_embeddings_ = register_module(
@@ -323,8 +324,10 @@ class Llama2Impl : public torch::nn::Module {
       h = layer(h, positions, kv_caches[i], input_params);
     }
     h = norm_(h);
-    auto output = output_(h).to(torch::kFloat32);
-    return output;
+    // select last token for each sequence
+    h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
+    auto logits = output_(h);
+    return logits;
   }
 
   // load the weight from the checkpoint
@@ -353,6 +356,6 @@ class Llama2Impl : public torch::nn::Module {
 
   ParallelArgs parallel_args_;
 };
-TORCH_MODULE(Llama2);
+TORCH_MODULE(Model);
 
-}  // namespace llm
+}  // namespace llm::llama2

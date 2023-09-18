@@ -160,7 +160,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   input_params->slot_ids = torch::tensor(slot_ids, torch::kInt);
   input_params->block_tables = block_tables_tensor;
   input_params->context_lens = torch::tensor(context_lens, torch::kInt);
-  input_params->sample_idx = torch::tensor(sample_idx, torch::kInt);
+  input_params->last_token_indicies = torch::tensor(sample_idx, torch::kInt);
   input_params->token_ids = token_ids_tensor;
 }
 
