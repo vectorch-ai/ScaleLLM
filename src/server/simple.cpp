@@ -13,13 +13,11 @@
 #include "memory/block_manager.h"
 #include "memory/kv_cache.h"
 #include "model_loader/model_loader.h"
-#include "models/llama/transformer.h"
 #include "models/model_args.h"
 #include "models/parameters.h"
 #include "request/sampling_parameter.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
-// #include "tokenizer/sentencepiece_tokenizer.h"
 #include "model_loader/state_dict.h"
 
 DEFINE_string(model_path,

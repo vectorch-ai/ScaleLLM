@@ -1,4 +1,32 @@
 include(cc_library)
+include(cc_test)
+
+cc_library(
+  NAME 
+    models
+  HDRS 
+    llama2.h
+  SRCS 
+  DEPS
+    :input_parameters
+    :model_args
+    :layers
+    :memory
+    glog::glog
+    torch
+)
+
+cc_test(
+  NAME
+    models_test
+  SRCS
+    llama2_test.cpp
+  DEPS
+    :models
+    :state_dict
+    GTest::gtest_main
+)
+
 cc_library(
   NAME 
     causal_lm
@@ -7,7 +35,7 @@ cc_library(
   SRCS
     causal_lm.cpp 
   DEPS
-    :llama
+    :models
     glog::glog
     torch
 )
@@ -33,5 +61,3 @@ cc_library(
   DEPS
     torch
 )
-
-add_subdirectory(llama)
