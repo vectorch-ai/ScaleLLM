@@ -8,9 +8,9 @@
 #include "layers/norm.h"
 #include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
+#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/parallel_args.h"
-#include "models/parameters.h"
 
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py

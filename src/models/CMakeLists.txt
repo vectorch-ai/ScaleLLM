@@ -4,12 +4,12 @@ include(cc_test)
 cc_library(
   NAME 
     models
-  HDRS 
+  HDRS
+    input_parameters.h 
     llama2.h
     hf_llama2.h
-  SRCS 
+  SRCS
   DEPS
-    :input_parameters
     :model_args
     :layers
     :memory
@@ -46,19 +46,10 @@ cc_library(
     model_args
   HDRS 
     model_args.h
+    parallel_args.h
   SRCS 
     model_args.cpp
   DEPS
     torch
     nlohmann_json::nlohmann_json
-)
-
-cc_library(
-  NAME 
-    input_parameters
-  HDRS 
-    parameters.h
-  SRCS 
-  DEPS
-    torch
 )

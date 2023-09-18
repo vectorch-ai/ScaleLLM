@@ -8,9 +8,9 @@
 #include "layers/norm.h"
 #include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
+#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/parallel_args.h"
-#include "models/parameters.h"
 
 // llama2 model based on huggingface's llama2 model weights
 namespace llm::hf::llama2 {
@@ -332,14 +332,14 @@ class ModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    embed_tokens_->load_state_dict(state_dict.select("tok_embeddings."));
+    embed_tokens_->load_state_dict(state_dict.select("model.embed_tokens."));
     // call each layer's load_state_dict function
     for (int i = 0; i < layers_.size(); i++) {
       layers_[i]->load_state_dict(
-          state_dict.select("layers." + std::to_string(i) + "."));
+          state_dict.select("model.layers." + std::to_string(i) + "."));
     }
-    norm_->load_state_dict(state_dict.select("norm."));
-    lm_head_->load_state_dict(state_dict.select("output."));
+    norm_->load_state_dict(state_dict.select("model.norm."));
+    lm_head_->load_state_dict(state_dict.select("lm_head."));
   }
 
  private:

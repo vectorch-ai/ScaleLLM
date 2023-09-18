@@ -64,11 +64,11 @@ bool Engine::init(const std::string& model_weights_path,
 }
 
 bool Engine::init_model(const std::string& model_weights_path) {
-  ModelLoader model_loader(model_weights_path);
+  auto model_loader = ModelLoader::create(model_weights_path);
 
   LOG(INFO) << "Initializing model from: " << model_weights_path;
 
-  args_ = model_loader.model_args();
+  args_ = model_loader->model_args();
   if (args_.vocab_size() == -1) {
     args_.vocab_size(static_cast<int64_t>(tokenizer_->vocab_size()));
   }
@@ -92,7 +92,7 @@ bool Engine::init_model(const std::string& model_weights_path) {
 
   // load the weights from the checkpoint in parallel
   size_t i = 0;
-  for (const auto& state_dict : model_loader) {
+  for (const auto& state_dict : *model_loader) {
     std::vector<folly::SemiFuture<folly::Unit>> futures;
     futures.reserve(workers_.size());
     for (auto& worker : workers_) {

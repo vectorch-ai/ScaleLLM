@@ -51,6 +51,7 @@ cc_binary(
     simple.cpp
   DEPS
     :engine
+    :hf_model_downloader
     torch
     absl::strings
     gflags::gflags

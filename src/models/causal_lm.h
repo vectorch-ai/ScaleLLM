@@ -6,9 +6,9 @@
 
 #include "memory/kv_cache.h"
 #include "model_loader/state_dict.h"
-#include "models/model_args.h"
-#include "models/parallel_args.h"
-#include "parameters.h"
+#include "model_args.h"
+#include "parallel_args.h"
+#include "input_parameters.h"
 
 namespace llm {
 

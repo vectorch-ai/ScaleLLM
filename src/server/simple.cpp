@@ -4,25 +4,21 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include <filesystem>
 #include <iostream>
 #include <string>
 
 #include "engine/engine.h"
-#include "engine/worker.h"
 #include "hf_model_downloader.h"
-#include "memory/block_manager.h"
-#include "memory/kv_cache.h"
-#include "model_loader/model_loader.h"
+#include "models/input_parameters.h"
 #include "models/model_args.h"
-#include "models/parameters.h"
 #include "request/sampling_parameter.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
-#include "model_loader/state_dict.h"
 
-DEFINE_string(model_path,
+DEFINE_string(model_name_or_path,
               "/home/michael/code/llama/llama-2-7b",
-              "Path to the model file.");
+              "hf model name or path to the model file.");
 DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
               "Path to the tokenizer file.");
@@ -70,8 +66,15 @@ int main(int argc, char* argv[]) {
     dtype = torch::kHalf;
   }
 
+  // check if model path exists
+  std::string model_path = FLAGS_model_name_or_path;
+  if (!std::filesystem::exists(model_path)) {
+    // not a model path, try to download the model from huggingface hub
+    model_path = llm::download_hf_model(FLAGS_model_name_or_path);
+  }
+
   llm::Engine engine(dtype, devices);
-  CHECK(engine.init(FLAGS_model_path, FLAGS_tokenizer_path));
+  CHECK(engine.init(model_path, FLAGS_tokenizer_path));
   const auto* tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
 

@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include "models/parameters.h"
+#include "models/input_parameters.h"
 #include "request/sequence.h"
 
 namespace llm {

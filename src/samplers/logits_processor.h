@@ -10,7 +10,7 @@
 #include <tuple>
 #include <vector>
 
-#include "models/parameters.h"
+#include "models/input_parameters.h"
 
 namespace llm {
 

@@ -67,20 +67,4 @@ struct InputParameters {
   torch::Tensor token_ids;
 };
 
-// output parameters for the model that encapsulates all the necessary
-// output information. The output parameters should be as small as possible
-// to avoid transferring large tensors between host and device.
-struct OutputParameters {
-  // rerang the next tokens and next logprob according to the seq_idx
-  void index_select(const torch::Tensor& seq_idx) {
-    next_tokens = next_tokens.index_select(/*dim=*/0, seq_idx);
-    // next_logprob = next_logprob.index_select(/*dim=*/0, seq_idx);
-  }
-  // [num_seq] LongTensor
-  torch::Tensor next_tokens;
-
-  // [num_seq]
-  // torch::Tensor next_logprob;
-};
-
 }  // namespace llm

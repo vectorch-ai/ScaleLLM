@@ -4,9 +4,10 @@
 
 #include <memory>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
+
 #include "memory/block_manager.h"
 #include "memory/cache_args.h"
-#include "models/parameters.h"
+#include "models/input_parameters.h"
 #include "request/request.h"
 #include "tokenizer/tokenizer.h"
 #include "worker.h"
