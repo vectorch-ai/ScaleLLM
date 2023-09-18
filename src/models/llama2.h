@@ -15,6 +15,60 @@
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py
 namespace llm::llama2 {
+class FeedForwardImpl : public torch::nn::Module {
+ public:
+  FeedForwardImpl(const ModelArgs& args,
+                  const ParallelArgs& parallel_args,
+                  const torch::ScalarType& dtype,
+                  const torch::Device& device) {
+    const int64_t dim = args.dim();
+    const int64_t multiple_of = args.multiple_of();
+    const float ffn_dim_multiplier = args.ffn_dim_multiplier().value_or(1.0f);
+    int64_t hidden_dim = 4 * dim;
+    hidden_dim = 2 * hidden_dim / 3;
+    // custom dim factor multiplier
+    hidden_dim *= ffn_dim_multiplier;
+    hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
+
+    // register the weight parameter
+    w1_w3_ = register_module("w1_w3",
+                             ColumnParallelLinear(dim,
+                                                  hidden_dim * 2,
+                                                  /*gather_output=*/false,
+                                                  parallel_args,
+                                                  dtype,
+                                                  device));
+    w2_ = register_module("w2",
+                          RowParallelLinear(hidden_dim,
+                                            dim,
+                                            /*input_is_parallel=*/true,
+                                            parallel_args,
+                                            dtype,
+                                            device));
+  }
+
+  torch::Tensor forward(torch::Tensor x) {
+    namespace F = torch::nn::functional;
+    auto w1_w3 = w1_w3_(x);
+    auto chunks = w1_w3.chunk(/*chunks=*/2, /*dim=*/-1);
+    return w2_(F::silu(chunks[0]) * chunks[1]);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    // call each submodule's load_state_dict function
+    w1_w3_->load_state_dict(state_dict, {"w1.", "w3."});
+    w2_->load_state_dict(state_dict.select("w2."));
+  }
+
+  bool is_loaded() const { return w1_w3_->is_loaded() && w2_->is_loaded(); }
+
+ private:
+  // parameter members, must be registered
+  ColumnParallelLinear w1_w3_{nullptr};
+  RowParallelLinear w2_{nullptr};
+};
+TORCH_MODULE(FeedForward);
 
 class AttentionImpl : public torch::nn::Module {
  public:
@@ -32,30 +86,21 @@ class AttentionImpl : public torch::nn::Module {
     n_local_heads_ = n_heads / world_size;
     n_local_kv_heads_ = n_kv_heads / world_size;
     head_dim_ = dim / n_heads;
+    // size for q, k, v
+    qkv_sizes_ = {n_local_heads_ * head_dim_,
+                  n_local_kv_heads_ * head_dim_,
+                  n_local_kv_heads_ * head_dim_};
 
     // register submodules
     // TODO: fuse wq, wk, wv into one linear layer
-    wq_ = register_module("wq",
-                          ColumnParallelLinear(dim,
-                                               n_heads * head_dim_,
-                                               /*gather_output=*/false,
-                                               parallel_args,
-                                               dtype,
-                                               device));
-    wk_ = register_module("wk",
-                          ColumnParallelLinear(dim,
-                                               n_kv_heads * head_dim_,
-                                               /*gather_output=*/false,
-                                               parallel_args,
-                                               dtype,
-                                               device));
-    wv_ = register_module("wv",
-                          ColumnParallelLinear(dim,
-                                               n_kv_heads * head_dim_,
-                                               /*gather_output=*/false,
-                                               parallel_args,
-                                               dtype,
-                                               device));
+    wqkv_ = register_module(
+        "wqkv",
+        ColumnParallelLinear(dim,
+                             (n_heads + 2 * n_kv_heads) * head_dim_,
+                             /*gather_output=*/false,
+                             parallel_args,
+                             dtype,
+                             device));
     wo_ = register_module("wo",
                           RowParallelLinear(n_heads * head_dim_,
                                             dim,
@@ -83,9 +128,11 @@ class AttentionImpl : public torch::nn::Module {
     const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_heads * head_dim)
     // => (num_tokens, n_heads * head_dim)
-    auto query = wq_(x);
-    auto key = wk_(x);
-    auto value = wv_(x);
+    auto qkv = wqkv_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
+    DCHECK_EQ(qkv.size(), 3);
+    auto query = qkv[0];
+    auto key = qkv[1];
+    auto value = qkv[2];
 
     // (num_tokens, n_local_heads, head_dim)
     query = query.view({num_tokens, n_local_heads_, head_dim_});
@@ -138,19 +185,15 @@ class AttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    wq_->load_state_dict(state_dict.select("wq."));
-    wk_->load_state_dict(state_dict.select("wk."));
-    wv_->load_state_dict(state_dict.select("wv."));
+    wqkv_->load_state_dict(state_dict, {"wq.", "wk.", "wv."});
     wo_->load_state_dict(state_dict.select("wo."));
   }
 
+  bool is_loaded() const { return wqkv_->is_loaded() && wo_->is_loaded(); }
+
  private:
   // parameter members, must be registered
-  ColumnParallelLinear wq_{nullptr};
-
-  ColumnParallelLinear wk_{nullptr};
-
-  ColumnParallelLinear wv_{nullptr};
+  ColumnParallelLinear wqkv_{nullptr};
 
   RowParallelLinear wo_{nullptr};
 
@@ -164,69 +207,11 @@ class AttentionImpl : public torch::nn::Module {
   int64_t n_local_heads_;
   int64_t n_local_kv_heads_;
   int64_t head_dim_;
+
+  // size for q, k, v
+  std::vector<int64_t> qkv_sizes_;
 };
 TORCH_MODULE(Attention);
-
-class FeedForwardImpl : public torch::nn::Module {
- public:
-  FeedForwardImpl(const ModelArgs& args,
-                  const ParallelArgs& parallel_args,
-                  const torch::ScalarType& dtype,
-                  const torch::Device& device) {
-    const int64_t dim = args.dim();
-    const int64_t multiple_of = args.multiple_of();
-    const float ffn_dim_multiplier = args.ffn_dim_multiplier().value_or(1.0f);
-    int64_t hidden_dim = 4 * dim;
-    hidden_dim = 2 * hidden_dim / 3;
-    // custom dim factor multiplier
-    hidden_dim *= ffn_dim_multiplier;
-    hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
-
-    // register the weight parameter
-    // TODO: fuse w1 and w3 into one linear layer
-    w1_ = register_module("w1",
-                          ColumnParallelLinear(dim,
-                                               hidden_dim,
-                                               /*gather_output=*/false,
-                                               parallel_args,
-                                               dtype,
-                                               device));
-    w2_ = register_module("w2",
-                          RowParallelLinear(hidden_dim,
-                                            dim,
-                                            /*input_is_parallel=*/true,
-                                            parallel_args,
-                                            dtype,
-                                            device));
-    w3_ = register_module("w3",
-                          ColumnParallelLinear(dim,
-                                               hidden_dim,
-                                               /*gather_output=*/false,
-                                               parallel_args,
-                                               dtype,
-                                               device));
-  }
-
-  torch::Tensor forward(torch::Tensor x) {
-    namespace F = torch::nn::functional;
-    return w2_(F::silu(w1_(x)) * w3_(x));
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    w1_->load_state_dict(state_dict.select("w1."));
-    w2_->load_state_dict(state_dict.select("w2."));
-    w3_->load_state_dict(state_dict.select("w3."));
-  }
-
- private:
-  // parameter members, must be registered
-  ColumnParallelLinear w1_{nullptr};
-  RowParallelLinear w2_{nullptr};
-  ColumnParallelLinear w3_{nullptr};
-};
-TORCH_MODULE(FeedForward);
 
 class TransformerBlockImpl : public torch::nn::Module {
  public:
@@ -253,8 +238,7 @@ class TransformerBlockImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     auto h =
         x + attention_(attention_norm_(x), positions, kv_cache, input_params);
-    auto out = h + feed_forward_(ffn_norm_(h));
-    return out;
+    return h + feed_forward_(ffn_norm_(h));
   }
 
   // load the weight from the checkpoint
@@ -264,6 +248,11 @@ class TransformerBlockImpl : public torch::nn::Module {
     feed_forward_->load_state_dict(state_dict.select("feed_forward."));
     attention_norm_->load_state_dict(state_dict.select("attention_norm."));
     ffn_norm_->load_state_dict(state_dict.select("ffn_norm."));
+  }
+
+  bool is_loaded() const {
+    return attention_->is_loaded() && feed_forward_->is_loaded() &&
+           attention_norm_->is_loaded() && ffn_norm_->is_loaded();
   }
 
  private:
@@ -326,8 +315,7 @@ class ModelImpl : public torch::nn::Module {
     h = norm_(h);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
-    auto logits = output_(h);
-    return logits;
+    return output_(h);
   }
 
   // load the weight from the checkpoint
@@ -340,6 +328,16 @@ class ModelImpl : public torch::nn::Module {
     }
     norm_->load_state_dict(state_dict.select("norm."));
     output_->load_state_dict(state_dict.select("output."));
+  }
+
+  bool is_loaded() const {
+    bool all_loaded = tok_embeddings_->is_loaded() && norm_->is_loaded() &&
+                      output_->is_loaded();
+    // check if all layers are loaded
+    for (const auto& layer : layers_) {
+      all_loaded = all_loaded && layer->is_loaded();
+    }
+    return all_loaded;
   }
 
  private:

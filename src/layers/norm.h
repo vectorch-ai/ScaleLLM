@@ -33,9 +33,13 @@ class RMSNormImpl : public torch::nn::Module {
     if (weight.defined()) {
       CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
       weight_.copy_(weight);
-    } else {
-      LOG(WARNING) << "weight is not defined";
+      is_loaded_ = true;
     }
+  }
+
+  // whether the weight is loaded
+  bool is_loaded() const {
+    return is_loaded_;
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -51,6 +55,9 @@ class RMSNormImpl : public torch::nn::Module {
 
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
+
+  // whether the weight is loaded
+  bool is_loaded_ = false;
 
   // configs
   float eps_;

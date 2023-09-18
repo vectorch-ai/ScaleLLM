@@ -51,6 +51,11 @@ void Worker::load_state_dict(const StateDict& state_dict) {
   model_->load_state_dict(state_dict);
 }
 
+bool Worker::is_loaded() const {
+  CHECK(model_ != nullptr);
+  return model_->is_loaded();
+}
+
 OutputParameters Worker::execute_model(
     torch::Tensor tokens,     // [num_tokens]
     torch::Tensor positions,  // [num_tokens]

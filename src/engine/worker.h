@@ -45,6 +45,9 @@ class Worker final {
   // can be called multiple times to reload the model with different parameters
   void load_state_dict(const StateDict& state_dict);
 
+  // check if the model is loaded
+  bool is_loaded() const;
+
   // initialize kv cache. blocking call
   bool init_kv_cache(const std::vector<int64_t>& key_cache_shape,
                      const std::vector<int64_t>& value_cache_shape);

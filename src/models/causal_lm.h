@@ -26,6 +26,9 @@ class CausalLM : public torch::nn::Module {
   // load the model from the given state_dict
   virtual void load_state_dict(const StateDict& state_dict) = 0;
 
+  // check whether the model is loaded
+  virtual bool is_loaded() const = 0;
+
   // factory method to create a causal language model
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
                                           const ParallelArgs& parallel_args,
@@ -48,6 +51,10 @@ class CausalLMImpl : public CausalLM {
 
   void load_state_dict(const StateDict& state_dict) override {
     model_->load_state_dict(state_dict);
+  }
+
+  bool is_loaded() const override {
+    return model_->is_loaded();
   }
 
  private:

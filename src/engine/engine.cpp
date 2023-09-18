@@ -91,7 +91,6 @@ bool Engine::init_model(const std::string& model_weights_path) {
   }
 
   // load the weights from the checkpoint in parallel
-  size_t i = 0;
   for (const auto& state_dict : *model_loader) {
     std::vector<folly::SemiFuture<folly::Unit>> futures;
     futures.reserve(workers_.size());
@@ -104,6 +103,13 @@ bool Engine::init_model(const std::string& model_weights_path) {
       if (result.hasException()) {
         return false;
       }
+    }
+  }
+
+  // check if all weights are loaded
+  for (auto& worker : workers_) {
+    if (!worker->is_loaded()) {
+      return false;
     }
   }
   return true;

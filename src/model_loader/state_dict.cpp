@@ -1,5 +1,6 @@
 #include "state_dict.h"
 
+#include <ATen/core/TensorBody.h>
 #include <caffe2/serialize/inline_container.h>
 #include <torch/csrc/jit/serialization/import_read.h>
 #include <torch/csrc/jit/serialization/storage_context.h>
@@ -181,10 +182,31 @@ StateDict::StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
 torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
   const auto it = dict_.find(tensor_name.data());
   if (it == dict_.end()) {
-    LOG(ERROR) << "Failed to find tensor " << tensor_name;
     return torch::Tensor{nullptr};
   }
   return it->second;
+}
+
+torch::Tensor StateDict::get_sharded_tensor(const std::vector<std::string_view>& prefixes,
+                                            const std::string_view& tensor_name,
+                                            int64_t dim,
+                                            int rank,
+                                            int world_size) const {
+  std::vector<torch::Tensor> tensors;
+  for (const auto& prefix : prefixes) {
+    std::string name = std::string(prefix) + std::string(tensor_name);
+    const auto tensor = get_sharded_tensor(name,
+                                           dim,
+                                           rank,
+                                           world_size);
+    if (tensor.defined()) {
+      tensors.push_back(tensor);
+    }
+  }
+  if (tensors.empty()) {
+    return torch::Tensor{nullptr};
+  }
+  return torch::cat(tensors, /*dim=*/dim);
 }
 
 torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,

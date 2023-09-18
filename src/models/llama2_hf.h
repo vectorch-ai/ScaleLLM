@@ -31,21 +31,14 @@ class MLPImpl : public torch::nn::Module {
     hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
 
     // register the weight parameter
-    // TODO: fuse gate_proj and up_proj into one linear layer
-    gate_proj_ = register_module("gate_proj",
-                                 ColumnParallelLinear(dim,
-                                                      hidden_dim,
-                                                      /*gather_output=*/false,
-                                                      parallel_args,
-                                                      dtype,
-                                                      device));
-    up_proj_ = register_module("up_proj",
-                               ColumnParallelLinear(dim,
-                                                    hidden_dim,
-                                                    /*gather_output=*/false,
-                                                    parallel_args,
-                                                    dtype,
-                                                    device));
+    gate_up_proj_ =
+        register_module("gate_up_proj",
+                        ColumnParallelLinear(dim,
+                                             hidden_dim * 2,
+                                             /*gather_output=*/false,
+                                             parallel_args,
+                                             dtype,
+                                             device));
     down_proj_ = register_module("down_proj",
                                  RowParallelLinear(hidden_dim,
                                                    dim,
@@ -57,21 +50,25 @@ class MLPImpl : public torch::nn::Module {
 
   torch::Tensor forward(torch::Tensor x) {
     namespace F = torch::nn::functional;
-    return down_proj_(F::silu(gate_proj_(x)) * up_proj_(x));
+    auto gate_up_proj = gate_up_proj_(x);
+    auto chunks = gate_up_proj.chunk(/*chunks=*/2, /*dim=*/1);
+    return down_proj_(F::silu(chunks[0]) * chunks[1]);
   }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    gate_proj_->load_state_dict(state_dict.select("gate_proj."));
-    up_proj_->load_state_dict(state_dict.select("up_proj."));
+    gate_up_proj_->load_state_dict(state_dict, {"gate_proj.", "up_proj."});
     down_proj_->load_state_dict(state_dict.select("down_proj."));
+  }
+
+  bool is_loaded() const {
+    return gate_up_proj_->is_loaded() && down_proj_->is_loaded();
   }
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear gate_proj_{nullptr};
-  ColumnParallelLinear up_proj_{nullptr};
+  ColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 };
 TORCH_MODULE(MLP);
@@ -92,30 +89,21 @@ class AttentionImpl : public torch::nn::Module {
     n_local_heads_ = n_heads / world_size;
     n_local_kv_heads_ = n_kv_heads / world_size;
     head_dim_ = dim / n_heads;
+    // size for q, k, v
+    qkv_sizes_ = {n_local_heads_ * head_dim_,
+                  n_local_kv_heads_ * head_dim_,
+                  n_local_kv_heads_ * head_dim_};
 
     // register submodules
-    // TODO: fuse q_proj, k_proj, v_proj into one linear layer
-    q_proj_ = register_module("q_proj",
-                              ColumnParallelLinear(dim,
-                                                   n_heads * head_dim_,
-                                                   /*gather_output=*/false,
-                                                   parallel_args,
-                                                   dtype,
-                                                   device));
-    k_proj_ = register_module("k_proj",
-                              ColumnParallelLinear(dim,
-                                                   n_kv_heads * head_dim_,
-                                                   /*gather_output=*/false,
-                                                   parallel_args,
-                                                   dtype,
-                                                   device));
-    v_proj_ = register_module("v_proj",
-                              ColumnParallelLinear(dim,
-                                                   n_kv_heads * head_dim_,
-                                                   /*gather_output=*/false,
-                                                   parallel_args,
-                                                   dtype,
-                                                   device));
+    qkv_proj_ = register_module(
+        "qkv_proj",
+        ColumnParallelLinear(dim,
+                             (n_heads + 2 * n_kv_heads) * head_dim_,
+                             /*gather_output=*/false,
+                             parallel_args,
+                             dtype,
+                             device));
+
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(n_heads * head_dim_,
                                                 dim,
@@ -143,9 +131,11 @@ class AttentionImpl : public torch::nn::Module {
     const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_heads * head_dim)
     // => (num_tokens, n_heads * head_dim)
-    auto query = q_proj_(x);
-    auto key = k_proj_(x);
-    auto value = v_proj_(x);
+    auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
+    DCHECK_EQ(qkv.size(), 3);
+    auto query = qkv[0];
+    auto key = qkv[1];
+    auto value = qkv[2];
 
     // (num_tokens, n_local_heads, head_dim)
     query = query.view({num_tokens, n_local_heads_, head_dim_});
@@ -181,8 +171,7 @@ class AttentionImpl : public torch::nn::Module {
 
     if (num_prompt_tokens < num_tokens) {
       // process sequences without prompt tokens (decode)
-      auto sliced_output = output.slice(/*dim=*/0,
-                                        /*start=*/num_prompt_tokens);
+      auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
       auto sliced_query = query.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
       attention::single_token_masked_self_attention(
           kv_cache,
@@ -199,19 +188,17 @@ class AttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    q_proj_->load_state_dict(state_dict.select("q_proj."));
-    k_proj_->load_state_dict(state_dict.select("k_proj."));
-    v_proj_->load_state_dict(state_dict.select("v_proj."));
+    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
     o_proj_->load_state_dict(state_dict.select("o_proj."));
+  }
+
+  bool is_loaded() const {
+    return qkv_proj_->is_loaded() && o_proj_->is_loaded();
   }
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear q_proj_{nullptr};
-
-  ColumnParallelLinear k_proj_{nullptr};
-
-  ColumnParallelLinear v_proj_{nullptr};
+  ColumnParallelLinear qkv_proj_{nullptr};
 
   RowParallelLinear o_proj_{nullptr};
 
@@ -225,6 +212,9 @@ class AttentionImpl : public torch::nn::Module {
   int64_t n_local_heads_;
   int64_t n_local_kv_heads_;
   int64_t head_dim_;
+
+  // size for q, k, v
+  std::vector<int64_t> qkv_sizes_;
 };
 TORCH_MODULE(Attention);
 
@@ -264,6 +254,12 @@ class DecoderLayerImpl : public torch::nn::Module {
     input_layernorm_->load_state_dict(state_dict.select("input_layernorm."));
     post_attention_layernorm_->load_state_dict(
         state_dict.select("post_attention_layernorm."));
+  }
+
+  bool is_loaded() const {
+    return self_attn_->is_loaded() && mlp_->is_loaded() &&
+           input_layernorm_->is_loaded() &&
+           post_attention_layernorm_->is_loaded();
   }
 
  private:
@@ -326,8 +322,7 @@ class ModelImpl : public torch::nn::Module {
     h = norm_(h);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
-    auto logits = lm_head_(h);
-    return logits;
+    return lm_head_(h);
   }
 
   // load the weight from the checkpoint
@@ -340,6 +335,16 @@ class ModelImpl : public torch::nn::Module {
     }
     norm_->load_state_dict(state_dict.select("model.norm."));
     lm_head_->load_state_dict(state_dict.select("lm_head."));
+  }
+
+  bool is_loaded() const {
+    bool all_loaded = embed_tokens_->is_loaded() && norm_->is_loaded() &&
+                      lm_head_->is_loaded();
+    // check if all layers are loaded
+    for (const auto& layer : layers_) {
+      all_loaded = all_loaded && layer->is_loaded();
+    }
+    return all_loaded;
   }
 
  private:

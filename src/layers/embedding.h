@@ -56,9 +56,27 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
     if (weight.defined()) {
       CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
       weight_.copy_(weight);
-    } else {
-      LOG(WARNING) << "weight is not defined";
+      is_loaded_ = true;
     }
+  }
+
+  void load_state_dict(const StateDict& state_dict, const std::vector<std::string_view>& prefix) {
+    const auto weight = state_dict.get_sharded_tensor(
+        prefix,
+        "weight",
+        /*dim=*/1,
+        /*rank=*/parallel_args_.rank(),
+        /*world_size=*/parallel_args_.world_size());
+    if (weight.defined()) {
+      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
+      weight_.copy_(weight);
+      is_loaded_ = true;
+    }
+  }
+
+  // whether the weight is loaded
+  bool is_loaded() const {
+    return is_loaded_;
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -71,6 +89,9 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
+
+  // whether the weight is loaded
+  bool is_loaded_ = false;
 
   // parallel args
   ParallelArgs parallel_args_;
@@ -118,9 +139,27 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
     if (weight.defined()) {
       CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
       weight_.copy_(weight);
-    } else {
-      LOG(WARNING) << "weight is not defined";
+      is_loaded_ = true;
     }
+  }
+
+  void load_state_dict(const StateDict& state_dict, const std::vector<std::string_view>& prefix) {
+    const auto weight = state_dict.get_sharded_tensor(
+        prefix,
+        "weight",
+        /*dim=*/0,
+        /*rank=*/parallel_args_.rank(),
+        /*world_size=*/parallel_args_.world_size());
+    if (weight.defined()) {
+      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
+      weight_.copy_(weight);
+      is_loaded_ = true;
+    }
+  }
+
+  // whether the weight is loaded
+  bool is_loaded() const {
+    return is_loaded_;
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -133,6 +172,9 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
+
+  // whether the weight is loaded
+  bool is_loaded_ = false;
 
   // parallel args
   ParallelArgs parallel_args_;

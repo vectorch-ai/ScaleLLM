@@ -17,13 +17,13 @@
 #include "request/stopping_criteria.h"
 
 DEFINE_string(model_name_or_path,
-              "/home/michael/code/llama/llama-2-7b",
+              "meta-llama/Llama-2-7b-hf",
               "hf model name or path to the model file.");
 DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
               "Path to the tokenizer file.");
 
-DEFINE_string(device, "cuda", "Device to run the model on.");
+DEFINE_string(device, "cuda:0,cuda:1", "Device to run the model on.");
 
 DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 

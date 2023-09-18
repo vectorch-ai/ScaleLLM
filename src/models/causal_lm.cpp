@@ -4,9 +4,9 @@
 
 #include <vector>
 
-#include "hf_llama2.h"
 #include "input_parameters.h"
 #include "llama2.h"
+#include "llama2_hf.h"
 #include "memory/kv_cache.h"
 #include "model_args.h"
 #include "model_loader/state_dict.h"
