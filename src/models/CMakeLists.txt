@@ -47,9 +47,7 @@ cc_library(
   HDRS 
     model_args.h
     parallel_args.h
-  SRCS 
-    model_args.cpp
+  SRCS
   DEPS
-    torch
-    nlohmann_json::nlohmann_json
+    :common
 )

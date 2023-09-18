@@ -21,7 +21,6 @@ cc_library(
     :logits_processor
     :sampler
     :tokenizer
-    :model_args
     :model_loader
     :process_group
     glog::glog

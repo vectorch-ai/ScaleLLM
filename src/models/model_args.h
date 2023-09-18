@@ -1,7 +1,5 @@
 #pragma once
 
-#include <torch/torch.h>
-
 #include <optional>
 
 #include "common/arg.h"
@@ -10,10 +8,6 @@ namespace llm {
 
 class ModelArgs {
  public:
-  bool load_from_file(const std::string& file_path);
-
-  bool load_from_file_for_hf(const std::string& file_path);
-
   DEFINE_ARG(std::vector<std::string>, architectures);
 
   DEFINE_ARG(int64_t, dim) = 4096;

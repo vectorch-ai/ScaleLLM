@@ -107,7 +107,7 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   if (data.contains("norm_eps")) {
     args_.norm_eps() = data["norm_eps"].get<float>();
   }
-  
+
   // TODO: read from gflags
   args_.architectures().emplace_back("llama2");
 
@@ -117,7 +117,7 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path) {
   const std::string args_file_path = model_weights_path + "/config.json";
-  CHECK(args_.load_from_file_for_hf(args_file_path))
+  CHECK(load_model_args(args_file_path))
       << "Failed to load model args from " << args_file_path;
   // try to load safetensors first
   for (const auto& entry :
