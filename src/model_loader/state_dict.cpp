@@ -187,28 +187,6 @@ torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
   return it->second;
 }
 
-torch::Tensor StateDict::get_sharded_tensor(const std::vector<std::string_view>& prefixes,
-                                            const std::string_view& tensor_name,
-                                            int64_t dim,
-                                            int rank,
-                                            int world_size) const {
-  std::vector<torch::Tensor> tensors;
-  for (const auto& prefix : prefixes) {
-    std::string name = std::string(prefix) + std::string(tensor_name);
-    const auto tensor = get_sharded_tensor(name,
-                                           dim,
-                                           rank,
-                                           world_size);
-    if (tensor.defined()) {
-      tensors.push_back(tensor);
-    }
-  }
-  if (tensors.empty()) {
-    return torch::Tensor{nullptr};
-  }
-  return torch::cat(tensors, /*dim=*/dim);
-}
-
 torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
                                             int64_t dim,
                                             int rank,

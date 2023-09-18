@@ -56,27 +56,48 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
     if (weight.defined()) {
       CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
       weight_.copy_(weight);
-      is_loaded_ = true;
+      is_loaded_list_[0] = true;
     }
   }
 
-  void load_state_dict(const StateDict& state_dict, const std::vector<std::string_view>& prefix) {
-    const auto weight = state_dict.get_sharded_tensor(
-        prefix,
-        "weight",
-        /*dim=*/0,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
-      weight_.copy_(weight);
-      is_loaded_ = true;
+  // special load_state_dict for fused cases
+  void load_state_dict(const StateDict& state_dict,
+                       const std::vector<std::string_view>& prefixes,
+                       const std::vector<int64_t>& sizes) {
+    CHECK_EQ(prefixes.size(), sizes.size());
+    CHECK_EQ(std::accumulate(sizes.begin(), sizes.end(), 0), weight_.size(0));
+
+    if (is_loaded_list_.size() < prefixes.size()) {
+      is_loaded_list_.resize(prefixes.size(), false);
+    }
+
+    for (size_t i = 0; i < prefixes.size(); ++i) {
+      std::string name = std::string(prefixes[i]) + "weight";
+      const auto weight = state_dict.get_sharded_tensor(
+          name,
+          /*dim=*/0,
+          /*rank=*/parallel_args_.rank(),
+          /*world_size=*/parallel_args_.world_size());
+      if (weight.defined()) {
+        int64_t end = 0;
+        for (size_t j = 0; j <= i; ++j) {
+          end += sizes[j];
+        }
+        const int64_t start = end - sizes[i];
+        weight_.index_put_(
+            {torch::indexing::Slice(start, end), torch::indexing::Slice()},
+            weight);
+        is_loaded_list_[i] = true;
+      }
     }
   }
 
   // whether the weight is loaded
   bool is_loaded() const {
-    return is_loaded_;
+    // all the weights are loaded
+    return std::all_of(is_loaded_list_.begin(),
+                       is_loaded_list_.end(),
+                       [](bool v) { return v; });
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -92,7 +113,7 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   // A^T: [out_features_per_partition, in_features]
   torch::Tensor weight_{nullptr};
 
-  bool is_loaded_ = false;
+  std::vector<bool> is_loaded_list_{false};
 
   // parallel args
   ParallelArgs parallel_args_;
@@ -158,27 +179,11 @@ class RowParallelLinearImpl : public torch::nn::Module {
       CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
       weight_.copy_(weight);
       is_loaded_ = true;
-    } 
-  }
-
-  void load_state_dict(const StateDict& state_dict, const std::vector<std::string_view>& prefix) {
-    const auto weight = state_dict.get_sharded_tensor(
-        prefix,
-        "weight",
-        /*dim=*/1,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
-      weight_.copy_(weight);
-      is_loaded_ = true;
     }
   }
 
   // whether the weight is loaded
-  bool is_loaded() const {
-    return is_loaded_;
-  }
+  bool is_loaded() const { return is_loaded_; }
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();

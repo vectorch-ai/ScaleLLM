@@ -60,20 +60,6 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
     }
   }
 
-  void load_state_dict(const StateDict& state_dict, const std::vector<std::string_view>& prefix) {
-    const auto weight = state_dict.get_sharded_tensor(
-        prefix,
-        "weight",
-        /*dim=*/1,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
   // whether the weight is loaded
   bool is_loaded() const {
     return is_loaded_;
@@ -132,20 +118,6 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     const auto weight = state_dict.get_sharded_tensor(
-        "weight",
-        /*dim=*/0,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
-  void load_state_dict(const StateDict& state_dict, const std::vector<std::string_view>& prefix) {
-    const auto weight = state_dict.get_sharded_tensor(
-        prefix,
         "weight",
         /*dim=*/0,
         /*rank=*/parallel_args_.rank(),

@@ -30,6 +30,9 @@ class FeedForwardImpl : public torch::nn::Module {
     hidden_dim *= ffn_dim_multiplier;
     hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
 
+    const int64_t local_hidden_dim = hidden_dim / parallel_args.world_size();
+    w1_w3_sizes_ = {local_hidden_dim, local_hidden_dim};
+
     // register the weight parameter
     w1_w3_ = register_module("w1_w3",
                              ColumnParallelLinear(dim,
@@ -57,7 +60,7 @@ class FeedForwardImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    w1_w3_->load_state_dict(state_dict, {"w1.", "w3."});
+    w1_w3_->load_state_dict(state_dict, {"w1.", "w3."}, w1_w3_sizes_);
     w2_->load_state_dict(state_dict.select("w2."));
   }
 
@@ -67,6 +70,7 @@ class FeedForwardImpl : public torch::nn::Module {
   // parameter members, must be registered
   ColumnParallelLinear w1_w3_{nullptr};
   RowParallelLinear w2_{nullptr};
+  std::vector<int64_t> w1_w3_sizes_;
 };
 TORCH_MODULE(FeedForward);
 
@@ -92,7 +96,6 @@ class AttentionImpl : public torch::nn::Module {
                   n_local_kv_heads_ * head_dim_};
 
     // register submodules
-    // TODO: fuse wq, wk, wv into one linear layer
     wqkv_ = register_module(
         "wqkv",
         ColumnParallelLinear(dim,
@@ -185,7 +188,7 @@ class AttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    wqkv_->load_state_dict(state_dict, {"wq.", "wk.", "wv."});
+    wqkv_->load_state_dict(state_dict, {"wq.", "wk.", "wv."}, qkv_sizes_);
     wo_->load_state_dict(state_dict.select("wo."));
   }
 

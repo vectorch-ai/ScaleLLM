@@ -32,15 +32,6 @@ class StateDict final {
   // get the tensor with the given name. return nullptr if not found.
   torch::Tensor get_tensor(const std::string_view& tensor_name) const;
 
-  // get the sharded tensor with the given prefix+name for the given rank.
-  // N.B. An assumption is that those tensors can be loaded from one file.
-  torch::Tensor get_sharded_tensor(
-      const std::vector<std::string_view>& prefixes,
-      const std::string_view& tensor_name,
-      int64_t dim,
-      int rank,
-      int world_size) const;
-
   // get the sharded tensor with the given name for the given rank.
   torch::Tensor get_sharded_tensor(const std::string_view& tensor_name,
                                    int64_t dim,

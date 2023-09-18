@@ -30,6 +30,9 @@ class MLPImpl : public torch::nn::Module {
     hidden_dim *= ffn_dim_multiplier;
     hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
 
+    int64_t local_hidden_dim = hidden_dim / parallel_args.world_size();
+    gate_up_sizes_ = {local_hidden_dim, local_hidden_dim};
+
     // register the weight parameter
     gate_up_proj_ =
         register_module("gate_up_proj",
@@ -58,7 +61,8 @@ class MLPImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    gate_up_proj_->load_state_dict(state_dict, {"gate_proj.", "up_proj."});
+    gate_up_proj_->load_state_dict(
+        state_dict, {"gate_proj.", "up_proj."}, gate_up_sizes_);
     down_proj_->load_state_dict(state_dict.select("down_proj."));
   }
 
@@ -70,6 +74,7 @@ class MLPImpl : public torch::nn::Module {
   // parameter members, must be registered
   ColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
+  std::vector<int64_t> gate_up_sizes_;
 };
 TORCH_MODULE(MLP);
 
@@ -188,7 +193,8 @@ class AttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
+    qkv_proj_->load_state_dict(
+        state_dict, {"q_proj.", "k_proj.", "v_proj."}, qkv_sizes_);
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
