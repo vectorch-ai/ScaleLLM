@@ -3,18 +3,6 @@ include(cc_library)
 
 cc_library(
   NAME 
-    hf_model_downloader
-  HDRS 
-    hf_model_downloader.h
-  SRCS 
-    hf_model_downloader.cpp
-  DEPS
-    torch
-    Python::Python
-)
-
-cc_library(
-  NAME 
     completion_handler
   HDRS 
     completion_handler.h
@@ -51,7 +39,7 @@ cc_binary(
     simple.cpp
   DEPS
     :engine
-    :hf_model_downloader
+    :model_downloader
     torch
     absl::strings
     gflags::gflags

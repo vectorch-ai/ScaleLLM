@@ -9,7 +9,7 @@
 #include <string>
 
 #include "engine/engine.h"
-#include "hf_model_downloader.h"
+#include "model_loader/model_downloader.h"
 #include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "request/sampling_parameter.h"
@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
   std::string model_path = FLAGS_model_name_or_path;
   if (!std::filesystem::exists(model_path)) {
     // not a model path, try to download the model from huggingface hub
-    model_path = llm::download_hf_model(FLAGS_model_name_or_path);
+    model_path = llm::hf::download_model(FLAGS_model_name_or_path);
   }
 
   llm::Engine engine(dtype, devices);
