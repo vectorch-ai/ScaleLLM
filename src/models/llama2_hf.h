@@ -54,7 +54,8 @@ class MLPImpl : public torch::nn::Module {
   torch::Tensor forward(torch::Tensor x) {
     namespace F = torch::nn::functional;
     auto gate_up_proj = gate_up_proj_(x);
-    auto chunks = gate_up_proj.chunk(/*chunks=*/2, /*dim=*/1);
+    auto chunks = gate_up_proj.split(/*split_size=*/gate_up_sizes_, /*dim=*/-1);
+    DCHECK_EQ(chunks.size(), 2);
     return down_proj_(F::silu(chunks[0]) * chunks[1]);
   }
 
@@ -120,13 +121,15 @@ class AttentionImpl : public torch::nn::Module {
     // initialize positional embedding
     // TODO: need to adjust the max_seq_len
     const auto rotary_dim = args.dim() / args.n_heads();
-    pos_emb_ = register_module("pos_emb",
-                               RotaryEmbedding(rotary_dim,
-                                               args.max_seq_len(),
-                                               /*scaling_factor=*/0.0f,
-                                               /*interleaved=*/false,
-                                               dtype,
-                                               device));
+    pos_emb_ = register_module(
+        "pos_emb",
+        RotaryEmbedding(rotary_dim,
+                        args.max_seq_len(),
+                        /*scaling_factor=*/args.rope_scaling(),
+                        /*rope_theta=*/args.rope_theta(),
+                        /*interleaved=*/false,
+                        dtype,
+                        device));
   }
 
   torch::Tensor forward(torch::Tensor x,

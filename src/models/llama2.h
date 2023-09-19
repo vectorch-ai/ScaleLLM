@@ -115,13 +115,15 @@ class AttentionImpl : public torch::nn::Module {
     // initialize positional embedding
     // TODO: need to adjust the max_seq_len
     const auto rotary_dim = args.dim() / args.n_heads();
-    pos_emb_ = register_module("pos_emb",
-                               RotaryEmbedding(rotary_dim,
-                                               args.max_seq_len(),
-                                               /*scaling_factor=*/0.0f,
-                                               /*interleaved=*/true,
-                                               dtype,
-                                               device));
+    pos_emb_ = register_module(
+        "pos_emb",
+        RotaryEmbedding(rotary_dim,
+                        args.max_seq_len(),
+                        /*scaling_factor=*/args.rope_scaling(),
+                        /*rope_theta=*/args.rope_theta(),
+                        /*interleaved=*/true,
+                        dtype,
+                        device));
   }
 
   torch::Tensor forward(torch::Tensor x,

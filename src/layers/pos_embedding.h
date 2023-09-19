@@ -8,8 +8,6 @@
 #include <tuple>
 
 namespace llm {
-inline constexpr float kDefaultTheta = 10000.0f;
-
 // an interface for rotary positional embedding.
 // all rotary positional embedding classes should inherit from this class and
 // implement the forward function.
@@ -39,6 +37,7 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
   RotaryEmbedding(int64_t rotary_dim,
                   int64_t max_seq_len,
                   float scaling_factor,
+                  float rope_theta,
                   bool interleaved,
                   const torch::ScalarType& dtype,
                   const torch::Device& device);
@@ -94,9 +93,9 @@ class InterleavedRotaryEmbedding : public RotaryEmbeddingImpl {
   InterleavedRotaryEmbedding(int64_t rotary_dim,
                              int64_t max_seq_len,
                              float scaling_factor,
+                             float theta,
                              const torch::ScalarType& dtype,
-                             const torch::Device& device,
-                             float theta = kDefaultTheta) {
+                             const torch::Device& device) {
     // Create cos and sin embeddings.
     const auto slice = torch::arange(0, rotary_dim, 2);
     const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
@@ -137,9 +136,9 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
   RotatedRotaryEmbedding(int64_t rotary_dim,
                          int64_t max_seq_len,
                          float scaling_factor,
+                         float theta,
                          const torch::ScalarType& dtype,
-                         const torch::Device& device,
-                         float theta = kDefaultTheta) {
+                         const torch::Device& device) {
     // Create cos and sin embeddings.
     const auto slice = torch::arange(0, rotary_dim, 2);
     const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);

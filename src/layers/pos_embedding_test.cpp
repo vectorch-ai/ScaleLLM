@@ -13,7 +13,7 @@ using torch::indexing::Slice;
 // Rotary code ported from llama repo, which is used as disired output
 torch::Tensor precompute_freqs_cis(int64_t dim,
                                    int64_t max_seq_len,
-                                   float theta = kDefaultTheta) {
+                                   float theta) {
   auto range = torch::arange(0, dim, 2);
   auto slice =
       range.slice(/*dim=*/0, /*start=*/0, /*end=*/dim / 2).to(torch::kFloat32);
@@ -76,7 +76,7 @@ TEST(RotaryEmbeddingTest, Interleaved) {
   const int64_t max_seq_len = 128;
   torch::ScalarType dtype(torch::kFloat);
   torch::Device device(torch::kCPU);
-  InterleavedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, 0.0f, dtype, device);
+  InterleavedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, 0.0f, 10000.0f, dtype, device);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});
@@ -87,7 +87,7 @@ TEST(RotaryEmbeddingTest, Interleaved) {
       rotary_embedding.forward(query, key, positions);
 
   // compute the desired output
-  auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len);
+  auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len, 10000.0f);
   namespace F = torch::nn::functional;
   auto selected_freqs_cis = F::embedding(positions, freqs_cis);
   const auto [desired_query, desired_key] =
@@ -111,7 +111,7 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
   const int64_t max_seq_len = 128;
   torch::ScalarType dtype(torch::kFloat);
   torch::Device device(torch::kCPU);
-  RotatedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, 0.0f, dtype, device);
+  RotatedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, 0.0f, 10000.0f, dtype, device);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});
@@ -122,7 +122,7 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
       rotary_embedding.forward(query, key, positions);
 
   // compute the desired output
-  auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len);
+  auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len, 10000.0f);
   namespace F = torch::nn::functional;
   auto selected_freqs_cis = F::embedding(positions, freqs_cis);
   auto [desired_query, desired_key] = apply_rotary_emb(

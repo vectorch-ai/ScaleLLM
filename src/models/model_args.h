@@ -28,6 +28,10 @@ class ModelArgs {
 
   DEFINE_ARG(float, norm_eps) = 1e-5;
 
+  DEFINE_ARG(float, rope_theta) = 10000.0f;
+
+  DEFINE_ARG(float, rope_scaling) = 0.0f;
+
   // TODO: following two should not be part of model args
   DEFINE_ARG(int64_t, max_batch_size) = 32;
 

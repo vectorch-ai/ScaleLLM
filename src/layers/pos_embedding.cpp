@@ -12,27 +12,30 @@ namespace {
 std::shared_ptr<RotaryEmbeddingImpl> create(int64_t rotary_dim,
                                             int64_t max_seq_len,
                                             float scaling_factor,
+                                            float rope_theta,
                                             bool interleaved,
                                             const torch::ScalarType& dtype,
                                             const torch::Device& device) {
   if (interleaved) {
     return std::make_shared<InterleavedRotaryEmbedding>(
-        rotary_dim, max_seq_len, scaling_factor, dtype, device);
+        rotary_dim, max_seq_len, scaling_factor, rope_theta, dtype, device);
   }
   return std::make_shared<RotatedRotaryEmbedding>(
-      rotary_dim, max_seq_len, scaling_factor, dtype, device);
+      rotary_dim, max_seq_len, scaling_factor, rope_theta, dtype, device);
 }
 }  // namespace
 
 RotaryEmbedding::RotaryEmbedding(int64_t rotary_dim,
                                  int64_t max_seq_len,
                                  float scaling_factor,
+                                 float rope_theta,
                                  bool interleaved,
                                  const torch::ScalarType& dtype,
                                  const torch::Device& device)
     : ModuleHolder(create(rotary_dim,
                           max_seq_len,
                           scaling_factor,
+                          rope_theta,
                           interleaved,
                           dtype,
                           device)) {}

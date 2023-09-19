@@ -107,6 +107,12 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   if (data.contains("norm_eps")) {
     args_.norm_eps() = data["norm_eps"].get<float>();
   }
+  if (data.contains("rope_theta")) {
+    args_.rope_theta() = data["rope_theta"].get<float>();
+  }
+  if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
+    args_.rope_scaling() = data["rope_scaling"].get<float>();
+  }
 
   // TODO: read from gflags
   args_.architectures().emplace_back("llama2");
@@ -182,6 +188,12 @@ bool HFModelLoader::load_model_args(const std::string& args_file_path) {
     for (const auto& str : data["architectures"]) {
       args_.architectures().push_back(str.get<std::string>());
     }
+  }
+  if (data.contains("rope_theta")) {
+    args_.rope_theta() = data["rope_theta"].get<float>();
+  }
+  if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
+    args_.rope_scaling() = data["rope_scaling"].get<float>();
   }
 
   // TODO: add more args
