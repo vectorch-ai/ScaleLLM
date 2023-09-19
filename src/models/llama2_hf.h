@@ -79,13 +79,13 @@ class MLPImpl : public torch::nn::Module {
 };
 TORCH_MODULE(MLP);
 
-class AttentionImpl : public torch::nn::Module {
+class LlamaAttentionImpl : public torch::nn::Module {
  public:
-  AttentionImpl(uint32_t layer_id,
-                const ModelArgs& args,
-                const ParallelArgs& parallel_args,
-                const torch::ScalarType& dtype,
-                const torch::Device& device)
+  LlamaAttentionImpl(uint32_t layer_id,
+                     const ModelArgs& args,
+                     const ParallelArgs& parallel_args,
+                     const torch::ScalarType& dtype,
+                     const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
     const int64_t dim = args.dim();
@@ -121,15 +121,20 @@ class AttentionImpl : public torch::nn::Module {
     // initialize positional embedding
     // TODO: need to adjust the max_seq_len
     const auto rotary_dim = args.dim() / args.n_heads();
-    pos_emb_ = register_module(
-        "pos_emb",
-        RotaryEmbedding(rotary_dim,
-                        args.max_seq_len(),
-                        /*scaling_factor=*/args.rope_scaling(),
-                        /*rope_theta=*/args.rope_theta(),
-                        /*interleaved=*/false,
-                        dtype,
-                        device));
+    pos_emb_ =
+        register_module("pos_emb",
+                        RotaryEmbedding(rotary_dim,
+                                        args.max_seq_len(),
+                                        /*scaling_factor=*/args.rope_scaling(),
+                                        /*rope_theta=*/args.rope_theta(),
+                                        /*interleaved=*/false,
+                                        dtype,
+                                        device));
+
+    // initialize attention
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
+    atten_ = register_module(
+        "atten", Attention(n_heads, n_kv_heads, scale, dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -157,39 +162,9 @@ class AttentionImpl : public torch::nn::Module {
     // store k/v into cache based on slots
     kv_cache.set_kv_cache(input_params.slot_ids, key, value);
 
-    auto output = torch::zeros_like(query);
-    const auto num_prompt_tokens = input_params.num_prompt_tokens;
-    if (num_prompt_tokens > 0) {
-      // process sequences with prompt tokens (prefill)
-      auto sliced_output =
-          output.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-      auto sliced_query =
-          query.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-      auto sliced_key =
-          key.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-      auto sliced_value =
-          value.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-      attention::varlen_masked_self_attention(sliced_query,
-                                              sliced_key,
-                                              sliced_value,
-                                              input_params.cu_seq_lens,
-                                              input_params.max_seq_len,
-                                              sliced_output);
-    }
-
-    if (num_prompt_tokens < num_tokens) {
-      // process sequences without prompt tokens (decode)
-      auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
-      auto sliced_query = query.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
-      attention::single_token_masked_self_attention(
-          kv_cache,
-          sliced_query,
-          input_params.block_tables,
-          input_params.context_lens,
-          input_params.max_context_len,
-          sliced_output);
-    }
-    output = output.contiguous().view({num_tokens, -1});
+    // calculate attention
+    auto output = atten_(query, key, value, kv_cache, input_params);
+    output = output.view({num_tokens, -1});
     return o_proj_(output);
   }
 
@@ -211,7 +186,10 @@ class AttentionImpl : public torch::nn::Module {
 
   RowParallelLinear o_proj_{nullptr};
 
+  // module members without parameters
   RotaryEmbedding pos_emb_{nullptr};
+
+  Attention atten_{nullptr};
 
   uint32_t layer_id_;
 
@@ -225,7 +203,7 @@ class AttentionImpl : public torch::nn::Module {
   // size for q, k, v
   std::vector<int64_t> qkv_sizes_;
 };
-TORCH_MODULE(Attention);
+TORCH_MODULE(LlamaAttention);
 
 class DecoderLayerImpl : public torch::nn::Module {
  public:
@@ -237,7 +215,8 @@ class DecoderLayerImpl : public torch::nn::Module {
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     // register submodules
     self_attn_ = register_module(
-        "self_attn", Attention(layer_id, args, parallel_args, dtype, device));
+        "self_attn",
+        LlamaAttention(layer_id, args, parallel_args, dtype, device));
     mlp_ = register_module("mlp", MLP(args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
         "input_layernorm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
@@ -273,7 +252,7 @@ class DecoderLayerImpl : public torch::nn::Module {
 
  private:
   // parameter members, must be registered
-  Attention self_attn_{nullptr};
+  LlamaAttention self_attn_{nullptr};
 
   MLP mlp_{nullptr};
 

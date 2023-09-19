@@ -4,18 +4,20 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <filesystem>
 #include <memory>
 #include <thread>
 
 #include "engine/engine.h"
 #include "grpc_server.h"
+#include "model_loader/model_downloader.h"
 #include "scheduler/continuous_batching_scheduler.h"
 
 using namespace llm;
 
-DEFINE_string(model_path,
-              "/home/michael/code/llama/llama-2-7b",
-              "Path to the model file.");
+DEFINE_string(model_name_or_path,
+              "meta-llama/Llama-2-7b-hf",
+              "hf model name or path to the model file.");
 DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
               "Path to the tokenizer file.");
@@ -50,8 +52,15 @@ int main(int argc, char** argv) {
     dtype = torch::kHalf;
   }
 
+  // check if model path exists
+  std::string model_path = FLAGS_model_name_or_path;
+  if (!std::filesystem::exists(model_path)) {
+    // not a model path, try to download the model from huggingface hub
+    model_path = llm::hf::download_model(FLAGS_model_name_or_path);
+  }
+
   auto engine = std::make_unique<Engine>(dtype, devices);
-  CHECK(engine->init(FLAGS_model_path, FLAGS_tokenizer_path));
+  CHECK(engine->init(model_path, FLAGS_tokenizer_path));
 
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
   const auto* tokenizer = engine->tokenizer();

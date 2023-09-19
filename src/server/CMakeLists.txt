@@ -55,6 +55,7 @@ cc_binary(
     :completion_handler
     :grpc_server
     :engine
+    :model_downloader
     absl::strings
     gflags::gflags
     glog::glog

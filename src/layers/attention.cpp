@@ -34,6 +34,7 @@ extern std::vector<at::Tensor> mha_varlen_fwd(
     bool return_softmax,
     c10::optional<at::Generator> gen_);
 
+// ref to single_query_cached_kv_attention in third_party/vllm
 extern void single_query_cached_kv_attention(
     torch::Tensor& out,
     torch::Tensor& query,
@@ -47,14 +48,14 @@ extern void single_query_cached_kv_attention(
     int max_context_len,
     const c10::optional<torch::Tensor>& alibi_slopes);
 
-namespace llm::attention {
+namespace llm {
 namespace {
 constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
 
 torch::Tensor masked_self_attention(
     const torch::Tensor& query,  // [num_tokens/seq_len, n_heads, head_dim]
-    const torch::Tensor& key,    // [num_tokens/seq_len, n_heads, head_dim]
-    const torch::Tensor& value,  // [num_tokens/seq_len, n_heads, head_dim]
+    const torch::Tensor& key,    // [num_tokens/seq_len, n_kv_heads, head_dim]
+    const torch::Tensor& value,  // [num_tokens/seq_len, n_kv_heads, head_dim]
     const torch::Tensor& mask,   // [1, seq_len, seq_len]
     float scale) {
   auto scores = torch::einsum("qhd,khd->hqk", {query * scale, key});
@@ -67,23 +68,85 @@ torch::Tensor masked_self_attention(
 }
 }  // namespace
 
+
+AttentionImpl::AttentionImpl(int64_t n_heads,
+                             int64_t n_kv_heads,
+                             float scale,
+                             const torch::ScalarType& /*dtype*/,
+                             const torch::Device& device): scale_(scale) {
+  CHECK(n_heads % n_kv_heads == 0)
+      << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
+  // prepare kv_head_mapping
+  auto kv_head_mapping = torch::arange(
+      0, n_kv_heads, torch::TensorOptions().dtype(torch::kInt).device(device));
+  const auto num_group = n_heads / n_kv_heads;
+  if (num_group > 1) {
+    kv_head_mapping = kv_head_mapping.repeat_interleave(/*repeats=*/num_group);
+  }
+  kv_head_mapping_ = register_buffer("kv_head_mapping", kv_head_mapping);
+}
+
+torch::Tensor AttentionImpl::forward(const torch::Tensor& query,
+                                     const torch::Tensor& key,
+                                     const torch::Tensor& value,
+                                     const KVCache& kv_cache,
+                                     const InputParameters& input_params) {
+  const int64_t num_tokens = query.size(0);
+  auto output = torch::empty_like(query);
+  const auto num_prompt_tokens = input_params.num_prompt_tokens;
+  if (num_prompt_tokens > 0) {
+    // process sequences with prompt tokens (prefill)
+    auto sliced_output =
+        output.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+    auto sliced_query =
+        query.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+    auto sliced_key =
+        key.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+    auto sliced_value =
+        value.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
+    varlen_masked_self_attention(sliced_query,
+                                 sliced_key,
+                                 sliced_value,
+                                 input_params.cu_seq_lens,
+                                 input_params.max_seq_len,
+                                 scale_,
+                                 sliced_output);
+  }
+
+  if (num_prompt_tokens < num_tokens) {
+    // process sequences without prompt tokens (decode)
+    auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
+    auto sliced_query = query.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
+    single_token_masked_self_attention(kv_cache,
+                                       kv_head_mapping_,
+                                       sliced_query,
+                                       input_params.block_tables,
+                                       input_params.context_lens,
+                                       input_params.max_context_len,
+                                       scale_,
+                                       sliced_output);
+  }
+  return output;
+}
+
 void varlen_masked_self_attention(
     const torch::Tensor& query,        // [num_tokens, n_heads, head_dim]
     const torch::Tensor& key,          // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,        // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
     int32_t max_seq_len,               // maximum sequence length
+    float scale,                       // scale for softmax
     const torch::Tensor& output) {
   if (query.is_cuda()) {
     // use cuda kernel
     if (FLAGS_varlen_masked_self_attention.empty() ||
         FLAGS_varlen_masked_self_attention == "cuda") {
       return varlen_masked_self_attention_cuda(
-          query, key, value, cu_seq_lens, max_seq_len, output);
+          query, key, value, cu_seq_lens, max_seq_len, scale, output);
     }
   }
   return varlen_masked_self_attention_slow(
-      query, key, value, cu_seq_lens, max_seq_len, output);
+      query, key, value, cu_seq_lens, max_seq_len, scale, output);
 }
 
 void varlen_masked_self_attention_slow(
@@ -92,12 +155,12 @@ void varlen_masked_self_attention_slow(
     const torch::Tensor& value,        // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
     int32_t /*max_seq_len*/,           // maximum sequence length
+    float scale,                       // scale for softmax
     torch::Tensor output) {
   DCHECK(query.size(0) == key.size(0));
   DCHECK(query.size(0) == value.size(0));
 
   const auto head_dim = query.size(-1);
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   torch::Tensor cu_seq_lens_cpu = cu_seq_lens.cpu();
   const size_t num_seqs = cu_seq_lens_cpu.numel() - 1;
   const int32_t* cu_lens = cu_seq_lens_cpu.data_ptr<int32_t>();
@@ -143,9 +206,9 @@ void varlen_masked_self_attention_cuda(
     const torch::Tensor& value,        // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
     int32_t max_seq_len,               // maximum sequence length
+    float scale,                       // scale for softmax
     torch::Tensor output) {
   const auto head_dim = query.size(-1);
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
   torch::optional<at::Tensor> out = output;
   mha_varlen_fwd(query,
@@ -164,24 +227,38 @@ void varlen_masked_self_attention_cuda(
                  /*gen_=*/torch::nullopt);
 }
 
+
 void single_token_masked_self_attention(
-    const KVCache& kv_cache,     // where to get key and value
+    const KVCache& kv_cache,  // where to get key and value
+    const torch::Tensor& kv_head_mapping,
     const torch::Tensor& query,  // [num_tokens/num_seq, n_heads, head_dim]
     const torch::Tensor& block_tables,  // [num_tokens, num_blocks]
     const torch::Tensor&
         context_lens,         // [num_tokens] the length of each sequence
     int32_t max_context_len,  // maximum context length
+    float scale,              // scale for softmax
     const torch::Tensor& output) {
   if (query.is_cuda()) {
     // use cuda kernel
     if (FLAGS_single_token_masked_self_attention.empty() ||
         FLAGS_single_token_masked_self_attention == "cuda") {
-      return single_token_masked_self_attention_cuda(
-          kv_cache, query, block_tables, context_lens, max_context_len, output);
+      return single_token_masked_self_attention_cuda(kv_cache,
+                                                     kv_head_mapping,
+                                                     query,
+                                                     block_tables,
+                                                     context_lens,
+                                                     max_context_len,
+                                                     scale,
+                                                     output);
     }
   }
-  return single_token_masked_self_attention_slow(
-      kv_cache, query, block_tables, context_lens, max_context_len, output);
+  return single_token_masked_self_attention_slow(kv_cache,
+                                                 query,
+                                                 block_tables,
+                                                 context_lens,
+                                                 max_context_len,
+                                                 scale,
+                                                 output);
 }
 
 void single_token_masked_self_attention_slow(
@@ -191,12 +268,9 @@ void single_token_masked_self_attention_slow(
     const torch::Tensor&
         context_lens,             // [num_tokens] the length of each sequence
     int32_t /*max_context_len*/,  // maximum context length
+    float scale,                  // scale for softmax
     torch::Tensor output) {
   const auto num_seq = query.size(0);
-  const auto num_heads = query.size(1);
-  const auto head_dim = query.size(2);
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
-
   // process each sequence
   // don't need attention mask for single token
   torch::Tensor mask;
@@ -224,40 +298,28 @@ void single_token_masked_self_attention_slow(
 }
 
 void single_token_masked_self_attention_cuda(
-    const KVCache& kv_cache,     // where to get key and value
+    const KVCache& kv_cache,  // where to get key and value
+    const torch::Tensor& kv_head_mapping,
     const torch::Tensor& query,  // [num_tokens/num_seq, n_heads, head_dim]
     const torch::Tensor& block_tables,  // [num_tokens, num_blocks]
     const torch::Tensor&
         context_lens,         // [num_tokens] the length of each sequence
     int32_t max_context_len,  // maximum context length
+    float scale,              // scale for softmax
     torch::Tensor output) {
   auto [key_cache, value_cache] = kv_cache.get_kv_cache();
-  const auto num_heads = query.size(1);
-  const auto head_dim = query.size(2);
-  const auto num_kv_heads = key_cache.size(1);
   const auto block_size = key_cache.size(3);
 
-  // prepare kv_head_mapping
-  // TODO: move it to outside of the function
-  auto kv_head_mapping = torch::arange(
-      0,
-      num_kv_heads,
-      torch::TensorOptions().dtype(torch::kInt).device(query.device()));
-  const auto num_group = num_heads / num_kv_heads;
-  if (num_group > 1) {
-    kv_head_mapping = kv_head_mapping.repeat_interleave(/*repeats=*/num_group);
-  }
-
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   // make a 'copy' of variable since the api is using non-const reference
   torch::Tensor _query = query;
   torch::Tensor _block_tables = block_tables;
   torch::Tensor _context_lens = context_lens;
+  torch::Tensor _kv_head_mapping = kv_head_mapping;
   single_query_cached_kv_attention(output,
                                    _query,
                                    key_cache,
                                    value_cache,
-                                   kv_head_mapping,
+                                   _kv_head_mapping,
                                    scale,
                                    _block_tables,
                                    _context_lens,
@@ -266,4 +328,4 @@ void single_token_masked_self_attention_cuda(
                                    /*alibi_slopes=*/torch::nullopt);
 }
 
-}  // namespace llm::attention
+}  // namespace llm
