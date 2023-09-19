@@ -62,13 +62,13 @@ class MLPImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    gate_up_proj_->load_state_dict(
-        state_dict, {"gate_proj.", "up_proj."}, gate_up_sizes_);
+    gate_up_proj_->load_state_dict(state_dict, {"gate_proj.", "up_proj."});
     down_proj_->load_state_dict(state_dict.select("down_proj."));
   }
 
-  bool is_loaded() const {
-    return gate_up_proj_->is_loaded() && down_proj_->is_loaded();
+  void verify_loaded_weights() {
+    gate_up_proj_->verify_loaded_weights();
+    down_proj_->verify_loaded_weights();
   }
 
  private:
@@ -171,13 +171,13 @@ class LlamaAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    qkv_proj_->load_state_dict(
-        state_dict, {"q_proj.", "k_proj.", "v_proj."}, qkv_sizes_);
+    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
-  bool is_loaded() const {
-    return qkv_proj_->is_loaded() && o_proj_->is_loaded();
+  void verify_loaded_weights() {
+    qkv_proj_->verify_loaded_weights();
+    o_proj_->verify_loaded_weights();
   }
 
  private:
@@ -244,10 +244,11 @@ class DecoderLayerImpl : public torch::nn::Module {
         state_dict.select("post_attention_layernorm."));
   }
 
-  bool is_loaded() const {
-    return self_attn_->is_loaded() && mlp_->is_loaded() &&
-           input_layernorm_->is_loaded() &&
-           post_attention_layernorm_->is_loaded();
+  void verify_loaded_weights() {
+    self_attn_->verify_loaded_weights();
+    mlp_->verify_loaded_weights();
+    input_layernorm_->verify_loaded_weights();
+    post_attention_layernorm_->verify_loaded_weights();
   }
 
  private:
@@ -325,14 +326,14 @@ class ModelImpl : public torch::nn::Module {
     lm_head_->load_state_dict(state_dict.select("lm_head."));
   }
 
-  bool is_loaded() const {
-    bool all_loaded = embed_tokens_->is_loaded() && norm_->is_loaded() &&
-                      lm_head_->is_loaded();
+  void verify_loaded_weights() {
+    embed_tokens_->verify_loaded_weights();
+    norm_->verify_loaded_weights();
+    lm_head_->verify_loaded_weights();
     // check if all layers are loaded
-    for (const auto& layer : layers_) {
-      all_loaded = all_loaded && layer->is_loaded();
+    for (auto& layer : layers_) {
+      layer->verify_loaded_weights();
     }
-    return all_loaded;
   }
 
  private:

@@ -31,15 +31,16 @@ class RMSNormImpl : public torch::nn::Module {
   void load_state_dict(const StateDict& state_dict) {
     const auto weight = state_dict.get_tensor("weight");
     if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
       weight_.copy_(weight);
       is_loaded_ = true;
     }
   }
 
   // whether the weight is loaded
-  bool is_loaded() const {
-    return is_loaded_;
+  void verify_loaded_weights() const {
+    CHECK(is_loaded_) << "weight is not loaded for " << name();
   }
 
   void pretty_print(std::ostream& stream) const override {

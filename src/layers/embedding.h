@@ -54,15 +54,16 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
     if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
       weight_.copy_(weight);
       is_loaded_ = true;
     }
   }
 
   // whether the weight is loaded
-  bool is_loaded() const {
-    return is_loaded_;
+  void verify_loaded_weights() const {
+    CHECK(is_loaded_) << "weight is not loaded for " << name();
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -123,16 +124,15 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
     if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
       weight_.copy_(weight);
       is_loaded_ = true;
     }
   }
 
   // whether the weight is loaded
-  bool is_loaded() const {
-    return is_loaded_;
-  }
+  bool verify_loaded_weights() const { return is_loaded_; }
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();

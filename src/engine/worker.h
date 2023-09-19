@@ -45,8 +45,8 @@ class Worker final {
   // can be called multiple times to reload the model with different parameters
   void load_state_dict(const StateDict& state_dict);
 
-  // check if the model is loaded
-  bool is_loaded() const;
+  // verify if the model is loaded correctly
+  void verify_loaded_weights();
 
   // initialize kv cache. blocking call
   bool init_kv_cache(const std::vector<int64_t>& key_cache_shape,
@@ -65,6 +65,9 @@ class Worker final {
   // the future returns a successfull status with no meaningful value
   folly::SemiFuture<folly::Unit> load_state_dict_async(
       const StateDict& state_dict);
+
+  // verify if the model is loaded correctly. async call
+  folly::SemiFuture<folly::Unit> verify_loaded_weights_async();
 
   // initialize kv cache. async call
   folly::SemiFuture<bool> init_kv_cache_async(

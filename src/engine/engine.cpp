@@ -106,10 +106,19 @@ bool Engine::init_model(const std::string& model_weights_path) {
     }
   }
 
-  // check if all weights are loaded
-  for (auto& worker : workers_) {
-    if (!worker->is_loaded()) {
-      return false;
+  // verify the weights are loaded correctly
+  {
+    std::vector<folly::SemiFuture<folly::Unit>> futures;
+    futures.reserve(workers_.size());
+    for (auto& worker : workers_) {
+      futures.push_back(worker->verify_loaded_weights_async());
+    }
+    // wait for all futures to complete
+    auto results = folly::collectAll(futures).get();
+    for (const auto& result : results) {
+      if (result.hasException()) {
+        return false;
+      }
     }
   }
   return true;

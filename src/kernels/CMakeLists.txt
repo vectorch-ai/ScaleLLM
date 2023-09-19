@@ -14,3 +14,17 @@ cc_library(
   COPTS
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
+
+cc_library(
+  NAME 
+    gptq_kernels
+  HDRS 
+  SRCS 
+    gptq_cuda_kernel_64.cu
+  DEPS
+    torch
+    Python::Python
+  COPTS
+    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
+)
+

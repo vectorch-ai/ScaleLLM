@@ -54,21 +54,18 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
     if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
       weight_.copy_(weight);
-      is_loaded_list_[0] = true;
+      is_loaded_ = true;
     }
   }
 
   // special load_state_dict for fused cases
   void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string_view>& prefixes,
-                       const std::vector<int64_t>& sizes) {
-    CHECK_EQ(prefixes.size(), sizes.size());
-    CHECK_EQ(std::accumulate(sizes.begin(), sizes.end(), 0), weight_.size(0));
-
-    if (is_loaded_list_.size() < prefixes.size()) {
-      is_loaded_list_.resize(prefixes.size(), false);
+                       const std::vector<std::string_view>& prefixes) {
+    if (weight_list_.size() < prefixes.size()) {
+      weight_list_.resize(prefixes.size());
     }
 
     for (size_t i = 0; i < prefixes.size(); ++i) {
@@ -79,25 +76,25 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
           /*rank=*/parallel_args_.rank(),
           /*world_size=*/parallel_args_.world_size());
       if (weight.defined()) {
-        int64_t end = 0;
-        for (size_t j = 0; j <= i; ++j) {
-          end += sizes[j];
-        }
-        const int64_t start = end - sizes[i];
-        weight_.index_put_(
-            {torch::indexing::Slice(start, end), torch::indexing::Slice()},
-            weight);
-        is_loaded_list_[i] = true;
+        CHECK(!weight_list_[i].defined()) << "weight already loaded";
+        // make a copy in case the checkpoint is deleted
+        weight_list_[i] = weight.clone();
       }
     }
   }
 
   // whether the weight is loaded
-  bool is_loaded() const {
-    // all the weights are loaded
-    return std::all_of(is_loaded_list_.begin(),
-                       is_loaded_list_.end(),
-                       [](bool v) { return v; });
+  void verify_loaded_weights() {
+    if (weight_list_.empty()) {
+      CHECK(is_loaded_) << "weight is not loaded for " << name();
+      return;
+    }
+    auto weight = torch::cat(weight_list_, /*dim=*/0);
+    // release the memory for weight_list_
+    weight_list_.clear();
+    CHECK_EQ(weight_.sizes(), weight.sizes())
+        << "weight size mismatch for " << name();
+    weight_.copy_(weight);
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -113,7 +110,8 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   // A^T: [out_features_per_partition, in_features]
   torch::Tensor weight_{nullptr};
 
-  std::vector<bool> is_loaded_list_{false};
+  bool is_loaded_ = false;
+  std::vector<torch::Tensor> weight_list_;
 
   // parallel args
   ParallelArgs parallel_args_;
@@ -176,14 +174,17 @@ class RowParallelLinearImpl : public torch::nn::Module {
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
     if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes()) << "weight size mismatch";
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
       weight_.copy_(weight);
       is_loaded_ = true;
     }
   }
 
   // whether the weight is loaded
-  bool is_loaded() const { return is_loaded_; }
+  void verify_loaded_weights() const {
+    CHECK(is_loaded_) << "weight is not loaded for " << name();
+  }
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();

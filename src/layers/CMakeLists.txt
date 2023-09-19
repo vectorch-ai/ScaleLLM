@@ -8,10 +8,12 @@ cc_library(
     model_parallel.h
     norm.h
     linear.h
+    qlinear.h
     embedding.h
     pos_embedding.h
     attention.h
   SRCS 
+    qlinear.cpp
     model_parallel.cpp
     attention.cpp
     pos_embedding.cpp
@@ -19,6 +21,7 @@ cc_library(
     :state_dict
     :memory
     :flash-attn.kernels
+    :gptq_kernels
     glog::glog
     gflags::gflags
     torch

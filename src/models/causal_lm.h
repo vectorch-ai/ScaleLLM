@@ -4,11 +4,11 @@
 
 #include <vector>
 
-#include "memory/kv_cache.h"
-#include "model_loader/state_dict.h"
-#include "model_args.h"
-#include "parallel_args.h"
 #include "input_parameters.h"
+#include "memory/kv_cache.h"
+#include "model_args.h"
+#include "model_loader/state_dict.h"
+#include "parallel_args.h"
 
 namespace llm {
 
@@ -26,8 +26,8 @@ class CausalLM : public torch::nn::Module {
   // load the model from the given state_dict
   virtual void load_state_dict(const StateDict& state_dict) = 0;
 
-  // check whether the model is loaded
-  virtual bool is_loaded() const = 0;
+  // verify if the model is loaded correctly
+  virtual void verify_loaded_weights() = 0;
 
   // factory method to create a causal language model
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
@@ -53,8 +53,8 @@ class CausalLMImpl : public CausalLM {
     model_->load_state_dict(state_dict);
   }
 
-  bool is_loaded() const override {
-    return model_->is_loaded();
+  void verify_loaded_weights() override {
+    return model_->verify_loaded_weights();
   }
 
  private:

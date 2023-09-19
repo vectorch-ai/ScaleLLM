@@ -51,9 +51,9 @@ void Worker::load_state_dict(const StateDict& state_dict) {
   model_->load_state_dict(state_dict);
 }
 
-bool Worker::is_loaded() const {
+void Worker::verify_loaded_weights() {
   CHECK(model_ != nullptr);
-  return model_->is_loaded();
+  model_->verify_loaded_weights();
 }
 
 OutputParameters Worker::execute_model(
@@ -145,6 +145,18 @@ folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
       [this, &state_dict, promise = std::move(promise)]() mutable {
         // load the model weights from state_dict within the working thread
         this->load_state_dict(state_dict);
+        promise.setValue();
+      });
+  return future;
+}
+
+folly::SemiFuture<folly::Unit> Worker::verify_loaded_weights_async() {
+  folly::Promise<folly::Unit> promise;
+  auto future = promise.getSemiFuture();
+  executor_.schedule(
+      [this, promise = std::move(promise)]() mutable {
+        // load the model weights from state_dict within the working thread
+        this->verify_loaded_weights();
         promise.setValue();
       });
   return future;
