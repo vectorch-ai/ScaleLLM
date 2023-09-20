@@ -17,7 +17,7 @@ cc_library(
 
 cc_library(
   NAME 
-    gptq_kernels
+    gptq.kernels
   HDRS 
   SRCS 
     gptq_cuda_kernel_64.cu

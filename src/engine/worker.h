@@ -66,9 +66,6 @@ class Worker final {
   folly::SemiFuture<folly::Unit> load_state_dict_async(
       const StateDict& state_dict);
 
-  // verify if the model is loaded correctly. async call
-  folly::SemiFuture<folly::Unit> verify_loaded_weights_async();
-
   // initialize kv cache. async call
   folly::SemiFuture<bool> init_kv_cache_async(
       const std::vector<int64_t>& key_cache_shape,

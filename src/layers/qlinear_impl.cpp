@@ -1,4 +1,4 @@
-#include "qlinear.h"
+#include "qlinear_impl.h"
 
 #include <glog/logging.h>
 #include <torch/torch.h>
@@ -128,7 +128,8 @@ ColumnParallelQuantLinearImpl::ColumnParallelQuantLinearImpl(
       torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
 }
 
-torch::Tensor ColumnParallelQuantLinearImpl::forward(torch::Tensor input) {
+torch::Tensor ColumnParallelQuantLinearImpl::forward(
+    torch::Tensor input) const {
   auto output =
       torch::empty({input.size(0), out_features_},
                    torch::dtype(torch::kFloat32).device(input.device()));
@@ -336,7 +337,7 @@ RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
       torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
 }
 
-torch::Tensor RowParallelQuantLinearImpl::forward(torch::Tensor input) {
+torch::Tensor RowParallelQuantLinearImpl::forward(torch::Tensor input) const {
   if (!input_is_parallelized_) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
   }

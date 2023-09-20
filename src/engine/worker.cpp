@@ -150,16 +150,4 @@ folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
   return future;
 }
 
-folly::SemiFuture<folly::Unit> Worker::verify_loaded_weights_async() {
-  folly::Promise<folly::Unit> promise;
-  auto future = promise.getSemiFuture();
-  executor_.schedule(
-      [this, promise = std::move(promise)]() mutable {
-        // load the model weights from state_dict within the working thread
-        this->verify_loaded_weights();
-        promise.setValue();
-      });
-  return future;
-}
-
 }  // namespace llm

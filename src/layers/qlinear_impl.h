@@ -3,8 +3,8 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "linear.h"
 #include "model_loader/state_dict.h"
-#include "model_parallel.h"
 #include "models/parallel_args.h"
 
 namespace llm {
@@ -14,7 +14,7 @@ namespace llm {
 // Quantized Linear layer with column parallelism.
 // The linear layer is defined as Y = XA + b. A is parallelized along
 // its second dimension as A = [A_1, ..., A_p].
-class ColumnParallelQuantLinearImpl : public torch::nn::Module {
+class ColumnParallelQuantLinearImpl : public ParallelLinearImpl {
  public:
   ColumnParallelQuantLinearImpl(int64_t in_features,
                                 int64_t out_features,
@@ -25,17 +25,17 @@ class ColumnParallelQuantLinearImpl : public torch::nn::Module {
                                 const torch::ScalarType& dtype,
                                 const torch::Device& device);
 
-  torch::Tensor forward(torch::Tensor input);
+  torch::Tensor forward(torch::Tensor input) const override;
 
   // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict);
+  void load_state_dict(const StateDict& state_dict) override;
 
   // special load_state_dict for fused cases
   void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string_view>& prefixes);
+                       const std::vector<std::string_view>& prefixes) override;
 
   // verify if the weight is loaded correctly
-  void verify_loaded_weights() const;
+  void verify_loaded_weights() const override;
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()
@@ -74,7 +74,6 @@ class ColumnParallelQuantLinearImpl : public torch::nn::Module {
   // whether to gather the output
   bool gather_output_;
 };
-TORCH_MODULE(ColumnParallelQuantLinear);
 
 // Linear layer with row parallelism.
 //     The linear layer is defined as Y = XA + b. A is parallelized along
@@ -86,7 +85,7 @@ TORCH_MODULE(ColumnParallelQuantLinear);
 //               | .   |
 //               | A_p |
 //                -   -
-class RowParallelQuantLinearImpl : public torch::nn::Module {
+class RowParallelQuantLinearImpl : public ParallelLinearImpl {
  public:
   RowParallelQuantLinearImpl(int64_t in_features,
                              int64_t out_features,
@@ -97,13 +96,20 @@ class RowParallelQuantLinearImpl : public torch::nn::Module {
                              const torch::ScalarType& dtype,
                              const torch::Device& device);
 
-  torch::Tensor forward(torch::Tensor input);
+  torch::Tensor forward(torch::Tensor input) const override;
 
   // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict);
+  void load_state_dict(const StateDict& state_dict) override;
+
+  // special load_state_dict for fused cases
+  void load_state_dict(
+      const StateDict& /*state_dict*/,
+      const std::vector<std::string_view>& /*prefixes*/) override {
+    LOG(FATAL) << "not implemented";
+  }
 
   // whether the weight is loaded
-  void verify_loaded_weights() const;
+  void verify_loaded_weights() const override;
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()
@@ -136,6 +142,4 @@ class RowParallelQuantLinearImpl : public torch::nn::Module {
   // whether the input is already parallelized
   bool input_is_parallelized_;
 };
-TORCH_MODULE(RowParallelQuantLinear);
-
 }  // namespace llm
