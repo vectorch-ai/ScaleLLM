@@ -44,6 +44,9 @@ class ColumnParallelQuantLinearImpl : public torch::nn::Module {
   }
 
  private:
+  bool load_weights(std::vector<torch::Tensor>& weight_list,
+                    torch::Tensor& weight);
+
   // parameter members, must be registered
   torch::Tensor qweight_{nullptr};
   torch::Tensor qzeros_{nullptr};
@@ -64,7 +67,6 @@ class ColumnParallelQuantLinearImpl : public torch::nn::Module {
   std::vector<torch::Tensor> qweight_list_;
   std::vector<torch::Tensor> qzeros_list_;
   std::vector<torch::Tensor> scales_list_;
-  std::vector<torch::Tensor> g_idx_list_;
 
   // parallel args
   ParallelArgs parallel_args_;

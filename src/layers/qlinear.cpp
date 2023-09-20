@@ -89,10 +89,9 @@ ColumnParallelQuantLinearImpl::ColumnParallelQuantLinearImpl(
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
   CHECK(in_features % 32 == 0) << "in_features must be divisible by 32";
-  CHECK(in_features % group_size == 0) << "in_features must be divisible by "
-                                       << group_size;
+  CHECK(in_features % group_size == 0)
+      << "in_features must be divisible by " << group_size;
   CHECK(out_features % 32 == 0) << "out_features must be divisible by 32";
-
 
   const auto world_size = parallel_args_.world_size();
   CHECK(out_features % world_size == 0)
@@ -186,6 +185,26 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
   }
 }
 
+bool ColumnParallelQuantLinearImpl::load_weights(
+    std::vector<torch::Tensor>& weight_list,
+    torch::Tensor& weight) {
+  bool all_loaded = std::all_of(
+      weight_list.begin(), weight_list.end(), [](const torch::Tensor& t) {
+        return t.defined();
+      });
+  if (!all_loaded) {
+    return false;
+  }
+
+  auto merged_weight = torch::cat(weight_list, /*dim=*/0);
+  // release the memory for weight_list
+  weight_list.clear();
+  CHECK_EQ(weight.sizes(), merged_weight.sizes())
+      << "weight size mismatch for " << name();
+  weight.copy_(merged_weight);
+  return true;
+}
+
 // special load_state_dict for fused cases
 void ColumnParallelQuantLinearImpl::load_state_dict(
     const StateDict& state_dict,
@@ -194,13 +213,12 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
     qweight_list_.resize(prefixes.size());
     qzeros_list_.resize(prefixes.size());
     scales_list_.resize(prefixes.size());
-    g_idx_list_.resize(prefixes.size());
   }
 
   for (size_t i = 0; i < prefixes.size(); ++i) {
-    std::string name = std::string(prefixes[i]) + "qweight";
+    std::string tensor_name = std::string(prefixes[i]) + "qweight";
     const auto qweight = state_dict.get_sharded_tensor(
-        name,
+        tensor_name,
         /*dim=*/1,
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
@@ -209,9 +227,9 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
       // make a copy in case the checkpoint is deleted
       qweight_list_[i] = qweight.clone();
     }
-    name = std::string(prefixes[i]) + "qzeros";
+    tensor_name = std::string(prefixes[i]) + "qzeros";
     const auto qzeros = state_dict.get_sharded_tensor(
-        name,
+        tensor_name,
         /*dim=*/1,
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
@@ -220,9 +238,9 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
       // make a copy in case the checkpoint is deleted
       qzeros_list_[i] = qzeros.clone();
     }
-    name = std::string(prefixes[i]) + "scales";
+    tensor_name = std::string(prefixes[i]) + "scales";
     const auto scales = state_dict.get_sharded_tensor(
-        name,
+        tensor_name,
         /*dim=*/1,
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
@@ -231,47 +249,33 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
       // make a copy in case the checkpoint is deleted
       scales_list_[i] = scales.clone();
     }
-    name = std::string(prefixes[i]) + "g_idx";
-    const auto g_idx = state_dict.get_tensor(name);
-    if (g_idx.defined()) {
-      CHECK(!g_idx_list_[i].defined()) << "g_idx already loaded";
-      // make a copy in case the checkpoint is deleted
-      g_idx_list_[i] = g_idx.clone();
+    tensor_name = std::string(prefixes[i]) + "g_idx";
+    const auto g_idx = state_dict.get_tensor(tensor_name);
+    if (g_idx.defined() && !g_idx_is_loaded_) {
+      CHECK_EQ(g_idx_.sizes(), g_idx.sizes())
+          << "g_idx size mismatch for " << name();
+      g_idx_.copy_(g_idx);
+      g_idx_is_loaded_ = true;
     }
+  }
+
+  // check if all weights are ready to be loaded
+  if (load_weights(qweight_list_, qweight_)) {
+    qweight_is_loaded_ = true;
+  }
+  if (load_weights(qzeros_list_, qzeros_)) {
+    qzeros_is_loaded_ = true;
+  }
+  if (load_weights(scales_list_, scales_)) {
+    scales_is_loaded_ = true;
   }
 }
 
 void ColumnParallelQuantLinearImpl::verify_loaded_weights() {
-  if (qweight_list_.empty()) {
-    CHECK(qweight_is_loaded_) << "qweight is not loaded for " << name();
-    CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << name();
-    CHECK(scales_is_loaded_) << "scales is not loaded for " << name();
-    CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << name();
-    return;
-  }
-  auto qweight = torch::cat(qweight_list_, /*dim=*/1);
-  qweight_list_.clear();
-  CHECK_EQ(qweight_.sizes(), qweight.sizes())
-      << "qweight size mismatch for " << name();
-  qweight_.copy_(qweight);
-
-  auto qzeros = torch::cat(qzeros_list_, /*dim=*/1);
-  qzeros_list_.clear();
-  CHECK_EQ(qzeros_.sizes(), qzeros.sizes())
-      << "qzeros size mismatch for " << name();
-  qzeros_.copy_(qzeros);
-
-  auto scales = torch::cat(scales_list_, /*dim=*/1);
-  scales_list_.clear();
-  CHECK_EQ(scales_.sizes(), scales.sizes())
-      << "scales size mismatch for " << name();
-  scales_.copy_(scales);
-
-  // all g_idx should be the same cross all shards, use the first one
-  CHECK_EQ(g_idx_.sizes(), g_idx_list_[0].sizes())
-      << "g_idx size mismatch for " << name();
-  g_idx_.copy_(g_idx_list_[0]);
-  g_idx_list_.clear();
+  CHECK(qweight_is_loaded_) << "qweight is not loaded for " << name();
+  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << name();
+  CHECK(scales_is_loaded_) << "scales is not loaded for " << name();
+  CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << name();
 }
 
 RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
@@ -293,8 +297,8 @@ RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
   CHECK(in_features % 32 == 0) << "in_features must be divisible by 32";
-  CHECK(in_features % group_size == 0) << "in_features must be divisible by "
-                                       << group_size;
+  CHECK(in_features % group_size == 0)
+      << "in_features must be divisible by " << group_size;
   CHECK(out_features % 32 == 0) << "out_features must be divisible by 32";
 
   const auto world_size = parallel_args_.world_size();

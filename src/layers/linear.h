@@ -4,6 +4,8 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <algorithm>
+
 #include "model_loader/state_dict.h"
 #include "model_parallel.h"
 #include "models/parallel_args.h"
@@ -81,20 +83,16 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
         weight_list_[i] = weight.clone();
       }
     }
+
+    // check if all weights are loaded
+    if (load_weights(weight_list_, weight_)) {
+      is_loaded_ = true;
+    }
   }
 
   // whether the weight is loaded
   void verify_loaded_weights() {
-    if (weight_list_.empty()) {
-      CHECK(is_loaded_) << "weight is not loaded for " << name();
-      return;
-    }
-    auto weight = torch::cat(weight_list_, /*dim=*/0);
-    // release the memory for weight_list_
-    weight_list_.clear();
-    CHECK_EQ(weight_.sizes(), weight.sizes())
-        << "weight size mismatch for " << name();
-    weight_.copy_(weight);
+    CHECK(is_loaded_) << "weight is not loaded for " << name();
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -105,6 +103,25 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   torch::Tensor weight() const { return weight_; }
 
  private:
+  bool load_weights(std::vector<torch::Tensor>& weight_list,
+                    torch::Tensor& weight) {
+    bool all_loaded = std::all_of(
+        weight_list.begin(), weight_list.end(), [](const torch::Tensor& t) {
+          return t.defined();
+        });
+    if (!all_loaded) {
+      return false;
+    }
+
+    auto merged_weight = torch::cat(weight_list, /*dim=*/0);
+    // release the memory for weight_list
+    weight_list.clear();
+    CHECK_EQ(weight.sizes(), merged_weight.sizes())
+        << "weight size mismatch for " << name();
+    weight.copy_(merged_weight);
+    return true;
+  }
+
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features_per_partition, in_features]
