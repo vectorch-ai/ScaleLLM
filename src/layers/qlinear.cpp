@@ -88,6 +88,11 @@ ColumnParallelQuantLinearImpl::ColumnParallelQuantLinearImpl(
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
+  CHECK(in_features % 32 == 0) << "in_features must be divisible by 32";
+  CHECK(in_features % group_size == 0) << "in_features must be divisible by "
+                                       << group_size;
+  CHECK(out_features % 32 == 0) << "out_features must be divisible by 32";
+
 
   const auto world_size = parallel_args_.world_size();
   CHECK(out_features % world_size == 0)
@@ -287,6 +292,10 @@ RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
+  CHECK(in_features % 32 == 0) << "in_features must be divisible by 32";
+  CHECK(in_features % group_size == 0) << "in_features must be divisible by "
+                                       << group_size;
+  CHECK(out_features % 32 == 0) << "out_features must be divisible by 32";
 
   const auto world_size = parallel_args_.world_size();
   CHECK(in_features % world_size == 0)

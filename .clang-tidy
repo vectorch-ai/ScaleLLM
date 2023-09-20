@@ -16,6 +16,7 @@ Checks: >
   -modernize-use-auto,
   -modernize-use-trailing-return-type,
   -modernize-pass-by-value,
+  -modernize-avoid-c-arrays,
   -misc-non-private-member-variables-in-classes,
   -performance-unnecessary-value-param,
   -bugprone-easily-swappable-parameters,

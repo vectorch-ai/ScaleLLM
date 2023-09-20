@@ -12,6 +12,8 @@ class ModelArgs {
 
   DEFINE_ARG(int64_t, dim) = 4096;
 
+  DEFINE_ARG(int64_t, hidden_dim) = 11008;
+
   DEFINE_ARG(int64_t, n_layers) = 32;
 
   DEFINE_ARG(int64_t, n_heads) = 32;

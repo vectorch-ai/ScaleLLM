@@ -22,13 +22,7 @@ class MLPImpl : public torch::nn::Module {
           const torch::ScalarType& dtype,
           const torch::Device& device) {
     const int64_t dim = args.dim();
-    const int64_t multiple_of = args.multiple_of();
-    const float ffn_dim_multiplier = args.ffn_dim_multiplier().value_or(1.0f);
-    int64_t hidden_dim = 4 * dim;
-    hidden_dim = 2 * hidden_dim / 3;
-    // custom dim factor multiplier
-    hidden_dim *= ffn_dim_multiplier;
-    hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
+    const int64_t hidden_dim = args.hidden_dim();
 
     int64_t local_hidden_dim = hidden_dim / parallel_args.world_size();
     gate_up_sizes_ = {local_hidden_dim, local_hidden_dim};

@@ -113,9 +113,23 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
     args_.rope_scaling() = data["rope_scaling"].get<float>();
   }
-
   // TODO: read from gflags
   args_.architectures().emplace_back("llama2");
+
+  if (data.contains("hidden_dim")) {
+    args_.hidden_dim() = data["hidden_dim"].get<int64_t>();
+  } else {
+    // calculate hidden_dim from dim
+    const int64_t dim = args_.dim();
+    const int64_t multiple_of = args_.multiple_of();
+    const float ffn_dim_multiplier = args_.ffn_dim_multiplier().value_or(1.0f);
+    int64_t hidden_dim = 4 * dim;
+    hidden_dim = 2 * hidden_dim / 3;
+    // custom dim factor multiplier
+    hidden_dim *= ffn_dim_multiplier;
+    hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
+    args_.hidden_dim() = hidden_dim;
+  }
 
   // TODO: add more args
   return true;
@@ -194,6 +208,20 @@ bool HFModelLoader::load_model_args(const std::string& args_file_path) {
   }
   if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
     args_.rope_scaling() = data["rope_scaling"].get<float>();
+  }
+  if (data.contains("intermediate_size")) {
+    args_.hidden_dim() = data["intermediate_size"].get<int64_t>();
+  } else {
+    // calculate hidden_dim from dim
+    const int64_t dim = args_.dim();
+    const int64_t multiple_of = args_.multiple_of();
+    const float ffn_dim_multiplier = args_.ffn_dim_multiplier().value_or(1.0f);
+    int64_t hidden_dim = 4 * dim;
+    hidden_dim = 2 * hidden_dim / 3;
+    // custom dim factor multiplier
+    hidden_dim *= ffn_dim_multiplier;
+    hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
+    args_.hidden_dim() = hidden_dim;
   }
 
   // TODO: add more args
