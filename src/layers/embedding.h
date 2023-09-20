@@ -132,7 +132,9 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
   }
 
   // whether the weight is loaded
-  bool verify_loaded_weights() const { return is_loaded_; }
+  void verify_loaded_weights() const { 
+    CHECK(is_loaded_) << "weight is not loaded for " << name();
+  }
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " " << weight_.sizes() << " " << weight_.device();

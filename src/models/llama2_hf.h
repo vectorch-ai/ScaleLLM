@@ -60,7 +60,7 @@ class MLPImpl : public torch::nn::Module {
     down_proj_->load_state_dict(state_dict.select("down_proj."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     gate_up_proj_->verify_loaded_weights();
     down_proj_->verify_loaded_weights();
   }
@@ -169,7 +169,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     qkv_proj_->verify_loaded_weights();
     o_proj_->verify_loaded_weights();
   }
@@ -238,7 +238,7 @@ class DecoderLayerImpl : public torch::nn::Module {
         state_dict.select("post_attention_layernorm."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     self_attn_->verify_loaded_weights();
     mlp_->verify_loaded_weights();
     input_layernorm_->verify_loaded_weights();
@@ -320,12 +320,12 @@ class ModelImpl : public torch::nn::Module {
     lm_head_->load_state_dict(state_dict.select("lm_head."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     embed_tokens_->verify_loaded_weights();
     norm_->verify_loaded_weights();
     lm_head_->verify_loaded_weights();
     // check if all layers are loaded
-    for (auto& layer : layers_) {
+    for (const auto& layer : layers_) {
       layer->verify_loaded_weights();
     }
   }

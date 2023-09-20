@@ -91,7 +91,7 @@ class ColumnParallelLinearImpl : public torch::nn::Module {
   }
 
   // whether the weight is loaded
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     CHECK(is_loaded_) << "weight is not loaded for " << name();
   }
 

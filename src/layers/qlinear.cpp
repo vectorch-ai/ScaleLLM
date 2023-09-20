@@ -271,7 +271,7 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
   }
 }
 
-void ColumnParallelQuantLinearImpl::verify_loaded_weights() {
+void ColumnParallelQuantLinearImpl::verify_loaded_weights() const {
   CHECK(qweight_is_loaded_) << "qweight is not loaded for " << name();
   CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << name();
   CHECK(scales_is_loaded_) << "scales is not loaded for " << name();

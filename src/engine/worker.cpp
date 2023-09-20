@@ -51,7 +51,7 @@ void Worker::load_state_dict(const StateDict& state_dict) {
   model_->load_state_dict(state_dict);
 }
 
-void Worker::verify_loaded_weights() {
+void Worker::verify_loaded_weights() const {
   CHECK(model_ != nullptr);
   model_->verify_loaded_weights();
 }

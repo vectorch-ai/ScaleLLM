@@ -46,7 +46,7 @@ class Worker final {
   void load_state_dict(const StateDict& state_dict);
 
   // verify if the model is loaded correctly
-  void verify_loaded_weights();
+  void verify_loaded_weights() const;
 
   // initialize kv cache. blocking call
   bool init_kv_cache(const std::vector<int64_t>& key_cache_shape,

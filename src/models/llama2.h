@@ -58,7 +58,7 @@ class FeedForwardImpl : public torch::nn::Module {
     w2_->load_state_dict(state_dict.select("w2."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     w1_w3_->verify_loaded_weights();
     w2_->verify_loaded_weights();
   }
@@ -166,7 +166,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
     wo_->load_state_dict(state_dict.select("wo."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     wqkv_->verify_loaded_weights();
     wo_->verify_loaded_weights();
   }
@@ -234,7 +234,7 @@ class TransformerBlockImpl : public torch::nn::Module {
     ffn_norm_->load_state_dict(state_dict.select("ffn_norm."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     attention_->verify_loaded_weights();
     feed_forward_->verify_loaded_weights();
     attention_norm_->verify_loaded_weights();
@@ -316,12 +316,12 @@ class ModelImpl : public torch::nn::Module {
     output_->load_state_dict(state_dict.select("output."));
   }
 
-  void verify_loaded_weights() {
+  void verify_loaded_weights() const {
     tok_embeddings_->verify_loaded_weights();
     norm_->verify_loaded_weights();
     output_->verify_loaded_weights();
     // check if all layers are loaded
-    for (auto& layer : layers_) {
+    for (const auto& layer : layers_) {
       layer->verify_loaded_weights();
     }
   }

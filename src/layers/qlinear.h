@@ -34,8 +34,8 @@ class ColumnParallelQuantLinearImpl : public torch::nn::Module {
   void load_state_dict(const StateDict& state_dict,
                        const std::vector<std::string_view>& prefixes);
 
-  // whether the weight is loaded
-  void verify_loaded_weights();
+  // verify if the weight is loaded correctly
+  void verify_loaded_weights() const;
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()
