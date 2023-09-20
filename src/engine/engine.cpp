@@ -2,7 +2,6 @@
 
 #include <memory>
 
-#include "memory/cache_args.h"
 #include "memory/memory.h"
 #include "model_loader/model_loader.h"
 #include "models/parallel_args.h"
@@ -11,13 +10,15 @@
 #include "utils.h"
 #include "worker.h"
 
+static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
+
 DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
 
 DEFINE_int32(max_batch_size, 4, "Maximum batch size.");
 
 DEFINE_int32(block_size, 16, "slots per block, value must be [8, 16, 32]");
 DEFINE_int64(max_cache_size,
-             5 * llm::GB,
+             5 * GB,
              "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
               0.9,
@@ -129,10 +130,7 @@ bool Engine::init_kv_cache() {
             << ", max cache size: " << FLAGS_max_cache_size
             << ", max memory utilization: " << FLAGS_max_memory_utilization;
 
-  // set from config
-  cache_args_.block_size(FLAGS_block_size);
-  cache_args_.max_cache_size(FLAGS_max_cache_size);
-  cache_args_.max_memory_utilization(FLAGS_max_memory_utilization);
+  const int64_t block_size = FLAGS_block_size;
 
   // init kv cache
   const int world_size = static_cast<int>(workers_.size());
@@ -142,27 +140,26 @@ bool Engine::init_kv_cache() {
   const int64_t head_dim = args_.dim() / n_heads;
   const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
   // key + value for all layers
-  const int64_t block_size_in_bytes = int64_t(2) * cache_args_.block_size() *
+  const int64_t block_size_in_bytes = int64_t(2) * block_size *
                                       n_local_kv_heads * head_dim *
                                       args_.n_layers() * dtype_size;
   LOG(INFO) << "Block size in bytes: " << block_size_in_bytes
-            << ", block_size: " << cache_args_.block_size()
+            << ", block_size: " << block_size
             << ", head_dim: " << head_dim
             << ", n_local_kv_heads: " << n_local_kv_heads
             << ", n_layers: " << args_.n_layers()
             << ", dtype_size: " << dtype_size;
 
+  int64_t num_blocks = 0;
   // use first device to profile memory usage
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
     // use max memory cache size for CPU
     LOG(INFO) << "Initializing CPU cache with max cache size: "
-              << cache_args_.max_cache_size();
-    const int64_t num_blocks =
-        cache_args_.max_cache_size() / block_size_in_bytes;
+              << FLAGS_max_cache_size;
+    num_blocks =
+        FLAGS_max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
-    // at least one block
-    cache_args_.num_blocks(num_blocks);
   } else if (device.is_cuda()) {
     torch::cuda::synchronize();
     const auto allocated_bytes = memory::max_memory_allocated(device);
@@ -172,30 +169,26 @@ bool Engine::init_kv_cache() {
 
     int64_t max_cache_size =
         static_cast<int64_t>(static_cast<double>(total_memory) *
-                             cache_args_.max_memory_utilization()) -
+                             FLAGS_max_memory_utilization) -
         allocated_bytes;
     // apply memory cap from config if it is set
-    if (cache_args_.max_cache_size() > 0) {
-      max_cache_size = std::min(max_cache_size, cache_args_.max_cache_size());
+    if (FLAGS_max_cache_size > 0) {
+      max_cache_size = std::min(max_cache_size, FLAGS_max_cache_size);
     }
     LOG(INFO) << "Initializing CUDA cache with max cache size: "
               << max_cache_size;
-    const int64_t num_blocks = max_cache_size / block_size_in_bytes;
+    num_blocks = max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
-    // at least one block
-    cache_args_.num_blocks(num_blocks);
   } else {
     CHECK(false) << "Only support CPU and CUDA device for now.";
   }
 
   LOG(INFO) << "Initializing kv cache with num blocks: "
-            << cache_args_.num_blocks()
-            << ", block size: " << cache_args_.block_size();
+            << num_blocks
+            << ", block size: " << block_size;
 
   // init kv cache for each worker
-  const int64_t block_size = cache_args_.block_size();
   const int64_t x = 16 / dtype_size;
-  const int64_t num_blocks = cache_args_.num_blocks();
   const std::vector<int64_t> key_cache_shape = {
       num_blocks, n_local_kv_heads, head_dim / x, block_size, x};
   const std::vector<int64_t> value_cache_shape = {
@@ -218,8 +211,8 @@ bool Engine::init_kv_cache() {
     }
   }
 
-  block_manager_ = std::make_unique<BlockManager>(cache_args_.num_blocks(),
-                                                  cache_args_.block_size());
+  block_manager_ = std::make_unique<BlockManager>(num_blocks,
+                                                  block_size);
   return true;
 }
 
@@ -232,7 +225,7 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   InputParameters input_params;
   SamplingParameters sampling_params;
   Utils::prepare_inputs(batch,
-                        cache_args_.block_size(),
+                        FLAGS_block_size,
                         &input_token_ids,
                         &input_positions,
                         &seq_indices,

@@ -6,7 +6,6 @@
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 
 #include "memory/block_manager.h"
-#include "memory/cache_args.h"
 #include "models/input_parameters.h"
 #include "request/request.h"
 #include "tokenizer/tokenizer.h"
@@ -53,8 +52,6 @@ class Engine {
 
   const ModelArgs& model_args() const { return args_; }
 
-  const CacheArgs& cache_args() const { return cache_args_; }
-
  private:
   bool init_model(const std::string& model_weights_path);
 
@@ -77,9 +74,6 @@ class Engine {
 
   // tokenizer
   std::unique_ptr<Tokenizer> tokenizer_;
-
-  // cache args
-  CacheArgs cache_args_;
 
   // block manager
   std::unique_ptr<BlockManager> block_manager_;

@@ -6,7 +6,6 @@ cc_library(
     memory
   HDRS 
     memory.h
-    cache_args.h
     kv_cache.h
     block_allocator.h
     block_manager.h
