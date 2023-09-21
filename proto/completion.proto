@@ -1,10 +1,5 @@
 syntax = "proto3";
 
-// well know type by google, gRPC gateway uses HTTP annotation.
-import "google/api/annotations.proto";
-import "google/api/field_behavior.proto";
-import "protoc-gen-openapiv2/options/annotations.proto";
-
 option go_package = "github.com/vectorch-ai/scalellm;scalellm";
 package llm;
 
@@ -31,10 +26,10 @@ enum Priority {
 
 message CompletionRequest {
   // ID of the model to use. (required)
-  string model = 1 [(google.api.field_behavior) = REQUIRED];
+  string model = 1;
 
   // the prompt to generate completions for. (required)
-  string prompt = 2 [(google.api.field_behavior) = REQUIRED];
+  string prompt = 2;
 
   // TODO: the suffix that comes after a completion of inserted text. default = null
   // string suffix = 3;
@@ -142,10 +137,10 @@ message ChatMessage {
 
 message ChatRequest {
   // unique id for the completion request
-  string model = 1 [(google.api.field_behavior) = REQUIRED];
+  string model = 1;
 
   // A list of messages comprising the conversation so far.
-  repeated ChatMessage messages = 2 [(google.api.field_behavior) = REQUIRED];
+  repeated ChatMessage messages = 2;
 
   // TODO: a list of functions the model may generate JSON inputs for.
   // repeated Function function = 3;
@@ -235,23 +230,7 @@ message ChatResponse {
 
 service Completion {
   // legacy API
-  rpc Complete(CompletionRequest) returns (stream CompletionResponse) {
-    option (google.api.http) = {
-      post: "/v1/completions"
-      body: "*"
-    };
-    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      produces: "text/event-stream"
-    };
-  }
+  rpc Complete(CompletionRequest) returns (stream CompletionResponse) {}
 
-  rpc Chat(ChatRequest) returns (stream ChatResponse) {
-    option (google.api.http) = {
-      post: "/v1/chat/completions"
-      body: "*"
-    };
-    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      produces: "text/event-stream"
-    };
-  }
+  rpc Chat(ChatRequest) returns (stream ChatResponse) {}
 }
