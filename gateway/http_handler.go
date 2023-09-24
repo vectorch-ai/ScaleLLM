@@ -6,16 +6,17 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/golang/glog"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/utilities"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	// importing generated stubs
 	scalellm "gateway/proto"
+
 	gw "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
@@ -85,7 +86,6 @@ func DefaultRoutingErrorHandler(ctx context.Context, marshaler gw.Marshaler, w h
 func DefaultErrorHandler(ctx context.Context, marshaler gw.Marshaler, w http.ResponseWriter, r *http.Request, err error) {
 	// return Internal when Marshal failed
 	const fallback = `{"code": 13, "message": "failed to marshal error message"}`
-
 	s := status.Convert(err)
 	pb := s.Proto()
 
@@ -98,10 +98,10 @@ func DefaultErrorHandler(ctx context.Context, marshaler gw.Marshaler, w http.Res
 
 	buf, merr := marshaler.Marshal(pb)
 	if merr != nil {
-		grpclog.Infof("Failed to marshal error message %q: %v", s, merr)
+		glog.Errorf("Failed to marshal error message %q: %v", s, merr)
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := io.WriteString(w, fallback); err != nil {
-			grpclog.Infof("Failed to write response: %v", err)
+			glog.Errorf("Failed to write response: %v", err)
 		}
 		return
 	}
@@ -109,7 +109,7 @@ func DefaultErrorHandler(ctx context.Context, marshaler gw.Marshaler, w http.Res
 	st := gw.HTTPStatusFromCode(s.Code())
 	w.WriteHeader(st)
 	if _, err := w.Write(buf); err != nil {
-		grpclog.Infof("Failed to write response: %v", err)
+		glog.Errorf("Failed to write response: %v", err)
 	}
 }
 
@@ -160,7 +160,6 @@ func SendChatRequest(ctx context.Context, marshaler gw.Marshaler, client scalell
 	}
 	metadata.HeaderMD = header
 	return stream, metadata, nil
-
 }
 
 func RegisterCompletionHandlerClient(ctx context.Context, handler *HttpHandler, client scalellm.CompletionClient) error {
@@ -197,14 +196,14 @@ func RegisterCompletionHandlerFromEndpoint(ctx context.Context, httpServer *Http
 	defer func() {
 		if err != nil {
 			if cerr := conn.Close(); cerr != nil {
-				grpclog.Infof("Failed to close conn to %s: %v", endpoint, cerr)
+				glog.Errorf("Failed to close conn to %s: %v", endpoint, cerr)
 			}
 			return
 		}
 		go func() {
 			<-ctx.Done()
 			if cerr := conn.Close(); cerr != nil {
-				grpclog.Infof("Failed to close conn to %s: %v", endpoint, cerr)
+				glog.Errorf("Failed to close conn to %s: %v", endpoint, cerr)
 			}
 		}()
 	}()

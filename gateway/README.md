@@ -59,8 +59,6 @@ $ go install \
 
 This will place four binaries in your `$GOBIN`;
 
-- `protoc-gen-grpc-gateway`
-- `protoc-gen-openapiv2`
 - `protoc-gen-go`
 - `protoc-gen-go-grpc`
 
@@ -76,5 +74,3 @@ this will generate the following files:
 
 - `./proto/completion.pb.go`
 - `./proto/completion_grpc.pb.go`
-- `./proto/completion.pb.gw.go`
-- `./openapiv2/completion.swagger.json`

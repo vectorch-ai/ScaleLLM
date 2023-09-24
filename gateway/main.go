@@ -30,6 +30,7 @@ func run() error {
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	err := RegisterCompletionHandlerFromEndpoint(ctx, handler, *grpcServerEndpoint, opts)
 	if err != nil {
+		glog.Error("Failed to register handler from endpoint ", err)
 		return err
 	}
 

@@ -4,10 +4,10 @@
 cd "$(dirname "$0")"
 
 # remove old generated code
-rm -rf proto openapiv2
+rm -rf proto
 
 # create proto directory if not exists
-mkdir -p proto openapiv2
+mkdir -p proto
 
 # generate gRPC and gateway code
 protoc -I ../proto \
