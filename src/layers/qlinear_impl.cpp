@@ -265,13 +265,6 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
     scales_.copy_(scales);
     scales_is_loaded_ = true;
   }
-  const auto g_idx = state_dict.get_tensor("g_idx");
-  if (g_idx.defined()) {
-    CHECK_EQ(g_idx_.sizes(), g_idx.sizes())
-        << "g_idx size mismatch for " << name();
-    g_idx_.copy_(g_idx);
-    g_idx_is_loaded_ = true;
-  }
 }
 
 bool ColumnParallelQuantLinearImpl::load_weights(
@@ -338,14 +331,6 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
       // make a copy in case the checkpoint is deleted
       scales_list_[i] = scales.clone();
     }
-    tensor_name = std::string(prefixes[i]) + "g_idx";
-    const auto g_idx = state_dict.get_tensor(tensor_name);
-    if (g_idx.defined() && !g_idx_is_loaded_) {
-      CHECK_EQ(g_idx_.sizes(), g_idx.sizes())
-          << "g_idx size mismatch for " << name();
-      g_idx_.copy_(g_idx);
-      g_idx_is_loaded_ = true;
-    }
   }
 
   // check if all weights are ready to be loaded
@@ -366,7 +351,6 @@ void ColumnParallelQuantLinearImpl::verify_loaded_weights(
       << "qweight is not loaded for " << prefix + ".qweight";
   CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
-  CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << prefix + ".g_idx";
 }
 
 RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
@@ -486,13 +470,6 @@ void RowParallelQuantLinearImpl::load_state_dict(const StateDict& state_dict) {
     scales_.copy_(scales);
     scales_is_loaded_ = true;
   }
-  const auto g_idx = state_dict.get_tensor("g_idx");
-  if (g_idx.defined()) {
-    CHECK_EQ(g_idx_.sizes(), g_idx.sizes())
-        << "g_idx size mismatch for " << name();
-    g_idx_.copy_(g_idx);
-    g_idx_is_loaded_ = true;
-  }
 }
 
 void RowParallelQuantLinearImpl::verify_loaded_weights(
@@ -501,7 +478,6 @@ void RowParallelQuantLinearImpl::verify_loaded_weights(
       << "qweight is not loaded for " << prefix + ".qweight";
   CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
-  CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << prefix + ".g_idx";
 }
 
 }  // namespace llm

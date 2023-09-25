@@ -87,7 +87,6 @@ class ColumnParallelQuantLinearImpl : public ParallelLinearImpl {
   bool qweight_is_loaded_ = false;
   bool qzeros_is_loaded_ = false;
   bool scales_is_loaded_ = false;
-  bool g_idx_is_loaded_ = false;
   std::vector<torch::Tensor> qweight_list_;
   std::vector<torch::Tensor> qzeros_list_;
   std::vector<torch::Tensor> scales_list_;
@@ -158,7 +157,6 @@ class RowParallelQuantLinearImpl : public ParallelLinearImpl {
   bool qweight_is_loaded_ = false;
   bool qzeros_is_loaded_ = false;
   bool scales_is_loaded_ = false;
-  bool g_idx_is_loaded_ = false;
 
   // parallel args
   ParallelArgs parallel_args_;
