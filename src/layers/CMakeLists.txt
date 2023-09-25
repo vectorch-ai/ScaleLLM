@@ -43,4 +43,5 @@ cc_test(
     GTest::gtest_main
   DATA 
     data/gptq_small.safetensors
+    data/gptq.safetensors
 )
