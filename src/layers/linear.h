@@ -17,7 +17,7 @@ class ParallelLinearImpl : public torch::nn::Module {
 
   virtual void load_state_dict(const StateDict& state_dict) = 0;
 
-  virtual void verify_loaded_weights() const = 0;
+  virtual void verify_loaded_weights(const std::string& prefix = "") const = 0;
 
   virtual void load_state_dict(
       const StateDict& /*state_dict*/,

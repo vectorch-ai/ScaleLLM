@@ -30,8 +30,8 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
                        const std::vector<std::string_view>& prefixes) override;
 
   // whether the weight is loaded
-  void verify_loaded_weights() const override {
-    CHECK(is_loaded_) << "weight is not loaded for " << name();
+  void verify_loaded_weights(const std::string& prefix) const override {
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -92,8 +92,8 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   }
 
   // whether the weight is loaded
-  void verify_loaded_weights() const override {
-    CHECK(is_loaded_) << "weight is not loaded for " << name();
+  void verify_loaded_weights(const std::string& prefix = "") const override {
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
   }
 
   void pretty_print(std::ostream& stream) const override {

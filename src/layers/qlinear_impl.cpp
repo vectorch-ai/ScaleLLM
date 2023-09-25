@@ -360,11 +360,13 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
   }
 }
 
-void ColumnParallelQuantLinearImpl::verify_loaded_weights() const {
-  CHECK(qweight_is_loaded_) << "qweight is not loaded for " << name();
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << name();
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << name();
-  CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << name();
+void ColumnParallelQuantLinearImpl::verify_loaded_weights(
+    const std::string& prefix) const {
+  CHECK(qweight_is_loaded_)
+      << "qweight is not loaded for " << prefix + ".qweight";
+  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
+  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+  CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << prefix + ".g_idx";
 }
 
 RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
@@ -493,11 +495,13 @@ void RowParallelQuantLinearImpl::load_state_dict(const StateDict& state_dict) {
   }
 }
 
-void RowParallelQuantLinearImpl::verify_loaded_weights() const {
-  CHECK(qweight_is_loaded_) << "qweight is not loaded for " << name();
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << name();
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << name();
-  CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << name();
+void RowParallelQuantLinearImpl::verify_loaded_weights(
+    const std::string& prefix) const {
+  CHECK(qweight_is_loaded_)
+      << "qweight is not loaded for " << prefix + ".qweight";
+  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
+  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+  CHECK(g_idx_is_loaded_) << "g_idx is not loaded for " << prefix + ".g_idx";
 }
 
 }  // namespace llm

@@ -59,7 +59,7 @@ class ColumnParallelQuantLinearImpl : public ParallelLinearImpl {
                        const std::vector<std::string_view>& prefixes) override;
 
   // verify if the weight is loaded correctly
-  void verify_loaded_weights() const override;
+  void verify_loaded_weights(const std::string& prefix = "") const override;
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()
@@ -133,7 +133,7 @@ class RowParallelQuantLinearImpl : public ParallelLinearImpl {
   }
 
   // whether the weight is loaded
-  void verify_loaded_weights() const override;
+  void verify_loaded_weights(const std::string& prefix = "") const override;
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()

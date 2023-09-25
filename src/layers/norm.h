@@ -39,8 +39,8 @@ class RMSNormImpl : public torch::nn::Module {
   }
 
   // whether the weight is loaded
-  void verify_loaded_weights() const {
-    CHECK(is_loaded_) << "weight is not loaded for " << name();
+  void verify_loaded_weights(const std::string& prefix = "") const {
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
   }
 
   void pretty_print(std::ostream& stream) const override {

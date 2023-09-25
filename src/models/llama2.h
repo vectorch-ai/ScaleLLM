@@ -60,9 +60,9 @@ class FeedForwardImpl : public torch::nn::Module {
     w2_->load_state_dict(state_dict.select("w2."));
   }
 
-  void verify_loaded_weights() const {
-    w1_w3_->verify_loaded_weights();
-    w2_->verify_loaded_weights();
+  void verify_loaded_weights(const std::string& prefix) const {
+    w1_w3_->verify_loaded_weights(prefix + "[w1,w3].");
+    w2_->verify_loaded_weights(prefix + "w2.");
   }
 
  private:
@@ -171,9 +171,9 @@ class LlamaAttentionImpl : public torch::nn::Module {
     wo_->load_state_dict(state_dict.select("wo."));
   }
 
-  void verify_loaded_weights() const {
-    wqkv_->verify_loaded_weights();
-    wo_->verify_loaded_weights();
+  void verify_loaded_weights(const std::string& prefix) const {
+    wqkv_->verify_loaded_weights(prefix + "[wq,wk,wv].");
+    wo_->verify_loaded_weights(prefix + "wo.");
   }
 
  private:
@@ -213,9 +213,11 @@ class TransformerBlockImpl : public torch::nn::Module {
     // register submodules
     attention_ = register_module(
         "attention",
-        LlamaAttention(layer_id, args, quant_args, parallel_args, dtype, device));
+        LlamaAttention(
+            layer_id, args, quant_args, parallel_args, dtype, device));
     feed_forward_ = register_module(
-        "feed_forward", FeedForward(args, quant_args, parallel_args, dtype, device));
+        "feed_forward",
+        FeedForward(args, quant_args, parallel_args, dtype, device));
     attention_norm_ = register_module(
         "attention_norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
     ffn_norm_ = register_module(
@@ -240,11 +242,11 @@ class TransformerBlockImpl : public torch::nn::Module {
     ffn_norm_->load_state_dict(state_dict.select("ffn_norm."));
   }
 
-  void verify_loaded_weights() const {
-    attention_->verify_loaded_weights();
-    feed_forward_->verify_loaded_weights();
-    attention_norm_->verify_loaded_weights();
-    ffn_norm_->verify_loaded_weights();
+  void verify_loaded_weights(const std::string& prefix) const {
+    attention_->verify_loaded_weights(prefix + "attention.");
+    feed_forward_->verify_loaded_weights(prefix + "feed_forward.");
+    attention_norm_->verify_loaded_weights(prefix + "attention_norm.");
+    ffn_norm_->verify_loaded_weights(prefix + "ffn_norm.");
   }
 
  private:
@@ -279,7 +281,8 @@ class ModelImpl : public torch::nn::Module {
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = TransformerBlock(i, args, quant_args, parallel_args, dtype, device);
+      auto block =
+          TransformerBlock(i, args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -324,13 +327,12 @@ class ModelImpl : public torch::nn::Module {
   }
 
   void verify_loaded_weights() const {
-    tok_embeddings_->verify_loaded_weights();
-    norm_->verify_loaded_weights();
-    output_->verify_loaded_weights();
-    // check if all layers are loaded
-    for (const auto& layer : layers_) {
-      layer->verify_loaded_weights();
+    tok_embeddings_->verify_loaded_weights("tok_embeddings.");
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->verify_loaded_weights("layers." + std::to_string(i) + ".");
     }
+    norm_->verify_loaded_weights("norm.");
+    output_->verify_loaded_weights("output.");
   }
 
  private:

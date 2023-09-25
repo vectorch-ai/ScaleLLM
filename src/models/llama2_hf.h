@@ -37,14 +37,15 @@ class MLPImpl : public torch::nn::Module {
                                              parallel_args,
                                              dtype,
                                              device));
-    down_proj_ = register_module("down_proj",
-                                 RowParallelLinear(hidden_dim,
-                                                   dim,
-                                                   /*input_is_parallelized=*/true,
-                                                   quant_args,
-                                                   parallel_args,
-                                                   dtype,
-                                                   device));
+    down_proj_ =
+        register_module("down_proj",
+                        RowParallelLinear(hidden_dim,
+                                          dim,
+                                          /*input_is_parallelized=*/true,
+                                          quant_args,
+                                          parallel_args,
+                                          dtype,
+                                          device));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -62,9 +63,9 @@ class MLPImpl : public torch::nn::Module {
     down_proj_->load_state_dict(state_dict.select("down_proj."));
   }
 
-  void verify_loaded_weights() const {
-    gate_up_proj_->verify_loaded_weights();
-    down_proj_->verify_loaded_weights();
+  void verify_loaded_weights(const std::string& prefix) const {
+    gate_up_proj_->verify_loaded_weights(prefix + "[gate_proj,up_proj].");
+    down_proj_->verify_loaded_weights(prefix + "down_proj.");
   }
 
  private:
@@ -174,9 +175,9 @@ class LlamaAttentionImpl : public torch::nn::Module {
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
-  void verify_loaded_weights() const {
-    qkv_proj_->verify_loaded_weights();
-    o_proj_->verify_loaded_weights();
+  void verify_loaded_weights(const std::string& prefix) const {
+    qkv_proj_->verify_loaded_weights(prefix + "[q_proj,k_proj,v_proj].");
+    o_proj_->verify_loaded_weights(prefix + "o_proj.");
   }
 
  private:
@@ -246,11 +247,12 @@ class DecoderLayerImpl : public torch::nn::Module {
         state_dict.select("post_attention_layernorm."));
   }
 
-  void verify_loaded_weights() const {
-    self_attn_->verify_loaded_weights();
-    mlp_->verify_loaded_weights();
-    input_layernorm_->verify_loaded_weights();
-    post_attention_layernorm_->verify_loaded_weights();
+  void verify_loaded_weights(const std::string& prefix) const {
+    self_attn_->verify_loaded_weights(prefix + "self_attn.");
+    mlp_->verify_loaded_weights(prefix + "mlp.");
+    input_layernorm_->verify_loaded_weights(prefix + "input_layernorm.");
+    post_attention_layernorm_->verify_loaded_weights(
+        prefix + "post_attention_layernorm.");
   }
 
  private:
@@ -293,14 +295,13 @@ class ModelImpl : public torch::nn::Module {
     norm_ = register_module(
         "norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
 
-    lm_head_ = register_module(
-        "lm_head",
-        ColumnParallelLinear(args.dim(),
-                             args.vocab_size(),
-                             /*gather_output=*/true,
-                             parallel_args,
-                             dtype,
-                             device));
+    lm_head_ = register_module("lm_head",
+                               ColumnParallelLinear(args.dim(),
+                                                    args.vocab_size(),
+                                                    /*gather_output=*/true,
+                                                    parallel_args,
+                                                    dtype,
+                                                    device));
   }
 
   // tokens: [num_tokens]
@@ -333,13 +334,13 @@ class ModelImpl : public torch::nn::Module {
   }
 
   void verify_loaded_weights() const {
-    embed_tokens_->verify_loaded_weights();
-    norm_->verify_loaded_weights();
-    lm_head_->verify_loaded_weights();
-    // check if all layers are loaded
-    for (const auto& layer : layers_) {
-      layer->verify_loaded_weights();
+    embed_tokens_->verify_loaded_weights("model.embed_tokens.");
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->verify_loaded_weights("model.layers." + std::to_string(i) +
+                                        ".");
     }
+    norm_->verify_loaded_weights("model.norm.");
+    lm_head_->verify_loaded_weights("lm_head.");
   }
 
  private:
