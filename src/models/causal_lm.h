@@ -4,11 +4,10 @@
 
 #include <vector>
 
+#include "args.h"
 #include "input_parameters.h"
 #include "memory/kv_cache.h"
-#include "model_args.h"
 #include "model_loader/state_dict.h"
-#include "parallel_args.h"
 
 namespace llm {
 
@@ -31,6 +30,7 @@ class CausalLM : public torch::nn::Module {
 
   // factory method to create a causal language model
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
+                                          const QuantizationArgs& quant_args,
                                           const ParallelArgs& parallel_args,
                                           const torch::ScalarType& dtype,
                                           const torch::Device& device);

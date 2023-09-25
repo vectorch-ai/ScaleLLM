@@ -6,7 +6,7 @@
 #include <torch/csrc/distributed/c10d/Types.hpp>
 #include <vector>
 
-#include "models/parallel_args.h"
+#include "models/args.h"
 
 namespace llm {
 

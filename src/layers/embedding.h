@@ -5,7 +5,7 @@
 
 #include "model_loader/state_dict.h"
 #include "model_parallel.h"
-#include "models/parallel_args.h"
+#include "models/args.h"
 
 namespace llm {
 
@@ -132,7 +132,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
   }
 
   // whether the weight is loaded
-  void verify_loaded_weights() const { 
+  void verify_loaded_weights() const {
     CHECK(is_loaded_) << "weight is not loaded for " << name();
   }
 

@@ -6,7 +6,7 @@
 
 #include "model_loader/state_dict.h"
 #include "model_parallel.h"
-#include "models/parallel_args.h"
+#include "models/args.h"
 
 extern void vecquant2matmul_cuda(torch::Tensor vec,
                                  torch::Tensor mat,
@@ -130,15 +130,19 @@ ColumnParallelQuantLinearImpl::ColumnParallelQuantLinearImpl(
 
 torch::Tensor ColumnParallelQuantLinearImpl::forward(
     torch::Tensor input) const {
-  auto output =
-      torch::empty({input.size(0), out_features_},
-                   torch::dtype(torch::kFloat32).device(input.device()));
+  auto input_float = input.to(torch::kFloat32);
+  auto scales_float = scales_.to(torch::kFloat32);
+  auto output_float =
+      torch::empty({input_float.size(0), out_features_}, input_float.options());
+
   vec_quant_matmul_cuda(
-      input, qweight_, output, scales_, qzeros_, g_idx_, bits_);
+      input_float, qweight_, output_float, scales_float, qzeros_, g_idx_, bits_);
+
+  auto output = output_float.to(input);
   if (parallel_args_.world_size() > 1 && gather_output_) {
     output = gather_from_model_parallel_region(output, parallel_args_);
   }
-  return output.to(input);
+  return output;
 }
 
 // load the weight from the checkpoint
@@ -197,7 +201,7 @@ bool ColumnParallelQuantLinearImpl::load_weights(
     return false;
   }
 
-  auto merged_weight = torch::cat(weight_list, /*dim=*/0);
+  auto merged_weight = torch::cat(weight_list, /*dim=*/1);
   // release the memory for weight_list
   weight_list.clear();
   CHECK_EQ(weight.sizes(), merged_weight.sizes())
@@ -325,7 +329,7 @@ RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
       "scales",
       torch::empty(
           {round_up(in_features_per_partition, group_size), out_features},
-          torch::dtype(torch::kFloat16).device(device)),
+          torch::dtype(torch::kFloat32).device(device)),
       /*requires_grad=*/false);
 
   std::vector<int> g_idx_data;
@@ -341,15 +345,19 @@ torch::Tensor RowParallelQuantLinearImpl::forward(torch::Tensor input) const {
   if (!input_is_parallelized_) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
   }
-  auto output =
-      torch::empty({input.size(0), out_features_},
-                   torch::dtype(torch::kFloat32).device(input.device()));
+
+  auto input_float = input.to(torch::kFloat32);
+  auto scales_float = scales_.to(torch::kFloat32);
+  auto output_float =
+      torch::empty({input_float.size(0), out_features_}, input_float.options());
   vec_quant_matmul_cuda(
-      input, qweight_, output, scales_, qzeros_, g_idx_, bits_);
+      input_float, qweight_, output_float, scales_float, qzeros_, g_idx_, bits_);
+
+  auto output = output_float.to(input);
   if (parallel_args_.world_size() > 1) {
     output = reduce_from_model_parallel_region(output, parallel_args_);
   }
-  return output.to(input);
+  return output;
 }
 
 // load the weight from the checkpoint

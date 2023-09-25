@@ -10,24 +10,24 @@
 
 #include "engine/engine.h"
 #include "model_loader/model_downloader.h"
+#include "models/args.h"
 #include "models/input_parameters.h"
-#include "models/model_args.h"
 #include "request/sampling_parameter.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 
 DEFINE_string(model_name_or_path,
-              "meta-llama/Llama-2-7b-hf",
+              "TheBloke/Llama-2-7B-GPTQ",
               "hf model name or path to the model file.");
 DEFINE_string(tokenizer_path,
               "/home/michael/code/llama/tokenizer.model",
               "Path to the tokenizer file.");
 
-DEFINE_string(device, "cuda:0,cuda:1", "Device to run the model on.");
+DEFINE_string(device, "cuda:0", "Device to run the model on.");
 
-DEFINE_double(temperature, 0.6, "Temperature for sampling.");
+DEFINE_double(temperature, 0, "Temperature for sampling.");
 
-DEFINE_double(top_p, 0.9, "Top p for sampling.");
+DEFINE_double(top_p, 1.0, "Top p for sampling.");
 DEFINE_int64(top_k, 0, "Top k for sampling.");
 
 DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");

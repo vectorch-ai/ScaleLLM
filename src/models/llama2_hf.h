@@ -8,9 +8,8 @@
 #include "layers/norm.h"
 #include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
+#include "models/args.h"
 #include "models/input_parameters.h"
-#include "models/model_args.h"
-#include "models/parallel_args.h"
 
 // llama2 model based on huggingface's llama2 model weights
 namespace llm::hf::llama2 {
@@ -18,6 +17,7 @@ namespace llm::hf::llama2 {
 class MLPImpl : public torch::nn::Module {
  public:
   MLPImpl(const ModelArgs& args,
+          const QuantizationArgs& quant_args,
           const ParallelArgs& parallel_args,
           const torch::ScalarType& dtype,
           const torch::Device& device) {
@@ -33,6 +33,7 @@ class MLPImpl : public torch::nn::Module {
                         ColumnParallelLinear(dim,
                                              hidden_dim * 2,
                                              /*gather_output=*/false,
+                                             quant_args,
                                              parallel_args,
                                              dtype,
                                              device));
@@ -40,6 +41,7 @@ class MLPImpl : public torch::nn::Module {
                                  RowParallelLinear(hidden_dim,
                                                    dim,
                                                    /*input_is_parallel=*/true,
+                                                   quant_args,
                                                    parallel_args,
                                                    dtype,
                                                    device));
@@ -77,6 +79,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
  public:
   LlamaAttentionImpl(uint32_t layer_id,
                      const ModelArgs& args,
+                     const QuantizationArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      const torch::ScalarType& dtype,
                      const torch::Device& device)
@@ -100,6 +103,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
         ColumnParallelLinear(dim,
                              (n_heads + 2 * n_kv_heads) * head_dim_,
                              /*gather_output=*/false,
+                             quant_args,
                              parallel_args,
                              dtype,
                              device));
@@ -108,6 +112,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
                               RowParallelLinear(n_heads * head_dim_,
                                                 dim,
                                                 /*input_is_parallel=*/true,
+                                                quant_args,
                                                 parallel_args,
                                                 dtype,
                                                 device));
@@ -203,6 +208,7 @@ class DecoderLayerImpl : public torch::nn::Module {
  public:
   DecoderLayerImpl(uint32_t layer_id,
                    const ModelArgs& args,
+                   const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    const torch::ScalarType& dtype,
                    const torch::Device& device)
@@ -210,8 +216,10 @@ class DecoderLayerImpl : public torch::nn::Module {
     // register submodules
     self_attn_ = register_module(
         "self_attn",
-        LlamaAttention(layer_id, args, parallel_args, dtype, device));
-    mlp_ = register_module("mlp", MLP(args, parallel_args, dtype, device));
+        LlamaAttention(
+            layer_id, args, quant_args, parallel_args, dtype, device));
+    mlp_ = register_module("mlp",
+                           MLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
         "input_layernorm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
     post_attention_layernorm_ =
@@ -264,6 +272,7 @@ TORCH_MODULE(DecoderLayer);
 class ModelImpl : public torch::nn::Module {
  public:
   ModelImpl(const ModelArgs& args,
+            const QuantizationArgs& quant_args,
             const ParallelArgs& parallel_args,
             const torch::ScalarType& dtype,
             const torch::Device& device)
@@ -276,19 +285,22 @@ class ModelImpl : public torch::nn::Module {
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = DecoderLayer(i, args, parallel_args, dtype, device);
+      auto block =
+          DecoderLayer(i, args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
     norm_ = register_module(
         "norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
-    lm_head_ = register_module("lm_head",
-                               ColumnParallelLinear(args.dim(),
-                                                    args.vocab_size(),
-                                                    /*gather_output=*/true,
-                                                    parallel_args,
-                                                    dtype,
-                                                    device));
+
+    lm_head_ = register_module(
+        "lm_head",
+        ColumnParallelLinear(args.dim(),
+                             args.vocab_size(),
+                             /*gather_output=*/true,
+                             parallel_args,
+                             dtype,
+                             device));
   }
 
   // tokens: [num_tokens]

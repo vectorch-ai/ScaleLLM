@@ -3,7 +3,7 @@
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"
-#include "models/parallel_args.h"
+#include "models/args.h"
 
 namespace llm {
 // an interface for parallel linear layer.
@@ -35,6 +35,14 @@ class ColumnParallelLinear
   ColumnParallelLinear(int64_t in_features,
                        int64_t out_features,
                        bool gather_output,
+                       const QuantizationArgs& quant_args,
+                       const ParallelArgs& parallel_args,
+                       const torch::ScalarType& dtype,
+                       const torch::Device& device);
+
+  ColumnParallelLinear(int64_t in_features,
+                       int64_t out_features,
+                       bool gather_output,
                        const ParallelArgs& parallel_args,
                        const torch::ScalarType& dtype,
                        const torch::Device& device);
@@ -50,6 +58,7 @@ class RowParallelLinear : public torch::nn::ModuleHolder<ParallelLinearImpl> {
   RowParallelLinear(int64_t in_features,
                     int64_t out_features,
                     bool input_is_parallelized,
+                    const QuantizationArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     const torch::ScalarType& dtype,
                     const torch::Device& device);

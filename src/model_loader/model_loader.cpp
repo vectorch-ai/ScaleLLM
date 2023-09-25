@@ -8,9 +8,10 @@
 #include <vector>
 
 #include "model_loader/state_dict.h"
-#include "models/model_args.h"
+#include "models/args.h"
 
 namespace llm {
+using json = nlohmann::json;
 
 StateDictIterator::StateDictIterator(
     const std::vector<std::string>& model_weights_files,
@@ -75,7 +76,6 @@ PTModelLoader::PTModelLoader(const std::string& model_weights_path) {
 }
 
 bool PTModelLoader::load_model_args(const std::string& args_file_path) {
-  using json = nlohmann::json;
   std::ifstream ifs(args_file_path);
   if (!ifs.is_open()) {
     LOG(ERROR) << "failed to open model args file: " << args_file_path;
@@ -131,6 +131,8 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
     args_.hidden_dim() = hidden_dim;
   }
 
+  // TODO: load quantization args
+
   // TODO: add more args
   return true;
 }
@@ -165,7 +167,6 @@ HFModelLoader::HFModelLoader(const std::string& model_weights_path) {
 }
 
 bool HFModelLoader::load_model_args(const std::string& args_file_path) {
-  using json = nlohmann::json;
   std::ifstream ifs(args_file_path);
   if (!ifs.is_open()) {
     LOG(ERROR) << "failed to open model args file: " << args_file_path;
@@ -222,6 +223,21 @@ bool HFModelLoader::load_model_args(const std::string& args_file_path) {
     hidden_dim *= ffn_dim_multiplier;
     hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
     args_.hidden_dim() = hidden_dim;
+  }
+
+  if (data.contains("quantization_config")) {
+    const auto quantization_config = data["quantization_config"];
+    if (quantization_config.contains("quant_method")) {
+      quant_args_.quant_method() =
+          quantization_config["quant_method"].get<std::string>();
+    }
+    if (quantization_config.contains("bits")) {
+      quant_args_.bits() = quantization_config["bits"].get<int64_t>();
+    }
+    if (quantization_config.contains("group_size")) {
+      quant_args_.group_size() =
+          quantization_config["group_size"].get<int64_t>();
+    }
   }
 
   // TODO: add more args

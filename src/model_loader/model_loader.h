@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "model_loader/state_dict.h"
-#include "models/model_args.h"
+#include "models/args.h"
 
 namespace llm {
 
@@ -64,12 +64,15 @@ class ModelLoader {
   virtual ~ModelLoader() = default;
 
   virtual const ModelArgs& model_args() const = 0;
+  virtual const QuantizationArgs& quant_args() const = 0;
+
   virtual size_t weights_files_count() const = 0;
   virtual StateDictIterator begin() const = 0;
   virtual StateDictIterator end() const = 0;
 
   // create a model loader from the given path
-  static std::unique_ptr<ModelLoader> create(const std::string& model_weights_path);
+  static std::unique_ptr<ModelLoader> create(
+      const std::string& model_weights_path);
 };
 
 // A model loader for shared pytorch model files.
@@ -78,6 +81,8 @@ class PTModelLoader : public ModelLoader {
   PTModelLoader(const std::string& model_weights_path);
 
   const ModelArgs& model_args() const override { return args_; }
+
+  const QuantizationArgs& quant_args() const override { return quant_args_; }
 
   size_t weights_files_count() const override {
     return model_weights_files_.size();
@@ -96,6 +101,10 @@ class PTModelLoader : public ModelLoader {
 
   // loaded model args
   ModelArgs args_;
+
+  // quantization args
+  QuantizationArgs quant_args_;
+  
   // sorted model weights files
   std::vector<std::string> model_weights_files_;
 };
@@ -106,6 +115,8 @@ class HFModelLoader : public ModelLoader {
   HFModelLoader(const std::string& model_weights_path);
 
   const ModelArgs& model_args() const override { return args_; }
+
+  const QuantizationArgs& quant_args() const override { return quant_args_; }
 
   size_t weights_files_count() const override {
     return model_weights_files_.size();
@@ -124,6 +135,10 @@ class HFModelLoader : public ModelLoader {
 
   // loaded model args
   ModelArgs args_;
+
+  // quantization args
+  QuantizationArgs quant_args_;
+
   // sorted model weights files
   std::vector<std::string> model_weights_files_;
   // is pickle or safetensors

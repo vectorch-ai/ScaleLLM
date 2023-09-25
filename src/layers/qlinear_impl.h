@@ -5,7 +5,7 @@
 
 #include "linear.h"
 #include "model_loader/state_dict.h"
-#include "models/parallel_args.h"
+#include "models/args.h"
 
 namespace llm {
 

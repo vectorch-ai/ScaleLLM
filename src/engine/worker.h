@@ -8,9 +8,9 @@
 
 #include "common/executor.h"
 #include "model_loader/state_dict.h"
+#include "models/args.h"
 #include "models/causal_lm.h"
 #include "models/input_parameters.h"
-#include "models/parallel_args.h"
 
 namespace llm {
 
@@ -39,7 +39,7 @@ class Worker final {
   ~Worker() = default;
 
   // initialize model, cache manager. blocking call
-  bool init_model(const ModelArgs& args);
+  bool init_model(const ModelArgs& args, const QuantizationArgs& quant_args);
 
   // Load the model weights from state_dict. blocking call
   // can be called multiple times to reload the model with different parameters
@@ -59,7 +59,8 @@ class Worker final {
                                  const SamplingParameters& sampling_params);
 
   // initialize model, cache manager. async call
-  folly::SemiFuture<bool> init_model_async(const ModelArgs& args);
+  folly::SemiFuture<bool> init_model_async(const ModelArgs& args,
+                                           const QuantizationArgs& quant_args);
 
   // Load the model weights from state_dict. async call
   // the future returns a successfull status with no meaningful value

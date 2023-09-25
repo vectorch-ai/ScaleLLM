@@ -45,8 +45,7 @@ cc_library(
   NAME 
     model_args
   HDRS 
-    model_args.h
-    parallel_args.h
+    args.h
   SRCS
   DEPS
     :common

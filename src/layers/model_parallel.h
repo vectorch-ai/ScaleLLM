@@ -2,7 +2,7 @@
 
 #include <torch/torch.h>
 
-#include "models/parallel_args.h"
+#include "models/args.h"
 
 namespace llm {
 

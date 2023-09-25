@@ -24,10 +24,11 @@ Worker::Worker(const ParallelArgs& parallel_args,
                const torch::Device& device)
     : parallel_args_(parallel_args), dtype_(dtype), device_(device) {}
 
-bool Worker::init_model(const ModelArgs& args) {
+bool Worker::init_model(const ModelArgs& args,
+                        const QuantizationArgs& quant_args) {
   // initialize model
   args_ = args;
-  model_ = CausalLM::create(args, parallel_args_, dtype_, device_);
+  model_ = CausalLM::create(args, quant_args, parallel_args_, dtype_, device_);
   return true;
 }
 
@@ -111,11 +112,11 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
 }
 
 // initialize model, cache manager. async call
-folly::SemiFuture<bool> Worker::init_model_async(const ModelArgs& args) {
+folly::SemiFuture<bool> Worker::init_model_async(const ModelArgs& args, const QuantizationArgs& quant_args) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
-  executor_.schedule([this, &args, promise = std::move(promise)]() mutable {
-    const bool success = this->init_model(args);
+  executor_.schedule([this, &args, &quant_args, promise = std::move(promise)]() mutable {
+    const bool success = this->init_model(args, quant_args);
     promise.setValue(success);
   });
   return future;

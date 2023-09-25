@@ -7,7 +7,7 @@
 
 #include "model_loader/state_dict.h"
 #include "model_parallel.h"
-#include "models/parallel_args.h"
+#include "models/args.h"
 
 namespace llm {
 // Linear layer with column parallelism.

@@ -4,7 +4,7 @@
 
 #include "memory/memory.h"
 #include "model_loader/model_loader.h"
-#include "models/parallel_args.h"
+#include "models/args.h"
 #include "request/request.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 #include "utils.h"
@@ -17,9 +17,7 @@ DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
 DEFINE_int32(max_batch_size, 4, "Maximum batch size.");
 
 DEFINE_int32(block_size, 16, "slots per block, value must be [8, 16, 32]");
-DEFINE_int64(max_cache_size,
-             5 * GB,
-             "max cache size in bytes, default 5GB");
+DEFINE_int64(max_cache_size, 5 * GB, "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
               0.9,
               "maximum memory utilization allowed, default 0.9");
@@ -76,12 +74,14 @@ bool Engine::init_model(const std::string& model_weights_path) {
   // TODO: remove this two from model args
   args_.max_seq_len(FLAGS_max_seq_len).max_batch_size(FLAGS_max_batch_size);
 
+  const auto& quant_args = model_loader->quant_args();
+
   // init model for each worker in parallel
   // multiple workers, call async init
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->init_model_async(args_));
+    futures.push_back(worker->init_model_async(args_, quant_args));
   }
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();
@@ -133,8 +133,7 @@ bool Engine::init_kv_cache() {
                                       n_local_kv_heads * head_dim *
                                       args_.n_layers() * dtype_size;
   LOG(INFO) << "Block size in bytes: " << block_size_in_bytes
-            << ", block_size: " << block_size
-            << ", head_dim: " << head_dim
+            << ", block_size: " << block_size << ", head_dim: " << head_dim
             << ", n_local_kv_heads: " << n_local_kv_heads
             << ", n_layers: " << args_.n_layers()
             << ", dtype_size: " << dtype_size;
@@ -146,8 +145,7 @@ bool Engine::init_kv_cache() {
     // use max memory cache size for CPU
     LOG(INFO) << "Initializing CPU cache with max cache size: "
               << FLAGS_max_cache_size;
-    num_blocks =
-        FLAGS_max_cache_size / block_size_in_bytes;
+    num_blocks = FLAGS_max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else if (device.is_cuda()) {
     torch::cuda::synchronize();
@@ -172,8 +170,7 @@ bool Engine::init_kv_cache() {
     CHECK(false) << "Only support CPU and CUDA device for now.";
   }
 
-  LOG(INFO) << "Initializing kv cache with num blocks: "
-            << num_blocks
+  LOG(INFO) << "Initializing kv cache with num blocks: " << num_blocks
             << ", block size: " << block_size;
 
   // init kv cache for each worker
@@ -200,8 +197,7 @@ bool Engine::init_kv_cache() {
     }
   }
 
-  block_manager_ = std::make_unique<BlockManager>(num_blocks,
-                                                  block_size);
+  block_manager_ = std::make_unique<BlockManager>(num_blocks, block_size);
   return true;
 }
 
