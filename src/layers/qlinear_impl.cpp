@@ -1,5 +1,6 @@
 #include "qlinear_impl.h"
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
@@ -7,6 +8,10 @@
 #include "model_loader/state_dict.h"
 #include "model_parallel.h"
 #include "models/args.h"
+
+DEFINE_string(qlinear_gptq_impl,
+              "",
+              "type of qlinear gptq impl, slow, cuda, or empty for auto");
 
 extern void vecquant2matmul_cuda(torch::Tensor vec,
                                  torch::Tensor mat,
@@ -45,6 +50,16 @@ void vec_quant_matmul_cuda(torch::Tensor vec,
                            torch::Tensor zeros,
                            torch::Tensor g_idx,
                            int64_t bits) {
+  if (FLAGS_qlinear_gptq_impl == "slow") {
+    auto weights = details::construct_weights(mat,
+                                              zeros,
+                                              scales,
+                                              g_idx,
+                                              /*bits=*/bits);
+    torch::matmul_out(/*out=*/mul, /*self=*/vec, /*other=*/weights);
+    return;
+  }
+
   switch (bits) {
     case 2:
       return vecquant2matmul_cuda(vec, mat, mul, scales, zeros, g_idx);
