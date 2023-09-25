@@ -60,15 +60,94 @@ void vec_quant_matmul_cuda(torch::Tensor vec,
   __builtin_unreachable();
 }
 
-int64_t num_ints(int64_t count, int64_t bits) {
-  return (bits == 2) ? 16 : (bits == 3) ? 11 : (bits == 4) ? 8 : 4;
-}
-
 int64_t round_up(int64_t num, int64_t multiple) {
   return ((num + multiple - 1) / multiple);
 }
 
 }  // namespace
+
+namespace details {
+// construct weights matrix for gptq from quantized weights
+// return the weights matrix [in_features, out_features] with following formula:
+// weights = scales * (qweights - qzeros)
+torch::Tensor construct_weights(
+    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
+    const torch::Tensor& g_idx,     // [in_features] IntTensor
+    int64_t bits) {
+  CHECK(bits == 2 || bits == 4 || bits == 8) << "Only 2,4,8 bits are supported";
+
+  std::vector<int32_t> bits_to_shift;
+  for (int32_t i = 0; i < 32; i += bits) {
+    bits_to_shift.push_back(i);
+  }
+  // [1, 32/bits]
+  auto shift_bits =
+      torch::tensor(bits_to_shift, qweights.options()).unsqueeze(0);
+  auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
+  // [n_groups, out_features/n_bits, n_ints]
+  auto zeros = torch::bitwise_right_shift(
+                   qzeros.unsqueeze(2).expand({-1, -1, 32 / bits}),
+                   shift_bits.unsqueeze(0))
+                   .to(dtype);
+  zeros.bitwise_and_((1 << bits) - 1);
+  zeros.add_(1);
+  // [n_groups, out_features]
+  zeros = zeros.reshape(scales.sizes());
+
+  auto weights = torch::bitwise_right_shift(
+                     qweights.unsqueeze(1).expand({-1, 32 / bits, -1}),
+                     shift_bits.unsqueeze(-1))
+                     .to(dtype);
+  weights.bitwise_and_((1 << bits) - 1);
+  weights = weights.reshape({-1, qweights.size(1)});
+  // auto gathered_scales = scales.gather(/*dim=*/0, /*index=*/g_idx);
+  // auto gathered_zeros = zeros.gather(/*dim=*/0, /*index=*/g_idx);
+  return scales.index({g_idx}) * (weights - zeros.index({g_idx}));
+}
+
+// construct weights matrix for gptq from quantized weights without using g_idx
+// slower than construct_weights with g_idx
+// return the weights matrix [in_features, out_features] with following formula:
+// weights = scales * (qweights - qzeros)
+torch::Tensor construct_weights(
+    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
+    int64_t bits) {
+  CHECK(bits == 2 || bits == 4 || bits == 8) << "Only 2,4,8 bits are supported";
+
+  std::vector<int32_t> bits_to_shift;
+  for (int32_t i = 0; i < 32; i += bits) {
+    bits_to_shift.push_back(i);
+  }
+
+  // [1, n_ints=32/bits]
+  auto shift_bits =
+      torch::tensor(bits_to_shift, qweights.options()).unsqueeze(0);
+  auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
+  // [n_groups, out_features/n_bits, n_ints]
+  auto zeros = torch::bitwise_right_shift(
+                   qzeros.unsqueeze(2).expand({-1, -1, 32 / bits}),
+                   shift_bits.unsqueeze(0))
+                   .to(dtype);
+  zeros.bitwise_and_((1 << bits) - 1);
+  zeros.add_(1);
+  // [n_groups, 1, out_features]
+  zeros = zeros.reshape({scales.size(0), 1, scales.size(1)});
+
+  auto weights = torch::bitwise_right_shift(
+                     qweights.unsqueeze(1).expand({-1, 32 / bits, -1}),
+                     shift_bits.unsqueeze(-1))
+                     .to(dtype);
+  weights.bitwise_and_((1 << bits) - 1);
+  // [n_groups, group_size, out_features]
+  weights = weights.reshape({scales.size(0), -1, scales.size(1)});
+  weights = scales.unsqueeze(1) * (weights - zeros);
+  return weights.reshape({-1, scales.size(1)});
+}
+}  // namespace details
 
 ColumnParallelQuantLinearImpl::ColumnParallelQuantLinearImpl(
     int64_t in_features,
@@ -135,8 +214,13 @@ torch::Tensor ColumnParallelQuantLinearImpl::forward(
   auto output_float =
       torch::empty({input_float.size(0), out_features_}, input_float.options());
 
-  vec_quant_matmul_cuda(
-      input_float, qweight_, output_float, scales_float, qzeros_, g_idx_, bits_);
+  vec_quant_matmul_cuda(input_float,
+                        qweight_,
+                        output_float,
+                        scales_float,
+                        qzeros_,
+                        g_idx_,
+                        bits_);
 
   auto output = output_float.to(input);
   if (parallel_args_.world_size() > 1 && gather_output_) {
@@ -350,8 +434,13 @@ torch::Tensor RowParallelQuantLinearImpl::forward(torch::Tensor input) const {
   auto scales_float = scales_.to(torch::kFloat32);
   auto output_float =
       torch::empty({input_float.size(0), out_features_}, input_float.options());
-  vec_quant_matmul_cuda(
-      input_float, qweight_, output_float, scales_float, qzeros_, g_idx_, bits_);
+  vec_quant_matmul_cuda(input_float,
+                        qweight_,
+                        output_float,
+                        scales_float,
+                        qzeros_,
+                        g_idx_,
+                        bits_);
 
   auto output = output_float.to(input);
   if (parallel_args_.world_size() > 1) {

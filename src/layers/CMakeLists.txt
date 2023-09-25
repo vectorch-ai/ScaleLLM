@@ -36,8 +36,11 @@ cc_test(
   SRCS
     layers_test.cpp
     pos_embedding_test.cpp
+    qlinear_impl_test.cpp
   DEPS
     :layers
     :state_dict
     GTest::gtest_main
+  DATA 
+    data/gptq_small.safetensors
 )

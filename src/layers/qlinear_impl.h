@@ -1,5 +1,6 @@
 #pragma once
 
+#include <c10/core/TensorImpl.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -8,6 +9,29 @@
 #include "models/args.h"
 
 namespace llm {
+namespace details {
+
+// construct weights matrix for gptq from quantized weights
+// return the weights matrix [in_features, out_features] with following formula:
+// weights = scales * (qweights - qzeros)
+torch::Tensor construct_weights(
+    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
+    const torch::Tensor& g_idx,     // [in_features] IntTensor
+    int64_t bits);
+
+// construct weights matrix for gptq from quantized weights without using g_idx
+// slower than construct_weights with g_idx
+// return the weights matrix [in_features, out_features] with following formula:
+// weights = scales * (qweights - qzeros)
+torch::Tensor construct_weights(
+    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
+    int64_t bits);
+
+}  // namespace details
 
 // quantized linear layers using gptq
 
