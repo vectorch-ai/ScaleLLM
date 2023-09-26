@@ -30,6 +30,20 @@ cc_library(
 
 cc_library(
   NAME 
+    awq.kernels
+  HDRS 
+  SRCS 
+    awq/gemv_cuda.cu
+    awq/gemm_cuda_gen.cu
+  DEPS
+    torch
+    Python::Python
+  COPTS
+    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
+)
+
+cc_library(
+  NAME 
     exllama.kernels
   SRCS 
     exllama/exllama_ext.cpp
