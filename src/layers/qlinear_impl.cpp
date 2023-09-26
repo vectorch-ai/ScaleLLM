@@ -50,16 +50,6 @@ void vec_quant_matmul_cuda(torch::Tensor vec,
                            torch::Tensor zeros,
                            torch::Tensor g_idx,
                            int64_t bits) {
-  if (FLAGS_qlinear_gptq_impl == "slow") {
-    auto weights = details::construct_weights(mat,
-                                              zeros,
-                                              scales,
-                                              g_idx,
-                                              /*bits=*/bits);
-    torch::matmul_out(/*out=*/mul, /*self=*/vec, /*other=*/weights);
-    return;
-  }
-
   switch (bits) {
     case 2:
       return vecquant2matmul_cuda(vec, mat, mul, scales, zeros, g_idx);
@@ -98,15 +88,16 @@ torch::Tensor construct_weights(
     bits_to_shift.push_back(i);
   }
   // [1, 32/bits]
-  auto shift_bits =
+  const auto shift_bits =
       torch::tensor(bits_to_shift, qweights.options()).unsqueeze(0);
-  auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
+  const auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
+  const uint16_t mask = static_cast<uint16_t>(std::pow(2, bits) - 1);
   // [n_groups, out_features/n_bits, n_ints]
   auto zeros = torch::bitwise_right_shift(
                    qzeros.unsqueeze(2).expand({-1, -1, 32 / bits}),
                    shift_bits.unsqueeze(0))
                    .to(dtype);
-  zeros.bitwise_and_((1 << bits) - 1);
+  zeros.bitwise_and_(mask);
   zeros.add_(1);
   // [n_groups, out_features]
   zeros = zeros.reshape(scales.sizes());
@@ -115,7 +106,7 @@ torch::Tensor construct_weights(
                      qweights.unsqueeze(1).expand({-1, 32 / bits, -1}),
                      shift_bits.unsqueeze(-1))
                      .to(dtype);
-  weights.bitwise_and_((1 << bits) - 1);
+  weights.bitwise_and_(mask);
   weights = weights.reshape({-1, qweights.size(1)});
   // auto gathered_scales = scales.gather(/*dim=*/0, /*index=*/g_idx);
   // auto gathered_zeros = zeros.gather(/*dim=*/0, /*index=*/g_idx);
@@ -139,15 +130,16 @@ torch::Tensor construct_weights(
   }
 
   // [1, n_ints=32/bits]
-  auto shift_bits =
+  const auto shift_bits =
       torch::tensor(bits_to_shift, qweights.options()).unsqueeze(0);
-  auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
+  const auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
+  const uint16_t mask = static_cast<uint16_t>(std::pow(2, bits) - 1);
   // [n_groups, out_features/n_bits, n_ints]
   auto zeros = torch::bitwise_right_shift(
                    qzeros.unsqueeze(2).expand({-1, -1, 32 / bits}),
                    shift_bits.unsqueeze(0))
                    .to(dtype);
-  zeros.bitwise_and_((1 << bits) - 1);
+  zeros.bitwise_and_(mask);
   zeros.add_(1);
   // [n_groups, 1, out_features]
   zeros = zeros.reshape({scales.size(0), 1, scales.size(1)});
@@ -156,7 +148,7 @@ torch::Tensor construct_weights(
                      qweights.unsqueeze(1).expand({-1, 32 / bits, -1}),
                      shift_bits.unsqueeze(-1))
                      .to(dtype);
-  weights.bitwise_and_((1 << bits) - 1);
+  weights.bitwise_and_(mask);
   // [n_groups, group_size, out_features]
   weights = weights.reshape({scales.size(0), -1, scales.size(1)});
   weights = scales.unsqueeze(1) * (weights - zeros);
@@ -224,20 +216,28 @@ ColumnParallelQuantLinearImpl::ColumnParallelQuantLinearImpl(
 
 torch::Tensor ColumnParallelQuantLinearImpl::forward(
     torch::Tensor input) const {
-  auto input_float = input.to(torch::kFloat32);
-  auto scales_float = scales_.to(torch::kFloat32);
-  auto output_float =
-      torch::empty({input_float.size(0), out_features_}, input_float.options());
+  torch::Tensor output;
+  if (FLAGS_qlinear_gptq_impl == "slow") {
+    output = torch::zeros({input.size(0), out_features_}, input.options());
+    const auto weights =
+        details::construct_weights(qweight_, qzeros_, scales_, bits_);
+    torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
+  } else {
+    auto input_float = input.to(torch::kFloat32);
+    auto scales_float = scales_.to(torch::kFloat32);
+    auto output_float = torch::zeros({input_float.size(0), out_features_},
+                                     input_float.options());
 
-  vec_quant_matmul_cuda(input_float,
-                        qweight_,
-                        output_float,
-                        scales_float,
-                        qzeros_,
-                        g_idx_,
-                        bits_);
+    vec_quant_matmul_cuda(input_float,
+                          qweight_,
+                          output_float,
+                          scales_float,
+                          qzeros_,
+                          g_idx_,
+                          bits_);
+    output = output_float.to(input);
+  }
 
-  auto output = output_float.to(input);
   if (parallel_args_.world_size() > 1 && gather_output_) {
     output = gather_from_model_parallel_region(output, parallel_args_);
   }
@@ -414,7 +414,7 @@ RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
       "scales",
       torch::empty(
           {round_up(in_features_per_partition, group_size), out_features},
-          torch::dtype(torch::kFloat32).device(device)),
+          torch::dtype(torch::kFloat16).device(device)),
       /*requires_grad=*/false);
 
   std::vector<int> g_idx_data;
@@ -431,19 +431,26 @@ torch::Tensor RowParallelQuantLinearImpl::forward(torch::Tensor input) const {
     input = scatter_to_model_parallel_region(input, parallel_args_);
   }
 
-  auto input_float = input.to(torch::kFloat32);
-  auto scales_float = scales_.to(torch::kFloat32);
-  auto output_float =
-      torch::empty({input_float.size(0), out_features_}, input_float.options());
-  vec_quant_matmul_cuda(input_float,
-                        qweight_,
-                        output_float,
-                        scales_float,
-                        qzeros_,
-                        g_idx_,
-                        bits_);
-
-  auto output = output_float.to(input);
+  torch::Tensor output;
+  if (FLAGS_qlinear_gptq_impl == "slow") {
+    output = torch::zeros({input.size(0), out_features_}, input.options());
+    const auto weights =
+        details::construct_weights(qweight_, qzeros_, scales_, bits_);
+    torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
+  } else {
+    auto input_float = input.to(torch::kFloat32);
+    auto scales_float = scales_.to(torch::kFloat32);
+    auto output_float = torch::zeros({input_float.size(0), out_features_},
+                                     input_float.options());
+    vec_quant_matmul_cuda(input_float,
+                          qweight_,
+                          output_float,
+                          scales_float,
+                          qzeros_,
+                          g_idx_,
+                          bits_);
+    output = output_float.to(input);
+  }
   if (parallel_args_.world_size() > 1) {
     output = reduce_from_model_parallel_region(output, parallel_args_);
   }
