@@ -1,5 +1,5 @@
 include(vllm.cmake)
 include(flash-attn.cmake)
-include(exllama.cmake)
+# include(exllama.cmake)
 
 add_subdirectory(sentencepiece)

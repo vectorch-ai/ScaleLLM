@@ -77,6 +77,8 @@ class ColumnParallelQuantLinearImpl : public ParallelLinearImpl {
   torch::Tensor scales_{nullptr};
   torch::Tensor g_idx_{nullptr};
 
+  uintptr_t q4_;
+
   int64_t in_features_ = 0;
   int64_t out_features_ = 0;
 
@@ -146,6 +148,8 @@ class RowParallelQuantLinearImpl : public ParallelLinearImpl {
   torch::Tensor qzeros_{nullptr};
   torch::Tensor scales_{nullptr};
   torch::Tensor g_idx_{nullptr};
+
+  uintptr_t q4_;
 
   int64_t in_features_ = 0;
   int64_t out_features_ = 0;

@@ -1,5 +1,6 @@
 #include "qlinear_impl.h"
 
+#include <c10/core/DeviceType.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
@@ -40,6 +41,16 @@ extern void vecquant8matmul_cuda(torch::Tensor vec,
                                  torch::Tensor scales,
                                  torch::Tensor zeros,
                                  torch::Tensor g_idx);
+
+// Create Q4Matrix, return handle
+extern uintptr_t make_q4(torch::Tensor qweight,
+                         torch::Tensor qzeros,
+                         torch::Tensor scales,
+                         torch::Tensor g_idx,
+                         int device);
+
+// Matmul half @ quant -> half
+extern void q4_matmul(torch::Tensor x, uintptr_t w, torch::Tensor out);
 
 namespace llm {
 namespace {
@@ -222,6 +233,9 @@ torch::Tensor ColumnParallelQuantLinearImpl::forward(
     const auto weights =
         details::construct_weights(qweight_, qzeros_, scales_, bits_);
     torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
+  } else if (bits_ == 4) {
+    output = torch::zeros({input.size(0), out_features_}, input.options());
+    q4_matmul(input, q4_, output);
   } else {
     auto input_float = input.to(torch::kFloat32);
     auto scales_float = scales_.to(torch::kFloat32);
@@ -279,6 +293,14 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
         << "scales size mismatch for " << name();
     scales_.copy_(scales);
     scales_is_loaded_ = true;
+  }
+
+  if (qweight_is_loaded_ && qzeros_is_loaded_ && scales_is_loaded_ &&
+      bits_ == 4) {
+    auto none_tensor = torch::empty({1, 1}, torch::kMeta);
+    // use exllama for 4 bits, which is faster
+    q4_ = make_q4(
+        qweight_, qzeros_, scales_, none_tensor, qweight_.device().index());
   }
 }
 
@@ -358,6 +380,14 @@ void ColumnParallelQuantLinearImpl::load_state_dict(
   if (load_weights(scales_list_, scales_)) {
     scales_is_loaded_ = true;
   }
+
+  if (qweight_is_loaded_ && qzeros_is_loaded_ && scales_is_loaded_ &&
+      bits_ == 4) {
+    auto none_tensor = torch::empty({1, 1}, torch::kMeta);
+    // use exllama for 4 bits, which is faster
+    q4_ = make_q4(
+        qweight_, qzeros_, scales_, none_tensor, qweight_.device().index());
+  }
 }
 
 void ColumnParallelQuantLinearImpl::verify_loaded_weights(
@@ -366,6 +396,10 @@ void ColumnParallelQuantLinearImpl::verify_loaded_weights(
       << "qweight is not loaded for " << prefix + ".qweight";
   CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+  if (bits_ == 4) {
+    // check exllama q4 handler
+    CHECK(q4_ != 0) << "q4 is not initialized for " << prefix;
+  }
 }
 
 RowParallelQuantLinearImpl::RowParallelQuantLinearImpl(
@@ -437,6 +471,9 @@ torch::Tensor RowParallelQuantLinearImpl::forward(torch::Tensor input) const {
     const auto weights =
         details::construct_weights(qweight_, qzeros_, scales_, bits_);
     torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
+  } else if (bits_ == 4) {
+    output = torch::zeros({input.size(0), out_features_}, input.options());
+    q4_matmul(input, q4_, output);
   } else {
     auto input_float = input.to(torch::kFloat32);
     auto scales_float = scales_.to(torch::kFloat32);
@@ -492,6 +529,14 @@ void RowParallelQuantLinearImpl::load_state_dict(const StateDict& state_dict) {
     scales_.copy_(scales);
     scales_is_loaded_ = true;
   }
+
+  if (qweight_is_loaded_ && qzeros_is_loaded_ && scales_is_loaded_ &&
+      bits_ == 4) {
+    // use exllama for 4 bits, which is faster
+    auto none_tensor = torch::empty({1, 1}, torch::kMeta);
+    q4_ = make_q4(
+        qweight_, qzeros_, scales_, none_tensor, qweight_.device().index());
+  }
 }
 
 void RowParallelQuantLinearImpl::verify_loaded_weights(
@@ -500,6 +545,10 @@ void RowParallelQuantLinearImpl::verify_loaded_weights(
       << "qweight is not loaded for " << prefix + ".qweight";
   CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+  if (bits_ == 4) {
+    // check exllama q4 handler
+    CHECK(q4_ != 0) << "q4 is not initialized for " << prefix;
+  }
 }
 
 }  // namespace llm

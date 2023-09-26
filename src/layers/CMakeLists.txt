@@ -25,6 +25,7 @@ cc_library(
     :memory
     :flash-attn.kernels
     :gptq.kernels
+    :exllama.kernels
     glog::glog
     gflags::gflags
     torch
