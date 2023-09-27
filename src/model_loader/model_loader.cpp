@@ -138,9 +138,7 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
 }
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path) {
-  const std::string args_file_path = model_weights_path + "/config.json";
-  CHECK(load_model_args(args_file_path))
-      << "Failed to load model args from " << args_file_path;
+  CHECK(load_model_args(model_weights_path));
   // try to load safetensors first
   for (const auto& entry :
        std::filesystem::directory_iterator(model_weights_path)) {
@@ -166,7 +164,8 @@ HFModelLoader::HFModelLoader(const std::string& model_weights_path) {
   std::sort(model_weights_files_.begin(), model_weights_files_.end());
 }
 
-bool HFModelLoader::load_model_args(const std::string& args_file_path) {
+bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
+  const std::string args_file_path = model_weights_path + "/config.json";
   std::ifstream ifs(args_file_path);
   if (!ifs.is_open()) {
     LOG(ERROR) << "failed to open model args file: " << args_file_path;
@@ -225,6 +224,7 @@ bool HFModelLoader::load_model_args(const std::string& args_file_path) {
     args_.hidden_dim() = hidden_dim;
   }
 
+  // load quantization args if exists
   if (data.contains("quantization_config")) {
     const auto quantization_config = data["quantization_config"];
     if (quantization_config.contains("quant_method")) {
@@ -238,10 +238,65 @@ bool HFModelLoader::load_model_args(const std::string& args_file_path) {
       quant_args_.group_size() =
           quantization_config["group_size"].get<int64_t>();
     }
+    if (quantization_config.contains("desc_act")) {
+      quant_args_.desc_act() = quantization_config["desc_act"].get<bool>();
+    }
+    if (quantization_config.contains("true_sequential")) {
+      quant_args_.true_sequential() =
+          quantization_config["true_sequential"].get<bool>();
+    }
   }
 
-  // TODO: add more args
-  // rope_scaling
+  // load quantization args for awq if exists
+  const std::string quant_args_file_path =
+      model_weights_path + "/quant_config.json";
+  if (std::filesystem::exists(quant_args_file_path)) {
+    std::ifstream ifs(quant_args_file_path);
+    if (!ifs.is_open()) {
+      LOG(ERROR) << "failed to open model args file: " << quant_args_file_path;
+      return false;
+    }
+
+    json data = json::parse(ifs);
+    if (data.contains("version")) {
+      quant_args_.quant_method() = data["version"].get<std::string>();
+    }
+    if (data.contains("w_bit")) {
+      quant_args_.bits() = data["w_bit"].get<int64_t>();
+    }
+    if (data.contains("q_group_size")) {
+      quant_args_.group_size() = data["q_group_size"].get<int64_t>();
+    }
+  }
+
+  // load quantization args for gptq if exists
+  const std::string gptq_args_file_path =
+      model_weights_path + "/quantize_config.json";
+  if (std::filesystem::exists(gptq_args_file_path)) {
+    std::ifstream ifs(gptq_args_file_path);
+    if (!ifs.is_open()) {
+      LOG(ERROR) << "failed to open model args file: " << gptq_args_file_path;
+      return false;
+    }
+
+    json data = json::parse(ifs);
+    if (data.contains("version")) {
+      quant_args_.quant_method() = data["version"].get<std::string>();
+    }
+    if (data.contains("bits")) {
+      quant_args_.bits() = data["bits"].get<int64_t>();
+    }
+    if (data.contains("group_size")) {
+      quant_args_.group_size() = data["group_size"].get<int64_t>();
+    }
+    if (data.contains("desc_act")) {
+      quant_args_.desc_act() = data["desc_act"].get<bool>();
+    }
+    if (data.contains("true_sequential")) {
+      quant_args_.true_sequential() = data["true_sequential"].get<bool>();
+    }
+  }
+
   return true;
 }
 

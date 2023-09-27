@@ -36,6 +36,7 @@ class ColumnParallelQLinearAWQImpl : public ColumnParallelQLinearImpl {
   // quantization parameters
   int64_t bits_ = 0;
   int64_t group_size_ = 0;
+  int pack_factor_ = 0;
 
   // parallel args
   ParallelArgs parallel_args_;
@@ -77,6 +78,7 @@ class RowParallelQLinearAWQImpl : public RowParallelQLinearImpl {
   // quantization parameters
   int64_t bits_ = 0;
   int64_t group_size_ = 0;
+  int pack_factor_ = 0;
 
   // parallel args
   ParallelArgs parallel_args_;

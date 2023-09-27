@@ -48,6 +48,10 @@ struct QuantizationArgs {
 
   // quantization group size
   DEFINE_ARG(int64_t, group_size) = 4096;
+
+  DEFINE_ARG(bool, desc_act) = false;
+
+  DEFINE_ARG(bool, true_sequential) = false;
 };
 
 struct ParallelArgs {

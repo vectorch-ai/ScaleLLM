@@ -33,7 +33,6 @@ cc_library(
     awq.kernels
   HDRS 
   SRCS 
-    awq/gemv_cuda.cu
     awq/gemm_cuda_gen.cu
   DEPS
     torch

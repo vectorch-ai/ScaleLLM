@@ -4,11 +4,13 @@
 #include <torch/torch.h>
 
 #include <algorithm>
+#include <boost/algorithm/string.hpp>
 #include <memory>
 
 #include "linear_impl.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
+#include "quantization/qlinear_awq_impl.h"
 #include "quantization/qlinear_gptq_impl.h"
 
 namespace llm {
@@ -21,8 +23,19 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
     const ParallelArgs& parallel_args,
     const torch::ScalarType& dtype,
     const torch::Device& device) {
-  if (quant_args.quant_method() == "gptq") {
+  if (boost::iequals(quant_args.quant_method(), "gptq")) {
     return std::make_shared<ColumnParallelQLinearGPTQImpl>(
+        in_features,
+        out_features,
+        quant_args.bits(),
+        quant_args.group_size(),
+        gather_output,
+        parallel_args,
+        dtype,
+        device);
+  }
+  if (boost::iequals(quant_args.quant_method(), "GEMM")) {
+    return std::make_shared<ColumnParallelQLinearAWQImpl>(
         in_features,
         out_features,
         quant_args.bits(),
@@ -44,7 +57,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
     const ParallelArgs& parallel_args,
     const torch::ScalarType& dtype,
     const torch::Device& device) {
-  if (quant_args.quant_method() == "gptq") {
+  if (boost::iequals(quant_args.quant_method(), "gptq")) {
     return std::make_shared<RowParallelQLinearGPTQImpl>(in_features,
                                                         out_features,
                                                         quant_args.bits(),
@@ -53,6 +66,16 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
                                                         parallel_args,
                                                         dtype,
                                                         device);
+  }
+  if (boost::iequals(quant_args.quant_method(), "GEMM")) {
+    return std::make_shared<RowParallelQLinearAWQImpl>(in_features,
+                                                       out_features,
+                                                       quant_args.bits(),
+                                                       quant_args.group_size(),
+                                                       input_is_parallelized,
+                                                       parallel_args,
+                                                       dtype,
+                                                       device);
   }
   return std::make_shared<RowParallelLinearImpl>(in_features,
                                                  out_features,
