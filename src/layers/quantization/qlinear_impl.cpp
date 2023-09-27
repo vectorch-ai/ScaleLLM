@@ -57,12 +57,11 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
                    torch::dtype(torch::kInt32).device(device)),
       /*requires_grad=*/false);
 
-  scales_ = register_parameter(
-      "scales",
-      torch::empty(
-          {round_up(in_features, group_size), out_features_per_partition},
-          torch::dtype(dtype).device(device)),
-      /*requires_grad=*/false);
+  scales_ = register_parameter("scales",
+                               torch::empty({round_up(in_features, group_size),
+                                             out_features_per_partition},
+                                            torch::dtype(dtype).device(device)),
+                               /*requires_grad=*/false);
 }
 
 // load the weight from the checkpoint
@@ -100,46 +99,24 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
   }
 }
 
-bool ColumnParallelQLinearImpl::load_weights(
-    std::vector<torch::Tensor>& weight_list,
-    torch::Tensor& weight) {
-  bool all_loaded = std::all_of(
-      weight_list.begin(), weight_list.end(), [](const torch::Tensor& t) {
-        return t.defined();
-      });
-  if (!all_loaded) {
-    return false;
-  }
-
-  auto merged_weight = torch::cat(weight_list, /*dim=*/1);
-  // release the memory for weight_list
-  weight_list.clear();
-  CHECK_EQ(weight.sizes(), merged_weight.sizes())
-      << "weight size mismatch for " << name();
-  weight.copy_(merged_weight);
-  return true;
-}
-
 // special load_state_dict for fused cases
 void ColumnParallelQLinearImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string_view>& prefixes) {
-  if (qweight_list_.size() < prefixes.size()) {
-    qweight_list_.resize(prefixes.size());
-    qzeros_list_.resize(prefixes.size());
-    scales_list_.resize(prefixes.size());
-  }
+  const size_t count = prefixes.size();
+  std::vector<torch::Tensor> qweight_list(count);
+  std::vector<torch::Tensor> qzeros_list(count);
+  std::vector<torch::Tensor> scales_list(count);
 
-  for (size_t i = 0; i < prefixes.size(); ++i) {
+  for (size_t i = 0; i < count; ++i) {
     std::string tensor_name = std::string(prefixes[i]) + "qweight";
     const auto qweight = state_dict.get_sharded_tensor(tensor_name,
                                                        /*dim=*/1,
                                                        rank_,
                                                        world_size_);
     if (qweight.defined()) {
-      CHECK(!qweight_list_[i].defined()) << "qweight already loaded";
-      // make a copy in case the checkpoint is deleted
-      qweight_list_[i] = qweight.clone();
+      CHECK(!qweight_list[i].defined()) << "qweight already loaded";
+      qweight_list[i] = qweight;
     }
     tensor_name = std::string(prefixes[i]) + "qzeros";
     const auto qzeros = state_dict.get_sharded_tensor(tensor_name,
@@ -147,9 +124,8 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                                       rank_,
                                                       world_size_);
     if (qzeros.defined()) {
-      CHECK(!qzeros_list_[i].defined()) << "qzeros already loaded";
-      // make a copy in case the checkpoint is deleted
-      qzeros_list_[i] = qzeros.clone();
+      CHECK(!qzeros_list[i].defined()) << "qzeros already loaded";
+      qzeros_list[i] = qzeros;
     }
     tensor_name = std::string(prefixes[i]) + "scales";
     const auto scales = state_dict.get_sharded_tensor(tensor_name,
@@ -157,22 +133,31 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                                       rank_,
                                                       world_size_);
     if (scales.defined()) {
-      CHECK(!scales_list_[i].defined()) << "scales already loaded";
-      // make a copy in case the checkpoint is deleted
-      scales_list_[i] = scales.clone();
+      CHECK(!scales_list[i].defined()) << "scales already loaded";
+      scales_list[i] = scales;
     }
   }
 
-  // check if all weights are ready to be loaded
-  if (load_weights(qweight_list_, qweight_)) {
-    qweight_is_loaded_ = true;
-  }
-  if (load_weights(qzeros_list_, qzeros_)) {
-    qzeros_is_loaded_ = true;
-  }
-  if (load_weights(scales_list_, scales_)) {
-    scales_is_loaded_ = true;
-  }
+  qweight_is_loaded_ = details::merge_weights(name(),
+                                              std::move(qweight_list),
+                                              /*dim=*/1,
+                                              /*clone=*/true,
+                                              qweight_list_,
+                                              qweight_);
+
+  qzeros_is_loaded_ = details::merge_weights(name(),
+                                             std::move(qzeros_list),
+                                             /*dim=*/1,
+                                             /*clone=*/true,
+                                             qzeros_list_,
+                                             qzeros_);
+
+  scales_is_loaded_ = details::merge_weights(name(),
+                                             std::move(scales_list),
+                                             /*dim=*/1,
+                                             /*clone=*/true,
+                                             scales_list_,
+                                             scales_);
 }
 
 void ColumnParallelQLinearImpl::verify_loaded_weights(
@@ -183,16 +168,15 @@ void ColumnParallelQLinearImpl::verify_loaded_weights(
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
 }
 
-RowParallelQLinearImpl::RowParallelQLinearImpl(
-    int64_t in_features,
-    int64_t out_features,
-    int64_t bits,
-    int64_t group_size,
-    int64_t qweight_pack_dim,
-    int rank,
-    int world_size,
-    const torch::ScalarType& dtype,
-    const torch::Device& device)
+RowParallelQLinearImpl::RowParallelQLinearImpl(int64_t in_features,
+                                               int64_t out_features,
+                                               int64_t bits,
+                                               int64_t group_size,
+                                               int64_t qweight_pack_dim,
+                                               int rank,
+                                               int world_size,
+                                               const torch::ScalarType& dtype,
+                                               const torch::Device& device)
     : rank_(rank), world_size_(world_size) {
   CHECK(group_size > 0) << "group_size must be positive";
   CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)

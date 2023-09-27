@@ -47,7 +47,7 @@ private:
 
 };
 
-void g_q4_keep_matrix(Q4Matrix* m);
-void g_q4_free_matrices();
+// void g_q4_keep_matrix(Q4Matrix* m);
+// void g_q4_free_matrices();
 
 #endif

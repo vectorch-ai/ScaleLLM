@@ -1,5 +1,6 @@
 #include "linear_impl.h"
 
+#include <c10/core/TensorImpl.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -10,6 +11,53 @@
 #include "models/args.h"
 
 namespace llm {
+namespace details {
+
+bool merge_weights(const std::string& tensor_name,
+                   std::vector<torch::Tensor> weight_list,
+                   int64_t dim,
+                   bool clone,
+                   std::vector<torch::Tensor>& accumulated_weight_list,
+                   torch::Tensor& weight) {
+  // resize the accumulated weight list if needed
+  if (accumulated_weight_list.size() < weight_list.size()) {
+    accumulated_weight_list.resize(weight_list.size());
+  }
+
+  // copy over accumulated weights
+  for (size_t i = 0; i < weight_list.size(); ++i) {
+    if (accumulated_weight_list[i].defined()) {
+      CHECK(!weight_list[i].defined()) << tensor_name << " weight already set";
+      weight_list[i] = accumulated_weight_list[i];
+    }
+  }
+
+  const bool all_loaded = std::all_of(
+      weight_list.begin(), weight_list.end(), [](const torch::Tensor& t) {
+        return t.defined();
+      });
+  if (!all_loaded) {
+    // accumulate the weights for future merge
+    for (size_t i = 0; i < weight_list.size(); ++i) {
+      if (!accumulated_weight_list[i].defined() && weight_list[i].defined()) {
+        accumulated_weight_list[i] =
+            clone ? weight_list[i].clone() : weight_list[i];
+      }
+    }
+    return false;
+  }
+
+  const auto merged_weight = torch::cat(weight_list, /*dim=*/dim);
+  CHECK_EQ(weight.sizes(), merged_weight.sizes())
+      << "weight size mismatch for " << tensor_name;
+  weight.copy_(merged_weight);
+  // release the memory for weight_list
+  weight_list.clear();
+  accumulated_weight_list.clear();
+  return true;
+}
+
+}  // namespace details
 // Linear layer with column parallelism.
 ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     int64_t in_features,
@@ -62,48 +110,25 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
 void ColumnParallelLinearImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string_view>& prefixes) {
-  if (weight_list_.size() < prefixes.size()) {
-    weight_list_.resize(prefixes.size());
-  }
-
+  std::vector<torch::Tensor> weight_list(prefixes.size());
   for (size_t i = 0; i < prefixes.size(); ++i) {
     std::string name = std::string(prefixes[i]) + "weight";
-    const auto weight = state_dict.get_sharded_tensor(
-        name,
-        /*dim=*/0,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
+    const auto weight =
+        state_dict.get_sharded_tensor(name,
+                                      /*dim=*/0,
+                                      parallel_args_.rank(),
+                                      parallel_args_.world_size());
     if (weight.defined()) {
-      CHECK(!weight_list_[i].defined()) << "weight already loaded";
-      // make a copy in case the checkpoint is deleted
-      weight_list_[i] = weight.clone();
+      CHECK(!weight_list[i].defined()) << "weight already loaded";
+      weight_list[i] = weight;
     }
   }
-
-  // check if all weights are loaded
-  if (load_weights(weight_list_, weight_)) {
-    is_loaded_ = true;
-  }
-}
-
-bool ColumnParallelLinearImpl::load_weights(
-    std::vector<torch::Tensor>& weight_list,
-    torch::Tensor& weight) {
-  bool all_loaded = std::all_of(
-      weight_list.begin(), weight_list.end(), [](const torch::Tensor& t) {
-        return t.defined();
-      });
-  if (!all_loaded) {
-    return false;
-  }
-
-  auto merged_weight = torch::cat(weight_list, /*dim=*/0);
-  // release the memory for weight_list
-  weight_list.clear();
-  CHECK_EQ(weight.sizes(), merged_weight.sizes())
-      << "weight size mismatch for " << name();
-  weight.copy_(merged_weight);
-  return true;
+  is_loaded_ = details::merge_weights(name(),
+                                      std::move(weight_list),
+                                      /*dim=*/0,
+                                      /*clone=*/true,
+                                      weight_list_,
+                                      weight_);
 }
 
 // Linear layer with row parallelism.

@@ -3,7 +3,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "../linear.h"
+#include "../linear_impl.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 
@@ -41,9 +41,6 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
   torch::Tensor scales_{nullptr};
 
  private:
-  bool load_weights(std::vector<torch::Tensor>& weight_list,
-                    torch::Tensor& weight);
-
   bool qweight_is_loaded_ = false;
   bool qzeros_is_loaded_ = false;
   bool scales_is_loaded_ = false;

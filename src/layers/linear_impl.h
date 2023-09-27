@@ -8,6 +8,18 @@
 #include "models/args.h"
 
 namespace llm {
+namespace details {
+// helper function to merge fused weights
+// returns true if the weights are merged into weight.
+bool merge_weights(const std::string& tensor_name,
+                   std::vector<torch::Tensor> weight_list,
+                   int64_t dim,  // dim to cat
+                   bool clone,   // wheather to make a colne for accumulating
+                   std::vector<torch::Tensor>& accumulated_weight_list,
+                   torch::Tensor& weight);
+
+}  // namespace details
+
 // Linear layer with column parallelism.
 // The linear layer is defined as Y = XA + b. A is parallelized along
 // its second dimension as A = [A_1, ..., A_p].
@@ -42,9 +54,6 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   torch::Tensor weight() const { return weight_; }
 
  private:
-  bool load_weights(std::vector<torch::Tensor>& weight_list,
-                    torch::Tensor& weight);
-
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features_per_partition, in_features]

@@ -6,6 +6,7 @@
 #include "models/args.h"
 
 namespace llm {
+
 // an interface for parallel linear layer.
 // all linear classes should inherit from this class and implement the forward
 // function.
