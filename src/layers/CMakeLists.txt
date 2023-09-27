@@ -9,17 +9,19 @@ cc_library(
     norm.h
     linear.h
     linear_impl.h
-    qlinear_impl.h
     embedding.h
     pos_embedding.h
     attention.h
+    quantization/qlinear_impl.h
+    quantization/qlinear_gptq_impl.h
   SRCS 
     linear.cpp
     linear_impl.cpp
-    qlinear_impl.cpp
     model_parallel.cpp
     pos_embedding.cpp
     attention.cpp
+    quantization/qlinear_impl.cpp
+    quantization/qlinear_gptq_impl.cpp
   DEPS
     :state_dict
     :memory
@@ -37,7 +39,7 @@ cc_test(
   SRCS
     layers_test.cpp
     pos_embedding_test.cpp
-    qlinear_impl_test.cpp
+    quantization/qlinear_impl_test.cpp
   DEPS
     :layers
     :state_dict

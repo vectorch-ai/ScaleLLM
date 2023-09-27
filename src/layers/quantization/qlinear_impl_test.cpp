@@ -1,4 +1,4 @@
-#include "qlinear_impl.h"
+#include "qlinear_gptq_impl.h"
 
 #include <c10/core/TensorOptions.h>
 #include <gtest/gtest.h>
@@ -28,7 +28,7 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
   const int64_t out_features = 4096;
   const int64_t bits = 4;
   const int64_t group_size = 128;
-  ColumnParallelQuantLinearImpl qlinear(in_features,
+  ColumnParallelQLinearGPTQImpl qlinear(in_features,
                                         out_features,
                                         bits,
                                         group_size,
@@ -62,7 +62,7 @@ TEST(QlinearTest, RowParallelQuantLinear) {
   const int64_t out_features = 4096;
   const int64_t bits = 4;
   const int64_t group_size = 128;
-  RowParallelQuantLinearImpl qlinear(in_features,
+  RowParallelQLinearGPTQImpl qlinear(in_features,
                                      out_features,
                                      bits,
                                      group_size,

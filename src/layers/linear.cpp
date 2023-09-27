@@ -9,7 +9,7 @@
 #include "linear_impl.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
-#include "qlinear_impl.h"
+#include "quantization/qlinear_gptq_impl.h"
 
 namespace llm {
 namespace {
@@ -22,7 +22,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
     const torch::ScalarType& dtype,
     const torch::Device& device) {
   if (quant_args.quant_method() == "gptq") {
-    return std::make_shared<ColumnParallelQuantLinearImpl>(
+    return std::make_shared<ColumnParallelQLinearGPTQImpl>(
         in_features,
         out_features,
         quant_args.bits(),
@@ -45,7 +45,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
     const torch::ScalarType& dtype,
     const torch::Device& device) {
   if (quant_args.quant_method() == "gptq") {
-    return std::make_shared<RowParallelQuantLinearImpl>(in_features,
+    return std::make_shared<RowParallelQLinearGPTQImpl>(in_features,
                                                         out_features,
                                                         quant_args.bits(),
                                                         quant_args.group_size(),
