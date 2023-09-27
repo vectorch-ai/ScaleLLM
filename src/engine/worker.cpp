@@ -29,6 +29,7 @@ bool Worker::init_model(const ModelArgs& args,
   // initialize model
   args_ = args;
   model_ = CausalLM::create(args, quant_args, parallel_args_, dtype_, device_);
+  CHECK(model_ != nullptr) << "Failed to create model.";
   return true;
 }
 

@@ -93,10 +93,16 @@ void set_tuning_params
 
 // Release all unmanaged objects allocated by the extension
 
-void cleanup()
-{
-    cleanup_buffers_cuda();
-    g_q4_free_matrices();
+// void cleanup()
+// {
+//     cleanup_buffers_cuda();
+//     g_q4_free_matrices();
+// }
+
+// Free Q4Matrix
+void free_q4(uintptr_t w) {
+  Q4Matrix* wm = reinterpret_cast<Q4Matrix*>(w);
+  delete wm;
 }
 
 
@@ -161,7 +167,7 @@ uintptr_t make_q4
         device
     );
 
-    g_q4_keep_matrix(m);
+    // g_q4_keep_matrix(m);
     return reinterpret_cast<uintptr_t> (m);
 }
 

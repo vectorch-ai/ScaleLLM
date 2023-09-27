@@ -49,6 +49,8 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
                                 const torch::ScalarType& dtype,
                                 const torch::Device& device);
 
+  ~ColumnParallelQLinearGPTQImpl() override;
+
   torch::Tensor forward(torch::Tensor input) const override;
 
   void pretty_print(std::ostream& stream) const override {
@@ -87,13 +89,15 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
 class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
  public:
   RowParallelQLinearGPTQImpl(int64_t in_features,
-                         int64_t out_features,
-                         int64_t bits,
-                         int64_t group_size,
-                         bool input_is_parallelized,
-                         const ParallelArgs& parallel_args,
-                         const torch::ScalarType& dtype,
-                         const torch::Device& device);
+                             int64_t out_features,
+                             int64_t bits,
+                             int64_t group_size,
+                             bool input_is_parallelized,
+                             const ParallelArgs& parallel_args,
+                             const torch::ScalarType& dtype,
+                             const torch::Device& device);
+
+  ~RowParallelQLinearGPTQImpl() override;
 
   torch::Tensor forward(torch::Tensor input) const override;
 

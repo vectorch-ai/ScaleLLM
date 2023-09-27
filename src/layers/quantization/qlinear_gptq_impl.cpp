@@ -14,6 +14,8 @@ DEFINE_string(qlinear_gptq_impl,
               "",
               "type of qlinear gptq impl, slow, cuda, or empty for auto");
 
+DEFINE_bool(use_exllama, true, "use exllama for 4 bits");
+
 extern void vecquant2matmul_cuda(torch::Tensor vec,
                                  torch::Tensor mat,
                                  torch::Tensor mul,
@@ -51,6 +53,8 @@ extern uintptr_t make_q4(torch::Tensor qweight,
 
 // Matmul half @ quant -> half
 extern void q4_matmul(torch::Tensor x, uintptr_t w, torch::Tensor out);
+
+extern void free_q4(uintptr_t w);
 
 namespace llm {
 namespace {
@@ -198,6 +202,12 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
       torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
 }
 
+ColumnParallelQLinearGPTQImpl::~ColumnParallelQLinearGPTQImpl() {
+  if (q4_ != 0) {
+    free_q4(q4_);
+  }
+}
+
 torch::Tensor ColumnParallelQLinearGPTQImpl::forward(
     torch::Tensor input) const {
   const int64_t out_features = qweight_.size(-1);
@@ -207,7 +217,7 @@ torch::Tensor ColumnParallelQLinearGPTQImpl::forward(
     const auto weights =
         details::construct_weights(qweight_, qzeros_, scales_, bits_);
     torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
-  } else if (bits_ == 4) {
+  } else if (FLAGS_use_exllama && bits_ == 4) {
     // use exllama for 4 bits, which is faster
     if (q4_ == 0) {
       auto none_tensor = torch::empty({1, 1}, torch::kMeta);
@@ -273,6 +283,12 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
       torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
 }
 
+RowParallelQLinearGPTQImpl::~RowParallelQLinearGPTQImpl() {
+  if (q4_ != 0) {
+    free_q4(q4_);
+  }
+}
+
 torch::Tensor RowParallelQLinearGPTQImpl::forward(torch::Tensor input) const {
   if (!input_is_parallelized_) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
@@ -285,8 +301,11 @@ torch::Tensor RowParallelQLinearGPTQImpl::forward(torch::Tensor input) const {
     const auto weights =
         details::construct_weights(qweight_, qzeros_, scales_, bits_);
     torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
-  } else if (bits_ == 4) {
-    // use exllama for 4 bits, which is faster
+  } else if (FLAGS_use_exllama && bits_ == 4 &&
+             parallel_args_.world_size() == 1) {
+    // Exllama implementation does not support row tensor parallelism with
+    // act-order, as it would require to reorder input activations that are
+    // split unto several GPUs use exllama for 4 bits, which is faster
     if (q4_ == 0) {
       auto none_tensor = torch::empty({1, 1}, torch::kMeta);
       q4_ = make_q4(

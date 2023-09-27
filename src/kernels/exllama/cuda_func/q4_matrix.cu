@@ -12,18 +12,18 @@ const int UNSHUF_BLOCKSIZE_X = 64;
 const int RECONS_THREADS_X = 64;      // Block size and thread count along columns in out, each thread converts 1 column
 const int RECONS_THREADS_Y = 1;       // Block size and thread count along rows in x and out, each thread converts 8 rows
 
-vector<Q4Matrix*> g_q4_matrices;
+// vector<Q4Matrix*> g_q4_matrices;
 
-void g_q4_keep_matrix(Q4Matrix* m)
-{
-    g_q4_matrices.push_back(m);
-}
+// void g_q4_keep_matrix(Q4Matrix* m)
+// {
+//     g_q4_matrices.push_back(m);
+// }
 
-void g_q4_free_matrices()
-{
-    for (const auto& m : g_q4_matrices) delete m;
-    g_q4_matrices.clear();
-}
+// void g_q4_free_matrices()
+// {
+//     for (const auto& m : g_q4_matrices) delete m;
+//     g_q4_matrices.clear();
+// }
 
 Q4Matrix::Q4Matrix
 (
