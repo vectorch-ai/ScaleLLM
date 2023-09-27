@@ -14,6 +14,7 @@ cc_library(
     attention.h
     quantization/qlinear_impl.h
     quantization/qlinear_gptq_impl.h
+    quantization/qlinear_awq_impl.h
   SRCS 
     linear.cpp
     linear_impl.cpp
@@ -22,11 +23,13 @@ cc_library(
     attention.cpp
     quantization/qlinear_impl.cpp
     quantization/qlinear_gptq_impl.cpp
+    quantization/qlinear_awq_impl.cpp
   DEPS
     :state_dict
     :memory
     :flash-attn.kernels
     :gptq.kernels
+    :awq.kernels
     :exllama.kernels
     glog::glog
     gflags::gflags

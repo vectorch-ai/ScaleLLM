@@ -1,6 +1,5 @@
 #include "qlinear_impl.h"
 
-#include <c10/core/DeviceType.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
@@ -23,31 +22,38 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     int64_t out_features,
     int64_t bits,
     int64_t group_size,
+    int64_t qweight_pack_dim,
     int rank,
     int world_size,
-    const torch::ScalarType& /*dtype*/,
+    const torch::ScalarType& dtype,
     const torch::Device& device)
     : rank_(rank), world_size_(world_size) {
   CHECK(group_size > 0) << "group_size must be positive";
-  CHECK(in_features % 32 == 0) << "in_features must be divisible by 32";
-  CHECK(in_features % group_size == 0)
-      << "in_features must be divisible by " << group_size;
-  CHECK(out_features % 32 == 0) << "out_features must be divisible by 32";
-
+  CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
+      << "qweight_pack_dim must be 0 or 1";
   CHECK(out_features % world_size == 0)
       << "out_features " << out_features << " not divisible by world_size "
       << world_size;
   const int64_t out_features_per_partition = out_features / world_size;
+  const int64_t pack_factor = 32 / bits;
 
-  qweight_ = register_parameter(
-      "qweight",
-      torch::empty({in_features / 32 * bits, out_features_per_partition},
-                   torch::dtype(torch::kInt32).device(device)),
-      /*requires_grad=*/false);
+  if (qweight_pack_dim == 0) {
+    qweight_ = register_parameter(
+        "qweight",
+        torch::empty({in_features / pack_factor, out_features_per_partition},
+                     torch::dtype(torch::kInt32).device(device)),
+        /*requires_grad=*/false);
+  } else {
+    qweight_ = register_parameter(
+        "qweight",
+        torch::empty({in_features, out_features_per_partition / pack_factor},
+                     torch::dtype(torch::kInt32).device(device)),
+        /*requires_grad=*/false);
+  }
   qzeros_ = register_parameter(
       "qzeros",
       torch::empty({round_up(in_features, group_size),
-                    out_features_per_partition / 32 * bits},
+                    out_features_per_partition / pack_factor},
                    torch::dtype(torch::kInt32).device(device)),
       /*requires_grad=*/false);
 
@@ -55,7 +61,7 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
       "scales",
       torch::empty(
           {round_up(in_features, group_size), out_features_per_partition},
-          torch::dtype(torch::kFloat16).device(device)),
+          torch::dtype(dtype).device(device)),
       /*requires_grad=*/false);
 }
 
@@ -182,31 +188,38 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
     int64_t out_features,
     int64_t bits,
     int64_t group_size,
+    int64_t qweight_pack_dim,
     int rank,
     int world_size,
-    const torch::ScalarType& /*dtype*/,
+    const torch::ScalarType& dtype,
     const torch::Device& device)
     : rank_(rank), world_size_(world_size) {
   CHECK(group_size > 0) << "group_size must be positive";
-  CHECK(in_features % 32 == 0) << "in_features must be divisible by 32";
-  CHECK(in_features % group_size == 0)
-      << "in_features must be divisible by " << group_size;
-  CHECK(out_features % 32 == 0) << "out_features must be divisible by 32";
-
+  CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
+      << "qweight_pack_dim must be 0 or 1";
   CHECK(in_features % world_size == 0)
       << "in_features " << in_features << " not divisible by world_size "
       << world_size;
   const int64_t in_features_per_partition = in_features / world_size;
+  const int64_t pack_factor = 32 / bits;
 
-  qweight_ = register_parameter(
-      "qweight",
-      torch::empty({in_features_per_partition / 32 * bits, out_features},
-                   torch::dtype(torch::kInt32).device(device)),
-      /*requires_grad=*/false);
+  if (qweight_pack_dim == 0) {
+    qweight_ = register_parameter(
+        "qweight",
+        torch::empty({in_features_per_partition / pack_factor, out_features},
+                     torch::dtype(torch::kInt32).device(device)),
+        /*requires_grad=*/false);
+  } else {
+    qweight_ = register_parameter(
+        "qweight",
+        torch::empty({in_features_per_partition, out_features / pack_factor},
+                     torch::dtype(torch::kInt32).device(device)),
+        /*requires_grad=*/false);
+  }
   qzeros_ = register_parameter(
       "qzeros",
       torch::empty({round_up(in_features_per_partition, group_size),
-                    out_features / 32 * bits},
+                    out_features / pack_factor},
                    torch::dtype(torch::kInt32).device(device)),
       /*requires_grad=*/false);
 
@@ -214,7 +227,7 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
       "scales",
       torch::empty(
           {round_up(in_features_per_partition, group_size), out_features},
-          torch::dtype(torch::kFloat16).device(device)),
+          torch::dtype(dtype).device(device)),
       /*requires_grad=*/false);
 }
 

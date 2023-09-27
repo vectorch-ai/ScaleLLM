@@ -1,6 +1,5 @@
 #pragma once
 
-#include <c10/core/TensorImpl.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -19,6 +18,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
                             int64_t out_features,
                             int64_t bits,
                             int64_t group_size,
+                            int64_t qweight_pack_dim,
                             int rank,
                             int world_size,
                             const torch::ScalarType& dtype,
@@ -71,6 +71,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
                          int64_t out_features,
                          int64_t bits,
                          int64_t group_size,
+                         int64_t qweight_pack_dim,
                          int rank,
                          int world_size,
                          const torch::ScalarType& dtype,

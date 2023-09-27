@@ -176,6 +176,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
                                 out_features,
                                 bits,
                                 group_size,
+                                /*qweight_pack_dim=*/0,
                                 parallel_args.rank(),
                                 parallel_args.world_size(),
                                 dtype,
@@ -186,8 +187,6 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
-  CHECK(in_features % group_size == 0)
-      << "in_features must be divisible by " << group_size;
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);
@@ -252,6 +251,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
                              out_features,
                              bits,
                              group_size,
+                             /*qweight_pack_dim=*/0,
                              parallel_args.rank(),
                              parallel_args.world_size(),
                              dtype,
@@ -262,8 +262,6 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
-  CHECK(in_features % group_size == 0)
-      << "in_features must be divisible by " << group_size;
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);
