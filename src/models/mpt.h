@@ -28,6 +28,7 @@ class MPTMLPImpl : public torch::nn::Module {
     up_proj_ = register_module("up_proj",
                                ColumnParallelLinear(dim,
                                                     hidden_dim,
+                                                    /*bias=*/false,
                                                     /*gather_output=*/false,
                                                     quant_args,
                                                     parallel_args,
@@ -37,6 +38,7 @@ class MPTMLPImpl : public torch::nn::Module {
         register_module("down_proj",
                         RowParallelLinear(hidden_dim,
                                           dim,
+                                          /*bias=*/false,
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
@@ -86,6 +88,7 @@ class MPTAttentionImpl : public torch::nn::Module {
     wqkv_ = register_module("Wqkv",
                             ColumnParallelLinear(dim,
                                                  3 * dim,
+                                                 /*bias=*/false,
                                                  /*gather_output=*/false,
                                                  quant_args,
                                                  parallel_args,
@@ -102,6 +105,7 @@ class MPTAttentionImpl : public torch::nn::Module {
         register_module("out_proj",
                         RowParallelLinear(dim,
                                           dim,
+                                          /*bias=*/false,
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
@@ -211,9 +215,11 @@ class MPTBlockImpl : public torch::nn::Module {
         MPTAttention(layer_id, args, quant_args, parallel_args, dtype, device));
     // LayerNormOptions({2, 2}).elementwise_affine(false).eps(2e-5)
     norm_1_ = register_module(
-        "norm_1", LayerNorm(args.dim(), args.norm_eps(), dtype, device));
+        "norm_1",
+        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/false, dtype, device));
     norm_2_ = register_module(
-        "norm_2", LayerNorm(args.dim(), args.norm_eps(), dtype, device));
+        "norm_2",
+        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/false, dtype, device));
     ffn_ = register_module(
         "ffn", MPTMLP(args, quant_args, parallel_args, dtype, device));
   }
@@ -279,11 +285,13 @@ class MPTModelImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_f_ = register_module(
-        "norm_f", LayerNorm(args.dim(), args.norm_eps(), dtype, device));
+        "norm_f",
+        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/false, dtype, device));
 
     lm_head_ = register_module("wte",
                                ColumnParallelLinear(args.dim(),
                                                     args.vocab_size(),
+                                                    /*bias=*/false,
                                                     /*gather_output=*/true,
                                                     parallel_args,
                                                     dtype,

@@ -170,6 +170,7 @@ torch::Tensor construct_weights(
 ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     int64_t in_features,
     int64_t out_features,
+    bool bias,
     int64_t bits,
     int64_t group_size,
     bool gather_output,
@@ -178,6 +179,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     const torch::Device& device)
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
+                                bias,
                                 bits,
                                 group_size,
                                 /*qweight_pack_dim=*/0,
@@ -242,6 +244,9 @@ torch::Tensor ColumnParallelQLinearGPTQImpl::forward(
     output = output_float.to(input);
   }
 
+  if (bias_.defined()) {
+    output.add_(bias_);
+  }
   if (parallel_args_.world_size() > 1 && gather_output_) {
     output = gather_from_model_parallel_region(output, parallel_args_);
   }
@@ -251,6 +256,7 @@ torch::Tensor ColumnParallelQLinearGPTQImpl::forward(
 RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     int64_t in_features,
     int64_t out_features,
+    bool bias,
     int64_t bits,
     int64_t group_size,
     bool input_is_parallelized,
@@ -259,6 +265,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     const torch::Device& device)
     : RowParallelQLinearImpl(in_features,
                              out_features,
+                             bias,
                              bits,
                              group_size,
                              /*qweight_pack_dim=*/0,
@@ -326,6 +333,9 @@ torch::Tensor RowParallelQLinearGPTQImpl::forward(torch::Tensor input) const {
                           g_idx_,
                           bits_);
     output = output_float.to(input);
+  }
+  if (bias_.defined()) {
+    output.add_(bias_);
   }
   if (parallel_args_.world_size() > 1) {
     output = reduce_from_model_parallel_region(output, parallel_args_);

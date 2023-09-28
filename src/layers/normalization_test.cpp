@@ -36,9 +36,10 @@ TEST(NormalizationTest, LayerNorm) {
 
   // generate weight
   const auto weight = torch::rand({dim}, torch::dtype(dtype).device(device));
-  StateDict state_dict({{"weight", weight}}, 0, 1);
+  const auto bias = torch::rand({dim}, torch::dtype(dtype).device(device));
+  StateDict state_dict({{"weight", weight}, {"bias", bias}}, 0, 1);
 
-  LayerNorm norm(dim, eps, dtype, device);
+  LayerNorm norm(dim, eps, /*bias=*/true, dtype, device);
   // test load state dict
   norm->load_state_dict(state_dict);
   norm->verify_loaded_weights();
@@ -46,7 +47,7 @@ TEST(NormalizationTest, LayerNorm) {
   // verify output
   const auto input = torch::randn({100, dim});
   auto output = norm(input);
-  auto desired_output = layer_norm(input, weight, torch::Tensor(), eps);
+  auto desired_output = layer_norm(input, weight, bias, eps);
   EXPECT_TRUE(torch::allclose(output, desired_output));
 }
 

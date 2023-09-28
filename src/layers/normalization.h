@@ -9,12 +9,14 @@ namespace llm {
 
 // apply layer normalization over a mini-batch of inputs as described in
 // the paper `Layer Normalization`: https://arxiv.org/abs/1607.06450
+// x = ((x - mean(x)) / sqrt(std(x) + eps)) * weight + bias
 class LayerNormImpl : public torch::nn::Module {
  public:
   // dim: the dim over which the mean and std are calculated separately.
   // eps: a value added to the denominator for numerical stability.
   LayerNormImpl(int64_t dim,
                 double eps,
+                bool bias,
                 const torch::ScalarType& dtype,
                 const torch::Device& device)
       : eps_(eps) {
@@ -23,13 +25,18 @@ class LayerNormImpl : public torch::nn::Module {
         "weight",
         torch::empty(normalized_shape_, torch::dtype(dtype).device(device)),
         /*requires_grad=*/false);
-    // TODO: add bias
+    if (bias) {
+      bias_ = register_parameter(
+          "bias",
+          torch::zeros(normalized_shape_, torch::dtype(dtype).device(device)),
+          /*requires_grad=*/false);
+    }
   }
 
   torch::Tensor forward(torch::Tensor input) {
     namespace F = torch::nn::functional;
     return F::detail::layer_norm(
-      input, normalized_shape_, weight_, bias_, eps_);
+        input, normalized_shape_, weight_, bias_, eps_);
   }
 
   // load the weight from the checkpoint
@@ -39,13 +46,25 @@ class LayerNormImpl : public torch::nn::Module {
       CHECK_EQ(weight_.sizes(), weight.sizes())
           << "weight size mismatch for " << name();
       weight_.copy_(weight);
-      is_loaded_ = true;
+      weight_is_loaded_ = true;
+    }
+    if (bias_.defined()) {
+      const auto bias = state_dict.get_tensor("bias");
+      if (bias.defined()) {
+        CHECK_EQ(bias_.sizes(), bias.sizes())
+            << "bias size mismatch for " << name();
+        bias_.copy_(bias);
+        bias_is_loaded_ = true;
+      }
     }
   }
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
+    CHECK(weight_is_loaded_)
+        << "weight is not loaded for " << prefix + ".weight";
+    CHECK(!bias_.defined() || bias_is_loaded_)
+        << "bias is not loaded for " << prefix + ".bias";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -59,14 +78,14 @@ class LayerNormImpl : public torch::nn::Module {
   torch::Tensor bias_{nullptr};
 
   // whether the weight is loaded
-  bool is_loaded_ = false;
+  bool weight_is_loaded_ = false;
+  bool bias_is_loaded_ = false;
 
   // configs
   double eps_;
   std::vector<int64_t> normalized_shape_;
 };
 TORCH_MODULE(LayerNorm);
-
 
 // Root mean square normalization
 class RMSNormImpl : public torch::nn::Module {

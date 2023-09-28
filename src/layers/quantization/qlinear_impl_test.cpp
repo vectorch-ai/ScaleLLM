@@ -30,6 +30,7 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
   const int64_t group_size = 128;
   ColumnParallelQLinearGPTQImpl qlinear(in_features,
                                         out_features,
+                                        /*bias=*/false,
                                         bits,
                                         group_size,
                                         /*gather_output=*/false,
@@ -64,6 +65,7 @@ TEST(QlinearTest, RowParallelQuantLinear) {
   const int64_t group_size = 128;
   RowParallelQLinearGPTQImpl qlinear(in_features,
                                      out_features,
+                                     /*bias=*/false,
                                      bits,
                                      group_size,
                                      /*input_is_parallelized=*/true,

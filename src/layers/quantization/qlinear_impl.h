@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ATen/core/TensorBody.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -16,6 +17,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
  public:
   ColumnParallelQLinearImpl(int64_t in_features,
                             int64_t out_features,
+                            bool bias,
                             int64_t bits,
                             int64_t group_size,
                             int64_t qweight_pack_dim,
@@ -40,13 +42,17 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
   torch::Tensor qzeros_{nullptr};
   torch::Tensor scales_{nullptr};
 
+  torch::Tensor bias_{nullptr};
+
  private:
   bool qweight_is_loaded_ = false;
   bool qzeros_is_loaded_ = false;
   bool scales_is_loaded_ = false;
+  bool bias_is_loaded_ = false;
   std::vector<torch::Tensor> qweight_list_;
   std::vector<torch::Tensor> qzeros_list_;
   std::vector<torch::Tensor> scales_list_;
+  std::vector<torch::Tensor> bias_list_;
 
   int rank_ = 0;
   int world_size_ = 0;
@@ -66,6 +72,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
  public:
   RowParallelQLinearImpl(int64_t in_features,
                          int64_t out_features,
+                         bool bias,
                          int64_t bits,
                          int64_t group_size,
                          int64_t qweight_pack_dim,
@@ -93,10 +100,13 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
   torch::Tensor qzeros_{nullptr};
   torch::Tensor scales_{nullptr};
 
+  torch::Tensor bias_{nullptr};
+
  private:
   bool qweight_is_loaded_ = false;
   bool qzeros_is_loaded_ = false;
   bool scales_is_loaded_ = false;
+  bool bias_is_loaded_ = false;
 
   int rank_ = 0;
   int world_size_ = 0;

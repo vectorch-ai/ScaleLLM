@@ -35,6 +35,7 @@ class ColumnParallelLinear
   // chose right implementation based on the args.
   ColumnParallelLinear(int64_t in_features,
                        int64_t out_features,
+                       bool bias,
                        bool gather_output,
                        const QuantizationArgs& quant_args,
                        const ParallelArgs& parallel_args,
@@ -43,6 +44,7 @@ class ColumnParallelLinear
 
   ColumnParallelLinear(int64_t in_features,
                        int64_t out_features,
+                       bool bias,
                        bool gather_output,
                        const ParallelArgs& parallel_args,
                        const torch::ScalarType& dtype,
@@ -58,6 +60,7 @@ class RowParallelLinear : public torch::nn::ModuleHolder<ParallelLinearImpl> {
   // chose right implementation based on the args.
   RowParallelLinear(int64_t in_features,
                     int64_t out_features,
+                    bool bias,
                     bool input_is_parallelized,
                     const QuantizationArgs& quant_args,
                     const ParallelArgs& parallel_args,

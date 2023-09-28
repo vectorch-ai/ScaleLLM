@@ -27,6 +27,7 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
  public:
   ColumnParallelLinearImpl(int64_t in_features,
                            int64_t out_features,
+                           bool bias,
                            bool gather_output,
                            const ParallelArgs& parallel_args,
                            const torch::ScalarType& dtype,
@@ -43,7 +44,10 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix) const override {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
+    CHECK(weight_is_loaded_)
+        << "weight is not loaded for " << prefix + ".weight";
+    CHECK(!bias_.defined() || bias_is_loaded_)
+        << "bias is not loaded for " << prefix + ".bias";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -58,9 +62,12 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features_per_partition, in_features]
   torch::Tensor weight_{nullptr};
+  torch::Tensor bias_{nullptr};
 
-  bool is_loaded_ = false;
+  bool weight_is_loaded_ = false;
+  bool bias_is_loaded_ = false;
   std::vector<torch::Tensor> weight_list_;
+  std::vector<torch::Tensor> bias_list_;
 
   // whether to gather the output
   bool gather_output_;
@@ -83,6 +90,7 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
  public:
   RowParallelLinearImpl(int64_t in_features,
                         int64_t out_features,
+                        bool bias,
                         bool input_is_parallelized,
                         const ParallelArgs& parallel_args,
                         const torch::ScalarType& dtype,
@@ -102,7 +110,10 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const override {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
+    CHECK(weight_is_loaded_)
+        << "weight is not loaded for " << prefix + ".weight";
+    CHECK(!bias_.defined() || bias_is_loaded_)
+        << "bias is not loaded for " << prefix + ".bias";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -117,9 +128,11 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features, in_features_per_partition]
   torch::Tensor weight_{nullptr};
+  torch::Tensor bias_{nullptr};
 
   // whether the weight is loaded
-  bool is_loaded_ = false;
+  bool weight_is_loaded_ = false;
+  bool bias_is_loaded_ = false;
 
   // whether the input is already parallelized
   bool input_is_parallelized_;

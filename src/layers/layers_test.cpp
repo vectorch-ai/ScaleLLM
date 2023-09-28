@@ -25,6 +25,7 @@ TEST(LayersTest, TestLoadStateDict) {
   ParallelArgs parallel_args(0, 1, nullptr);
   ColumnParallelLinearImpl linear(in_features,
                                   out_features,
+                                  /*bias=*/false,
                                   /*gather_output=*/false,
                                   parallel_args,
                                   dtype,

@@ -20,6 +20,7 @@ int64_t round_up(int64_t num, int64_t multiple) {
 ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     int64_t in_features,
     int64_t out_features,
+    bool bias,
     int64_t bits,
     int64_t group_size,
     int64_t qweight_pack_dim,
@@ -62,6 +63,12 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
                                              out_features_per_partition},
                                             torch::dtype(dtype).device(device)),
                                /*requires_grad=*/false);
+  if (bias) {
+    bias_ = register_parameter("bias",
+                               torch::empty({out_features_per_partition},
+                                            torch::dtype(dtype).device(device)),
+                               /*requires_grad=*/false);
+  }
 }
 
 // load the weight from the checkpoint
@@ -97,6 +104,19 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
     scales_.copy_(scales);
     scales_is_loaded_ = true;
   }
+
+  if (bias_.defined()) {
+    const auto bias = state_dict.get_sharded_tensor("bias",
+                                                    /*dim=*/0,
+                                                    rank_,
+                                                    world_size_);
+    if (bias.defined()) {
+      CHECK_EQ(bias_.sizes(), bias.sizes())
+          << "bias size mismatch for " << name();
+      bias_.copy_(bias);
+      bias_is_loaded_ = true;
+    }
+  }
 }
 
 // special load_state_dict for fused cases
@@ -107,6 +127,7 @@ void ColumnParallelQLinearImpl::load_state_dict(
   std::vector<torch::Tensor> qweight_list(count);
   std::vector<torch::Tensor> qzeros_list(count);
   std::vector<torch::Tensor> scales_list(count);
+  std::vector<torch::Tensor> bias_list(count);
 
   for (size_t i = 0; i < count; ++i) {
     std::string tensor_name = std::string(prefixes[i]) + "qweight";
@@ -136,6 +157,18 @@ void ColumnParallelQLinearImpl::load_state_dict(
       CHECK(!scales_list[i].defined()) << "scales already loaded";
       scales_list[i] = scales;
     }
+    // load bias if defined
+    if (bias_.defined()) {
+      tensor_name = std::string(prefixes[i]) + "bias";
+      const auto bias = state_dict.get_sharded_tensor(tensor_name,
+                                                      /*dim=*/0,
+                                                      rank_,
+                                                      world_size_);
+      if (bias.defined()) {
+        CHECK(!bias_list[i].defined()) << "bias already loaded";
+        bias_list[i] = bias;
+      }
+    }
   }
 
   qweight_is_loaded_ = details::merge_weights(name(),
@@ -158,6 +191,15 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                              /*clone=*/true,
                                              scales_list_,
                                              scales_);
+  // load bias if defined
+  if (bias_.defined()) {
+    bias_is_loaded_ = details::merge_weights(name(),
+                                             std::move(bias_list),
+                                             /*dim=*/0,
+                                             /*clone=*/true,
+                                             bias_list_,
+                                             bias_);
+  }
 }
 
 void ColumnParallelQLinearImpl::verify_loaded_weights(
@@ -166,10 +208,13 @@ void ColumnParallelQLinearImpl::verify_loaded_weights(
       << "qweight is not loaded for " << prefix + ".qweight";
   CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+  CHECK(!bias_.defined() || bias_is_loaded_)
+      << "bias is not loaded for " << prefix + ".bias";
 }
 
 RowParallelQLinearImpl::RowParallelQLinearImpl(int64_t in_features,
                                                int64_t out_features,
+                                               bool bias,
                                                int64_t bits,
                                                int64_t group_size,
                                                int64_t qweight_pack_dim,
@@ -213,6 +258,13 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(int64_t in_features,
           {round_up(in_features_per_partition, group_size), out_features},
           torch::dtype(dtype).device(device)),
       /*requires_grad=*/false);
+
+  if (bias) {
+    bias_ = register_parameter(
+        "bias",
+        torch::empty({out_features}, torch::dtype(dtype).device(device)),
+        /*requires_grad=*/false);
+  }
 }
 
 // load the weight from the checkpoint
@@ -247,6 +299,15 @@ void RowParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
     scales_.copy_(scales);
     scales_is_loaded_ = true;
   }
+  if (bias_.defined()) {
+    const auto bias = state_dict.get_tensor("bias");
+    if (bias.defined()) {
+      CHECK_EQ(bias_.sizes(), bias.sizes())
+          << "bias size mismatch for " << name();
+      bias_.copy_(bias);
+      bias_is_loaded_ = true;
+    }
+  }
 }
 
 void RowParallelQLinearImpl::verify_loaded_weights(
@@ -255,6 +316,8 @@ void RowParallelQLinearImpl::verify_loaded_weights(
       << "qweight is not loaded for " << prefix + ".qweight";
   CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+  CHECK(!bias_.defined() || bias_is_loaded_)
+      << "bias is not loaded for " << prefix + ".bias";
 }
 
 }  // namespace llm

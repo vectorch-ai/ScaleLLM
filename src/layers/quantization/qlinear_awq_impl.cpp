@@ -19,6 +19,7 @@ namespace llm {
 ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
     int64_t in_features,
     int64_t out_features,
+    bool bias,
     int64_t bits,
     int64_t group_size,
     bool gather_output,
@@ -27,6 +28,7 @@ ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
     const torch::Device& device)
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
+                                bias,
                                 bits,
                                 group_size,
                                 /*qweight_pack_dim=*/1,
@@ -48,6 +50,9 @@ torch::Tensor ColumnParallelQLinearAWQImpl::forward(torch::Tensor input) const {
   torch::Tensor output =
       gemm_forward_cuda(input, qweight_, scales_, qzeros_, pack_factor_);
   output = output.reshape({-1, out_features});
+  if (bias_.defined()) {
+    output.add_(bias_);
+  }
   if (parallel_args_.world_size() > 1 && gather_output_) {
     output = gather_from_model_parallel_region(output, parallel_args_);
   }
@@ -57,6 +62,7 @@ torch::Tensor ColumnParallelQLinearAWQImpl::forward(torch::Tensor input) const {
 RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
     int64_t in_features,
     int64_t out_features,
+    bool bias,
     int64_t bits,
     int64_t group_size,
     bool input_is_parallelized,
@@ -65,6 +71,7 @@ RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
     const torch::Device& device)
     : RowParallelQLinearImpl(in_features,
                              out_features,
+                             bias,
                              bits,
                              group_size,
                              /*qweight_pack_dim=*/1,
@@ -89,6 +96,9 @@ torch::Tensor RowParallelQLinearAWQImpl::forward(torch::Tensor input) const {
   torch::Tensor output =
       gemm_forward_cuda(input, qweight_, scales_, qzeros_, pack_factor_);
   output = output.reshape({-1, out_features});
+  if (bias_.defined()) {
+    output.add_(bias_);
+  }
   if (parallel_args_.world_size() > 1) {
     output = reduce_from_model_parallel_region(output, parallel_args_);
   }

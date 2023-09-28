@@ -62,6 +62,7 @@ bool merge_weights(const std::string& tensor_name,
 ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     int64_t in_features,
     int64_t out_features,
+    bool bias,
     bool gather_output,
     const ParallelArgs& parallel_args,
     const torch::ScalarType& dtype,
@@ -80,11 +81,18 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
                          torch::empty({out_features_per_partition, in_features},
                                       torch::dtype(dtype).device(device)),
                          /*requires_grad=*/false);
+
+  if (bias) {
+    bias_ = register_parameter("bias",
+                               torch::empty({out_features_per_partition},
+                                            torch::dtype(dtype).device(device)),
+                               /*requires_grad=*/false);
+  }
 }
 
 torch::Tensor ColumnParallelLinearImpl::forward(torch::Tensor input) const {
   namespace F = torch::nn::functional;
-  auto output = F::linear(input, weight_);
+  auto output = F::linear(input, weight_, bias_);
   if (parallel_args_.world_size() > 1 && gather_output_) {
     output = gather_from_model_parallel_region(output, parallel_args_);
   }
@@ -102,7 +110,21 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
     CHECK_EQ(weight_.sizes(), weight.sizes())
         << "weight size mismatch for " << name();
     weight_.copy_(weight);
-    is_loaded_ = true;
+    weight_is_loaded_ = true;
+  }
+
+  if (bias_.defined()) {
+    const auto bias = state_dict.get_sharded_tensor(
+        "bias",
+        /*dim=*/0,
+        /*rank=*/parallel_args_.rank(),
+        /*world_size=*/parallel_args_.world_size());
+    if (bias.defined()) {
+      CHECK_EQ(bias_.sizes(), bias.sizes())
+          << "bias size mismatch for " << name();
+      bias_.copy_(bias);
+      bias_is_loaded_ = true;
+    }
   }
 }
 
@@ -111,6 +133,7 @@ void ColumnParallelLinearImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string_view>& prefixes) {
   std::vector<torch::Tensor> weight_list(prefixes.size());
+  std::vector<torch::Tensor> bias_list(prefixes.size());
   for (size_t i = 0; i < prefixes.size(); ++i) {
     std::string name = std::string(prefixes[i]) + "weight";
     const auto weight =
@@ -122,18 +145,40 @@ void ColumnParallelLinearImpl::load_state_dict(
       CHECK(!weight_list[i].defined()) << "weight already loaded";
       weight_list[i] = weight;
     }
+
+    if (bias_.defined()) {
+      name = std::string(prefixes[i]) + "bias";
+      const auto bias =
+          state_dict.get_sharded_tensor(name,
+                                        /*dim=*/0,
+                                        parallel_args_.rank(),
+                                        parallel_args_.world_size());
+      if (bias.defined()) {
+        CHECK(!bias_list[i].defined()) << "bias already loaded";
+        bias_list[i] = bias;
+      }
+    }
   }
-  is_loaded_ = details::merge_weights(name(),
-                                      std::move(weight_list),
-                                      /*dim=*/0,
-                                      /*clone=*/true,
-                                      weight_list_,
-                                      weight_);
+  weight_is_loaded_ = details::merge_weights(name(),
+                                             std::move(weight_list),
+                                             /*dim=*/0,
+                                             /*clone=*/true,
+                                             weight_list_,
+                                             weight_);
+  if (bias_.defined()) {
+    bias_is_loaded_ = details::merge_weights(name(),
+                                             std::move(bias_list),
+                                             /*dim=*/0,
+                                             /*clone=*/true,
+                                             bias_list_,
+                                             bias_);
+  }
 }
 
 // Linear layer with row parallelism.
 RowParallelLinearImpl::RowParallelLinearImpl(int64_t in_features,
                                              int64_t out_features,
+                                             bool bias,
                                              bool input_is_parallelized,
                                              const ParallelArgs& parallel_args,
                                              const torch::ScalarType& dtype,
@@ -151,6 +196,13 @@ RowParallelLinearImpl::RowParallelLinearImpl(int64_t in_features,
                          torch::empty({out_features, in_features_per_partition},
                                       torch::dtype(dtype).device(device)),
                          /*requires_grad=*/false);
+
+  if (bias) {
+    bias_ = register_parameter(
+        "bias",
+        torch::empty({out_features}, torch::dtype(dtype).device(device)),
+        /*requires_grad=*/false);
+  }
 }
 
 torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) const {
@@ -158,7 +210,7 @@ torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) const {
   if (!input_is_parallelized_) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
   }
-  auto output = F::linear(input, weight_);
+  auto output = F::linear(input, weight_, bias_);
   if (parallel_args_.world_size() > 1) {
     output = reduce_from_model_parallel_region(output, parallel_args_);
   }
@@ -176,7 +228,17 @@ void RowParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
     CHECK_EQ(weight_.sizes(), weight.sizes())
         << "weight size mismatch for " << name();
     weight_.copy_(weight);
-    is_loaded_ = true;
+    weight_is_loaded_ = true;
+  }
+
+  if (bias_.defined()) {
+    const auto bias = state_dict.get_tensor("bias");
+    if (bias.defined()) {
+      CHECK_EQ(bias_.sizes(), bias.sizes())
+          << "bias size mismatch for " << name();
+      bias_.copy_(bias);
+      bias_is_loaded_ = true;
+    }
   }
 }
 

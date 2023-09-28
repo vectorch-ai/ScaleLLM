@@ -42,6 +42,7 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
  public:
   ColumnParallelQLinearGPTQImpl(int64_t in_features,
                                 int64_t out_features,
+                                bool bias,
                                 int64_t bits,
                                 int64_t group_size,
                                 bool gather_output,
@@ -90,6 +91,7 @@ class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
  public:
   RowParallelQLinearGPTQImpl(int64_t in_features,
                              int64_t out_features,
+                             bool bias,
                              int64_t bits,
                              int64_t group_size,
                              bool input_is_parallelized,
