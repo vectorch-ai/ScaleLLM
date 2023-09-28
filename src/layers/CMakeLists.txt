@@ -6,7 +6,7 @@ cc_library(
     layers
   HDRS 
     model_parallel.h
-    norm.h
+    normalization.h
     linear.h
     linear_impl.h
     embedding.h
@@ -42,6 +42,7 @@ cc_test(
   SRCS
     layers_test.cpp
     pos_embedding_test.cpp
+    normalization_test.cpp
     quantization/qlinear_impl_test.cpp
   DEPS
     :layers

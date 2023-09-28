@@ -5,7 +5,7 @@
 #include "layers/attention.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
-#include "layers/norm.h"
+#include "layers/normalization.h"
 #include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
