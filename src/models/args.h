@@ -10,6 +10,8 @@ namespace llm {
 struct ModelArgs {
   DEFINE_ARG(std::vector<std::string>, architectures);
 
+  DEFINE_ARG(std::string, model_type);
+
   DEFINE_ARG(int64_t, hidden_size) = 4096;
 
   DEFINE_ARG(int64_t, intermediate_size) = 11008;
@@ -22,14 +24,18 @@ struct ModelArgs {
 
   DEFINE_ARG(int64_t, vocab_size) = -1;
 
-  DEFINE_ARG(float, norm_eps) = 1e-5;
+  DEFINE_ARG(float, rms_norm_eps) = 1e-5;
 
+  DEFINE_ARG(float, layer_norm_eps) = 1e-5;
+
+  // args for rotary position embeddings
   DEFINE_ARG(float, rope_theta) = 10000.0f;
 
   DEFINE_ARG(float, rope_scaling) = 0.0f;
 
-  // TODO: following two should not be part of model args
-  DEFINE_ARG(int64_t, max_seq_len) = 2048;
+  DEFINE_ARG(float, rotary_pct) = 1.0f;
+
+  DEFINE_ARG(int64_t, max_position_embeddings) = 4096;
 };
 
 struct QuantizationArgs {

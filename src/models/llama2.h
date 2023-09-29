@@ -120,7 +120,6 @@ class LlamaAttentionImpl : public torch::nn::Module {
                                             device));
 
     // initialize positional embedding
-    // TODO: need to adjust the max_seq_len
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
                              AttentionWithRoPE(n_local_heads_,
@@ -130,7 +129,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
                                                /*rotary_dim=*/head_dim_,
                                                args.rope_scaling(),
                                                args.rope_theta(),
-                                               args.max_seq_len(),
+                                               args.max_position_embeddings(),
                                                /*interleaved=*/true,
                                                dtype,
                                                device));
@@ -206,10 +205,10 @@ class TransformerBlockImpl : public torch::nn::Module {
         FeedForward(args, quant_args, parallel_args, dtype, device));
     attention_norm_ = register_module(
         "attention_norm",
-        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
     ffn_norm_ = register_module(
         "ffn_norm",
-        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -277,7 +276,8 @@ class ModelImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm", RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
+        "norm",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
     output_ = register_module("output",
                               ColumnParallelLinear(args.hidden_size(),
                                                    args.vocab_size(),

@@ -134,7 +134,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
                                                /*rotary_dim=*/head_dim_,
                                                args.rope_scaling(),
                                                args.rope_theta(),
-                                               args.max_seq_len(),
+                                               args.max_position_embeddings(),
                                                /*interleaved=*/false,
                                                dtype,
                                                device));
@@ -208,10 +208,10 @@ class DecoderLayerImpl : public torch::nn::Module {
                            MLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
         "input_layernorm",
-        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
     post_attention_layernorm_ = register_module(
         "post_attention_layernorm",
-        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -281,7 +281,8 @@ class ModelImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm", RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
+        "norm",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),

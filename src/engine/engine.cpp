@@ -13,8 +13,6 @@
 
 static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
-DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
-
 DEFINE_int32(block_size, 16, "slots per block, value must be [8, 16, 32]");
 DEFINE_int64(max_cache_size, 5 * GB, "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
@@ -70,8 +68,6 @@ bool Engine::init_model(const std::string& model_weights_path) {
   if (args_.vocab_size() == -1) {
     args_.vocab_size(static_cast<int64_t>(tokenizer_->vocab_size()));
   }
-  // TODO: remove this two from model args
-  args_.max_seq_len(FLAGS_max_seq_len);
 
   const auto& quant_args = model_loader->quant_args();
 
@@ -162,6 +158,7 @@ bool Engine::init_kv_cache() {
     if (FLAGS_max_cache_size > 0) {
       max_cache_size = std::min(max_cache_size, FLAGS_max_cache_size);
     }
+    CHECK_GT(max_cache_size, 0) << "Not enough memory for the cache";
     LOG(INFO) << "Initializing CUDA cache with max cache size: "
               << readable_size(max_cache_size);
     num_blocks = max_cache_size / block_size_in_bytes;

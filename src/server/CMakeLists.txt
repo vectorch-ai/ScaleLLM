@@ -12,6 +12,7 @@ cc_library(
     :common
     :tokenizer
     :scheduler
+    :model_loader
     absl::time
     glog::glog
     grpc_proto::completion

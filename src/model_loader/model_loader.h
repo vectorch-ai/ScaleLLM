@@ -1,11 +1,15 @@
 #pragma once
 
+#include <gflags/gflags.h>
 #include <torch/torch.h>
 
 #include <vector>
 
 #include "model_loader/state_dict.h"
 #include "models/args.h"
+
+DECLARE_int64(max_position_embeddings);
+DECLARE_string(model_type);
 
 namespace llm {
 
@@ -104,7 +108,7 @@ class PTModelLoader : public ModelLoader {
 
   // quantization args
   QuantizationArgs quant_args_;
-  
+
   // sorted model weights files
   std::vector<std::string> model_weights_files_;
 };

@@ -25,6 +25,8 @@ DEFINE_string(tokenizer_path,
 
 DEFINE_string(device, "cuda:0", "Device to run the model on.");
 
+DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
+
 DEFINE_double(temperature, 0, "Temperature for sampling.");
 
 DEFINE_double(top_p, 1.0, "Top p for sampling.");

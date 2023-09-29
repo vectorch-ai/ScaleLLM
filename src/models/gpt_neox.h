@@ -49,8 +49,8 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
   torch::Tensor forward(torch::Tensor x) {
     namespace F = torch::nn::functional;
     // TODO: get active function from args
-    auto act = F::silu;
-    return dense_4h_to_h_(act(dense_h_to_4h_(x)));
+    // auto act = F::gelu;
+    return dense_4h_to_h_(F::gelu(dense_h_to_4h_(x)));
   }
 
   // load the weight from the checkpoint
@@ -117,23 +117,20 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                                                device));
 
     // initialize positional embedding
-    // TODO: need to adjust the max_seq_len
-    // const int64_t rotary_dim = static_cast<int64_t>(head_dim_ *
-    // config.rotary_pct());
     const int64_t rotary_dim = head_dim_;
-
+    // const int64_t rotary_dim =
+    //     static_cast<int64_t>(head_dim_ * args.rotary_pct());
     // initialize attention
-    // scaling = self.head_size**-0.5
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
                              AttentionWithRoPE(n_local_heads_,
                                                n_local_kv_heads_,
                                                head_dim_,
                                                scale,
-                                               /*rotary_dim=*/head_dim_,
+                                               rotary_dim,
                                                args.rope_scaling(),
                                                args.rope_theta(),
-                                               args.max_seq_len(),
+                                               args.max_position_embeddings(),
                                                /*interleaved=*/false,
                                                dtype,
                                                device));
@@ -205,14 +202,18 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
             layer_id, args, quant_args, parallel_args, dtype, device));
     mlp_ = register_module(
         "mlp", GPTNeoXMLP(args, quant_args, parallel_args, dtype, device));
-    input_layernorm_ = register_module(
-        "input_layernorm",
-        LayerNorm(
-            args.hidden_size(), args.norm_eps(), /*bias=*/true, dtype, device));
-    post_attention_layernorm_ = register_module(
-        "post_attention_layernorm",
-        LayerNorm(
-            args.hidden_size(), args.norm_eps(), /*bias=*/true, dtype, device));
+    input_layernorm_ = register_module("input_layernorm",
+                                       LayerNorm(args.hidden_size(),
+                                                 args.layer_norm_eps(),
+                                                 /*bias=*/true,
+                                                 dtype,
+                                                 device));
+    post_attention_layernorm_ = register_module("post_attention_layernorm",
+                                                LayerNorm(args.hidden_size(),
+                                                          args.layer_norm_eps(),
+                                                          /*bias=*/true,
+                                                          dtype,
+                                                          device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -281,10 +282,12 @@ class GPTNeoXModelImpl : public torch::nn::Module {
       layers_.push_back(block);
       blocks_->push_back(block);
     }
-    final_layer_norm_ = register_module(
-        "final_layer_norm",
-        LayerNorm(
-            args.hidden_size(), args.norm_eps(), /*bias=*/true, dtype, device));
+    final_layer_norm_ = register_module("final_layer_norm",
+                                        LayerNorm(args.hidden_size(),
+                                                  args.layer_norm_eps(),
+                                                  /*bias=*/true,
+                                                  dtype,
+                                                  device));
 
     // TODO: If the vocab size is not divisible by world size, we should
     // just load the entire thing.

@@ -11,12 +11,11 @@
 #include "call_data.h"
 #include "completion.grpc.pb.h"
 #include "request/request.h"
+#include "model_loader/model_loader.h"
 
 constexpr int kStepTimeoutMs = 500;
 
 DEFINE_int32(num_converter_threads, 1, "number of converter threads");
-
-DECLARE_int32(max_seq_len);
 
 namespace llm {
 
@@ -72,7 +71,7 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
   // TODO: add better protection
-  auto max_tokens = static_cast<uint32_t>(FLAGS_max_seq_len - token_ids.size());
+  auto max_tokens = static_cast<uint32_t>(FLAGS_max_position_embeddings - token_ids.size());
   if (grpc_request.max_tokens() != 0) {
     max_tokens = std::min(max_tokens, grpc_request.max_tokens());
   }

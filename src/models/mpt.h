@@ -125,7 +125,7 @@ class MPTAttentionImpl : public torch::nn::Module {
                                                /*rotary_dim=*/head_dim_,
                                                args.rope_scaling(),
                                                args.rope_theta(),
-                                               args.max_seq_len(),
+                                               args.max_position_embeddings(),
                                                /*interleaved=*/false,
                                                dtype,
                                                device));
@@ -196,13 +196,13 @@ class MPTBlockImpl : public torch::nn::Module {
     // LayerNormOptions({2, 2}).elementwise_affine(false).eps(2e-5)
     norm_1_ = register_module("norm_1",
                               LayerNorm(args.hidden_size(),
-                                        args.norm_eps(),
+                                        args.layer_norm_eps(),
                                         /*bias=*/false,
                                         dtype,
                                         device));
     norm_2_ = register_module("norm_2",
                               LayerNorm(args.hidden_size(),
-                                        args.norm_eps(),
+                                        args.layer_norm_eps(),
                                         /*bias=*/false,
                                         dtype,
                                         device));
@@ -274,7 +274,7 @@ class MPTModelImpl : public torch::nn::Module {
     }
     norm_f_ = register_module("norm_f",
                               LayerNorm(args.hidden_size(),
-                                        args.norm_eps(),
+                                        args.layer_norm_eps(),
                                         /*bias=*/false,
                                         dtype,
                                         device));
