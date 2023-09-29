@@ -179,34 +179,38 @@ void ColumnParallelQLinearImpl::load_state_dict(
     }
   }
 
-  qweight_is_loaded_ = details::merge_weights(name(),
-                                              std::move(qweight_list),
-                                              /*dim=*/1,
-                                              /*clone=*/true,
-                                              qweight_list_,
-                                              qweight_);
+  detail::merge_weights(name(),
+                        std::move(qweight_list),
+                        /*dim=*/1,
+                        /*clone=*/true,
+                        qweight_list_,
+                        qweight_,
+                        qweight_is_loaded_);
 
-  qzeros_is_loaded_ = details::merge_weights(name(),
-                                             std::move(qzeros_list),
-                                             /*dim=*/1,
-                                             /*clone=*/true,
-                                             qzeros_list_,
-                                             qzeros_);
+  detail::merge_weights(name(),
+                        std::move(qzeros_list),
+                        /*dim=*/1,
+                        /*clone=*/true,
+                        qzeros_list_,
+                        qzeros_,
+                        qzeros_is_loaded_);
 
-  scales_is_loaded_ = details::merge_weights(name(),
-                                             std::move(scales_list),
-                                             /*dim=*/1,
-                                             /*clone=*/true,
-                                             scales_list_,
-                                             scales_);
+  detail::merge_weights(name(),
+                        std::move(scales_list),
+                        /*dim=*/1,
+                        /*clone=*/true,
+                        scales_list_,
+                        scales_,
+                        scales_is_loaded_);
   // load bias if defined
   if (bias_.defined()) {
-    bias_is_loaded_ = details::merge_weights(name(),
-                                             std::move(bias_list),
-                                             /*dim=*/0,
-                                             /*clone=*/true,
-                                             bias_list_,
-                                             bias_);
+    detail::merge_weights(name(),
+                          std::move(bias_list),
+                          /*dim=*/0,
+                          /*clone=*/true,
+                          bias_list_,
+                          bias_,
+                          bias_is_loaded_);
   }
 }
 

@@ -8,17 +8,17 @@
 #include "models/args.h"
 
 namespace llm {
-namespace details {
+namespace detail {
 // helper function to merge fused weights
-// returns true if the weights are merged into weight.
-bool merge_weights(const std::string& tensor_name,
+void merge_weights(const std::string& tensor_name,
                    std::vector<torch::Tensor> weight_list,
                    int64_t dim,  // dim to cat
                    bool clone,   // wheather to make a colne for accumulating
                    std::vector<torch::Tensor>& accumulated_weight_list,
-                   torch::Tensor& weight);
+                   torch::Tensor& weight,
+                   bool& weight_is_loaded);
 
-}  // namespace details
+}  // namespace detail
 
 // Linear layer with column parallelism.
 // The linear layer is defined as Y = XA + b. A is parallelized along

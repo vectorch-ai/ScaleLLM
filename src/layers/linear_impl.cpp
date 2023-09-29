@@ -11,14 +11,19 @@
 #include "models/args.h"
 
 namespace llm {
-namespace details {
+namespace detail {
 
-bool merge_weights(const std::string& tensor_name,
+void merge_weights(const std::string& tensor_name,
                    std::vector<torch::Tensor> weight_list,
                    int64_t dim,
                    bool clone,
                    std::vector<torch::Tensor>& accumulated_weight_list,
-                   torch::Tensor& weight) {
+                   torch::Tensor& weight,
+                   bool& weight_is_loaded) {
+  // return if the weight is already loaded
+  if (weight_is_loaded) {
+    return;
+  }
   // resize the accumulated weight list if needed
   if (accumulated_weight_list.size() < weight_list.size()) {
     accumulated_weight_list.resize(weight_list.size());
@@ -44,20 +49,19 @@ bool merge_weights(const std::string& tensor_name,
             clone ? weight_list[i].clone() : weight_list[i];
       }
     }
-    return false;
+  } else {
+    const auto merged_weight = torch::cat(weight_list, /*dim=*/dim);
+    CHECK_EQ(weight.sizes(), merged_weight.sizes())
+        << "weight size mismatch for " << tensor_name;
+    weight.copy_(merged_weight);
+    // release the memory for weight_list
+    accumulated_weight_list.clear();
+    weight_is_loaded = true;
   }
-
-  const auto merged_weight = torch::cat(weight_list, /*dim=*/dim);
-  CHECK_EQ(weight.sizes(), merged_weight.sizes())
-      << "weight size mismatch for " << tensor_name;
-  weight.copy_(merged_weight);
-  // release the memory for weight_list
-  weight_list.clear();
-  accumulated_weight_list.clear();
-  return true;
 }
 
-}  // namespace details
+}  // namespace detail
+
 // Linear layer with column parallelism.
 ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     int64_t in_features,
@@ -159,19 +163,21 @@ void ColumnParallelLinearImpl::load_state_dict(
       }
     }
   }
-  weight_is_loaded_ = details::merge_weights(name(),
-                                             std::move(weight_list),
-                                             /*dim=*/0,
-                                             /*clone=*/true,
-                                             weight_list_,
-                                             weight_);
+  detail::merge_weights(name(),
+                        std::move(weight_list),
+                        /*dim=*/0,
+                        /*clone=*/true,
+                        weight_list_,
+                        weight_,
+                        weight_is_loaded_);
   if (bias_.defined()) {
-    bias_is_loaded_ = details::merge_weights(name(),
-                                             std::move(bias_list),
-                                             /*dim=*/0,
-                                             /*clone=*/true,
-                                             bias_list_,
-                                             bias_);
+    detail::merge_weights(name(),
+                          std::move(bias_list),
+                          /*dim=*/0,
+                          /*clone=*/true,
+                          bias_list_,
+                          bias_,
+                          bias_is_loaded_);
   }
 }
 

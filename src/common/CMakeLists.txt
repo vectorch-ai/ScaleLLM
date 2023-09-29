@@ -9,8 +9,10 @@ cc_library(
     slice.h
     concurrent_queue.h
     executor.h
+    pretty_print.h
   SRCS
     executor.cpp
+    pretty_print.cpp
   DEPS
     prometheus-cpp::core
 )

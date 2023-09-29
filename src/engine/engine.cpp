@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "common/pretty_print.h"
 #include "memory/memory.h"
 #include "model_loader/model_loader.h"
 #include "models/args.h"
@@ -114,7 +115,7 @@ bool Engine::init_model(const std::string& model_weights_path) {
 
 bool Engine::init_kv_cache() {
   LOG(INFO) << "Initializing kv cache with block size: " << FLAGS_block_size
-            << ", max cache size: " << FLAGS_max_cache_size
+            << ", max cache size: " << readable_size(FLAGS_max_cache_size)
             << ", max memory utilization: " << FLAGS_max_memory_utilization;
 
   const int64_t block_size = FLAGS_block_size;
@@ -130,7 +131,7 @@ bool Engine::init_kv_cache() {
   const int64_t block_size_in_bytes = int64_t(2) * block_size *
                                       n_local_kv_heads * head_dim *
                                       args_.n_layers() * dtype_size;
-  LOG(INFO) << "Block size in bytes: " << block_size_in_bytes
+  LOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
             << ", block_size: " << block_size << ", head_dim: " << head_dim
             << ", n_local_kv_heads: " << n_local_kv_heads
             << ", n_layers: " << args_.n_layers()
@@ -142,15 +143,16 @@ bool Engine::init_kv_cache() {
   if (device.is_cpu()) {
     // use max memory cache size for CPU
     LOG(INFO) << "Initializing CPU cache with max cache size: "
-              << FLAGS_max_cache_size;
+              << readable_size(FLAGS_max_cache_size);
     num_blocks = FLAGS_max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else if (device.is_cuda()) {
     torch::cuda::synchronize();
     const auto allocated_bytes = memory::max_memory_allocated(device);
     const auto total_memory = memory::total_memory(device);
-    LOG(INFO) << device << ": allocated memory: " << allocated_bytes
-              << ", total memory: " << total_memory;
+    LOG(INFO) << device
+              << ": allocated GPU memory: " << readable_size(allocated_bytes)
+              << ", total GPU memory: " << readable_size(total_memory);
 
     int64_t max_cache_size =
         static_cast<int64_t>(static_cast<double>(total_memory) *
@@ -161,7 +163,7 @@ bool Engine::init_kv_cache() {
       max_cache_size = std::min(max_cache_size, FLAGS_max_cache_size);
     }
     LOG(INFO) << "Initializing CUDA cache with max cache size: "
-              << max_cache_size;
+              << readable_size(max_cache_size);
     num_blocks = max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else {
