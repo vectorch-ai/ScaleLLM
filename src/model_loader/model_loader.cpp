@@ -84,7 +84,7 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
 
   json data = json::parse(ifs);
   if (data.contains("dim")) {
-    args_.dim() = data["dim"].get<int64_t>();
+    args_.hidden_size() = data["dim"].get<int64_t>();
   }
   if (data.contains("n_layers")) {
     args_.n_layers() = data["n_layers"].get<int64_t>();
@@ -98,12 +98,6 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   if (data.contains("vocab_size")) {
     args_.vocab_size() = data["vocab_size"].get<int64_t>();
   }
-  if (data.contains("multiple_of")) {
-    args_.multiple_of() = data["multiple_of"].get<int64_t>();
-  }
-  if (data.contains("ffn_dim_multiplier")) {
-    args_.ffn_dim_multiplier() = data["ffn_dim_multiplier"].get<float>();
-  }
   if (data.contains("norm_eps")) {
     args_.norm_eps() = data["norm_eps"].get<float>();
   }
@@ -116,19 +110,26 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   // TODO: read from gflags
   args_.architectures().emplace_back("llama2");
 
-  if (data.contains("hidden_dim")) {
-    args_.hidden_dim() = data["hidden_dim"].get<int64_t>();
+  if (data.contains("intermediate_size")) {
+    args_.intermediate_size() = data["intermediate_size"].get<int64_t>();
   } else {
+    int64_t multiple_of = 256;
+    float ffn_dim_multiplier = 1.0f;
+    if (data.contains("multiple_of")) {
+      multiple_of = data["multiple_of"].get<int64_t>();
+    }
+    if (data.contains("ffn_dim_multiplier")) {
+      ffn_dim_multiplier = data["ffn_dim_multiplier"].get<float>();
+    }
+
     // calculate hidden_dim from dim
-    const int64_t dim = args_.dim();
-    const int64_t multiple_of = args_.multiple_of();
-    const float ffn_dim_multiplier = args_.ffn_dim_multiplier().value_or(1.0f);
-    int64_t hidden_dim = 4 * dim;
-    hidden_dim = 2 * hidden_dim / 3;
+    int64_t intermediate_size = args_.hidden_size() * 4;
+    intermediate_size = 2 * intermediate_size / 3;
     // custom dim factor multiplier
-    hidden_dim *= ffn_dim_multiplier;
-    hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
-    args_.hidden_dim() = hidden_dim;
+    intermediate_size *= ffn_dim_multiplier;
+    // round up to make hidden layer size multiple of large power of 2
+    intermediate_size = multiple_of * ((intermediate_size + multiple_of - 1) / multiple_of);
+    args_.intermediate_size() = intermediate_size;
   }
 
   // TODO: load quantization args
@@ -174,7 +175,7 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
 
   json data = json::parse(ifs);
   if (data.contains("hidden_size")) {
-    args_.dim() = data["hidden_size"].get<int64_t>();
+    args_.hidden_size() = data["hidden_size"].get<int64_t>();
   }
   if (data.contains("num_hidden_layers")) {
     args_.n_layers() = data["num_hidden_layers"].get<int64_t>();
@@ -187,12 +188,6 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   }
   if (data.contains("vocab_size")) {
     args_.vocab_size() = data["vocab_size"].get<int64_t>();
-  }
-  if (data.contains("multiple_of")) {
-    args_.multiple_of() = data["multiple_of"].get<int64_t>();
-  }
-  if (data.contains("ffn_dim_multiplier")) {
-    args_.ffn_dim_multiplier() = data["ffn_dim_multiplier"].get<float>();
   }
   if (data.contains("rms_norm_eps")) {
     args_.norm_eps() = data["rms_norm_eps"].get<float>();
@@ -210,18 +205,10 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     args_.rope_scaling() = data["rope_scaling"].get<float>();
   }
   if (data.contains("intermediate_size")) {
-    args_.hidden_dim() = data["intermediate_size"].get<int64_t>();
+    args_.intermediate_size() = data["intermediate_size"].get<int64_t>();
   } else {
-    // calculate hidden_dim from dim
-    const int64_t dim = args_.dim();
-    const int64_t multiple_of = args_.multiple_of();
-    const float ffn_dim_multiplier = args_.ffn_dim_multiplier().value_or(1.0f);
-    int64_t hidden_dim = 4 * dim;
-    hidden_dim = 2 * hidden_dim / 3;
-    // custom dim factor multiplier
-    hidden_dim *= ffn_dim_multiplier;
-    hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) / multiple_of);
-    args_.hidden_dim() = hidden_dim;
+    LOG(ERROR) << "Failed to find intermediate_size in config.json";
+    return false;
   }
 
   // load quantization args if exists

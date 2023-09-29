@@ -21,16 +21,16 @@ class FeedForwardImpl : public torch::nn::Module {
                   const ParallelArgs& parallel_args,
                   const torch::ScalarType& dtype,
                   const torch::Device& device) {
-    const int64_t dim = args.dim();
-    const int64_t hidden_dim = args.hidden_dim();
+    const int64_t hidden_size = args.hidden_size();
+    const int64_t intermediate_size = args.intermediate_size();
 
-    const int64_t local_hidden_dim = hidden_dim / parallel_args.world_size();
-    w1_w3_sizes_ = {local_hidden_dim, local_hidden_dim};
+    const int64_t local_intermediate_size = intermediate_size / parallel_args.world_size();
+    w1_w3_sizes_ = {local_intermediate_size, local_intermediate_size};
 
     // register the weight parameter
     w1_w3_ = register_module("w1_w3",
-                             ColumnParallelLinear(dim,
-                                                  hidden_dim * 2,
+                             ColumnParallelLinear(hidden_size,
+                                                  intermediate_size * 2,
                                                   /*bias=*/false,
                                                   /*gather_output=*/false,
                                                   quant_args,
@@ -38,8 +38,8 @@ class FeedForwardImpl : public torch::nn::Module {
                                                   dtype,
                                                   device));
     w2_ = register_module("w2",
-                          RowParallelLinear(hidden_dim,
-                                            dim,
+                          RowParallelLinear(intermediate_size,
+                                            hidden_size,
                                             /*bias=*/false,
                                             /*input_is_parallelized=*/true,
                                             quant_args,
@@ -85,13 +85,13 @@ class LlamaAttentionImpl : public torch::nn::Module {
                      const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
-    const int64_t dim = args.dim();
+    const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
 
     n_local_heads_ = n_heads / world_size;
     n_local_kv_heads_ = n_kv_heads / world_size;
-    head_dim_ = dim / n_heads;
+    head_dim_ = hidden_size / n_heads;
     // size for q, k, v
     qkv_sizes_ = {n_local_heads_ * head_dim_,
                   n_local_kv_heads_ * head_dim_,
@@ -100,7 +100,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
     // register submodules
     wqkv_ = register_module(
         "wqkv",
-        ColumnParallelLinear(dim,
+        ColumnParallelLinear(hidden_size,
                              (n_heads + 2 * n_kv_heads) * head_dim_,
                              /*bias=*/false,
                              /*gather_output=*/false,
@@ -110,7 +110,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
                              device));
     wo_ = register_module("wo",
                           RowParallelLinear(n_heads * head_dim_,
-                                            dim,
+                                            hidden_size,
                                             /*bias=*/false,
                                             /*input_is_parallel=*/true,
                                             quant_args,
@@ -120,7 +120,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
 
     // initialize positional embedding
     // TODO: need to adjust the max_seq_len
-    const auto rotary_dim = args.dim() / args.n_heads();
+    const auto rotary_dim = args.hidden_size() / args.n_heads();
     pos_emb_ =
         register_module("pos_emb",
                         RotaryEmbedding(rotary_dim,
@@ -223,9 +223,11 @@ class TransformerBlockImpl : public torch::nn::Module {
         "feed_forward",
         FeedForward(args, quant_args, parallel_args, dtype, device));
     attention_norm_ = register_module(
-        "attention_norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
+        "attention_norm",
+        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
     ffn_norm_ = register_module(
-        "ffn_norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
+        "ffn_norm",
+        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -278,10 +280,12 @@ class ModelImpl : public torch::nn::Module {
             const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
-    tok_embeddings_ = register_module(
-        "tok_embeddings",
-        ParallelEmbedding(
-            args.vocab_size(), args.dim(), parallel_args, dtype, device));
+    tok_embeddings_ = register_module("tok_embeddings",
+                                      ParallelEmbedding(args.vocab_size(),
+                                                        args.hidden_size(),
+                                                        parallel_args,
+                                                        dtype,
+                                                        device));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
@@ -291,9 +295,9 @@ class ModelImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
+        "norm", RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
     output_ = register_module("output",
-                              ColumnParallelLinear(args.dim(),
+                              ColumnParallelLinear(args.hidden_size(),
                                                    args.vocab_size(),
                                                    /*bias=*/false,
                                                    /*gather_output=*/true,

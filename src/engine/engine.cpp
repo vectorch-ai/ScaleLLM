@@ -14,8 +14,6 @@ static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
 DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
 
-DEFINE_int32(max_batch_size, 4, "Maximum batch size.");
-
 DEFINE_int32(block_size, 16, "slots per block, value must be [8, 16, 32]");
 DEFINE_int64(max_cache_size, 5 * GB, "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
@@ -72,7 +70,7 @@ bool Engine::init_model(const std::string& model_weights_path) {
     args_.vocab_size(static_cast<int64_t>(tokenizer_->vocab_size()));
   }
   // TODO: remove this two from model args
-  args_.max_seq_len(FLAGS_max_seq_len).max_batch_size(FLAGS_max_batch_size);
+  args_.max_seq_len(FLAGS_max_seq_len);
 
   const auto& quant_args = model_loader->quant_args();
 
@@ -126,7 +124,7 @@ bool Engine::init_kv_cache() {
   const int64_t n_heads = args_.n_heads();
   const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
   const int64_t n_local_kv_heads = n_kv_heads / world_size;
-  const int64_t head_dim = args_.dim() / n_heads;
+  const int64_t head_dim = args_.hidden_size() / n_heads;
   const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
   // key + value for all layers
   const int64_t block_size_in_bytes = int64_t(2) * block_size *

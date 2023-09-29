@@ -21,8 +21,8 @@ class MPTMLPImpl : public torch::nn::Module {
              const ParallelArgs& parallel_args,
              const torch::ScalarType& dtype,
              const torch::Device& device) {
-    const int64_t dim = args.dim();
-    const int64_t hidden_dim = args.hidden_dim();
+    const int64_t dim = args.hidden_size();
+    const int64_t hidden_dim = args.intermediate_size();
 
     // register the weight parameter
     up_proj_ = register_module("up_proj",
@@ -80,7 +80,7 @@ class MPTAttentionImpl : public torch::nn::Module {
                    const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
-    const int64_t dim = args.dim();
+    const int64_t dim = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     head_dim_ = dim / args.n_heads();
 
@@ -214,12 +214,18 @@ class MPTBlockImpl : public torch::nn::Module {
         "attn",
         MPTAttention(layer_id, args, quant_args, parallel_args, dtype, device));
     // LayerNormOptions({2, 2}).elementwise_affine(false).eps(2e-5)
-    norm_1_ = register_module(
-        "norm_1",
-        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/false, dtype, device));
-    norm_2_ = register_module(
-        "norm_2",
-        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/false, dtype, device));
+    norm_1_ = register_module("norm_1",
+                              LayerNorm(args.hidden_size(),
+                                        args.norm_eps(),
+                                        /*bias=*/false,
+                                        dtype,
+                                        device));
+    norm_2_ = register_module("norm_2",
+                              LayerNorm(args.hidden_size(),
+                                        args.norm_eps(),
+                                        /*bias=*/false,
+                                        dtype,
+                                        device));
     ffn_ = register_module(
         "ffn", MPTMLP(args, quant_args, parallel_args, dtype, device));
   }
@@ -273,10 +279,12 @@ class MPTModelImpl : public torch::nn::Module {
                const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
-    wte_ = register_module(
-        "wte",
-        ParallelEmbedding(
-            args.vocab_size(), args.dim(), parallel_args, dtype, device));
+    wte_ = register_module("wte",
+                           ParallelEmbedding(args.vocab_size(),
+                                             args.hidden_size(),
+                                             parallel_args,
+                                             dtype,
+                                             device));
     blocks_ = register_module("blocks", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
@@ -284,12 +292,15 @@ class MPTModelImpl : public torch::nn::Module {
       layers_.push_back(block);
       blocks_->push_back(block);
     }
-    norm_f_ = register_module(
-        "norm_f",
-        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/false, dtype, device));
+    norm_f_ = register_module("norm_f",
+                              LayerNorm(args.hidden_size(),
+                                        args.norm_eps(),
+                                        /*bias=*/false,
+                                        dtype,
+                                        device));
 
     lm_head_ = register_module("wte",
-                               ColumnParallelLinear(args.dim(),
+                               ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
                                                     /*bias=*/false,
                                                     /*gather_output=*/true,

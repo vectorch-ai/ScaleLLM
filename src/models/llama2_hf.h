@@ -21,17 +21,17 @@ class MLPImpl : public torch::nn::Module {
           const ParallelArgs& parallel_args,
           const torch::ScalarType& dtype,
           const torch::Device& device) {
-    const int64_t dim = args.dim();
-    const int64_t hidden_dim = args.hidden_dim();
+    const int64_t hidden_size = args.hidden_size();
+    const int64_t intermediate_size = args.intermediate_size();
 
-    int64_t local_hidden_dim = hidden_dim / parallel_args.world_size();
-    gate_up_sizes_ = {local_hidden_dim, local_hidden_dim};
+    int64_t local_intermediate_size = intermediate_size / parallel_args.world_size();
+    gate_up_sizes_ = {local_intermediate_size, local_intermediate_size};
 
     // register the weight parameter
     gate_up_proj_ =
         register_module("gate_up_proj",
-                        ColumnParallelLinear(dim,
-                                             hidden_dim * 2,
+                        ColumnParallelLinear(hidden_size,
+                                             intermediate_size * 2,
                                              /*bias=*/false,
                                              /*gather_output=*/false,
                                              quant_args,
@@ -40,8 +40,8 @@ class MLPImpl : public torch::nn::Module {
                                              device));
     down_proj_ =
         register_module("down_proj",
-                        RowParallelLinear(hidden_dim,
-                                          dim,
+                        RowParallelLinear(intermediate_size,
+                                          hidden_size,
                                           /*bias=*/false,
                                           /*input_is_parallelized=*/true,
                                           quant_args,
@@ -88,13 +88,13 @@ class LlamaAttentionImpl : public torch::nn::Module {
                      const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
-    const int64_t dim = args.dim();
+    const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
 
     n_local_heads_ = n_heads / world_size;
     n_local_kv_heads_ = n_kv_heads / world_size;
-    head_dim_ = dim / n_heads;
+    head_dim_ = hidden_size / n_heads;
     // size for q, k, v
     qkv_sizes_ = {n_local_heads_ * head_dim_,
                   n_local_kv_heads_ * head_dim_,
@@ -103,7 +103,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
     // register submodules
     qkv_proj_ = register_module(
         "qkv_proj",
-        ColumnParallelLinear(dim,
+        ColumnParallelLinear(hidden_size,
                              (n_heads + 2 * n_kv_heads) * head_dim_,
                              /*bias=*/false,
                              /*gather_output=*/false,
@@ -114,7 +114,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(n_heads * head_dim_,
-                                                dim,
+                                                hidden_size,
                                                 /*bias=*/false,
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
@@ -124,10 +124,9 @@ class LlamaAttentionImpl : public torch::nn::Module {
 
     // initialize positional embedding
     // TODO: need to adjust the max_seq_len
-    const auto rotary_dim = args.dim() / args.n_heads();
     pos_emb_ =
         register_module("pos_emb",
-                        RotaryEmbedding(rotary_dim,
+                        RotaryEmbedding(/*rotary_dim=*/head_dim_,
                                         args.max_seq_len(),
                                         /*scaling_factor=*/args.rope_scaling(),
                                         /*rope_theta=*/args.rope_theta(),
@@ -226,10 +225,11 @@ class DecoderLayerImpl : public torch::nn::Module {
     mlp_ = register_module("mlp",
                            MLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
-        "input_layernorm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
-    post_attention_layernorm_ =
-        register_module("post_attention_layernorm",
-                        RMSNorm(args.dim(), args.norm_eps(), dtype, device));
+        "input_layernorm",
+        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
+    post_attention_layernorm_ = register_module(
+        "post_attention_layernorm",
+        RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -284,10 +284,12 @@ class ModelImpl : public torch::nn::Module {
             const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
-    embed_tokens_ = register_module(
-        "embed_tokens",
-        ParallelEmbedding(
-            args.vocab_size(), args.dim(), parallel_args, dtype, device));
+    embed_tokens_ = register_module("embed_tokens",
+                                    ParallelEmbedding(args.vocab_size(),
+                                                      args.hidden_size(),
+                                                      parallel_args,
+                                                      dtype,
+                                                      device));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
@@ -297,10 +299,10 @@ class ModelImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm", RMSNorm(args.dim(), args.norm_eps(), dtype, device));
+        "norm", RMSNorm(args.hidden_size(), args.norm_eps(), dtype, device));
 
     lm_head_ = register_module("lm_head",
-                               ColumnParallelLinear(args.dim(),
+                               ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
                                                     /*bias=*/false,
                                                     /*gather_output=*/true,

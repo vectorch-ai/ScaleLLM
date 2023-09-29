@@ -20,14 +20,14 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
                  const ParallelArgs& parallel_args,
                  const torch::ScalarType& dtype,
                  const torch::Device& device) {
-    const int64_t dim = args.dim();
-    const int64_t hidden_dim = args.hidden_dim();
+    const int64_t hidden_size = args.hidden_size();
+    const int64_t intermediate_size = args.intermediate_size();
 
     // register the weight parameter
     dense_h_to_4h_ =
         register_module("dense_h_to_4h",
-                        ColumnParallelLinear(dim,
-                                             hidden_dim,
+                        ColumnParallelLinear(hidden_size,
+                                             intermediate_size,
                                              /*bias=*/true,
                                              /*gather_output=*/false,
                                              quant_args,
@@ -36,8 +36,8 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
                                              device));
     dense_4h_to_h_ =
         register_module("dense_4h_to_h",
-                        RowParallelLinear(hidden_dim,
-                                          dim,
+                        RowParallelLinear(intermediate_size,
+                                          hidden_size,
                                           /*bias=*/true,
                                           /*input_is_parallelized=*/true,
                                           quant_args,
@@ -82,13 +82,13 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                        const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
-    const int64_t dim = args.dim();
+    const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
 
     n_local_heads_ = n_heads / world_size;
     n_local_kv_heads_ = n_kv_heads / world_size;
-    head_dim_ = dim / n_heads;
+    head_dim_ = hidden_size / n_heads;
     // size for q, k, v
     qkv_sizes_ = {n_local_heads_ * head_dim_,
                   n_local_kv_heads_ * head_dim_,
@@ -97,8 +97,8 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
     // register submodules
     query_key_value_ =
         register_module("query_key_value",
-                        ColumnParallelLinear(dim,
-                                             3 * dim,
+                        ColumnParallelLinear(hidden_size,
+                                             3 * hidden_size,
                                              /*bias=*/true,
                                              /*gather_output=*/false,
                                              quant_args,
@@ -107,8 +107,8 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                                              device));
 
     dense_ = register_module("dense",
-                             RowParallelLinear(dim,
-                                               dim,
+                             RowParallelLinear(hidden_size,
+                                               hidden_size,
                                                /*bias=*/true,
                                                /*input_is_parallelized=*/true,
                                                quant_args,
@@ -225,10 +225,12 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
         "mlp", GPTNeoXMLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
         "input_layernorm",
-        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/true, dtype, device));
+        LayerNorm(
+            args.hidden_size(), args.norm_eps(), /*bias=*/true, dtype, device));
     post_attention_layernorm_ = register_module(
         "post_attention_layernorm",
-        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/true, dtype, device));
+        LayerNorm(
+            args.hidden_size(), args.norm_eps(), /*bias=*/true, dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -283,10 +285,12 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                    const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
-    embed_in_ = register_module(
-        "embed_in",
-        ParallelEmbedding(
-            args.vocab_size(), args.dim(), parallel_args, dtype, device));
+    embed_in_ = register_module("embed_in",
+                                ParallelEmbedding(args.vocab_size(),
+                                                  args.hidden_size(),
+                                                  parallel_args,
+                                                  dtype,
+                                                  device));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
@@ -297,12 +301,13 @@ class GPTNeoXModelImpl : public torch::nn::Module {
     }
     final_layer_norm_ = register_module(
         "final_layer_norm",
-        LayerNorm(args.dim(), args.norm_eps(), /*bias=*/true, dtype, device));
+        LayerNorm(
+            args.hidden_size(), args.norm_eps(), /*bias=*/true, dtype, device));
 
     // TODO: If the vocab size is not divisible by world size, we should
     // just load the entire thing.
     embed_out_ = register_module("embed_out",
-                                 ColumnParallelLinear(args.dim(),
+                                 ColumnParallelLinear(args.hidden_size(),
                                                       args.vocab_size(),
                                                       /*bias=*/false,
                                                       /*gather_output=*/true,

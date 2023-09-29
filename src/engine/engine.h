@@ -12,7 +12,6 @@
 #include "worker.h"
 
 DECLARE_int32(max_seq_len);
-DECLARE_int32(max_batch_size);
 DECLARE_int32(block_size);
 DECLARE_int64(max_cache_size);
 DECLARE_double(max_memory_utilization);
