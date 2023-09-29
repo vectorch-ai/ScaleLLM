@@ -23,7 +23,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
                             int64_t qweight_pack_dim,
                             int rank,
                             int world_size,
-                            const torch::ScalarType& dtype,
+                            torch::ScalarType dtype,
                             const torch::Device& device);
 
   // load the weight from the checkpoint
@@ -78,7 +78,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
                          int64_t qweight_pack_dim,
                          int rank,
                          int world_size,
-                         const torch::ScalarType& dtype,
+                         torch::ScalarType dtype,
                          const torch::Device& device);
 
   // load the weight from the checkpoint

@@ -30,7 +30,7 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
                            bool bias,
                            bool gather_output,
                            const ParallelArgs& parallel_args,
-                           const torch::ScalarType& dtype,
+                           torch::ScalarType dtype,
                            const torch::Device& device);
 
   torch::Tensor forward(torch::Tensor input) const override;
@@ -45,9 +45,9 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix) const override {
     CHECK(weight_is_loaded_)
-        << "weight is not loaded for " << prefix + ".weight";
+        << "weight is not loaded for " << prefix + "weight";
     CHECK(!bias_.defined() || bias_is_loaded_)
-        << "bias is not loaded for " << prefix + ".bias";
+        << "bias is not loaded for " << prefix + "bias";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -93,7 +93,7 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
                         bool bias,
                         bool input_is_parallelized,
                         const ParallelArgs& parallel_args,
-                        const torch::ScalarType& dtype,
+                        torch::ScalarType dtype,
                         const torch::Device& device);
 
   torch::Tensor forward(torch::Tensor input) const override;
@@ -111,9 +111,9 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const override {
     CHECK(weight_is_loaded_)
-        << "weight is not loaded for " << prefix + ".weight";
+        << "weight is not loaded for " << prefix + "weight";
     CHECK(!bias_.defined() || bias_is_loaded_)
-        << "bias is not loaded for " << prefix + ".bias";
+        << "bias is not loaded for " << prefix + "bias";
   }
 
   void pretty_print(std::ostream& stream) const override {

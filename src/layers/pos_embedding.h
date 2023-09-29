@@ -39,7 +39,7 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
                   float scaling_factor,
                   float rope_theta,
                   bool interleaved,
-                  const torch::ScalarType& dtype,
+                  torch::ScalarType dtype,
                   const torch::Device& device);
 };
 
@@ -55,7 +55,7 @@ class InterleavedRotaryEmbedding : public RotaryEmbeddingImpl {
                              int64_t max_seq_len,
                              float scaling_factor,
                              float theta,
-                             const torch::ScalarType& dtype,
+                             torch::ScalarType dtype,
                              const torch::Device& device);
 
   // inplace rotary positional embedding
@@ -75,7 +75,7 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
                          int64_t max_seq_len,
                          float scaling_factor,
                          float theta,
-                         const torch::ScalarType& dtype,
+                         torch::ScalarType dtype,
                          const torch::Device& device);
 
   // inplace rotary positional embedding

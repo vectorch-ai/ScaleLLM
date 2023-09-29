@@ -18,7 +18,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
   ParallelEmbeddingImpl(int64_t num_embeddings,
                         int64_t embedding_dim,
                         const ParallelArgs& parallel_args,
-                        const torch::ScalarType& dtype,
+                        torch::ScalarType dtype,
                         const torch::Device& device)
       : parallel_args_(parallel_args) {
     const auto world_size = parallel_args_.world_size();
@@ -63,7 +63,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix) const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -91,7 +91,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
   VocabParallelEmbeddingImpl(int64_t num_embeddings,
                              int64_t embedding_dim,
                              const ParallelArgs& parallel_args,
-                             const torch::ScalarType& dtype,
+                             torch::ScalarType dtype,
                              const torch::Device& device)
       : parallel_args_(parallel_args) {
     const int64_t num_embeddings_per_partition =
@@ -133,7 +133,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
   }
 
   void pretty_print(std::ostream& stream) const override {

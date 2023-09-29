@@ -52,7 +52,7 @@ std::shared_ptr<RotaryEmbeddingImpl> create(int64_t rotary_dim,
                                             float scaling_factor,
                                             float rope_theta,
                                             bool interleaved,
-                                            const torch::ScalarType& dtype,
+                                            torch::ScalarType dtype,
                                             const torch::Device& device) {
   if (interleaved) {
     return std::make_shared<InterleavedRotaryEmbedding>(
@@ -68,7 +68,7 @@ RotaryEmbedding::RotaryEmbedding(int64_t rotary_dim,
                                  float scaling_factor,
                                  float rope_theta,
                                  bool interleaved,
-                                 const torch::ScalarType& dtype,
+                                 torch::ScalarType dtype,
                                  const torch::Device& device)
     : ModuleHolder(create(rotary_dim,
                           max_seq_len,
@@ -83,8 +83,9 @@ InterleavedRotaryEmbedding::InterleavedRotaryEmbedding(
     int64_t max_seq_len,
     float scaling_factor,
     float theta,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device) {
+  CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
   // Create cos and sin embeddings.
   const auto slice = torch::arange(0, rotary_dim, 2);
   const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
@@ -112,16 +113,16 @@ std::tuple<torch::Tensor, torch::Tensor> InterleavedRotaryEmbedding::forward(
   // add a new dimension for n_heads
   cos_sin = cos_sin.unsqueeze(1);
   const auto chunks = cos_sin.chunk(/*chunks=*/2, /*dim=*/-1);
-  return apply_interleaved_rotary_pos_emb(
-      query, key, chunks[0], chunks[1]);
+  return apply_interleaved_rotary_pos_emb(query, key, chunks[0], chunks[1]);
 }
 
 RotatedRotaryEmbedding::RotatedRotaryEmbedding(int64_t rotary_dim,
                                                int64_t max_seq_len,
                                                float scaling_factor,
                                                float theta,
-                                               const torch::ScalarType& dtype,
+                                               torch::ScalarType dtype,
                                                const torch::Device& device) {
+  CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
   // Create cos and sin embeddings.
   const auto slice = torch::arange(0, rotary_dim, 2);
   const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);

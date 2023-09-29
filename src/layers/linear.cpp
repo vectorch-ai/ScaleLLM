@@ -22,7 +22,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
     bool gather_output,
     const QuantizationArgs& quant_args,
     const ParallelArgs& parallel_args,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device) {
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
     return std::make_shared<ColumnParallelQLinearGPTQImpl>(
@@ -48,8 +48,13 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
         dtype,
         device);
   }
-  return std::make_shared<ColumnParallelLinearImpl>(
-      in_features, out_features, bias, gather_output, parallel_args, dtype, device);
+  return std::make_shared<ColumnParallelLinearImpl>(in_features,
+                                                    out_features,
+                                                    bias,
+                                                    gather_output,
+                                                    parallel_args,
+                                                    dtype,
+                                                    device);
 }
 
 std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
@@ -59,7 +64,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
     bool input_is_parallelized,
     const QuantizationArgs& quant_args,
     const ParallelArgs& parallel_args,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device) {
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
     return std::make_shared<RowParallelQLinearGPTQImpl>(in_features,
@@ -101,7 +106,7 @@ ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                            bool gather_output,
                                            const QuantizationArgs& quant_args,
                                            const ParallelArgs& parallel_args,
-                                           const torch::ScalarType& dtype,
+                                           torch::ScalarType dtype,
                                            const torch::Device& device)
     : ModuleHolder(create_column_parallel_linear(in_features,
                                                  out_features,
@@ -117,7 +122,7 @@ ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                            bool bias,
                                            bool gather_output,
                                            const ParallelArgs& parallel_args,
-                                           const torch::ScalarType& dtype,
+                                           torch::ScalarType dtype,
                                            const torch::Device& device)
     : ModuleHolder(create_column_parallel_linear(in_features,
                                                  out_features,
@@ -136,7 +141,7 @@ RowParallelLinear::RowParallelLinear(int64_t in_features,
                                      bool input_is_parallelized,
                                      const QuantizationArgs& quant_args,
                                      const ParallelArgs& parallel_args,
-                                     const torch::ScalarType& dtype,
+                                     torch::ScalarType dtype,
                                      const torch::Device& device)
     : ModuleHolder(create_row_parallel_linear(in_features,
                                               out_features,

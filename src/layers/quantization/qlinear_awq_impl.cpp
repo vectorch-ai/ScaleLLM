@@ -24,7 +24,7 @@ ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
     int64_t group_size,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device)
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
@@ -49,7 +49,7 @@ torch::Tensor ColumnParallelQLinearAWQImpl::forward(torch::Tensor input) const {
   const int64_t out_features = qweight_.size(-1) * pack_factor_;
   torch::Tensor output =
       gemm_forward_cuda(input, qweight_, scales_, qzeros_, pack_factor_);
-  output = output.reshape({-1, out_features});
+  output = output.view({-1, out_features});
   if (bias_.defined()) {
     output.add_(bias_);
   }
@@ -67,7 +67,7 @@ RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
     int64_t group_size,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device)
     : RowParallelQLinearImpl(in_features,
                              out_features,
@@ -95,7 +95,7 @@ torch::Tensor RowParallelQLinearAWQImpl::forward(torch::Tensor input) const {
   const int64_t out_features = qweight_.size(-1) * pack_factor_;
   torch::Tensor output =
       gemm_forward_cuda(input, qweight_, scales_, qzeros_, pack_factor_);
-  output = output.reshape({-1, out_features});
+  output = output.view({-1, out_features});
   if (bias_.defined()) {
     output.add_(bias_);
   }

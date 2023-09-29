@@ -65,7 +65,7 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     bool bias,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device)
     : gather_output_(gather_output), parallel_args_(parallel_args) {
   const auto world_size = parallel_args_.world_size();
@@ -181,7 +181,7 @@ RowParallelLinearImpl::RowParallelLinearImpl(int64_t in_features,
                                              bool bias,
                                              bool input_is_parallelized,
                                              const ParallelArgs& parallel_args,
-                                             const torch::ScalarType& dtype,
+                                             torch::ScalarType dtype,
                                              const torch::Device& device)
     : input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {

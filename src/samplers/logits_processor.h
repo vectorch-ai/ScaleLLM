@@ -47,7 +47,7 @@ class LogitsProcessor {
   // factory method to create a logits processor
   static std::unique_ptr<LogitsProcessor> create(
       const SamplingParameters& params,
-      const torch::ScalarType& dtype,
+      torch::ScalarType dtype,
       const torch::Device& device);
 };
 
@@ -80,7 +80,7 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
   FrequencyPresencePenaltyLogitsProcessor(
       const std::vector<float>& frequency_penalties,
       const std::vector<float>& presence_penalties,
-      const torch::ScalarType& dtype,
+      torch::ScalarType dtype,
       const torch::Device& device) {
     frequency_penalties_ =
         torch::tensor(frequency_penalties, torch::dtype(dtype).device(device))
@@ -121,7 +121,7 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
 class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
  public:
   RepetitionPenaltyLogitsProcessor(const std::vector<float>& penalties,
-                                   const torch::ScalarType& dtype,
+                                   torch::ScalarType dtype,
                                    const torch::Device& device) {
     penalties_ = torch::tensor(penalties, torch::dtype(dtype).device(device))
                      .unsqueeze(1);
@@ -151,7 +151,7 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
  public:
   // Constructor
   TemperatureLogitsProcessor(const std::vector<float>& temperatures,
-                             const torch::ScalarType& dtype,
+                             torch::ScalarType dtype,
                              const torch::Device& device) {
     // Convert temperature to a tensor and unsqueeze it for broadcasting
     temperatures_ =
@@ -177,7 +177,7 @@ class TopPLogitsProcessor : public LogitsProcessor {
  public:
   TopPLogitsProcessor(
       const std::vector<float>& top_p,
-      const torch::ScalarType& dtype,
+      torch::ScalarType dtype,
       const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
       int min_tokens_to_keep = 1)
@@ -227,7 +227,7 @@ class TopKLogitsProcessor : public LogitsProcessor {
   // top_k: input is 1-based, 0 means no filtering or disable filtering
   TopKLogitsProcessor(
       const std::vector<int64_t>& top_k,
-      const torch::ScalarType& dtype,
+      torch::ScalarType dtype,
       const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
       int64_t min_tokens_to_keep = 1)

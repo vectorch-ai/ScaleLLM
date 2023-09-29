@@ -19,12 +19,13 @@ class MLPImpl : public torch::nn::Module {
   MLPImpl(const ModelArgs& args,
           const QuantizationArgs& quant_args,
           const ParallelArgs& parallel_args,
-          const torch::ScalarType& dtype,
+          torch::ScalarType dtype,
           const torch::Device& device) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    int64_t local_intermediate_size = intermediate_size / parallel_args.world_size();
+    int64_t local_intermediate_size =
+        intermediate_size / parallel_args.world_size();
     gate_up_sizes_ = {local_intermediate_size, local_intermediate_size};
 
     // register the weight parameter
@@ -84,7 +85,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
                      const ModelArgs& args,
                      const QuantizationArgs& quant_args,
                      const ParallelArgs& parallel_args,
-                     const torch::ScalarType& dtype,
+                     torch::ScalarType dtype,
                      const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
@@ -122,22 +123,21 @@ class LlamaAttentionImpl : public torch::nn::Module {
                                                 dtype,
                                                 device));
 
-    // initialize positional embedding
     // TODO: need to adjust the max_seq_len
-    pos_emb_ =
-        register_module("pos_emb",
-                        RotaryEmbedding(/*rotary_dim=*/head_dim_,
-                                        args.max_seq_len(),
-                                        /*scaling_factor=*/args.rope_scaling(),
-                                        /*rope_theta=*/args.rope_theta(),
-                                        /*interleaved=*/false,
-                                        dtype,
-                                        device));
-
     // initialize attention
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
-    atten_ = register_module(
-        "atten", Attention(n_heads, n_kv_heads, scale, dtype, device));
+    atten_ = register_module("atten",
+                             AttentionWithRoPE(n_local_heads_,
+                                               n_local_kv_heads_,
+                                               head_dim_,
+                                               scale,
+                                               /*rotary_dim=*/head_dim_,
+                                               args.rope_scaling(),
+                                               args.rope_theta(),
+                                               args.max_seq_len(),
+                                               /*interleaved=*/false,
+                                               dtype,
+                                               device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -149,25 +149,9 @@ class LlamaAttentionImpl : public torch::nn::Module {
     // => (num_tokens, n_heads * head_dim)
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
-    auto query = qkv[0];
-    auto key = qkv[1];
-    auto value = qkv[2];
-
-    // (num_tokens, n_local_heads, head_dim)
-    query = query.view({num_tokens, n_local_heads_, head_dim_});
-    key = key.view({num_tokens, n_local_kv_heads_, head_dim_});
-    value = value.view({num_tokens, n_local_kv_heads_, head_dim_});
-
-    // (num_tokens, n_local_heads, head_dim)
-    // apply positional embedding
-    std::tie(query, key) = pos_emb_(query, key, positions);
-
-    // store k/v into cache based on slots
-    kv_cache.set_kv_cache(input_params.slot_ids, key, value);
-
-    // calculate attention
-    auto output = atten_(query, key, value, kv_cache, input_params);
-    output = output.view({num_tokens, -1});
+    // calculate attention, output: (num_tokens, n_local_heads * head_dim)
+    auto output =
+        atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return o_proj_(output);
   }
 
@@ -190,9 +174,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
   RowParallelLinear o_proj_{nullptr};
 
   // module members without parameters
-  RotaryEmbedding pos_emb_{nullptr};
-
-  Attention atten_{nullptr};
+  AttentionWithRoPE atten_{nullptr};
 
   uint32_t layer_id_;
 
@@ -214,7 +196,7 @@ class DecoderLayerImpl : public torch::nn::Module {
                    const ModelArgs& args,
                    const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   const torch::ScalarType& dtype,
+                   torch::ScalarType dtype,
                    const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     // register submodules
@@ -280,7 +262,7 @@ class ModelImpl : public torch::nn::Module {
   ModelImpl(const ModelArgs& args,
             const QuantizationArgs& quant_args,
             const ParallelArgs& parallel_args,
-            const torch::ScalarType& dtype,
+            torch::ScalarType dtype,
             const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules

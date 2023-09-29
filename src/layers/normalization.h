@@ -17,7 +17,7 @@ class LayerNormImpl : public torch::nn::Module {
   LayerNormImpl(int64_t dim,
                 double eps,
                 bool bias,
-                const torch::ScalarType& dtype,
+                torch::ScalarType dtype,
                 const torch::Device& device)
       : eps_(eps) {
     normalized_shape_ = {dim};
@@ -62,9 +62,9 @@ class LayerNormImpl : public torch::nn::Module {
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const {
     CHECK(weight_is_loaded_)
-        << "weight is not loaded for " << prefix + ".weight";
+        << "weight is not loaded for " << prefix + "weight";
     CHECK(!bias_.defined() || bias_is_loaded_)
-        << "bias is not loaded for " << prefix + ".bias";
+        << "bias is not loaded for " << prefix + "bias";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -92,7 +92,7 @@ class RMSNormImpl : public torch::nn::Module {
  public:
   RMSNormImpl(int64_t dim,
               float eps,
-              const torch::ScalarType& dtype,
+              torch::ScalarType dtype,
               const torch::Device& device)
       : eps_(eps) {
     weight_ = register_parameter(
@@ -120,7 +120,7 @@ class RMSNormImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + ".weight";
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
   }
 
   void pretty_print(std::ostream& stream) const override {

@@ -22,7 +22,7 @@ DEFINE_double(max_memory_utilization,
 
 namespace llm {
 
-Engine::Engine(const torch::ScalarType& dtype,
+Engine::Engine(torch::ScalarType dtype,
                const std::vector<torch::Device>& devices)
     : dtype_(dtype), devices_(devices) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";

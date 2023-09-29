@@ -34,8 +34,7 @@ namespace llm {
 class Engine {
  public:
   // create an engine with the given devices
-  Engine(const torch::ScalarType& dtype,
-         const std::vector<torch::Device>& devices);
+  Engine(torch::ScalarType dtype, const std::vector<torch::Device>& devices);
 
   virtual ~Engine() = default;
 

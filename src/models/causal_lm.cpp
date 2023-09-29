@@ -19,7 +19,7 @@ namespace llm {
 std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
                                            const QuantizationArgs& quant_args,
                                            const ParallelArgs& parallel_args,
-                                           const torch::ScalarType& dtype,
+                                           torch::ScalarType dtype,
                                            const torch::Device& device) {
   // create models based on model architecure
   for (const auto& arch : args.architectures()) {

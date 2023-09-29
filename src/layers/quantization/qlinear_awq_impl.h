@@ -22,7 +22,7 @@ class ColumnParallelQLinearAWQImpl : public ColumnParallelQLinearImpl {
                                int64_t group_size,
                                bool gather_output,
                                const ParallelArgs& parallel_args,
-                               const torch::ScalarType& dtype,
+                               torch::ScalarType dtype,
                                const torch::Device& device);
 
   torch::Tensor forward(torch::Tensor input) const override;
@@ -65,7 +65,7 @@ class RowParallelQLinearAWQImpl : public RowParallelQLinearImpl {
                             int64_t group_size,
                             bool input_is_parallelized,
                             const ParallelArgs& parallel_args,
-                            const torch::ScalarType& dtype,
+                            torch::ScalarType dtype,
                             const torch::Device& device);
 
   torch::Tensor forward(torch::Tensor input) const override;

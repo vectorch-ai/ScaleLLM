@@ -18,7 +18,7 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
   GPTNeoXMLPImpl(const ModelArgs& args,
                  const QuantizationArgs& quant_args,
                  const ParallelArgs& parallel_args,
-                 const torch::ScalarType& dtype,
+                 torch::ScalarType dtype,
                  const torch::Device& device) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
@@ -78,7 +78,7 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                        const ModelArgs& args,
                        const QuantizationArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       const torch::ScalarType& dtype,
+                       torch::ScalarType dtype,
                        const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
@@ -121,22 +121,22 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
     // const int64_t rotary_dim = static_cast<int64_t>(head_dim_ *
     // config.rotary_pct());
     const int64_t rotary_dim = head_dim_;
-    CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
-    pos_emb_ =
-        register_module("pos_emb",
-                        RotaryEmbedding(/*rotary_dim=*/rotary_dim,
-                                        args.max_seq_len(),
-                                        /*scaling_factor=*/args.rope_scaling(),
-                                        /*rope_theta=*/args.rope_theta(),
-                                        /*interleaved=*/false,
-                                        dtype,
-                                        device));
 
     // initialize attention
     // scaling = self.head_size**-0.5
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
-    atten_ = register_module(
-        "atten", Attention(n_heads, n_kv_heads, scale, dtype, device));
+    atten_ = register_module("atten",
+                             AttentionWithRoPE(n_local_heads_,
+                                               n_local_kv_heads_,
+                                               head_dim_,
+                                               scale,
+                                               /*rotary_dim=*/head_dim_,
+                                               args.rope_scaling(),
+                                               args.rope_theta(),
+                                               args.max_seq_len(),
+                                               /*interleaved=*/false,
+                                               dtype,
+                                               device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -148,25 +148,9 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
     // => (num_tokens, n_heads * head_dim)
     auto qkv = query_key_value_(x).chunk(/*chunks=*/3, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
-    auto query = qkv[0];
-    auto key = qkv[1];
-    auto value = qkv[2];
-
-    // (num_tokens, n_local_heads, head_dim)
-    query = query.view({num_tokens, n_local_heads_, head_dim_});
-    key = key.view({num_tokens, n_local_kv_heads_, head_dim_});
-    value = value.view({num_tokens, n_local_kv_heads_, head_dim_});
-
-    // (num_tokens, n_local_heads, head_dim)
-    // apply positional embedding
-    std::tie(query, key) = pos_emb_(query, key, positions);
-
-    // store k/v into cache based on slots
-    kv_cache.set_kv_cache(input_params.slot_ids, key, value);
-
-    // calculate attention
-    auto output = atten_(query, key, value, kv_cache, input_params);
-    output = output.view({num_tokens, -1});
+    // calculate attention, output: (num_tokens, n_local_heads * head_dim)
+    auto output =
+        atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return dense_(output);
   }
 
@@ -189,9 +173,7 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   RowParallelLinear dense_{nullptr};
 
   // module members without parameters
-  RotaryEmbedding pos_emb_{nullptr};
-
-  Attention atten_{nullptr};
+  AttentionWithRoPE atten_{nullptr};
 
   uint32_t layer_id_;
 
@@ -213,7 +195,7 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
                    const ModelArgs& args,
                    const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   const torch::ScalarType& dtype,
+                   torch::ScalarType dtype,
                    const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     // register submodules
@@ -281,7 +263,7 @@ class GPTNeoXModelImpl : public torch::nn::Module {
   GPTNeoXModelImpl(const ModelArgs& args,
                    const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   const torch::ScalarType& dtype,
+                   torch::ScalarType dtype,
                    const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules

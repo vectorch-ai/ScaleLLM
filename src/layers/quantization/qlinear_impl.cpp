@@ -26,7 +26,7 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     int64_t qweight_pack_dim,
     int rank,
     int world_size,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device)
     : rank_(rank), world_size_(world_size) {
   CHECK(group_size > 0) << "group_size must be positive";
@@ -79,6 +79,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                     /*rank=*/rank_,
                                     /*world_size=*/world_size_);
   if (qweight.defined()) {
+    CHECK(!qweight_is_loaded_) << "qweight already loaded";
     CHECK_EQ(qweight_.sizes(), qweight.sizes())
         << "qweight size mismatch for " << name();
     qweight_.copy_(qweight);
@@ -89,6 +90,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                                     rank_,
                                                     world_size_);
   if (qzeros.defined()) {
+    CHECK(qzeros_.defined()) << "qzeros is not defined for " << name();
     CHECK_EQ(qzeros_.sizes(), qzeros.sizes())
         << "qzeros size mismatch for " << name();
     qzeros_.copy_(qzeros);
@@ -99,6 +101,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                                     rank_,
                                                     world_size_);
   if (scales.defined()) {
+    CHECK(!scales_is_loaded_) << "scales already loaded";
     CHECK_EQ(scales_.sizes(), scales.sizes())
         << "scales size mismatch for " << name();
     scales_.copy_(scales);
@@ -111,6 +114,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                                     rank_,
                                                     world_size_);
     if (bias.defined()) {
+      CHECK(!bias_is_loaded_) << "bias already loaded";
       CHECK_EQ(bias_.sizes(), bias.sizes())
           << "bias size mismatch for " << name();
       bias_.copy_(bias);
@@ -136,6 +140,7 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                                        rank_,
                                                        world_size_);
     if (qweight.defined()) {
+      CHECK(!qweight_is_loaded_) << "qweight already loaded";
       CHECK(!qweight_list[i].defined()) << "qweight already loaded";
       qweight_list[i] = qweight;
     }
@@ -145,6 +150,7 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                                       rank_,
                                                       world_size_);
     if (qzeros.defined()) {
+      CHECK(!qzeros_is_loaded_) << "qzeros already loaded";
       CHECK(!qzeros_list[i].defined()) << "qzeros already loaded";
       qzeros_list[i] = qzeros;
     }
@@ -154,6 +160,7 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                                       rank_,
                                                       world_size_);
     if (scales.defined()) {
+      CHECK(!scales_is_loaded_) << "scales already loaded";
       CHECK(!scales_list[i].defined()) << "scales already loaded";
       scales_list[i] = scales;
     }
@@ -165,6 +172,7 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                                       rank_,
                                                       world_size_);
       if (bias.defined()) {
+        CHECK(!bias_is_loaded_) << "bias already loaded";
         CHECK(!bias_list[i].defined()) << "bias already loaded";
         bias_list[i] = bias;
       }
@@ -205,11 +213,11 @@ void ColumnParallelQLinearImpl::load_state_dict(
 void ColumnParallelQLinearImpl::verify_loaded_weights(
     const std::string& prefix) const {
   CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + ".qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+      << "qweight is not loaded for " << prefix + "qweight";
+  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
+  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
   CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + ".bias";
+      << "bias is not loaded for " << prefix + "bias";
 }
 
 RowParallelQLinearImpl::RowParallelQLinearImpl(int64_t in_features,
@@ -220,7 +228,7 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(int64_t in_features,
                                                int64_t qweight_pack_dim,
                                                int rank,
                                                int world_size,
-                                               const torch::ScalarType& dtype,
+                                               torch::ScalarType dtype,
                                                const torch::Device& device)
     : rank_(rank), world_size_(world_size) {
   CHECK(group_size > 0) << "group_size must be positive";
@@ -313,11 +321,11 @@ void RowParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
 void RowParallelQLinearImpl::verify_loaded_weights(
     const std::string& prefix) const {
   CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + ".qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + ".qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + ".scales";
+      << "qweight is not loaded for " << prefix + "qweight";
+  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
+  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
   CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + ".bias";
+      << "bias is not loaded for " << prefix + "bias";
 }
 
 }  // namespace llm

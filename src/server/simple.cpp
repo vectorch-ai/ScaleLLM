@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
       const auto output_params = engine.execute_model({&sequence});
 
       torch::Tensor next_token = output_params.next_tokens;
-      const auto flat_tensor = next_token.reshape({-1});
+      const auto flat_tensor = next_token.view({-1});
 
       // add the next token to the list of tokens
       const auto next_token_scalar = static_cast<int>(flat_tensor.item<int>());

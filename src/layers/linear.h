@@ -39,7 +39,7 @@ class ColumnParallelLinear
                        bool gather_output,
                        const QuantizationArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       const torch::ScalarType& dtype,
+                       torch::ScalarType dtype,
                        const torch::Device& device);
 
   ColumnParallelLinear(int64_t in_features,
@@ -47,7 +47,7 @@ class ColumnParallelLinear
                        bool bias,
                        bool gather_output,
                        const ParallelArgs& parallel_args,
-                       const torch::ScalarType& dtype,
+                       torch::ScalarType dtype,
                        const torch::Device& device);
 };
 
@@ -64,7 +64,7 @@ class RowParallelLinear : public torch::nn::ModuleHolder<ParallelLinearImpl> {
                     bool input_is_parallelized,
                     const QuantizationArgs& quant_args,
                     const ParallelArgs& parallel_args,
-                    const torch::ScalarType& dtype,
+                    torch::ScalarType dtype,
                     const torch::Device& device);
 };
 }  // namespace llm

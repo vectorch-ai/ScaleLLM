@@ -33,7 +33,7 @@ struct OutputParameters {
 class Worker final {
  public:
   Worker(const ParallelArgs& parallel_args,
-         const torch::ScalarType& dtype,
+         torch::ScalarType dtype,
          const torch::Device& device);
 
   ~Worker() = default;

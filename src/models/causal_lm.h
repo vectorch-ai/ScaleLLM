@@ -32,7 +32,7 @@ class CausalLM : public torch::nn::Module {
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
                                           const QuantizationArgs& quant_args,
                                           const ParallelArgs& parallel_args,
-                                          const torch::ScalarType& dtype,
+                                          torch::ScalarType dtype,
                                           const torch::Device& device);
 };
 

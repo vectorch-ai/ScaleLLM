@@ -9,7 +9,7 @@
 namespace llm {
 std::unique_ptr<LogitsProcessor> LogitsProcessor::create(
     const SamplingParameters& params,
-    const torch::ScalarType& dtype,
+    torch::ScalarType dtype,
     const torch::Device& device) {
   std::vector<std::unique_ptr<LogitsProcessor>> processors;
 

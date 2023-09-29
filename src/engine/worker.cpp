@@ -20,7 +20,7 @@
 namespace llm {
 
 Worker::Worker(const ParallelArgs& parallel_args,
-               const torch::ScalarType& dtype,
+               torch::ScalarType dtype,
                const torch::Device& device)
     : parallel_args_(parallel_args), dtype_(dtype), device_(device) {}
 
@@ -113,13 +113,16 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
 }
 
 // initialize model, cache manager. async call
-folly::SemiFuture<bool> Worker::init_model_async(const ModelArgs& args, const QuantizationArgs& quant_args) {
+folly::SemiFuture<bool> Worker::init_model_async(
+    const ModelArgs& args,
+    const QuantizationArgs& quant_args) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
-  executor_.schedule([this, &args, &quant_args, promise = std::move(promise)]() mutable {
-    const bool success = this->init_model(args, quant_args);
-    promise.setValue(success);
-  });
+  executor_.schedule(
+      [this, &args, &quant_args, promise = std::move(promise)]() mutable {
+        const bool success = this->init_model(args, quant_args);
+        promise.setValue(success);
+      });
   return future;
 }
 

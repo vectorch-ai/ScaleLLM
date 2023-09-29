@@ -19,7 +19,7 @@ class MPTMLPImpl : public torch::nn::Module {
   MPTMLPImpl(const ModelArgs& args,
              const QuantizationArgs& quant_args,
              const ParallelArgs& parallel_args,
-             const torch::ScalarType& dtype,
+             torch::ScalarType dtype,
              const torch::Device& device) {
     const int64_t dim = args.hidden_size();
     const int64_t hidden_dim = args.intermediate_size();
@@ -76,13 +76,14 @@ class MPTAttentionImpl : public torch::nn::Module {
                    const ModelArgs& args,
                    const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   const torch::ScalarType& dtype,
+                   torch::ScalarType dtype,
                    const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
     const int64_t dim = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     head_dim_ = dim / args.n_heads();
+    n_local_heads_ = n_heads / world_size;
 
     // register submodules
     wqkv_ = register_module("Wqkv",
@@ -114,20 +115,20 @@ class MPTAttentionImpl : public torch::nn::Module {
 
     // initialize positional embedding
     // TODO: use ALiBi positional embedding
-    pos_emb_ =
-        register_module("pos_emb",
-                        RotaryEmbedding(/*rotary_dim=*/head_dim_,
-                                        args.max_seq_len(),
-                                        /*scaling_factor=*/args.rope_scaling(),
-                                        /*rope_theta=*/args.rope_theta(),
-                                        /*interleaved=*/false,
-                                        dtype,
-                                        device));
-
     // initialize attention
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
-                             Attention(n_heads, n_heads, scale, dtype, device));
+                             AttentionWithRoPE(n_local_heads_,
+                                               n_local_heads_,
+                                               head_dim_,
+                                               scale,
+                                               /*rotary_dim=*/head_dim_,
+                                               args.rope_scaling(),
+                                               args.rope_theta(),
+                                               args.max_seq_len(),
+                                               /*interleaved=*/false,
+                                               dtype,
+                                               device));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -142,28 +143,9 @@ class MPTAttentionImpl : public torch::nn::Module {
 
     auto chunks = qkv.chunk(/*chunks=*/3, /*dim=*/-1);
     DCHECK_EQ(chunks.size(), 3);
-    auto query = chunks[0];
-    auto key = chunks[1];
-    auto value = chunks[2];
-
-    // TODO: apply qk_ln if not None
-
-    // (num_tokens, n_local_heads, head_dim)
-    const std::vector<int64_t> shape = {num_tokens, n_local_heads_, head_dim_};
-    query = query.view(shape);
-    key = key.view(shape);
-    value = value.view(shape);
-
-    // (num_tokens, n_local_heads, head_dim)
-    // apply positional embedding
-    std::tie(query, key) = pos_emb_(query, key, positions);
-
-    // store k/v into cache based on slots
-    kv_cache.set_kv_cache(input_params.slot_ids, key, value);
-
-    // calculate attention
-    auto output = atten_(query, key, value, kv_cache, input_params);
-    output = output.view({num_tokens, -1});
+    // calculate attention, output: (num_tokens, n_local_heads * head_dim)
+    auto output =
+        atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return out_proj_(output);
   }
 
@@ -186,9 +168,7 @@ class MPTAttentionImpl : public torch::nn::Module {
   RowParallelLinear out_proj_{nullptr};
 
   // module members without parameters
-  RotaryEmbedding pos_emb_{nullptr};
-
-  Attention atten_{nullptr};
+  AttentionWithRoPE atten_{nullptr};
 
   uint32_t layer_id_;
 
@@ -206,7 +186,7 @@ class MPTBlockImpl : public torch::nn::Module {
                const ModelArgs& args,
                const QuantizationArgs& quant_args,
                const ParallelArgs& parallel_args,
-               const torch::ScalarType& dtype,
+               torch::ScalarType dtype,
                const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     // register submodules
@@ -275,7 +255,7 @@ class MPTModelImpl : public torch::nn::Module {
   MPTModelImpl(const ModelArgs& args,
                const QuantizationArgs& quant_args,
                const ParallelArgs& parallel_args,
-               const torch::ScalarType& dtype,
+               torch::ScalarType dtype,
                const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
