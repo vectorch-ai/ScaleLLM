@@ -117,9 +117,8 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                                                device));
 
     // initialize positional embedding
-    const int64_t rotary_dim = head_dim_;
-    // const int64_t rotary_dim =
-    //     static_cast<int64_t>(head_dim_ * args.rotary_pct());
+    const int64_t rotary_dim =
+        static_cast<int64_t>(head_dim_ * args.rotary_pct());
     // initialize attention
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",

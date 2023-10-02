@@ -67,6 +67,8 @@ class InterleavedRotaryEmbedding : public RotaryEmbeddingImpl {
 
  private:
   torch::Tensor cos_sin_cache_;
+
+  int64_t rotary_dim_ = 0;
 };
 
 class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
@@ -87,6 +89,8 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
 
  private:
   torch::Tensor cos_sin_cache_;
+
+  int64_t rotary_dim_ = 0;
 };
 
 }  // namespace llm

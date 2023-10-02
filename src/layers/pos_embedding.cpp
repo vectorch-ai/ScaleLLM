@@ -84,7 +84,8 @@ InterleavedRotaryEmbedding::InterleavedRotaryEmbedding(
     float scaling_factor,
     float theta,
     torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::Device& device)
+    : rotary_dim_(rotary_dim) {
   CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
   // Create cos and sin embeddings.
   const auto slice = torch::arange(0, rotary_dim, 2);
@@ -108,12 +109,21 @@ std::tuple<torch::Tensor, torch::Tensor> InterleavedRotaryEmbedding::forward(
     const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& positions  // [num_tokens]
 ) const {
+  DCHECK_GE(query.size(-1), rotary_dim_);
+  auto query_rotary = query.index({"...", Slice(0, rotary_dim_)});
+  auto query_pass = query.index({"...", Slice(rotary_dim_, None)});
+  auto key_rotary = key.index({"...", Slice(0, rotary_dim_)});
+  auto key_pass = key.index({"...", Slice(rotary_dim_, None)});
+
   namespace F = torch::nn::functional;
   auto cos_sin = F::embedding(positions, cos_sin_cache_);
   // add a new dimension for n_heads
   cos_sin = cos_sin.unsqueeze(1);
   const auto chunks = cos_sin.chunk(/*chunks=*/2, /*dim=*/-1);
-  return apply_interleaved_rotary_pos_emb(query, key, chunks[0], chunks[1]);
+  std::tie(query_rotary, key_rotary) = apply_interleaved_rotary_pos_emb(
+      query_rotary, key_rotary, chunks[0], chunks[1]);
+  return std::make_tuple(torch::cat({query_rotary, query_pass}, /*dim=*/-1),
+                         torch::cat({key_rotary, key_pass}, /*dim=*/-1));
 }
 
 RotatedRotaryEmbedding::RotatedRotaryEmbedding(int64_t rotary_dim,
@@ -121,7 +131,8 @@ RotatedRotaryEmbedding::RotatedRotaryEmbedding(int64_t rotary_dim,
                                                float scaling_factor,
                                                float theta,
                                                torch::ScalarType dtype,
-                                               const torch::Device& device) {
+                                               const torch::Device& device)
+    : rotary_dim_(rotary_dim) {
   CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
   // Create cos and sin embeddings.
   const auto slice = torch::arange(0, rotary_dim, 2);
@@ -144,12 +155,21 @@ std::tuple<torch::Tensor, torch::Tensor> RotatedRotaryEmbedding::forward(
     const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& positions  // [num_tokens]
 ) const {
+  DCHECK_GE(query.size(-1), rotary_dim_);
+  auto query_rotary = query.index({"...", Slice(0, rotary_dim_)});
+  auto query_pass = query.index({"...", Slice(rotary_dim_, None)});
+  auto key_rotary = key.index({"...", Slice(0, rotary_dim_)});
+  auto key_pass = key.index({"...", Slice(rotary_dim_, None)});
+
   namespace F = torch::nn::functional;
   auto cos_sin = F::embedding(positions, cos_sin_cache_);
   // add a new dimension for n_heads
   cos_sin = cos_sin.unsqueeze(1);
   const auto chunks = cos_sin.chunk(/*chunks=*/2, /*dim=*/-1);
-  return apply_rotary_pos_emb(query, key, chunks[0], chunks[1]);
+  std::tie(query_rotary, key_rotary) =
+      apply_rotary_pos_emb(query_rotary, key_rotary, chunks[0], chunks[1]);
+  return std::make_tuple(torch::cat({query_rotary, query_pass}, /*dim=*/-1),
+                         torch::cat({key_rotary, key_pass}, /*dim=*/-1));
 }
 
 }  // namespace llm
