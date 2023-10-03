@@ -33,7 +33,7 @@ bool HFTokenizer::encode(const std::string_view& text,
   const uint32_t* data = nullptr;
   size_t len = 0;
   tokenizer_get_encode_ids(handle_, &data, &len);
-  ids->resize(len);
+  ids->reserve(len);
   for (size_t i = 0; i < len; ++i) {
     ids->push_back(static_cast<int>(data[i]));
   }
