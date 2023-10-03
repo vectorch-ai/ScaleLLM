@@ -25,9 +25,9 @@ class Tokenizer {
   virtual ~Tokenizer() = default;
 
   virtual bool encode(const std::string_view& text,
-                      std::vector<int>* ids) const = 0;
+                      std::vector<int32_t>* ids) const = 0;
 
-  virtual std::string decode(const std::vector<int>& tokens) const = 0;
+  virtual std::string decode(const std::vector<int32_t>& tokens) const = 0;
 
   virtual size_t vocab_size() const = 0;
 

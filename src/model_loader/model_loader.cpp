@@ -103,6 +103,10 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
     return false;
   }
 
+  // hardcode bos and eos for llama2
+  args_.bos_token_id() = 1;
+  args_.eos_token_id() = 2;
+
   json data = json::parse(ifs);
   if (data.contains("dim")) {
     args_.hidden_size() = data["dim"].get<int64_t>();
@@ -214,6 +218,12 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   }
 
   json data = json::parse(ifs);
+  if (data.contains("bos_token_id")) {
+    args_.bos_token_id() = data["bos_token_id"].get<int32_t>();
+  }
+  if (data.contains("eos_token_id")) {
+    args_.eos_token_id() = data["eos_token_id"].get<int32_t>();
+  }
   if (data.contains("hidden_size")) {
     args_.hidden_size() = data["hidden_size"].get<int64_t>();
   }

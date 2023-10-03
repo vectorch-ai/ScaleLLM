@@ -48,6 +48,12 @@ struct ModelArgs {
 
   // the maximum sequence length to use for rotary position embeddings.
   DEFINE_ARG(int64_t, max_position_embeddings) = 4096;
+
+  // token id for beginning of sentence.
+  DEFINE_ARG(int32_t, bos_token_id) = 0;
+
+  // token id for end of sentence.
+  DEFINE_ARG(int32_t, eos_token_id) = 0;
 };
 
 struct QuantizationArgs {

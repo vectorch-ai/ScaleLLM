@@ -27,7 +27,7 @@ std::unique_ptr<Tokenizer> HFTokenizer::clone() const {
 HFTokenizer::~HFTokenizer() { tokenizer_free(handle_); }
 
 bool HFTokenizer::encode(const std::string_view& text,
-                         std::vector<int>* ids) const {
+                         std::vector<int32_t>* ids) const {
   tokenizer_encode(
       handle_, text.data(), text.size(), /*add_special_tokens=*/true);
   const uint32_t* data = nullptr;
@@ -35,12 +35,12 @@ bool HFTokenizer::encode(const std::string_view& text,
   tokenizer_get_encode_ids(handle_, &data, &len);
   ids->reserve(len);
   for (size_t i = 0; i < len; ++i) {
-    ids->push_back(static_cast<int>(data[i]));
+    ids->push_back(static_cast<int32_t>(data[i]));
   }
   return true;
 }
 
-std::string HFTokenizer::decode(const std::vector<int>& ids) const {
+std::string HFTokenizer::decode(const std::vector<int32_t>& ids) const {
   tokenizer_decode(handle_,
                    reinterpret_cast<const uint32_t*>(ids.data()),
                    ids.size(),

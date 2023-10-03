@@ -11,9 +11,9 @@ class SentencePieceTokenizer : public Tokenizer {
   explicit SentencePieceTokenizer(const std::string& vocab_file_path);
 
   bool encode(const std::string_view& text,
-              std::vector<int>* ids) const override;
+              std::vector<int32_t>* ids) const override;
 
-  std::string decode(const std::vector<int>& ids) const override;
+  std::string decode(const std::vector<int32_t>& ids) const override;
 
   size_t vocab_size() const override { return sp_processor_.GetPieceSize(); }
 

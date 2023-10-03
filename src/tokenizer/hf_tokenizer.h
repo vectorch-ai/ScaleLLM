@@ -15,9 +15,9 @@ class HFTokenizer : public Tokenizer {
   ~HFTokenizer() override;
 
   bool encode(const std::string_view& text,
-              std::vector<int>* ids) const override;
+              std::vector<int32_t>* ids) const override;
 
-  std::string decode(const std::vector<int>& ids) const override;
+  std::string decode(const std::vector<int32_t>& ids) const override;
 
   size_t vocab_size() const override;
 
