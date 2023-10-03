@@ -252,6 +252,7 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   if (data.contains("layer_norm_eps")) {
     args_.layer_norm_eps() = data["layer_norm_eps"].get<float>();
   }
+  // TODO: load args based on model type
   if (data.contains("model_type")) {
     args_.model_type() = data["model_type"].get<std::string>();
   }
@@ -269,6 +270,10 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   } else {
     LOG(ERROR) << "Failed to find intermediate_size in config.json";
     return false;
+  }
+  if (data.contains("use_parallel_residual")) {
+    args_.use_parallel_residual() =
+        data["use_parallel_residual"].get<bool>();
   }
 
   // load quantization args if exists

@@ -54,6 +54,11 @@ struct ModelArgs {
 
   // token id for end of sentence.
   DEFINE_ARG(int32_t, eos_token_id) = 0;
+
+  // configs for gpt_neox
+  // whether to use a 'parallel' formulation in each transformer layer, which
+  // can provide a slight training speedup at large scales (e.g. 20B).
+  DEFINE_ARG(bool, use_parallel_residual) = true;
 };
 
 struct QuantizationArgs {

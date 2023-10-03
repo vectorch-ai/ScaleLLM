@@ -193,7 +193,9 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
                    const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+      : layer_id_(layer_id),
+        use_parallel_residual_(args.use_parallel_residual()),
+        parallel_args_(parallel_args) {
     // register submodules
     attention_ = register_module(
         "attention",
@@ -219,8 +221,16 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    auto h =
-        x + attention_(input_layernorm_(x), positions, kv_cache, input_params);
+    auto attn_output = attention_(input_layernorm_(x), positions, kv_cache, input_params);
+
+    if (use_parallel_residual_) {
+      // parallel residual: x = x + attn(ln1(x)) + mlp(ln2(x))
+      return x + attn_output + mlp_(post_attention_layernorm_(x));
+    }
+    
+    // x = x + attn(ln1(x))
+    // x = x + mlp(ln2(x))
+    auto h = x + attn_output;
     return h + mlp_(post_attention_layernorm_(h));
   }
 
@@ -253,6 +263,8 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
   LayerNorm post_attention_layernorm_{nullptr};
 
   uint32_t layer_id_;
+
+  bool use_parallel_residual_;
 
   ParallelArgs parallel_args_;
 };
@@ -288,8 +300,6 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                                                   dtype,
                                                   device));
 
-    // TODO: If the vocab size is not divisible by world size, we should
-    // just load the entire thing.
     embed_out_ = register_module("embed_out",
                                  ColumnParallelLinear(args.hidden_size(),
                                                       args.vocab_size(),
