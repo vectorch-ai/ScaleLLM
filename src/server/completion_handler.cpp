@@ -78,7 +78,7 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
   stopping_criteria.max_tokens = max_tokens;
 
   // stopping_criteria.ignore_eos_token = grpc_request.ignore_eos_token();
-  stopping_criteria.eos_token_id = tokenizer->eos_id();
+  // stopping_criteria.eos_token_id = tokenizer->eos_id();
 
   request->stream = grpc_request.stream();
   request->priority = grpc_priority_to_priority(grpc_request.priority());
@@ -123,9 +123,9 @@ std::unique_ptr<Request> grpc_chat_request_to_request(
 }  // namespace
 
 CompletionHandler::CompletionHandler(Scheduler* scheduler,
-                                     const Tokenizer* tokenizer)
+                                     std::unique_ptr<Tokenizer> tokenizer)
     : scheduler_(scheduler),
-      tokenizer_(tokenizer),
+      tokenizer_(std::move(tokenizer)),
       converter_executor_(FLAGS_num_converter_threads) {
   CHECK(scheduler_ != nullptr);
   CHECK(tokenizer_ != nullptr);
@@ -146,7 +146,7 @@ CompletionHandler::~CompletionHandler() {
 
 void CompletionHandler::complete_async(CompletionCallData* call_data) {
   converter_executor_.schedule([this, call_data = call_data]() {
-    auto request = grpc_completion_request_to_request(call_data, tokenizer_);
+    auto request = grpc_completion_request_to_request(call_data, tokenizer_.get());
     if (request == nullptr) {
       // TODO: finish with error
     }
@@ -163,7 +163,7 @@ void CompletionHandler::complete_async(CompletionCallData* call_data) {
 // caller needs to guarantee the lifetime of call_data.
 void CompletionHandler::chat_async(ChatCallData* call_data) {
   converter_executor_.schedule([this, call_data = call_data]() {
-    auto request = grpc_chat_request_to_request(call_data, tokenizer_);
+    auto request = grpc_chat_request_to_request(call_data, tokenizer_.get());
     if (request == nullptr) {
       // TODO: finish with error
     }

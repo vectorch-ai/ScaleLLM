@@ -7,6 +7,7 @@
 
 #include "model_loader/state_dict.h"
 #include "models/args.h"
+#include "tokenizer/tokenizer.h"
 
 DECLARE_int64(max_position_embeddings);
 DECLARE_string(model_type);
@@ -70,6 +71,8 @@ class ModelLoader {
   virtual const ModelArgs& model_args() const = 0;
   virtual const QuantizationArgs& quant_args() const = 0;
 
+  virtual std::unique_ptr<Tokenizer> tokenizer() const = 0;
+
   virtual size_t weights_files_count() const = 0;
   virtual StateDictIterator begin() const = 0;
   virtual StateDictIterator end() const = 0;
@@ -88,6 +91,8 @@ class PTModelLoader : public ModelLoader {
 
   const QuantizationArgs& quant_args() const override { return quant_args_; }
 
+  std::unique_ptr<Tokenizer> tokenizer() const override;
+
   size_t weights_files_count() const override {
     return model_weights_files_.size();
   }
@@ -102,6 +107,8 @@ class PTModelLoader : public ModelLoader {
 
  private:
   bool load_model_args(const std::string& args_file_path);
+
+  std::string model_weights_path_;
 
   // loaded model args
   ModelArgs args_;
@@ -122,6 +129,8 @@ class HFModelLoader : public ModelLoader {
 
   const QuantizationArgs& quant_args() const override { return quant_args_; }
 
+  std::unique_ptr<Tokenizer> tokenizer() const override;
+
   size_t weights_files_count() const override {
     return model_weights_files_.size();
   }
@@ -136,6 +145,8 @@ class HFModelLoader : public ModelLoader {
 
  private:
   bool load_model_args(const std::string& args_file_path);
+
+  std::string model_weights_path_;
 
   // loaded model args
   ModelArgs args_;

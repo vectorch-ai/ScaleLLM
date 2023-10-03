@@ -39,7 +39,7 @@ class ContinuousBatchingScheduler final : public Scheduler {
   BlockManager* block_manager_;
 
   // tokenizer
-  const Tokenizer* tokenizer_;
+  std::unique_ptr<Tokenizer> tokenizer_;
 
   // a thread safe queue of requests, bounded by kRequestQueueSize
   // the schedule owns the requests and manages their lifetimes.

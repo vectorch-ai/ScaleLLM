@@ -15,7 +15,7 @@ namespace llm {
 // a class to handle completion requests
 class CompletionHandler final {
  public:
-  CompletionHandler(Scheduler* scheduler, const Tokenizer* tokenizer);
+  CompletionHandler(Scheduler* scheduler, std::unique_ptr<Tokenizer> tokenizer);
 
   ~CompletionHandler();
 
@@ -29,7 +29,7 @@ class CompletionHandler final {
   // request scheduler
   Scheduler* scheduler_;
 
-  const Tokenizer* tokenizer_;
+  std::unique_ptr<Tokenizer> tokenizer_;
 
   // converter executor
   Executor converter_executor_;

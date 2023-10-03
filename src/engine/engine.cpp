@@ -41,12 +41,7 @@ Engine::Engine(torch::ScalarType dtype,
   }
 }
 
-bool Engine::init(const std::string& model_weights_path,
-                  const std::string& tokenizer_path) {
-  // load tokenizer
-  // TODO: support other tokenizers
-  tokenizer_ = std::make_unique<SentencePieceTokenizer>(tokenizer_path);
-
+bool Engine::init(const std::string& model_weights_path) {
   if (!init_model(model_weights_path)) {
     LOG(ERROR) << "Failed to initialize model from: " << model_weights_path;
     return false;
@@ -61,8 +56,10 @@ bool Engine::init(const std::string& model_weights_path,
 
 bool Engine::init_model(const std::string& model_weights_path) {
   auto model_loader = ModelLoader::create(model_weights_path);
-
   LOG(INFO) << "Initializing model from: " << model_weights_path;
+
+  tokenizer_ = model_loader->tokenizer();
+  CHECK(tokenizer_ != nullptr);
 
   args_ = model_loader->model_args();
   if (args_.vocab_size() == -1) {

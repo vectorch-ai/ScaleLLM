@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,7 @@ class Tokenizer {
 
   virtual size_t vocab_size() const = 0;
 
-  virtual int eos_id() const = 0;
+  virtual std::unique_ptr<Tokenizer> clone() const = 0;
 };
 
 }  // namespace llm

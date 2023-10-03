@@ -37,13 +37,12 @@ class Engine {
 
   virtual ~Engine() = default;
 
-  bool init(const std::string& model_weights_path,
-            const std::string& tokenizer_path);
+  bool init(const std::string& model_weights_path);
 
   // step the engine forward by one step with the batch
   OutputParameters execute_model(const std::vector<Sequence*>& batch);
 
-  const Tokenizer* tokenizer() const { return tokenizer_.get(); }
+  std::unique_ptr<Tokenizer> tokenizer() const { return tokenizer_->clone(); }
 
   BlockManager* block_manager() const { return block_manager_.get(); }
 

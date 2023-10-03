@@ -10,9 +10,13 @@
 
 #include "model_loader/state_dict.h"
 #include "models/args.h"
+#include "tokenizer/hf_tokenizer.h"
+#include "tokenizer/sentencepiece_tokenizer.h"
 
 DEFINE_int64(max_position_embeddings, 0, "Maximum position embeddings.");
 DEFINE_string(model_type, "", "model type, e.g. llama2, llama, gpt_neox");
+
+DEFINE_string(tokenizer_path, "", "Path to the tokenizer file.");
 
 namespace llm {
 using json = nlohmann::json;
@@ -63,7 +67,20 @@ std::unique_ptr<ModelLoader> ModelLoader::create(
   return std::make_unique<HFModelLoader>(model_weights_path);
 }
 
-PTModelLoader::PTModelLoader(const std::string& model_weights_path) {
+std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
+  // use the tokenizer path specified by the user if exists
+  const std::string tokenizer_path =
+      !FLAGS_tokenizer_path.empty() ? FLAGS_tokenizer_path
+                                    : model_weights_path_ + "/tokenizer.model";
+  if (!std::filesystem::exists(tokenizer_path)) {
+    LOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
+    return nullptr;
+  }
+  return std::make_unique<SentencePieceTokenizer>(tokenizer_path);
+}
+
+PTModelLoader::PTModelLoader(const std::string& model_weights_path)
+    : model_weights_path_(model_weights_path) {
   const std::string args_file_path = model_weights_path + "/params.json";
   CHECK(load_model_args(args_file_path))
       << "Failed to load model args from " << args_file_path;
@@ -151,7 +168,7 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   return true;
 }
 
-HFModelLoader::HFModelLoader(const std::string& model_weights_path) {
+HFModelLoader::HFModelLoader(const std::string& model_weights_path): model_weights_path_(model_weights_path) {
   CHECK(load_model_args(model_weights_path));
   // try to load safetensors first
   for (const auto& entry :
@@ -176,6 +193,16 @@ HFModelLoader::HFModelLoader(const std::string& model_weights_path) {
       << "Failed to find model weights files in " << model_weights_path;
   // sort the model weights files by name
   std::sort(model_weights_files_.begin(), model_weights_files_.end());
+}
+
+std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
+  // use the tokenizer path specified by the user if exists
+  const std::string tokenizer_path = model_weights_path_ + "/tokenizer.json";
+  if (!std::filesystem::exists(tokenizer_path)) {
+    LOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
+    return nullptr;
+  }
+  return HFTokenizer::from_file(tokenizer_path);
 }
 
 bool HFModelLoader::load_model_args(const std::string& model_weights_path) {

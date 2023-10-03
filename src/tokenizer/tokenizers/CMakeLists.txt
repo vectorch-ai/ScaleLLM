@@ -1,7 +1,7 @@
 include(CMakeCargo)
 cargo_build(
   NAME 
-    hf-tokenizers
+    tokenizers
   HDRS
     tokenizers.h
 )

@@ -19,9 +19,6 @@
 DEFINE_string(model_name_or_path,
               "TheBloke/Llama-2-7B-GPTQ",
               "hf model name or path to the model file.");
-DEFINE_string(tokenizer_path,
-              "/home/michael/code/llama/tokenizer.model",
-              "Path to the tokenizer file.");
 
 DEFINE_string(device, "cuda:0", "Device to run the model on.");
 
@@ -76,8 +73,8 @@ int main(int argc, char* argv[]) {
   }
 
   llm::Engine engine(dtype, devices);
-  CHECK(engine.init(model_path, FLAGS_tokenizer_path));
-  const auto* tokenizer = engine.tokenizer();
+  CHECK(engine.init(model_path));
+  auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
 
   llm::SamplingParameter sampling_param;
@@ -91,7 +88,7 @@ int main(int argc, char* argv[]) {
   llm::StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = FLAGS_max_seq_len;
   stopping_criteria.ignore_eos_token = false;
-  stopping_criteria.eos_token_id = tokenizer->eos_id();
+  // stopping_criteria.eos_token_id = tokenizer->eos_id();
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;

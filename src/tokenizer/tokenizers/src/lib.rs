@@ -30,10 +30,14 @@ impl TokenizerWrapper {
         // Decode the ids and store the string
         self.decode_str = self.tokenizer.decode(&ids, skip_special_tokens).unwrap();
     }
+
+    pub fn get_vocab_size(&self, with_added_tokens: bool) -> usize {
+        self.tokenizer.get_vocab_size(with_added_tokens)
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn tokenizer_from_file(path: *const c_char) -> *mut TokenizerWrapper {
+extern "C" fn tokenizer_from_file(path: *const c_char) -> *mut TokenizerWrapper {
     let c_str = unsafe { CStr::from_ptr(path) };
     let path_str = match c_str.to_str() {
         Ok(s) => s,
@@ -50,24 +54,7 @@ pub extern "C" fn tokenizer_from_file(path: *const c_char) -> *mut TokenizerWrap
 }
 
 #[no_mangle]
-pub extern "C" fn tokenizer_from_pretrained(identifier: *const c_char) -> *mut TokenizerWrapper {
-    let c_str = unsafe { CStr::from_ptr(identifier) };
-    let identifier_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => panic!("Failed to convert C string to Rust string"),
-    };
-
-    let boxed = Box::new(TokenizerWrapper {
-        tokenizer: Tokenizer::from_pretrained(identifier_str, None).unwrap().into(),
-        encode_ids: Vec::new(),
-        decode_str: String::new(),
-    });
-
-    Box::into_raw(boxed)
-}
-
-#[no_mangle]
-pub extern "C" fn tokenizer_encode(
+extern "C" fn tokenizer_encode(
     handle: *mut TokenizerWrapper,
     input_cstr: *const u8,
     len: usize,
@@ -80,7 +67,7 @@ pub extern "C" fn tokenizer_encode(
 }
 
 #[no_mangle]
-pub extern "C" fn tokenizer_get_encode_ids(
+extern "C" fn tokenizer_get_encode_ids(
     handle: *mut TokenizerWrapper,
     out_data: *mut *mut u32,
     out_len: *mut usize,
@@ -92,7 +79,7 @@ pub extern "C" fn tokenizer_get_encode_ids(
 }
 
 #[no_mangle]
-pub extern "C" fn tokenizer_decode(
+extern "C" fn tokenizer_decode(
     handle: *mut TokenizerWrapper,
     input_ids: *const u32,
     len: usize,
@@ -105,7 +92,7 @@ pub extern "C" fn tokenizer_decode(
 }
 
 #[no_mangle]
-pub extern "C" fn tokenizer_get_decode_str(
+extern "C" fn tokenizer_get_decode_str(
     handle: *mut TokenizerWrapper,
     out_cstr: *mut *mut u8,
     out_len: *mut usize,
@@ -117,8 +104,17 @@ pub extern "C" fn tokenizer_get_decode_str(
 }
 
 #[no_mangle]
-pub extern "C" fn tokenizer_free(wrapper: *mut TokenizerWrapper) {
+extern "C" fn tokenizer_free(wrapper: *mut TokenizerWrapper) {
     unsafe {
         drop(Box::from_raw(wrapper));
+    }
+}
+
+#[no_mangle]
+extern "C" fn tokenizer_vocab_size(
+    handle: *mut TokenizerWrapper, 
+    with_added_tokens: bool) -> usize {
+    unsafe {
+        (*handle).get_vocab_size(with_added_tokens)
     }
 }

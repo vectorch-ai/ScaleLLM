@@ -1,16 +1,22 @@
 #include "sentencepiece_tokenizer.h"
 
-#include "sentencepiece/sentencepiece_processor.h"
 #include <glog/logging.h>
+
+#include "sentencepiece/sentencepiece_processor.h"
 
 namespace llm {
 
-SentencePieceTokenizer::SentencePieceTokenizer(const std::string& model_path) {
-  const auto status = sp_processor_.Load(model_path);
+SentencePieceTokenizer::SentencePieceTokenizer(const std::string& vocab_file_path)
+    : vocab_file_path_(vocab_file_path) {
+  const auto status = sp_processor_.Load(vocab_file_path);
   if (!status.ok()) {
-    LOG(FATAL) << "Failed to load SentencePiece model from " << model_path
+    LOG(FATAL) << "Failed to load SentencePiece model from " << vocab_file_path
                << ": " << status.ToString() << ", error " << status.ToString();
   }
+}
+
+std::unique_ptr<Tokenizer> SentencePieceTokenizer::clone() const {
+  return std::make_unique<SentencePieceTokenizer>(this->vocab_file_path_);
 }
 
 bool SentencePieceTokenizer::encode(const std::string_view& text,

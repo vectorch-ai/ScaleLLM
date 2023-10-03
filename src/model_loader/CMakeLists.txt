@@ -37,6 +37,7 @@ cc_library(
     model_loader.cpp
   DEPS
     :model_args
+    :tokenizer
     torch
 )
 

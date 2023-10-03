@@ -1,7 +1,6 @@
 #pragma once
 
 #include "sentencepiece/sentencepiece_processor.h"
-
 #include "tokenizer.h"
 
 namespace llm {
@@ -9,7 +8,7 @@ namespace llm {
 // a tokenizer that uses google/SentencePiece
 class SentencePieceTokenizer : public Tokenizer {
  public:
-  explicit SentencePieceTokenizer(const std::string& model_path);
+  explicit SentencePieceTokenizer(const std::string& vocab_file_path);
 
   bool encode(const std::string_view& text,
               std::vector<int>* ids) const override;
@@ -18,15 +17,11 @@ class SentencePieceTokenizer : public Tokenizer {
 
   size_t vocab_size() const override { return sp_processor_.GetPieceSize(); }
 
-  int eos_id() const override { return sp_processor_.eos_id(); }
-
-  int unk_id() const { return sp_processor_.unk_id(); }
-
-  int bos_id() const { return sp_processor_.bos_id(); }
-
-  int pad_id() const { return sp_processor_.pad_id(); }
+  std::unique_ptr<Tokenizer> clone() const override;
 
  private:
+  std::string vocab_file_path_;
+
   sentencepiece::SentencePieceProcessor sp_processor_;
 };
 

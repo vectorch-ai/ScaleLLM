@@ -18,9 +18,6 @@ using namespace llm;
 DEFINE_string(model_name_or_path,
               "meta-llama/Llama-2-7b-hf",
               "hf model name or path to the model file.");
-DEFINE_string(tokenizer_path,
-              "/home/michael/code/llama/tokenizer.model",
-              "Path to the tokenizer file.");
 
 DEFINE_string(device, "cuda:0", "Device to run the model on.");
 
@@ -60,12 +57,11 @@ int main(int argc, char** argv) {
   }
 
   auto engine = std::make_unique<Engine>(dtype, devices);
-  CHECK(engine->init(model_path, FLAGS_tokenizer_path));
+  CHECK(engine->init(model_path));
 
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
-  const auto* tokenizer = engine->tokenizer();
   auto completion_handler =
-      std::make_unique<CompletionHandler>(scheduler.get(), tokenizer);
+      std::make_unique<CompletionHandler>(scheduler.get(), engine->tokenizer());
   GrpcServer server(std::move(completion_handler));
   GrpcServer::Options options;
   options.address = "localhost";
