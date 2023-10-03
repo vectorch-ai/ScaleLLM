@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include "layers/activation.h"
 #include "layers/attention.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -22,6 +23,9 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
                  const torch::Device& device) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
+
+    act_ = Activation::get(args.hidden_act());
+    CHECK(act_ != nullptr);
 
     // register the weight parameter
     dense_h_to_4h_ =
@@ -47,10 +51,7 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    namespace F = torch::nn::functional;
-    // TODO: get active function from args
-    // auto act = F::gelu;
-    return dense_4h_to_h_(F::gelu(dense_h_to_4h_(x)));
+    return dense_4h_to_h_(act_(dense_h_to_4h_(x)));
   }
 
   // load the weight from the checkpoint
@@ -69,6 +70,8 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
   // parameter members, must be registered
   ColumnParallelLinear dense_h_to_4h_{nullptr};
   RowParallelLinear dense_4h_to_h_{nullptr};
+
+  ActFunc act_{nullptr};
 };
 TORCH_MODULE(GPTNeoXMLP);
 

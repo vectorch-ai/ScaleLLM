@@ -15,6 +15,8 @@ struct ModelArgs {
   // dimension of the encoder layer.
   DEFINE_ARG(int64_t, hidden_size) = 4096;
 
+  DEFINE_ARG(std::string, hidden_act);
+
   // dimension of the 'intermediate' (aka feed-forward) layer.
   DEFINE_ARG(int64_t, intermediate_size) = 11008;
 

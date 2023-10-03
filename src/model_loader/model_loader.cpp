@@ -227,6 +227,9 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   if (data.contains("hidden_size")) {
     args_.hidden_size() = data["hidden_size"].get<int64_t>();
   }
+  if (data.contains("hidden_act")) {
+    args_.hidden_act() = data["hidden_act"].get<std::string>();
+  }
   if (data.contains("num_hidden_layers")) {
     args_.n_layers() = data["num_hidden_layers"].get<int64_t>();
   }
