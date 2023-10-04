@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include "layers/activation.h"
 #include "layers/attention.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -21,12 +22,11 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
                        const torch::Device& device) {
+    act_ = Activation::get("silu");
+    CHECK(act_ != nullptr);
+
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
-
-    const int64_t local_intermediate_size =
-        intermediate_size / parallel_args.world_size();
-    w1_w3_sizes_ = {local_intermediate_size, local_intermediate_size};
 
     // register the weight parameter
     w1_w3_ = register_module("w1_w3",
@@ -50,10 +50,9 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    namespace F = torch::nn::functional;
     auto w1_w3 = w1_w3_(x);
     auto chunks = w1_w3.chunk(/*chunks=*/2, /*dim=*/-1);
-    return w2_(F::silu(chunks[0]) * chunks[1]);
+    return w2_(act_(chunks[0]) * chunks[1]);
   }
 
   // load the weight from the checkpoint
@@ -72,19 +71,19 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
   // parameter members, must be registered
   ColumnParallelLinear w1_w3_{nullptr};
   RowParallelLinear w2_{nullptr};
-  std::vector<int64_t> w1_w3_sizes_;
+
+  ActFunc act_{nullptr};
 };
 TORCH_MODULE(LlamaFeedForward);
 
 class LlamaAttentionImpl : public torch::nn::Module {
  public:
-  LlamaAttentionImpl(uint32_t layer_id,
-                     const ModelArgs& args,
+  LlamaAttentionImpl(const ModelArgs& args,
                      const QuantizationArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
                      const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+      : parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
@@ -119,7 +118,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
                                             dtype,
                                             device));
 
-    // initialize positional embedding
+    // initialize attention
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
                              AttentionWithRoPE(n_local_heads_,
@@ -172,8 +171,6 @@ class LlamaAttentionImpl : public torch::nn::Module {
   // module members without parameters
   AttentionWithRoPE atten_{nullptr};
 
-  uint32_t layer_id_;
-
   ParallelArgs parallel_args_;
 
   // configs used in forward
@@ -188,18 +185,16 @@ TORCH_MODULE(LlamaAttention);
 
 class LlamaTransformerBlockImpl : public torch::nn::Module {
  public:
-  LlamaTransformerBlockImpl(uint32_t layer_id,
-                            const ModelArgs& args,
+  LlamaTransformerBlockImpl(const ModelArgs& args,
                             const QuantizationArgs& quant_args,
                             const ParallelArgs& parallel_args,
                             torch::ScalarType dtype,
                             const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+      : parallel_args_(parallel_args) {
     // register submodules
     attention_ = register_module(
         "attention",
-        LlamaAttention(
-            layer_id, args, quant_args, parallel_args, dtype, device));
+        LlamaAttention(args, quant_args, parallel_args, dtype, device));
     feed_forward_ = register_module(
         "feed_forward",
         LlamaFeedForward(args, quant_args, parallel_args, dtype, device));
@@ -246,8 +241,6 @@ class LlamaTransformerBlockImpl : public torch::nn::Module {
 
   RMSNorm ffn_norm_{nullptr};
 
-  uint32_t layer_id_;
-
   ParallelArgs parallel_args_;
 };
 TORCH_MODULE(LlamaTransformerBlock);
@@ -270,8 +263,8 @@ class LlamaModelImpl : public torch::nn::Module {
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = LlamaTransformerBlock(
-          i, args, quant_args, parallel_args, dtype, device);
+      auto block =
+          LlamaTransformerBlock(args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }

@@ -5,33 +5,39 @@
 #include <boost/algorithm/string.hpp>
 #include <cmath>
 namespace llm {
-
-torch::Tensor gelu(torch::Tensor x) {
+namespace {
+inline torch::Tensor gelu(torch::Tensor x) {
   namespace F = torch::nn::functional;
   return F::gelu(x);
 }
 
-torch::Tensor gelu_pytorch_tanh(torch::Tensor x) {
+inline torch::Tensor gelu_pytorch_tanh(torch::Tensor x) {
   namespace F = torch::nn::functional;
   return F::gelu(x, F::GELUFuncOptions().approximate("tanh"));
 }
 
-torch::Tensor gelu_fast(torch::Tensor x) {
+inline torch::Tensor gelu_fast(torch::Tensor x) {
   return 0.5 * x *
          (1.0 + torch::tanh(x * 0.7978845608 * (1.0 + 0.044715 * x * x)));
 }
 
-torch::Tensor gelu_new(torch::Tensor x) {
+inline torch::Tensor gelu_new(torch::Tensor x) {
   static double sqrt_2_over_pi = std::sqrt(2.0 / M_PI);
   return 0.5 * x *
          (1.0 +
           torch::tanh(sqrt_2_over_pi * (x + 0.044715 * torch::pow(x, 3.0))));
 }
 
-torch::Tensor relu(torch::Tensor x) {
+inline torch::Tensor relu(torch::Tensor x) {
   namespace F = torch::nn::functional;
   return F::relu(x);
 }
+
+inline torch::Tensor silu(torch::Tensor x) {
+  namespace F = torch::nn::functional;
+  return F::silu(x);
+}
+}  // namespace
 
 ActFunc Activation::get(const std::string& name) {
   CHECK(!name.empty()) << "Activation function name cannot be empty";
@@ -50,6 +56,9 @@ ActFunc Activation::get(const std::string& name) {
   }
   if (boost::iequals(name, "relu")) {
     return relu;
+  }
+  if (boost::iequals(name, "silu")) {
+    return silu;
   }
 
   LOG(ERROR) << "Unsupported activation function: " << name;

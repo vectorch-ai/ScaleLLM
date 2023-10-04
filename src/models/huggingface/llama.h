@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include "layers/activation.h"
 #include "layers/attention.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -11,7 +12,7 @@
 #include "models/args.h"
 #include "models/input_parameters.h"
 
-// llama2 model based on huggingface's llama2 model weights
+// llama2 model based on huggingface's implementation
 namespace llm::hf {
 
 class LlamaMLPImpl : public torch::nn::Module {
@@ -21,12 +22,11 @@ class LlamaMLPImpl : public torch::nn::Module {
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
                const torch::Device& device) {
+    act_ = Activation::get("silu");
+    CHECK(act_ != nullptr);
+
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
-
-    int64_t local_intermediate_size =
-        intermediate_size / parallel_args.world_size();
-    gate_up_sizes_ = {local_intermediate_size, local_intermediate_size};
 
     // register the weight parameter
     gate_up_proj_ =
@@ -52,11 +52,9 @@ class LlamaMLPImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    namespace F = torch::nn::functional;
     auto gate_up_proj = gate_up_proj_(x);
-    auto chunks = gate_up_proj.split(/*split_size=*/gate_up_sizes_, /*dim=*/-1);
-    DCHECK_EQ(chunks.size(), 2);
-    return down_proj_(F::silu(chunks[0]) * chunks[1]);
+    auto chunks = gate_up_proj.chunk(/*chunks=*/2, /*dim=*/-1);
+    return down_proj_(act_(chunks[0]) * chunks[1]);
   }
 
   // load the weight from the checkpoint
@@ -75,19 +73,19 @@ class LlamaMLPImpl : public torch::nn::Module {
   // parameter members, must be registered
   ColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
-  std::vector<int64_t> gate_up_sizes_;
+
+  ActFunc act_{nullptr};
 };
 TORCH_MODULE(LlamaMLP);
 
 class LlamaAttentionImpl : public torch::nn::Module {
  public:
-  LlamaAttentionImpl(uint32_t layer_id,
-                     const ModelArgs& args,
+  LlamaAttentionImpl(const ModelArgs& args,
                      const QuantizationArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
                      const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+      : parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
@@ -123,7 +121,6 @@ class LlamaAttentionImpl : public torch::nn::Module {
                                                 dtype,
                                                 device));
 
-    // TODO: need to adjust the max_seq_len
     // initialize attention
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
@@ -145,10 +142,11 @@ class LlamaAttentionImpl : public torch::nn::Module {
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
     const auto num_tokens = x.size(0);
-    // (num_tokens, dim) x (dim, n_heads * head_dim)
-    // => (num_tokens, n_heads * head_dim)
+    // (num_tokens, dim) x (dim, n_local_heads * head_dim)
+    // => (num_tokens, n_local_heads * head_dim)
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
+
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
     auto output =
         atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
@@ -176,8 +174,6 @@ class LlamaAttentionImpl : public torch::nn::Module {
   // module members without parameters
   AttentionWithRoPE atten_{nullptr};
 
-  uint32_t layer_id_;
-
   ParallelArgs parallel_args_;
 
   // configs used in forward
@@ -192,20 +188,18 @@ TORCH_MODULE(LlamaAttention);
 
 class LlamaDecoderLayerImpl : public torch::nn::Module {
  public:
-  LlamaDecoderLayerImpl(uint32_t layer_id,
-                        const ModelArgs& args,
+  LlamaDecoderLayerImpl(const ModelArgs& args,
                         const QuantizationArgs& quant_args,
                         const ParallelArgs& parallel_args,
                         torch::ScalarType dtype,
                         const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+      : parallel_args_(parallel_args) {
     // register submodules
     self_attn_ = register_module(
         "self_attn",
-        LlamaAttention(
-            layer_id, args, quant_args, parallel_args, dtype, device));
-    mlp_ = register_module("mlp",
-                           LlamaMLP(args, quant_args, parallel_args, dtype, device));
+        LlamaAttention(args, quant_args, parallel_args, dtype, device));
+    mlp_ = register_module(
+        "mlp", LlamaMLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
         "input_layernorm",
         RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
@@ -251,8 +245,6 @@ class LlamaDecoderLayerImpl : public torch::nn::Module {
 
   RMSNorm post_attention_layernorm_{nullptr};
 
-  uint32_t layer_id_;
-
   ParallelArgs parallel_args_;
 };
 TORCH_MODULE(LlamaDecoderLayer);
@@ -276,7 +268,7 @@ class LlamaModelImpl : public torch::nn::Module {
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
-          LlamaDecoderLayer(i, args, quant_args, parallel_args, dtype, device);
+          LlamaDecoderLayer(args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }

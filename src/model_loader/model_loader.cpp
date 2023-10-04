@@ -263,6 +263,9 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   if (data.contains("rotary_emb_base")) {
     args_.rope_theta() = data["rotary_emb_base"].get<float>();
   }
+  if (data.contains("rope_theta")) {
+    args_.rope_theta() = data["rope_theta"].get<float>();
+  }
   if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
     args_.rope_scaling() = data["rope_scaling"].get<float>();
   }
