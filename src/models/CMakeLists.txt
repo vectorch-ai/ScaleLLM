@@ -6,9 +6,10 @@ cc_library(
     models
   HDRS
     input_parameters.h 
-    llama2.h
-    llama2_hf.h
-    mpt.h
+    llama.h
+    huggingface/llama.h
+    huggingface/gpt_neox.h
+    huggingface/mpt.h
   SRCS
   DEPS
     :model_args
@@ -22,8 +23,8 @@ cc_test(
   NAME
     models_test
   SRCS
-    llama2_test.cpp
-    mpt_test.cpp
+    llama_test.cpp
+    huggingface/mpt_test.cpp
   DEPS
     :models
     :state_dict

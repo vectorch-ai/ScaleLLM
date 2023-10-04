@@ -11,7 +11,7 @@
 #include "models/args.h"
 #include "models/input_parameters.h"
 
-// llama2 model based on huggingface's llama2 model weights
+// llama2 model based on huggingface's implementation
 namespace llm::hf {
 
 class MPTMLPImpl : public torch::nn::Module {

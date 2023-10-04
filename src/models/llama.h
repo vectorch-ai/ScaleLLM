@@ -13,14 +13,14 @@
 
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py
-namespace llm::llama2 {
-class FeedForwardImpl : public torch::nn::Module {
+namespace llm {
+class LlamaFeedForwardImpl : public torch::nn::Module {
  public:
-  FeedForwardImpl(const ModelArgs& args,
-                  const QuantizationArgs& quant_args,
-                  const ParallelArgs& parallel_args,
-                  torch::ScalarType dtype,
-                  const torch::Device& device) {
+  LlamaFeedForwardImpl(const ModelArgs& args,
+                       const QuantizationArgs& quant_args,
+                       const ParallelArgs& parallel_args,
+                       torch::ScalarType dtype,
+                       const torch::Device& device) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
@@ -74,7 +74,7 @@ class FeedForwardImpl : public torch::nn::Module {
   RowParallelLinear w2_{nullptr};
   std::vector<int64_t> w1_w3_sizes_;
 };
-TORCH_MODULE(FeedForward);
+TORCH_MODULE(LlamaFeedForward);
 
 class LlamaAttentionImpl : public torch::nn::Module {
  public:
@@ -186,14 +186,14 @@ class LlamaAttentionImpl : public torch::nn::Module {
 };
 TORCH_MODULE(LlamaAttention);
 
-class TransformerBlockImpl : public torch::nn::Module {
+class LlamaTransformerBlockImpl : public torch::nn::Module {
  public:
-  TransformerBlockImpl(uint32_t layer_id,
-                       const ModelArgs& args,
-                       const QuantizationArgs& quant_args,
-                       const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device)
+  LlamaTransformerBlockImpl(uint32_t layer_id,
+                            const ModelArgs& args,
+                            const QuantizationArgs& quant_args,
+                            const ParallelArgs& parallel_args,
+                            torch::ScalarType dtype,
+                            const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     // register submodules
     attention_ = register_module(
@@ -202,7 +202,7 @@ class TransformerBlockImpl : public torch::nn::Module {
             layer_id, args, quant_args, parallel_args, dtype, device));
     feed_forward_ = register_module(
         "feed_forward",
-        FeedForward(args, quant_args, parallel_args, dtype, device));
+        LlamaFeedForward(args, quant_args, parallel_args, dtype, device));
     attention_norm_ = register_module(
         "attention_norm",
         RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
@@ -240,7 +240,7 @@ class TransformerBlockImpl : public torch::nn::Module {
   // parameter members, must be registered
   LlamaAttention attention_{nullptr};
 
-  FeedForward feed_forward_{nullptr};
+  LlamaFeedForward feed_forward_{nullptr};
 
   RMSNorm attention_norm_{nullptr};
 
@@ -250,15 +250,15 @@ class TransformerBlockImpl : public torch::nn::Module {
 
   ParallelArgs parallel_args_;
 };
-TORCH_MODULE(TransformerBlock);
+TORCH_MODULE(LlamaTransformerBlock);
 
-class ModelImpl : public torch::nn::Module {
+class LlamaModelImpl : public torch::nn::Module {
  public:
-  ModelImpl(const ModelArgs& args,
-            const QuantizationArgs& quant_args,
-            const ParallelArgs& parallel_args,
-            torch::ScalarType dtype,
-            const torch::Device& device)
+  LlamaModelImpl(const ModelArgs& args,
+                 const QuantizationArgs& quant_args,
+                 const ParallelArgs& parallel_args,
+                 torch::ScalarType dtype,
+                 const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
     tok_embeddings_ = register_module("tok_embeddings",
@@ -270,8 +270,8 @@ class ModelImpl : public torch::nn::Module {
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block =
-          TransformerBlock(i, args, quant_args, parallel_args, dtype, device);
+      auto block = LlamaTransformerBlock(
+          i, args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -332,7 +332,7 @@ class ModelImpl : public torch::nn::Module {
 
   torch::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
-  std::vector<TransformerBlock> layers_;
+  std::vector<LlamaTransformerBlock> layers_;
 
   RMSNorm norm_{nullptr};
 
@@ -340,6 +340,6 @@ class ModelImpl : public torch::nn::Module {
 
   ParallelArgs parallel_args_;
 };
-TORCH_MODULE(Model);
+TORCH_MODULE(LlamaModel);
 
-}  // namespace llm::llama2
+}  // namespace llm

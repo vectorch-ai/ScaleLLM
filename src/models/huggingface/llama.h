@@ -12,15 +12,15 @@
 #include "models/input_parameters.h"
 
 // llama2 model based on huggingface's llama2 model weights
-namespace llm::hf::llama2 {
+namespace llm::hf {
 
-class MLPImpl : public torch::nn::Module {
+class LlamaMLPImpl : public torch::nn::Module {
  public:
-  MLPImpl(const ModelArgs& args,
-          const QuantizationArgs& quant_args,
-          const ParallelArgs& parallel_args,
-          torch::ScalarType dtype,
-          const torch::Device& device) {
+  LlamaMLPImpl(const ModelArgs& args,
+               const QuantizationArgs& quant_args,
+               const ParallelArgs& parallel_args,
+               torch::ScalarType dtype,
+               const torch::Device& device) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
@@ -77,7 +77,7 @@ class MLPImpl : public torch::nn::Module {
   RowParallelLinear down_proj_{nullptr};
   std::vector<int64_t> gate_up_sizes_;
 };
-TORCH_MODULE(MLP);
+TORCH_MODULE(LlamaMLP);
 
 class LlamaAttentionImpl : public torch::nn::Module {
  public:
@@ -190,14 +190,14 @@ class LlamaAttentionImpl : public torch::nn::Module {
 };
 TORCH_MODULE(LlamaAttention);
 
-class DecoderLayerImpl : public torch::nn::Module {
+class LlamaDecoderLayerImpl : public torch::nn::Module {
  public:
-  DecoderLayerImpl(uint32_t layer_id,
-                   const ModelArgs& args,
-                   const QuantizationArgs& quant_args,
-                   const ParallelArgs& parallel_args,
-                   torch::ScalarType dtype,
-                   const torch::Device& device)
+  LlamaDecoderLayerImpl(uint32_t layer_id,
+                        const ModelArgs& args,
+                        const QuantizationArgs& quant_args,
+                        const ParallelArgs& parallel_args,
+                        torch::ScalarType dtype,
+                        const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     // register submodules
     self_attn_ = register_module(
@@ -205,7 +205,7 @@ class DecoderLayerImpl : public torch::nn::Module {
         LlamaAttention(
             layer_id, args, quant_args, parallel_args, dtype, device));
     mlp_ = register_module("mlp",
-                           MLP(args, quant_args, parallel_args, dtype, device));
+                           LlamaMLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
         "input_layernorm",
         RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
@@ -245,7 +245,7 @@ class DecoderLayerImpl : public torch::nn::Module {
   // parameter members, must be registered
   LlamaAttention self_attn_{nullptr};
 
-  MLP mlp_{nullptr};
+  LlamaMLP mlp_{nullptr};
 
   RMSNorm input_layernorm_{nullptr};
 
@@ -255,15 +255,15 @@ class DecoderLayerImpl : public torch::nn::Module {
 
   ParallelArgs parallel_args_;
 };
-TORCH_MODULE(DecoderLayer);
+TORCH_MODULE(LlamaDecoderLayer);
 
-class ModelImpl : public torch::nn::Module {
+class LlamaModelImpl : public torch::nn::Module {
  public:
-  ModelImpl(const ModelArgs& args,
-            const QuantizationArgs& quant_args,
-            const ParallelArgs& parallel_args,
-            torch::ScalarType dtype,
-            const torch::Device& device)
+  LlamaModelImpl(const ModelArgs& args,
+                 const QuantizationArgs& quant_args,
+                 const ParallelArgs& parallel_args,
+                 torch::ScalarType dtype,
+                 const torch::Device& device)
       : parallel_args_(parallel_args) {
     // register submodules
     embed_tokens_ = register_module("embed_tokens",
@@ -276,7 +276,7 @@ class ModelImpl : public torch::nn::Module {
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
-          DecoderLayer(i, args, quant_args, parallel_args, dtype, device);
+          LlamaDecoderLayer(i, args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -339,7 +339,7 @@ class ModelImpl : public torch::nn::Module {
 
   torch::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
-  std::vector<DecoderLayer> layers_;
+  std::vector<LlamaDecoderLayer> layers_;
 
   RMSNorm norm_{nullptr};
 
@@ -347,6 +347,6 @@ class ModelImpl : public torch::nn::Module {
 
   ParallelArgs parallel_args_;
 };
-TORCH_MODULE(Model);
+TORCH_MODULE(LlamaModel);
 
-}  // namespace llm::hf::llama2
+}  // namespace llm::hf
