@@ -6,7 +6,8 @@
 
 namespace llm {
 
-SentencePieceTokenizer::SentencePieceTokenizer(const std::string& vocab_file_path)
+SentencePieceTokenizer::SentencePieceTokenizer(
+    const std::string& vocab_file_path)
     : vocab_file_path_(vocab_file_path) {
   const auto status = sp_processor_.Load(vocab_file_path);
   if (!status.ok()) {
@@ -21,7 +22,7 @@ std::unique_ptr<Tokenizer> SentencePieceTokenizer::clone() const {
 
 bool SentencePieceTokenizer::encode(const std::string_view& text,
                                     std::vector<int32_t>* ids) const {
-  const auto status = sp_processor_.Encode(text, ids);
+  const auto status = sp_processor_.Encode({text.data(), text.size()}, ids);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to encode text: " << text << ", error "
                << status.ToString();
@@ -32,7 +33,8 @@ bool SentencePieceTokenizer::encode(const std::string_view& text,
   return true;
 }
 
-std::string SentencePieceTokenizer::decode(const std::vector<int32_t>& ids) const {
+std::string SentencePieceTokenizer::decode(
+    const std::vector<int32_t>& ids) const {
   std::string text;
   const auto status = sp_processor_.Decode(ids, &text);
   if (!status.ok()) {
