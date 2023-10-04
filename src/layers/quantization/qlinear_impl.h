@@ -84,13 +84,6 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) override;
 
-  // special load_state_dict for fused cases
-  void load_state_dict(
-      const StateDict& /*state_dict*/,
-      const std::vector<std::string_view>& /*prefixes*/) override {
-    LOG(FATAL) << "not implemented";
-  }
-
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const override;
 

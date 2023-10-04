@@ -20,9 +20,19 @@ class ParallelLinearImpl : public torch::nn::Module {
 
   virtual void verify_loaded_weights(const std::string& prefix = "") const = 0;
 
+  // load state dict with a transform function
+  using TensorTransform = std::function<torch::Tensor(const torch::Tensor&)>;
+  virtual void load_state_dict(const StateDict& /*state_dict*/,
+                               TensorTransform /*transform_func*/) {
+    LOG(FATAL) << "not implemented";
+  }
+
+  // special load_state_dict for fused cases
   virtual void load_state_dict(
       const StateDict& /*state_dict*/,
-      const std::vector<std::string_view>& /*prefixes*/) = 0;
+      const std::vector<std::string_view>& /*prefixes*/) {
+    LOG(FATAL) << "not implemented";
+  }
 };
 
 class ColumnParallelLinear

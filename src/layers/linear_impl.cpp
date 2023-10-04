@@ -105,12 +105,21 @@ torch::Tensor ColumnParallelLinearImpl::forward(torch::Tensor input) const {
 
 // load the weight from the checkpoint
 void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto weight =
+  // call load_state_dict with identity transform
+  load_state_dict(state_dict,
+                  [](const torch::Tensor& tensor) { return tensor; });
+}
+
+void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
+                                               TensorTransform transform_func) {
+  CHECK(transform_func != nullptr) << "transform_func must be provided";
+  auto weight =
       state_dict.get_sharded_tensor("weight",
                                     /*dim=*/0,
                                     /*rank=*/parallel_args_.rank(),
                                     /*world_size=*/parallel_args_.world_size());
   if (weight.defined()) {
+    weight = transform_func(weight);
     CHECK_EQ(weight_.sizes(), weight.sizes())
         << "weight size mismatch for " << name();
     weight_.copy_(weight);
@@ -118,12 +127,13 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
   }
 
   if (bias_.defined()) {
-    const auto bias = state_dict.get_sharded_tensor(
+    auto bias = state_dict.get_sharded_tensor(
         "bias",
         /*dim=*/0,
         /*rank=*/parallel_args_.rank(),
         /*world_size=*/parallel_args_.world_size());
     if (bias.defined()) {
+      bias = transform_func(bias);
       CHECK_EQ(bias_.sizes(), bias.sizes())
           << "bias size mismatch for " << name();
       bias_.copy_(bias);
