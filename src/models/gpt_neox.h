@@ -85,17 +85,10 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                        const torch::Device& device)
       : layer_id_(layer_id), parallel_args_(parallel_args) {
     const auto world_size = parallel_args.world_size();
+    const int64_t n_local_heads = args.n_heads() / world_size;
     const int64_t hidden_size = args.hidden_size();
-    const int64_t n_heads = args.n_heads();
-    const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
-
-    n_local_heads_ = n_heads / world_size;
-    n_local_kv_heads_ = n_kv_heads / world_size;
-    head_dim_ = hidden_size / n_heads;
-    // size for q, k, v
-    qkv_sizes_ = {n_local_heads_ * head_dim_,
-                  n_local_kv_heads_ * head_dim_,
-                  n_local_kv_heads_ * head_dim_};
+    n_heads_ = args.n_heads();
+    head_dim_ = hidden_size / n_heads_;
 
     // register submodules
     query_key_value_ =
@@ -125,8 +118,8 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
     // initialize attention
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads_,
-                                               n_local_kv_heads_,
+                             AttentionWithRoPE(n_local_heads,
+                                               n_local_heads,
                                                head_dim_,
                                                scale,
                                                rotary_dim,
@@ -142,7 +135,6 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_heads * head_dim)
     // => (num_tokens, n_heads * head_dim)
     auto qkv = query_key_value_(x).chunk(/*chunks=*/3, /*dim=*/-1);
@@ -156,7 +148,8 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    query_key_value_->load_state_dict(state_dict.select("query_key_value."));
+    const auto qkv_state_dict = reshape_qkv(state_dict.select("query_key_value."));
+    query_key_value_->load_state_dict(qkv_state_dict);
     dense_->load_state_dict(state_dict.select("dense."));
   }
 
@@ -166,6 +159,31 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   }
 
  private:
+  StateDict reshape_qkv(const StateDict& state_dict) {
+    // N.B. Fused qkv weights in GPT-NeoX has the shape of [n_heads * 3 *
+    // head_dim, n_heads * head_dim], while the desired shape is [3 * n_heads *
+    // head_dim, n_heads * head_dim].
+
+    // reshape the weight and bias to the desired shape.
+    std::unordered_map<std::string, torch::Tensor> dict;
+    for (const auto& [key, tensor] : state_dict) {
+      torch::Tensor reshaped_tensor;
+      if (key == "weight") {
+        reshaped_tensor = tensor.view({n_heads_, 3, head_dim_, n_heads_ * head_dim_})
+                              .permute({1, 0, 2, 3})
+                              .reshape({-1, n_heads_ * head_dim_});
+      } else if (key == "bias") {
+        reshaped_tensor = tensor.view({n_heads_, 3, head_dim_})
+                              .permute({1, 0, 2})
+                              .reshape({-1});
+      } else {
+        LOG(FATAL) << "unexpected key: " << key;
+      }
+      dict[key] = reshaped_tensor;
+    }
+    return {dict, state_dict.shard_id(), state_dict.num_shards()};
+  }
+
   // parameter members, must be registered
   ColumnParallelLinear query_key_value_{nullptr};
 
@@ -178,13 +196,8 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
 
   ParallelArgs parallel_args_;
 
-  // configs used in forward
-  int64_t n_local_heads_;
-  int64_t n_local_kv_heads_;
-  int64_t head_dim_;
-
-  // size for q, k, v
-  std::vector<int64_t> qkv_sizes_;
+  int64_t n_heads_ = 0;
+  int64_t head_dim_ = 0;
 };
 TORCH_MODULE(GPTNeoXAttention);
 

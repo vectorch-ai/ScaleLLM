@@ -172,7 +172,8 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   return true;
 }
 
-HFModelLoader::HFModelLoader(const std::string& model_weights_path): model_weights_path_(model_weights_path) {
+HFModelLoader::HFModelLoader(const std::string& model_weights_path)
+    : model_weights_path_(model_weights_path) {
   CHECK(load_model_args(model_weights_path));
   // try to load safetensors first
   for (const auto& entry :
@@ -275,8 +276,7 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     return false;
   }
   if (data.contains("use_parallel_residual")) {
-    args_.use_parallel_residual() =
-        data["use_parallel_residual"].get<bool>();
+    args_.use_parallel_residual() = data["use_parallel_residual"].get<bool>();
   }
 
   // load quantization args if exists

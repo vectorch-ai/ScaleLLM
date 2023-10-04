@@ -44,6 +44,10 @@ class StateDict final {
 
   size_t size() const { return dict_.size(); }
 
+  int shard_id() const { return shard_id_; }
+  
+  int num_shards() const { return num_shards_; }
+
   // support range-based for loop
   auto begin() const { return dict_.begin(); }
   auto end() const { return dict_.end(); }

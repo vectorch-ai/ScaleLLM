@@ -8,8 +8,6 @@
 namespace llm {
 
 struct ModelArgs {
-  DEFINE_ARG(std::vector<std::string>, architectures);
-
   DEFINE_ARG(std::string, model_type);
 
   // dimension of the encoder layer.
@@ -63,6 +61,28 @@ struct ModelArgs {
   DEFINE_ARG(bool, use_parallel_residual) = true;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
+  os << "ModelArgs: [model_type: " << args.model_type();
+  os << ", hidden_size: " << args.hidden_size();
+  os << ", hidden_act: " << args.hidden_act();
+  os << ", intermediate_size: " << args.intermediate_size();
+  os << ", n_layers: " << args.n_layers();
+  os << ", n_heads: " << args.n_heads();
+  os << ", n_kv_heads: " << args.n_kv_heads().value_or(0);
+  os << ", vocab_size: " << args.vocab_size();
+  os << ", rms_norm_eps: " << args.rms_norm_eps();
+  os << ", layer_norm_eps: " << args.layer_norm_eps();
+  os << ", rope_theta: " << args.rope_theta();
+  os << ", rope_scaling: " << args.rope_scaling();
+  os << ", rotary_pct: " << args.rotary_pct();
+  os << ", max_position_embeddings: " << args.max_position_embeddings();
+  os << ", bos_token_id: " << args.bos_token_id();
+  os << ", eos_token_id: " << args.eos_token_id();
+  os << ", use_parallel_residual: " << args.use_parallel_residual();
+  os << "]";
+  return os;
+}
+
 struct QuantizationArgs {
   DEFINE_ARG(std::string, quant_method) = "";
 
@@ -77,6 +97,18 @@ struct QuantizationArgs {
   DEFINE_ARG(bool, true_sequential) = false;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const QuantizationArgs& args) {
+  os << "QuantizationArgs: [";
+  os << "quant_method: " << args.quant_method();
+  os << ", bits: " << args.bits();
+  os << ", group_size: " << args.group_size();
+  os << ", desc_act: " << args.desc_act();
+  os << ", true_sequential: " << args.true_sequential();
+  os << "]";
+  return os;
+}
+
+
 struct ParallelArgs {
   ParallelArgs(int32_t rank, int32_t world_size, ProcessGroup* process_group)
       : rank_(rank), world_size_(world_size), process_group_(process_group) {}
@@ -90,5 +122,13 @@ struct ParallelArgs {
   // pointer to process group, nullptr if world size is 1
   DEFINE_PTR_ARG(ProcessGroup, process_group) = nullptr;
 };
+
+inline std::ostream& operator<<(std::ostream& os, const ParallelArgs& args) {
+  os << "ParallelArgs: [";
+  os << "rank: " << args.rank();
+  os << ", world_size: " << args.world_size();
+  os << "]";
+  return os;
+}
 
 }  // namespace llm
