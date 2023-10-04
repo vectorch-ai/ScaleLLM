@@ -38,6 +38,12 @@ class StateDict final {
                                    int rank,
                                    int world_size) const;
 
+  using TensorTransform = std::function<torch::Tensor(const torch::Tensor&)>;
+  StateDict& set_tensor_transform(TensorTransform transform_func) {
+    transform_func_ = std::move(transform_func);
+    return *this;
+  }
+
   // select all the tensors whose name starts with prefix.
   // the returned tensor name will be the suffix of the original name.
   StateDict select(const std::string_view& prefix) const;
@@ -45,7 +51,7 @@ class StateDict final {
   size_t size() const { return dict_.size(); }
 
   int shard_id() const { return shard_id_; }
-  
+
   int num_shards() const { return num_shards_; }
 
   // support range-based for loop
@@ -57,6 +63,8 @@ class StateDict final {
   std::unique_ptr<folly::MemoryMapping> mem_map_;
 
   std::unordered_map<std::string, torch::Tensor> dict_;
+
+  TensorTransform transform_func_ = nullptr;
 
   // configs for data shards
   // data shard id of this weight file, valid range [0, num_shards)

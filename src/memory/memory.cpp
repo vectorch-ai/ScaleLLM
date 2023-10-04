@@ -1,6 +1,7 @@
 #include "memory.h"
 
 #include <c10/cuda/CUDACachingAllocator.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 namespace llm::memory {

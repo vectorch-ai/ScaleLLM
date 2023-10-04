@@ -1,7 +1,7 @@
 #include "activation.h"
 
 #include <torch/torch.h>
-
+#include <glog/logging.h>
 #include <boost/algorithm/string.hpp>
 #include <cmath>
 namespace llm {

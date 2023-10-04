@@ -3,6 +3,7 @@
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
 #include <folly/MPMCQueue.h>
+#include <glog/logging.h>
 
 #include <cstdint>
 #include <memory>

@@ -12,6 +12,8 @@
 #include "models/args.h"
 #include "models/input_parameters.h"
 
+// gpt-neox model compatible with huggingface weights
+
 namespace llm::hf {
 
 class GPTNeoXMLPImpl : public torch::nn::Module {

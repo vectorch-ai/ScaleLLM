@@ -1,5 +1,6 @@
 #include "logits_processor.h"
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <algorithm>

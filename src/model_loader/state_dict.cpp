@@ -1,5 +1,5 @@
 #include "state_dict.h"
-
+#include <glog/logging.h>
 #include <ATen/core/TensorBody.h>
 #include <caffe2/serialize/inline_container.h>
 #include <torch/csrc/jit/serialization/import_read.h>
@@ -184,7 +184,8 @@ torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
   if (it == dict_.end()) {
     return torch::Tensor{nullptr};
   }
-  return it->second;
+  // apply transform function if exists
+  return transform_func_ ? transform_func_(it->second) : it->second;
 }
 
 torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,

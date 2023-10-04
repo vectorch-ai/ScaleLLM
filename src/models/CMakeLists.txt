@@ -8,6 +8,7 @@ cc_library(
     input_parameters.h 
     llama.h
     huggingface/llama.h
+    huggingface/gpt2.h
     huggingface/gpt_neox.h
     huggingface/mpt.h
   SRCS

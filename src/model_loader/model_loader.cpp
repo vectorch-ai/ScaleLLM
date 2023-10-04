@@ -1,13 +1,16 @@
 #include "model_loader.h"
 
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <boost/algorithm/string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <vector>
 
+#include "args_loader.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 #include "tokenizer/hf_tokenizer.h"
@@ -103,73 +106,8 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
     return false;
   }
 
-  // hardcode bos and eos for llama2
-  args_.bos_token_id() = 1;
-  args_.eos_token_id() = 2;
-
   json data = json::parse(ifs);
-  if (data.contains("dim")) {
-    args_.hidden_size() = data["dim"].get<int64_t>();
-  }
-  if (data.contains("n_layers")) {
-    args_.n_layers() = data["n_layers"].get<int64_t>();
-  }
-  if (data.contains("n_heads")) {
-    args_.n_heads() = data["n_heads"].get<int64_t>();
-  }
-  if (data.contains("n_kv_heads")) {
-    args_.n_kv_heads() = data["n_kv_heads"].get<int64_t>();
-  }
-  if (data.contains("vocab_size")) {
-    args_.vocab_size() = data["vocab_size"].get<int64_t>();
-  }
-  if (FLAGS_max_position_embeddings > 0) {
-    args_.max_position_embeddings() = FLAGS_max_position_embeddings;
-  }
-  if (data.contains("norm_eps")) {
-    args_.rms_norm_eps() = data["norm_eps"].get<float>();
-  }
-  if (data.contains("rope_theta")) {
-    args_.rope_theta() = data["rope_theta"].get<float>();
-  }
-  if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
-    args_.rope_scaling() = data["rope_scaling"].get<float>();
-  }
-
-  if (!FLAGS_model_type.empty()) {
-    args_.model_type() = FLAGS_model_type;
-  } else if (data.contains("model_type")) {
-    args_.model_type() = data["model_type"].get<std::string>();
-  } else {
-    // Hardcode model type to llama2 if not specified
-    args_.model_type() = "llama2";
-  }
-
-  if (data.contains("intermediate_size")) {
-    args_.intermediate_size() = data["intermediate_size"].get<int64_t>();
-  } else {
-    int64_t multiple_of = 256;
-    float ffn_dim_multiplier = 1.0f;
-    if (data.contains("multiple_of")) {
-      multiple_of = data["multiple_of"].get<int64_t>();
-    }
-    if (data.contains("ffn_dim_multiplier")) {
-      ffn_dim_multiplier = data["ffn_dim_multiplier"].get<float>();
-    }
-
-    // calculate hidden_dim from dim
-    int64_t intermediate_size = args_.hidden_size() * 4;
-    intermediate_size = 2 * intermediate_size / 3;
-    // custom dim factor multiplier
-    intermediate_size *= ffn_dim_multiplier;
-    // round up to make hidden layer size multiple of large power of 2
-    intermediate_size =
-        multiple_of * ((intermediate_size + multiple_of - 1) / multiple_of);
-    args_.intermediate_size() = intermediate_size;
-  }
-
-  // TODO: add more args
-  return true;
+  return load_meta_llama_model_args(data, &args_);
 }
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path)
@@ -219,67 +157,19 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   }
 
   json data = json::parse(ifs);
-  if (data.contains("bos_token_id")) {
-    args_.bos_token_id() = data["bos_token_id"].get<int32_t>();
-  }
-  if (data.contains("eos_token_id")) {
-    args_.eos_token_id() = data["eos_token_id"].get<int32_t>();
-  }
-  if (data.contains("hidden_size")) {
-    args_.hidden_size() = data["hidden_size"].get<int64_t>();
-  }
-  if (data.contains("hidden_act")) {
-    args_.hidden_act() = data["hidden_act"].get<std::string>();
-  }
-  if (data.contains("num_hidden_layers")) {
-    args_.n_layers() = data["num_hidden_layers"].get<int64_t>();
-  }
-  if (data.contains("num_attention_heads")) {
-    args_.n_heads() = data["num_attention_heads"].get<int64_t>();
-  }
-  if (data.contains("num_key_value_heads")) {
-    args_.n_kv_heads() = data["num_key_value_heads"].get<int64_t>();
-  }
-  if (data.contains("vocab_size")) {
-    args_.vocab_size() = data["vocab_size"].get<int64_t>();
-  }
-
-  if (FLAGS_max_position_embeddings > 0) {
-    args_.max_position_embeddings() = FLAGS_max_position_embeddings;
-  } else if (data.contains("max_position_embeddings")) {
-    args_.max_position_embeddings() =
-        data["max_position_embeddings"].get<int64_t>();
-  }
-  if (data.contains("rms_norm_eps")) {
-    args_.rms_norm_eps() = data["rms_norm_eps"].get<float>();
-  }
-  if (data.contains("layer_norm_eps")) {
-    args_.layer_norm_eps() = data["layer_norm_eps"].get<float>();
-  }
-  // TODO: load args based on model type
   if (data.contains("model_type")) {
     args_.model_type() = data["model_type"].get<std::string>();
-  }
-  if (data.contains("rotary_emb_base")) {
-    args_.rope_theta() = data["rotary_emb_base"].get<float>();
-  }
-  if (data.contains("rope_theta")) {
-    args_.rope_theta() = data["rope_theta"].get<float>();
-  }
-  if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
-    args_.rope_scaling() = data["rope_scaling"].get<float>();
-  }
-  if (data.contains("rotary_pct")) {
-    args_.rotary_pct() = data["rotary_pct"].get<float>();
-  }
-  if (data.contains("intermediate_size")) {
-    args_.intermediate_size() = data["intermediate_size"].get<int64_t>();
   } else {
-    LOG(ERROR) << "Failed to find intermediate_size in config.json";
+    LOG(ERROR) << "Failed to find model_type in " << args_file_path;
     return false;
   }
-  if (data.contains("use_parallel_residual")) {
-    args_.use_parallel_residual() = data["use_parallel_residual"].get<bool>();
+
+  if (boost::iequals(args_.model_type(), "gpt2")) {
+    load_gpt2_model_args(data, &args_);
+  } else if (boost::iequals(args_.model_type(), "gpt_neox")) {
+    load_gpt_neox_model_args(data, &args_);
+  } else if (boost::iequals(args_.model_type(), "llama")) {
+    load_llama_model_args(data, &args_);
   }
 
   // load quantization args if exists

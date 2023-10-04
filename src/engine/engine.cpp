@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include <glog/logging.h>
+
 #include <memory>
 
 #include "common/pretty_print.h"

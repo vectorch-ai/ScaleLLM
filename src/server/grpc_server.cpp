@@ -1,6 +1,7 @@
 #include "grpc_server.h"
 
 #include <absl/strings/str_format.h>
+#include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 
 #include <memory>

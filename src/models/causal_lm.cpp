@@ -1,12 +1,13 @@
 #include "causal_lm.h"
 
 #include <torch/torch.h>
-
+#include <glog/logging.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <vector>
 
 #include "args.h"
+#include "huggingface/gpt2.h"
 #include "huggingface/gpt_neox.h"
 #include "huggingface/llama.h"
 #include "input_parameters.h"
@@ -25,8 +26,7 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
   if (boost::iequals(args.model_type(), "llama2")) {
     LlamaModel llama2(args, quant_args, parallel_args, dtype, device);
     llama2->eval();
-    return std::make_unique<llm::CausalLMImpl<LlamaModel>>(
-        std::move(llama2));
+    return std::make_unique<llm::CausalLMImpl<LlamaModel>>(std::move(llama2));
   }
   // llama from hf models
   if (boost::iequals(args.model_type(), "llama")) {
@@ -36,7 +36,12 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
     return std::make_unique<llm::CausalLMImpl<hf::LlamaModel>>(
         std::move(llama2));
   }
-
+  if (boost::iequals(args.model_type(), "gpt2")) {
+    hf::GPT2Model gpt2(args, quant_args, parallel_args, dtype, device);
+    // set the module in evaluation/inference mode
+    gpt2->eval();
+    return std::make_unique<llm::CausalLMImpl<hf::GPT2Model>>(std::move(gpt2));
+  }
   if (boost::iequals(args.model_type(), "gpt_neox")) {
     hf::GPTNeoXModel gpt_neox(args, quant_args, parallel_args, dtype, device);
     // set the module in evaluation/inference mode

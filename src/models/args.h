@@ -11,18 +11,18 @@ struct ModelArgs {
   DEFINE_ARG(std::string, model_type);
 
   // dimension of the encoder layer.
-  DEFINE_ARG(int64_t, hidden_size) = 4096;
+  DEFINE_ARG(int64_t, hidden_size) = 0;
 
   DEFINE_ARG(std::string, hidden_act);
 
   // dimension of the 'intermediate' (aka feed-forward) layer.
-  DEFINE_ARG(int64_t, intermediate_size) = 11008;
+  DEFINE_ARG(int64_t, intermediate_size) = 0;
 
   // number of hidden layers in the encoder.
-  DEFINE_ARG(int64_t, n_layers) = 32;
+  DEFINE_ARG(int64_t, n_layers) = 0;
 
   // number of attention heads.
-  DEFINE_ARG(int64_t, n_heads) = 32;
+  DEFINE_ARG(int64_t, n_heads) = 0;
 
   // number of attention heads for key/value.
   DEFINE_ARG(std::optional<int64_t>, n_kv_heads);
@@ -31,10 +31,10 @@ struct ModelArgs {
   DEFINE_ARG(int64_t, vocab_size) = -1;
 
   // the epsilon value to use for rms norm.
-  DEFINE_ARG(float, rms_norm_eps) = 1e-5;
+  DEFINE_ARG(float, rms_norm_eps) = 0.0f;
 
   // the epsilon value to use for layer norm.
-  DEFINE_ARG(float, layer_norm_eps) = 1e-5;
+  DEFINE_ARG(float, layer_norm_eps) = 0.0f;
 
   // args for rotary position embeddings
   // the base period of the rotary position embeddings.
@@ -47,7 +47,7 @@ struct ModelArgs {
   DEFINE_ARG(float, rotary_pct) = 1.0f;
 
   // the maximum sequence length to use for rotary position embeddings.
-  DEFINE_ARG(int64_t, max_position_embeddings) = 4096;
+  DEFINE_ARG(int64_t, max_position_embeddings) = 0;
 
   // token id for beginning of sentence.
   DEFINE_ARG(int32_t, bos_token_id) = 0;
@@ -58,7 +58,7 @@ struct ModelArgs {
   // configs for gpt_neox
   // whether to use a 'parallel' formulation in each transformer layer, which
   // can provide a slight training speedup at large scales (e.g. 20B).
-  DEFINE_ARG(bool, use_parallel_residual) = true;
+  DEFINE_ARG(bool, use_parallel_residual) = false;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
@@ -90,7 +90,7 @@ struct QuantizationArgs {
   DEFINE_ARG(int64_t, bits) = 0;
 
   // quantization group size
-  DEFINE_ARG(int64_t, group_size) = 4096;
+  DEFINE_ARG(int64_t, group_size) = 0;
 
   DEFINE_ARG(bool, desc_act) = false;
 

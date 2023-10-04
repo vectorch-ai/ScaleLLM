@@ -12,6 +12,60 @@ namespace llm {
 // A simple lookup table that stores embeddings of a fixed dictionary and size.
 // This module is often used to store word embeddings and retrieve them using
 // indices.
+
+class EmbeddingImpl : public torch::nn::Module {
+ public:
+  EmbeddingImpl(int64_t num_embeddings,
+                int64_t embedding_dim,
+                torch::ScalarType dtype,
+                const torch::Device& device) {
+    // register the weight parameter
+    weight_ =
+        register_parameter("weight",
+                           torch::empty({num_embeddings, embedding_dim},
+                                        torch::dtype(dtype).device(device)),
+                           /*requires_grad=*/false);
+  }
+
+  // The input to the module is a list of indices, and the output is the
+  // corresponding word embeddings.
+  torch::Tensor forward(torch::Tensor input) {
+    namespace F = torch::nn::functional;
+    return F::embedding(input, weight_);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    const auto weight = state_dict.get_tensor("weight");
+    if (weight.defined()) {
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
+      weight_.copy_(weight);
+      is_loaded_ = true;
+    }
+  }
+
+  // whether the weight is loaded
+  void verify_loaded_weights(const std::string& prefix) const {
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
+  }
+
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes() << " " << weight_.device();
+  }
+
+  // return the weight (for testing)
+  torch::Tensor weight() const { return weight_; }
+
+ private:
+  // parameter members, must be registered
+  torch::Tensor weight_{nullptr};
+
+  // whether the weight is loaded
+  bool is_loaded_ = false;
+};
+TORCH_MODULE(Embedding);
+
 // Embedding parallelized in the embedding dimension.
 class ParallelEmbeddingImpl : public torch::nn::Module {
  public:
