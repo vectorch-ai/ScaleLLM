@@ -10,6 +10,7 @@
 #include "huggingface/gpt2.h"
 #include "huggingface/gpt_neox.h"
 #include "huggingface/llama.h"
+#include "huggingface/mistral.h"
 #include "input_parameters.h"
 #include "llama.h"
 #include "memory/kv_cache.h"
@@ -48,6 +49,13 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
     gpt_neox->eval();
     return std::make_unique<llm::CausalLMImpl<hf::GPTNeoXModel>>(
         std::move(gpt_neox));
+  }
+  if (boost::iequals(args.model_type(), "mistral")) {
+    hf::MistralModel mistral(args, quant_args, parallel_args, dtype, device);
+    // set the module in evaluation/inference mode
+    mistral->eval();
+    return std::make_unique<llm::CausalLMImpl<hf::MistralModel>>(
+        std::move(mistral));
   }
 
   LOG(ERROR) << "Unsupported model type: " << args.model_type();

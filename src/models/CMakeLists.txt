@@ -11,6 +11,7 @@ cc_library(
     huggingface/gpt2.h
     huggingface/gpt_neox.h
     huggingface/mpt.h
+    huggingface/mistral.h
   SRCS
   DEPS
     :model_args
