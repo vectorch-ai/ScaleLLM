@@ -5,9 +5,11 @@ cc_library(
     kernels
   HDRS 
     reduce_kernel_utils.cuh
+    activation_kernels.h
   SRCS 
     rms_norm_kernel.cu
     pos_embedding_kernel.cu
+    activation_kernels.cu
   DEPS
     torch
     Python::Python
