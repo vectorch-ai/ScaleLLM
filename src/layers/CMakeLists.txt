@@ -29,6 +29,7 @@ cc_library(
   DEPS
     :state_dict
     :memory
+    :kernels
     :flash-attn.kernels
     :gptq.kernels
     :awq.kernels

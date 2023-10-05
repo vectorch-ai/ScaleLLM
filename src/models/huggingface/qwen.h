@@ -7,41 +7,42 @@
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
+#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
 
-// gpt2 model compatible with huggingface weights
-
+// QWen model compatible with huggingface weights
+// adopted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
 namespace llm::hf {
 
-class GPT2MLPImpl : public torch::nn::Module {
+class QWenMLPImpl : public torch::nn::Module {
  public:
-  GPT2MLPImpl(const ModelArgs& args,
+  QWenMLPImpl(const ModelArgs& args,
               const QuantizationArgs& quant_args,
               const ParallelArgs& parallel_args,
               torch::ScalarType dtype,
               const torch::Device& device) {
+    act_ = Activation::get("silu", device);
+    CHECK(act_ != nullptr);
+
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_ = Activation::get(args.hidden_act(), device);
-    CHECK(act_ != nullptr);
-
     // register the weight parameter
-    c_fc_ = register_module("c_fc",
-                            ColumnParallelLinear(hidden_size,
-                                                 intermediate_size,
-                                                 /*bias=*/true,
-                                                 /*gather_output=*/false,
-                                                 quant_args,
-                                                 parallel_args,
-                                                 dtype,
-                                                 device));
+    w1_w2_proj_ = register_module("gate_up_proj",
+                                  ColumnParallelLinear(hidden_size,
+                                                       intermediate_size * 2,
+                                                       /*bias=*/false,
+                                                       /*gather_output=*/false,
+                                                       quant_args,
+                                                       parallel_args,
+                                                       dtype,
+                                                       device));
     c_proj_ = register_module("c_proj",
                               RowParallelLinear(intermediate_size,
                                                 hidden_size,
-                                                /*bias=*/true,
+                                                /*bias=*/false,
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
@@ -49,49 +50,50 @@ class GPT2MLPImpl : public torch::nn::Module {
                                                 device));
   }
 
-  torch::Tensor forward(torch::Tensor x) { return c_proj_(act_(c_fc_(x))); }
+  torch::Tensor forward(torch::Tensor x) {
+    auto gate_up_proj = w1_w2_proj_(x);
+    auto chunks = gate_up_proj.chunk(/*chunks=*/2, /*dim=*/-1);
+    return c_proj_(chunks[0] * act_(chunks[1]));
+  }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
-    // need to transpose the weight.
-    c_fc_->load_state_dict(state_dict.select("c_fc.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
-    c_proj_->load_state_dict(state_dict.select("c_proj.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
+    w1_w2_proj_->load_state_dict(state_dict, {"w1.", "w2."});
+    c_proj_->load_state_dict(state_dict.select("c_proj."));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
-    c_fc_->verify_loaded_weights(prefix + "c_fc.");
+    w1_w2_proj_->verify_loaded_weights(prefix + "[w1,w2].");
     c_proj_->verify_loaded_weights(prefix + "c_proj.");
   }
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear c_fc_{nullptr};
+  ColumnParallelLinear w1_w2_proj_{nullptr};
   RowParallelLinear c_proj_{nullptr};
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(GPT2MLP);
+TORCH_MODULE(QWenMLP);
 
-class GPT2AttentionImpl : public torch::nn::Module {
+class QWenAttentionImpl : public torch::nn::Module {
  public:
-  GPT2AttentionImpl(const ModelArgs& args,
+  QWenAttentionImpl(const ModelArgs& args,
                     const QuantizationArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     torch::ScalarType dtype,
                     const torch::Device& device) {
     const auto world_size = parallel_args.world_size();
-    const int64_t n_local_heads = args.n_heads() / world_size;
-    hidden_size_ = args.hidden_size();
-    head_dim_ = args.hidden_size() / args.n_heads();
+    const int64_t hidden_size = args.hidden_size();
+    const int64_t n_heads = args.n_heads();
+    const int64_t n_local_heads = n_heads / world_size;
+    const int64_t head_dim = hidden_size / n_heads;
 
     // register submodules
     c_attn_ = register_module("c_attn",
-                              ColumnParallelLinear(hidden_size_,
-                                                   3 * hidden_size_,
+                              ColumnParallelLinear(hidden_size,
+                                                   3 * hidden_size,
                                                    /*bias=*/true,
                                                    /*gather_output=*/false,
                                                    quant_args,
@@ -100,46 +102,50 @@ class GPT2AttentionImpl : public torch::nn::Module {
                                                    device));
 
     c_proj_ = register_module("c_proj",
-                              RowParallelLinear(hidden_size_,
-                                                hidden_size_,
-                                                /*bias=*/true,
+                              RowParallelLinear(hidden_size,
+                                                hidden_size,
+                                                /*bias=*/false,
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
                                                 dtype,
                                                 device));
 
-    // initialize positional embedding
-    const int64_t rotary_dim =
-        static_cast<int64_t>(head_dim_ * args.rotary_pct());
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
-    atten_ = register_module(
-        "atten",
-        Attention(
-            n_local_heads, n_local_heads, head_dim_, scale, dtype, device));
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+    atten_ = register_module("atten",
+                             AttentionWithRoPE(n_local_heads,
+                                               n_local_heads,
+                                               head_dim,
+                                               scale,
+                                               /*rotary_dim=*/head_dim,
+                                               args.rope_scaling(),
+                                               args.rope_theta(),
+                                               args.max_position_embeddings(),
+                                               /*interleaved=*/false,
+                                               dtype,
+                                               device));
   }
 
   torch::Tensor forward(torch::Tensor x,
+                        torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    // (num_tokens, dim) x (dim, n_heads * head_dim)
-    // => (num_tokens, n_heads * head_dim)
+    const auto num_tokens = x.size(0);
+    // (num_tokens, dim) x (dim, n_local_heads * head_dim)
+    // => (num_tokens, n_local_heads * head_dim)
     auto qkv = c_attn_(x).chunk(/*chunks=*/3, /*dim=*/-1);
-    DCHECK_EQ(qkv.size(), 3);
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    auto output = atten_(qkv[0], qkv[1], qkv[2], kv_cache, input_params);
+    auto output =
+        atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return c_proj_(output);
   }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
-    // need to transpose the weight.
-    c_attn_->load_state_dict(state_dict.select("c_attn.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
-    c_proj_->load_state_dict(state_dict.select("c_proj.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
+    // call each submodule's load_state_dict function
+    c_attn_->load_state_dict(state_dict.select("c_attn."));
+    c_proj_->load_state_dict(state_dict.select("c_proj."));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -154,45 +160,35 @@ class GPT2AttentionImpl : public torch::nn::Module {
   RowParallelLinear c_proj_{nullptr};
 
   // module members without parameters
-  Attention atten_{nullptr};
-
-  int64_t hidden_size_ = 0;
-  int64_t head_dim_ = 0;
+  AttentionWithRoPE atten_{nullptr};
 };
-TORCH_MODULE(GPT2Attention);
+TORCH_MODULE(QWenAttention);
 
-class GPT2BlockImpl : public torch::nn::Module {
+class QWenBlockImpl : public torch::nn::Module {
  public:
-  GPT2BlockImpl(const ModelArgs& args,
+  QWenBlockImpl(const ModelArgs& args,
                 const QuantizationArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
                 const torch::Device& device) {
     // register submodules
     attn_ = register_module(
-        "attn", GPT2Attention(args, quant_args, parallel_args, dtype, device));
+        "attn", QWenAttention(args, quant_args, parallel_args, dtype, device));
     mlp_ = register_module(
-        "mlp", GPT2MLP(args, quant_args, parallel_args, dtype, device));
-    ln_1_ = register_module("ln_1",
-                            LayerNorm(args.hidden_size(),
-                                      args.layer_norm_eps(),
-                                      /*bias=*/true,
-                                      dtype,
-                                      device));
-    ln_2_ = register_module("ln_2",
-                            LayerNorm(args.hidden_size(),
-                                      args.layer_norm_eps(),
-                                      /*bias=*/true,
-                                      dtype,
-                                      device));
+        "mlp", QWenMLP(args, quant_args, parallel_args, dtype, device));
+    ln_1_ = register_module(
+        "ln_1",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+    ln_2_ = register_module(
+        "ln_2",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
+                        torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    // x = x + attn(ln1(x))
-    // x = x + mlp(ln2(x))
-    auto h = x + attn_(ln_1_(x), kv_cache, input_params);
+    auto h = x + attn_(ln_1_(x), positions, kv_cache, input_params);
     return h + mlp_(ln_2_(h));
   }
 
@@ -214,19 +210,19 @@ class GPT2BlockImpl : public torch::nn::Module {
 
  private:
   // parameter members, must be registered
-  GPT2Attention attn_{nullptr};
+  QWenAttention attn_{nullptr};
 
-  GPT2MLP mlp_{nullptr};
+  QWenMLP mlp_{nullptr};
 
-  LayerNorm ln_1_{nullptr};
+  RMSNorm ln_1_{nullptr};
 
-  LayerNorm ln_2_{nullptr};
+  RMSNorm ln_2_{nullptr};
 };
-TORCH_MODULE(GPT2Block);
+TORCH_MODULE(QWenBlock);
 
-class GPT2ModelImpl : public torch::nn::Module {
+class QWenModelImpl : public torch::nn::Module {
  public:
-  GPT2ModelImpl(const ModelArgs& args,
+  QWenModelImpl(const ModelArgs& args,
                 const QuantizationArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
@@ -238,24 +234,16 @@ class GPT2ModelImpl : public torch::nn::Module {
                                              parallel_args,
                                              dtype,
                                              device));
-    wpe_ = register_module(
-        "wpe",
-        Embedding(
-            args.max_position_embeddings(), args.hidden_size(), dtype, device));
-
-    blocks_ = register_module("h", torch::nn::ModuleList());
+    blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = GPT2Block(args, quant_args, parallel_args, dtype, device);
+      auto block = QWenBlock(args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
-    ln_f_ = register_module("ln_f",
-                            LayerNorm(args.hidden_size(),
-                                      args.layer_norm_eps(),
-                                      /*bias=*/true,
-                                      dtype,
-                                      device));
+    ln_f_ = register_module(
+        "ln_f",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -273,10 +261,10 @@ class GPT2ModelImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = wte_(tokens) + wpe_(positions);
+    auto h = wte_(tokens);
     for (size_t i = 0; i < layers_.size(); i++) {
       auto& layer = layers_[i];
-      h = layer(h, kv_caches[i], input_params);
+      h = layer(h, positions, kv_caches[i], input_params);
     }
     h = ln_f_(h);
     // select last token for each sequence
@@ -286,43 +274,38 @@ class GPT2ModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    wte_->load_state_dict(state_dict.select("wte."));
-    wpe_->load_state_dict(state_dict.select("wpe."));
+    wte_->load_state_dict(state_dict.select("transformer.wte."));
     // call each layer's load_state_dict function
     for (int i = 0; i < layers_.size(); i++) {
       layers_[i]->load_state_dict(
-          state_dict.select("h." + std::to_string(i) + "."));
+          state_dict.select("transformer.h." + std::to_string(i) + "."));
     }
-    ln_f_->load_state_dict(state_dict.select("ln_f."));
-    // reusing wte_ for lm_head_
-    lm_head_->load_state_dict(state_dict.select("wte."));
+    ln_f_->load_state_dict(state_dict.select("transformer.ln_f."));
+    lm_head_->load_state_dict(state_dict.select("lm_head."));
   }
 
   void verify_loaded_weights() const {
-    wte_->verify_loaded_weights("wte.");
-    wpe_->verify_loaded_weights("wpe.");
+    wte_->verify_loaded_weights("transformer.wte.");
     for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights("h." + std::to_string(i) + ".");
+      layers_[i]->verify_loaded_weights("transformer.h." + std::to_string(i) +
+                                        ".");
     }
-    ln_f_->verify_loaded_weights("ln_f.");
-    lm_head_->verify_loaded_weights("wte.");
+    ln_f_->verify_loaded_weights("transformer.ln_f.");
+    lm_head_->verify_loaded_weights("lm_head.");
   }
 
  private:
   // parameter members, must be registered
   ParallelEmbedding wte_{nullptr};
 
-  // position Embedding
-  Embedding wpe_{nullptr};
-
   torch::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
-  std::vector<GPT2Block> layers_;
+  std::vector<QWenBlock> layers_;
 
-  LayerNorm ln_f_{nullptr};
+  RMSNorm ln_f_{nullptr};
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(GPT2Model);
+TORCH_MODULE(QWenModel);
 
 }  // namespace llm::hf
