@@ -11,6 +11,7 @@
 #include "huggingface/aquila.h"
 #include "huggingface/gpt2.h"
 #include "huggingface/gpt_neox.h"
+#include "huggingface/gpt_j.h"
 #include "huggingface/llama.h"
 #include "huggingface/mistral.h"
 #include "input_parameters.h"
@@ -45,6 +46,14 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
     gpt2->eval();
     return std::make_unique<llm::CausalLMImpl<hf::GPT2ForCausalLM>>(
         std::move(gpt2));
+  }
+  if (boost::iequals(args.model_type(), "gptj")) {
+    hf::GPTJForCausalLM gpt_neox(
+        args, quant_args, parallel_args, dtype, device);
+    // set the module in evaluation/inference mode
+    gpt_neox->eval();
+    return std::make_unique<llm::CausalLMImpl<hf::GPTJForCausalLM>>(
+        std::move(gpt_neox));
   }
   if (boost::iequals(args.model_type(), "gpt_neox")) {
     hf::GPTNeoXForCausalLM gpt_neox(

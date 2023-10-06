@@ -183,6 +183,61 @@ bool load_gpt2_model_args(const nlohmann::json& data, ModelArgs* args) {
   return true;
 }
 
+bool load_gptj_model_args(const nlohmann::json& data, ModelArgs* args) {
+  // example config:
+  // https://huggingface.co/EleutherAI/gpt-j-6b/blob/main/config.json set
+  // default values for args explicitly with values from:
+  // https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/configuration_gptj.py#L98
+  args->vocab_size() = 50400;
+  args->hidden_size() = 4096;
+  args->n_layers() = 28;
+  args->n_heads() = 16;
+  args->rotary_dim() = 64;
+  args->hidden_act() = "gelu_new";
+  args->max_position_embeddings() = 2048;
+  args->layer_norm_eps() = 1e-5;
+  args->bos_token_id() = 50256;
+  args->eos_token_id() = 50256;
+
+  if (data.contains("n_embd")) {
+    args->hidden_size() = data["n_embd"].get<int64_t>();
+  }
+  if (data.contains("vocab_size")) {
+    args->vocab_size() = data["vocab_size"].get<int64_t>();
+  }
+  if (data.contains("n_layer")) {
+    args->n_layers() = data["n_layer"].get<int64_t>();
+  }
+  if (data.contains("n_head")) {
+    args->n_heads() = data["n_head"].get<int64_t>();
+  }
+  if (data.contains("rotary_dim")) {
+    args->rotary_dim() = data["rotary_dim"].get<int64_t>();
+  }
+  if (data.contains("n_inner") && !data["n_inner"].is_null()) {
+    args->intermediate_size() = data["n_inner"].get<int64_t>();
+  } else {
+    // set it to 4 times n_embd
+    args->intermediate_size() = args->hidden_size() * 4;
+  }
+  if (data.contains("activation_function")) {
+    args->hidden_act() = data["activation_function"].get<std::string>();
+  }
+  if (data.contains("n_positions")) {
+    args->max_position_embeddings() = data["n_positions"].get<int64_t>();
+  }
+  if (data.contains("layer_norm_epsilon")) {
+    args->layer_norm_eps() = data["layer_norm_epsilon"].get<float>();
+  }
+  if (data.contains("bos_token_id")) {
+    args->bos_token_id() = data["bos_token_id"].get<int32_t>();
+  }
+  if (data.contains("eos_token_id")) {
+    args->eos_token_id() = data["eos_token_id"].get<int32_t>();
+  }
+  return true;
+}
+
 bool load_gpt_neox_model_args(const nlohmann::json& data, ModelArgs* args) {
   // example config:
   // https://huggingface.co/EleutherAI/gpt-neox-20b/blob/main/config.json set
@@ -243,12 +298,10 @@ bool load_gpt_neox_model_args(const nlohmann::json& data, ModelArgs* args) {
     args->eos_token_id() = data["eos_token_id"].get<int32_t>();
   }
   if (data.contains("use_parallel_residual")) {
-    args->use_parallel_residual() =
-        data["use_parallel_residual"].get<bool>();
+    args->use_parallel_residual() = data["use_parallel_residual"].get<bool>();
   }
   return true;
 }
-
 
 bool load_mistral_model_args(const nlohmann::json& data, ModelArgs* args) {
   // example config:
@@ -311,7 +364,6 @@ bool load_mistral_model_args(const nlohmann::json& data, ModelArgs* args) {
   }
   return true;
 }
-
 
 bool load_aquila_model_args(const nlohmann::json& data, ModelArgs* args) {
   // example config:

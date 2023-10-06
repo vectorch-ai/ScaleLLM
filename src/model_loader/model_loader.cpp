@@ -166,6 +166,8 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
 
   if (boost::iequals(args_.model_type(), "gpt2")) {
     load_gpt2_model_args(data, &args_);
+  } else if (boost::iequals(args_.model_type(), "gptj")) {
+    load_gptj_model_args(data, &args_);
   } else if (boost::iequals(args_.model_type(), "gpt_neox")) {
     load_gpt_neox_model_args(data, &args_);
   } else if (boost::iequals(args_.model_type(), "llama")) {

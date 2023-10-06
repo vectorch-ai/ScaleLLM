@@ -37,6 +37,8 @@ struct ModelArgs {
   DEFINE_ARG(float, layer_norm_eps) = 0.0f;
 
   // args for rotary position embeddings
+  DEFINE_ARG(int64_t, rotary_dim) = 0;
+
   // the base period of the rotary position embeddings.
   DEFINE_ARG(float, rope_theta) = 10000.0f;
 
@@ -72,6 +74,7 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", vocab_size: " << args.vocab_size();
   os << ", rms_norm_eps: " << args.rms_norm_eps();
   os << ", layer_norm_eps: " << args.layer_norm_eps();
+  os << ", rotary_dim: " << args.rotary_dim();
   os << ", rope_theta: " << args.rope_theta();
   os << ", rope_scaling: " << args.rope_scaling();
   os << ", rotary_pct: " << args.rotary_pct();
