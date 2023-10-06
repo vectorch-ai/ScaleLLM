@@ -115,8 +115,8 @@ void layer_norm(torch::Tensor& out,
                 torch::Tensor weight,
                 torch::Tensor bias,
                 float epsilon) {
-  DCHECK(input.is_contiguous());
-  DCHECK(out.is_contiguous());
+  DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
+  DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
 
   const int stride = input.stride(0);
 

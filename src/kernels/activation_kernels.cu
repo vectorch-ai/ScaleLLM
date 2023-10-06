@@ -60,31 +60,33 @@ struct SiluActivation {
 };
 
 template <template <typename T> class Activation, typename T>
-__global__ void activation_kernel(const T* input, T* output, int stride) {
+__global__ void activation_kernel(T* __restrict__ out,
+                                  const T* __restrict__ input,
+                                  int stride) {
   const uint32_t base_idx = blockIdx.x * stride;
   for (uint32_t i = threadIdx.x; i < stride; i += blockDim.x) {
     const uint32_t idx = base_idx + i;
     const T x = __ldg(&input[idx]);
-    output[idx] = Activation<T>::apply(x);
+    out[idx] = Activation<T>::apply(x);
   }
 }
 
 // calculate act(x) * y where x = input[idx] and y = input[idx + stride]
 template <template <typename T> class Activation, typename T>
-__global__ void activation_and_mul_kernel(const T* input,
-                                          T* output,
+__global__ void activation_and_mul_kernel(T* __restrict__ out,
+                                          const T* __restrict__ input,
                                           int stride) {
   const uint32_t base_idx = blockIdx.x * stride;
   for (uint32_t i = threadIdx.x; i < stride; i += blockDim.x) {
     const uint32_t i_idx = 2 * base_idx + i;
     const T x = __ldg(&input[i_idx]);
     const T y = __ldg(&input[i_idx + stride]);
-    output[base_idx + i] = Activation<T>::apply(x) * y;
+    out[base_idx + i] = Activation<T>::apply(x) * y;
   }
 }
 
 template <template <typename T> class Activation>
-void launch_activation(torch::Tensor input, torch::Tensor output) {
+void launch_activation(torch::Tensor& out, torch::Tensor input) {
   const int stride = static_cast<int>(input.stride(0));
   dim3 grid(input.size(0));
   dim3 block(std::min(stride, 1024));
@@ -92,14 +94,14 @@ void launch_activation(torch::Tensor input, torch::Tensor output) {
       input.scalar_type(), "activation_kernel", ([&] {
         activation_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
+                out.data_ptr<scalar_t>(),
                 input.data_ptr<scalar_t>(),
-                output.data_ptr<scalar_t>(),
                 stride);
       }));
 }
 
 template <template <typename T> class Activation>
-void launch_activation_and_mul(torch::Tensor input, torch::Tensor output) {
+void launch_activation_and_mul(torch::Tensor& out, torch::Tensor input) {
   const int stride = static_cast<int>(input.stride(0));
   dim3 grid(input.size(0));
   dim3 block(std::min(stride, 1024));
@@ -107,8 +109,8 @@ void launch_activation_and_mul(torch::Tensor input, torch::Tensor output) {
       input.scalar_type(), "activation_and_mul_kernel", ([&] {
         activation_and_mul_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
+                out.data_ptr<scalar_t>(),
                 input.data_ptr<scalar_t>(),
-                output.data_ptr<scalar_t>(),
                 stride);
       }));
 }
@@ -118,23 +120,23 @@ void launch_activation_and_mul(torch::Tensor input, torch::Tensor output) {
 torch::Tensor gelu_new(torch::Tensor input) {
   CHECK(input.is_contiguous()) << "input tensor must be contiguous";
 
-  torch::Tensor output = torch::empty_like(input);
-  launch_activation<GeluNewActivation>(input, output);
-  return output;
+  torch::Tensor out = torch::empty_like(input);
+  launch_activation<GeluNewActivation>(out, input);
+  return out;
 }
 torch::Tensor gelu_fast(torch::Tensor input) {
   CHECK(input.is_contiguous()) << "input tensor must be contiguous";
 
-  torch::Tensor output = torch::empty_like(input);
-  launch_activation<GeluFastActivation>(input, output);
-  return output;
+  torch::Tensor out = torch::empty_like(input);
+  launch_activation<GeluFastActivation>(out, input);
+  return out;
 }
 torch::Tensor silu(torch::Tensor input) {
   CHECK(input.is_contiguous()) << "input tensor must be contiguous";
 
-  torch::Tensor output = torch::empty_like(input);
-  launch_activation<SiluActivation>(input, output);
-  return output;
+  torch::Tensor out = torch::empty_like(input);
+  launch_activation<SiluActivation>(out, input);
+  return out;
 }
 
 }  // namespace llm::kernel
