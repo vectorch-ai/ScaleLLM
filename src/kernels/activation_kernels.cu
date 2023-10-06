@@ -3,6 +3,7 @@
 #include <torch/extension.h>
 
 #include "activation_kernels.h"
+#include "dispatch.h"
 
 namespace llm::kernel {
 namespace {
@@ -87,12 +88,8 @@ void launch_activation(torch::Tensor input, torch::Tensor output) {
   const int stride = static_cast<int>(input.stride(0));
   dim3 grid(input.size(0));
   dim3 block(std::min(stride, 1024));
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      input.scalar_type(),
-      "activation_kernel",
-      ([&] {
+  DISPATCH_FLOATING_TYPES(
+      input.scalar_type(), "activation_kernel", ([&] {
         activation_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
                 input.data_ptr<scalar_t>(),
@@ -106,12 +103,8 @@ void launch_activation_and_mul(torch::Tensor input, torch::Tensor output) {
   const int stride = static_cast<int>(input.stride(0));
   dim3 grid(input.size(0));
   dim3 block(std::min(stride, 1024));
-  AT_DISPATCH_FLOATING_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      input.scalar_type(),
-      "activation_and_mul_kernel",
-      ([&] {
+  DISPATCH_FLOATING_TYPES(
+      input.scalar_type(), "activation_and_mul_kernel", ([&] {
         activation_and_mul_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
                 input.data_ptr<scalar_t>(),
@@ -138,7 +131,7 @@ torch::Tensor gelu_fast(torch::Tensor input) {
 }
 torch::Tensor silu(torch::Tensor input) {
   CHECK(input.is_contiguous()) << "input tensor must be contiguous";
-  
+
   torch::Tensor output = torch::empty_like(input);
   launch_activation<SiluActivation>(input, output);
   return output;

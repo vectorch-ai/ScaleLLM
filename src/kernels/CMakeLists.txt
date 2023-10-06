@@ -7,9 +7,9 @@ cc_library(
     # reduce_kernel_utils.cuh
     activation_kernels.h
   SRCS 
-    # rms_norm_kernel.cu
     # pos_embedding_kernel.cu
     activation_kernels.cu
+    layernorm_kernels.cu
   DEPS
     glog::glog
     torch
