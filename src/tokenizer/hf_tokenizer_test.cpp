@@ -5,7 +5,7 @@
 namespace llm {
 
 TEST(HFTokenizerTest, EncodeTest) {
-  auto tokenizer = HFTokenizer::from_file("data/tokenizer.json");
+  auto tokenizer = HFTokenizer::from_file("data/tokenizer.json.bin");
   std::vector<int32_t> ids;
   ASSERT_TRUE(tokenizer->encode("Hello, world!", &ids));
   const std::vector<int32_t> desired_ids = {1, 15043, 29892, 3186, 29991};
@@ -13,14 +13,14 @@ TEST(HFTokenizerTest, EncodeTest) {
 }
 
 TEST(HFTokenizerTest, DecodeTest) {
-  auto tokenizer = HFTokenizer::from_file("data/tokenizer.json");
+  auto tokenizer = HFTokenizer::from_file("data/tokenizer.json.bin");
   const std::vector<int32_t> tokens = {1, 15043, 29892, 3186, 29991};
   const auto text = tokenizer->decode(tokens);
   EXPECT_EQ(text, "Hello, world!");
 }
 
 TEST(HFTokenizerTest, VocabSizeTest) {
-  auto tokenizer = HFTokenizer::from_file("data/tokenizer.json");
+  auto tokenizer = HFTokenizer::from_file("data/tokenizer.json.bin");
   EXPECT_EQ(tokenizer->vocab_size(), 32016);
 }
 

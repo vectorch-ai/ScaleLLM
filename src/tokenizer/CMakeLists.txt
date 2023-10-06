@@ -29,7 +29,7 @@ cc_test(
     GTest::gtest_main
   DATA 
     data/test_model.model
-    data/tokenizer.json
+    data/tokenizer.json.bin
 )
 
 # build huggingface tokenizers (rust)
