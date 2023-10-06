@@ -10,9 +10,10 @@ cc_library(
     huggingface/llama.h
     huggingface/gpt2.h
     huggingface/gpt_neox.h
-    huggingface/mpt.h
     huggingface/mistral.h
     huggingface/aquila.h
+    huggingface/mpt.h
+    huggingface/qwen.h
   SRCS
   DEPS
     :model_args

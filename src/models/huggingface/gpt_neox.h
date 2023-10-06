@@ -79,13 +79,11 @@ TORCH_MODULE(GPTNeoXMLP);
 
 class GPTNeoXAttentionImpl : public torch::nn::Module {
  public:
-  GPTNeoXAttentionImpl(uint32_t layer_id,
-                       const ModelArgs& args,
+  GPTNeoXAttentionImpl(const ModelArgs& args,
                        const QuantizationArgs& quant_args,
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
-                       const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+                       const torch::Device& device) {
     const auto world_size = parallel_args.world_size();
     const int64_t n_local_heads = args.n_heads() / world_size;
     hidden_size_ = args.hidden_size();
@@ -149,9 +147,10 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    query_key_value_->load_state_dict(
-        state_dict.select("query_key_value."),
-        [this](const torch::Tensor& tensor) { return reshape_qkv_tensor(tensor); });
+    query_key_value_->load_state_dict(state_dict.select("query_key_value."),
+                                      [this](const torch::Tensor& tensor) {
+                                        return reshape_qkv_tensor(tensor);
+                                      });
     dense_->load_state_dict(state_dict.select("dense."));
   }
 
@@ -183,10 +182,6 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   // module members without parameters
   AttentionWithRoPE atten_{nullptr};
 
-  uint32_t layer_id_;
-
-  ParallelArgs parallel_args_;
-
   int64_t hidden_size_ = 0;
   int64_t head_dim_ = 0;
 };
@@ -200,14 +195,11 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
                    const torch::Device& device)
-      : layer_id_(layer_id),
-        use_parallel_residual_(args.use_parallel_residual()),
-        parallel_args_(parallel_args) {
+      : use_parallel_residual_(args.use_parallel_residual()) {
     // register submodules
     attention_ = register_module(
         "attention",
-        GPTNeoXAttention(
-            layer_id, args, quant_args, parallel_args, dtype, device));
+        GPTNeoXAttention(args, quant_args, parallel_args, dtype, device));
     mlp_ = register_module(
         "mlp", GPTNeoXMLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module("input_layernorm",
@@ -270,11 +262,7 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
 
   LayerNorm post_attention_layernorm_{nullptr};
 
-  uint32_t layer_id_;
-
   bool use_parallel_residual_;
-
-  ParallelArgs parallel_args_;
 };
 TORCH_MODULE(GPTNeoXLayer);
 
@@ -284,8 +272,7 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                    const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
-                   const torch::Device& device)
-      : parallel_args_(parallel_args) {
+                   const torch::Device& device) {
     // register submodules
     embed_in_ = register_module("embed_in",
                                 ParallelEmbedding(args.vocab_size(),
@@ -307,6 +294,65 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                                                   /*bias=*/true,
                                                   dtype,
                                                   device));
+  }
+
+  // tokens: [num_tokens]
+  // positions: [num_tokens] token pos in the sequence
+  torch::Tensor forward(torch::Tensor tokens,
+                        torch::Tensor positions,
+                        std::vector<KVCache>& kv_caches,
+                        const InputParameters& input_params) {
+    auto h = embed_in_(tokens);
+    for (size_t i = 0; i < layers_.size(); i++) {
+      auto& layer = layers_[i];
+      h = layer(h, positions, kv_caches[i], input_params);
+    }
+    return final_layer_norm_(h);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    embed_in_->load_state_dict(state_dict.select("embed_in."));
+    // call each layer's load_state_dict function
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->load_state_dict(
+          state_dict.select("layers." + std::to_string(i) + "."));
+    }
+    final_layer_norm_->load_state_dict(state_dict.select("final_layer_norm."));
+  }
+
+  void verify_loaded_weights(const std::string& prefix) const {
+    embed_in_->verify_loaded_weights(prefix + "embed_in.");
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->verify_loaded_weights(prefix + "layers." + std::to_string(i) +
+                                        ".");
+    }
+    final_layer_norm_->verify_loaded_weights(prefix + "final_layer_norm.");
+  }
+
+ private:
+  // parameter members, must be registered
+  ParallelEmbedding embed_in_{nullptr};
+
+  torch::nn::ModuleList blocks_{nullptr};
+  // hold same data but different type as blocks_ to avoid type cast
+  std::vector<GPTNeoXLayer> layers_;
+
+  LayerNorm final_layer_norm_{nullptr};
+};
+TORCH_MODULE(GPTNeoXModel);
+
+class GPTNeoXForCausalLMImpl : public torch::nn::Module {
+ public:
+  GPTNeoXForCausalLMImpl(const ModelArgs& args,
+                         const QuantizationArgs& quant_args,
+                         const ParallelArgs& parallel_args,
+                         torch::ScalarType dtype,
+                         const torch::Device& device) {
+    // register submodules
+    gpt_neox_ = register_module(
+        "gpt_neox",
+        GPTNeoXModel(args, quant_args, parallel_args, dtype, device));
 
     embed_out_ = register_module("embed_out",
                                  ColumnParallelLinear(args.hidden_size(),
@@ -324,12 +370,7 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = embed_in_(tokens);
-    for (size_t i = 0; i < layers_.size(); i++) {
-      auto& layer = layers_[i];
-      h = layer(h, positions, kv_caches[i], input_params);
-    }
-    h = final_layer_norm_(h);
+    auto h = gpt_neox_(tokens, positions, kv_caches, input_params);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
     return embed_out_(h);
@@ -337,41 +378,21 @@ class GPTNeoXModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    embed_in_->load_state_dict(state_dict.select("gpt_neox.embed_in."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("gpt_neox.layers." + std::to_string(i) + "."));
-    }
-    final_layer_norm_->load_state_dict(
-        state_dict.select("gpt_neox.final_layer_norm."));
+    gpt_neox_->load_state_dict(state_dict.select("gpt_neox."));
     embed_out_->load_state_dict(state_dict.select("embed_out."));
   }
 
   void verify_loaded_weights() const {
-    embed_in_->verify_loaded_weights("gpt_neox.embed_in.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights("gpt_neox.layers." + std::to_string(i) +
-                                        ".");
-    }
-    final_layer_norm_->verify_loaded_weights("gpt_neox.final_layer_norm.");
+    gpt_neox_->verify_loaded_weights("gpt_neox.");
     embed_out_->verify_loaded_weights("embed_out.");
   }
 
  private:
   // parameter members, must be registered
-  ParallelEmbedding embed_in_{nullptr};
-
-  torch::nn::ModuleList blocks_{nullptr};
-  // hold same data but different type as blocks_ to avoid type cast
-  std::vector<GPTNeoXLayer> layers_;
-
-  LayerNorm final_layer_norm_{nullptr};
+  GPTNeoXModel gpt_neox_{nullptr};
 
   ColumnParallelLinear embed_out_{nullptr};
-
-  ParallelArgs parallel_args_;
 };
-TORCH_MODULE(GPTNeoXModel);
+TORCH_MODULE(GPTNeoXForCausalLM);
 
 }  // namespace llm::hf

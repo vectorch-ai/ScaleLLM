@@ -256,6 +256,68 @@ class GPT2ModelImpl : public torch::nn::Module {
                                       /*bias=*/true,
                                       dtype,
                                       device));
+  }
+
+  // tokens: [num_tokens]
+  // positions: [num_tokens] token pos in the sequence
+  torch::Tensor forward(torch::Tensor tokens,
+                        torch::Tensor positions,
+                        std::vector<KVCache>& kv_caches,
+                        const InputParameters& input_params) {
+    auto h = wte_(tokens) + wpe_(positions);
+    for (size_t i = 0; i < layers_.size(); i++) {
+      auto& layer = layers_[i];
+      h = layer(h, kv_caches[i], input_params);
+    }
+    return ln_f_(h);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    wte_->load_state_dict(state_dict.select("wte."));
+    wpe_->load_state_dict(state_dict.select("wpe."));
+    // call each layer's load_state_dict function
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->load_state_dict(
+          state_dict.select("h." + std::to_string(i) + "."));
+    }
+    ln_f_->load_state_dict(state_dict.select("ln_f."));
+  }
+
+  void verify_loaded_weights() const {
+    wte_->verify_loaded_weights("wte.");
+    wpe_->verify_loaded_weights("wpe.");
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->verify_loaded_weights("h." + std::to_string(i) + ".");
+    }
+    ln_f_->verify_loaded_weights("ln_f.");
+  }
+
+ private:
+  // parameter members, must be registered
+  ParallelEmbedding wte_{nullptr};
+
+  // position Embedding
+  Embedding wpe_{nullptr};
+
+  torch::nn::ModuleList blocks_{nullptr};
+  // hold same data but different type as blocks_ to avoid type cast
+  std::vector<GPT2Block> layers_;
+
+  LayerNorm ln_f_{nullptr};
+};
+TORCH_MODULE(GPT2Model);
+
+class GPT2ForCausalLMImpl : public torch::nn::Module {
+ public:
+  GPT2ForCausalLMImpl(const ModelArgs& args,
+                      const QuantizationArgs& quant_args,
+                      const ParallelArgs& parallel_args,
+                      torch::ScalarType dtype,
+                      const torch::Device& device) {
+    // register submodules
+    model_ = register_module("model",
+                             GPT2Model(args, quant_args, parallel_args, dtype, device));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -273,12 +335,7 @@ class GPT2ModelImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = wte_(tokens) + wpe_(positions);
-    for (size_t i = 0; i < layers_.size(); i++) {
-      auto& layer = layers_[i];
-      h = layer(h, kv_caches[i], input_params);
-    }
-    h = ln_f_(h);
+    auto h = model_(tokens, positions, kv_caches, input_params);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
     return lm_head_(h);
@@ -286,43 +343,22 @@ class GPT2ModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    wte_->load_state_dict(state_dict.select("wte."));
-    wpe_->load_state_dict(state_dict.select("wpe."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("h." + std::to_string(i) + "."));
-    }
-    ln_f_->load_state_dict(state_dict.select("ln_f."));
-    // reusing wte_ for lm_head_
+    model_->load_state_dict(state_dict);
+    // TODO: share wte_ weight with lm_head_ to save memory
     lm_head_->load_state_dict(state_dict.select("wte."));
   }
 
   void verify_loaded_weights() const {
-    wte_->verify_loaded_weights("wte.");
-    wpe_->verify_loaded_weights("wpe.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights("h." + std::to_string(i) + ".");
-    }
-    ln_f_->verify_loaded_weights("ln_f.");
+    model_->verify_loaded_weights();
     lm_head_->verify_loaded_weights("wte.");
   }
 
  private:
   // parameter members, must be registered
-  ParallelEmbedding wte_{nullptr};
-
-  // position Embedding
-  Embedding wpe_{nullptr};
-
-  torch::nn::ModuleList blocks_{nullptr};
-  // hold same data but different type as blocks_ to avoid type cast
-  std::vector<GPT2Block> layers_;
-
-  LayerNorm ln_f_{nullptr};
+  GPT2Model model_{nullptr};
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(GPT2Model);
+TORCH_MODULE(GPT2ForCausalLM);
 
 }  // namespace llm::hf

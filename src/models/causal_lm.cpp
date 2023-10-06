@@ -1,17 +1,18 @@
 #include "causal_lm.h"
 
-#include <torch/torch.h>
 #include <glog/logging.h>
+#include <torch/torch.h>
+
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <vector>
 
 #include "args.h"
+#include "huggingface/aquila.h"
 #include "huggingface/gpt2.h"
 #include "huggingface/gpt_neox.h"
 #include "huggingface/llama.h"
 #include "huggingface/mistral.h"
-#include "huggingface/aquila.h"
 #include "input_parameters.h"
 #include "llama.h"
 #include "memory/kv_cache.h"
@@ -32,39 +33,45 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
   }
   // llama from hf models
   if (boost::iequals(args.model_type(), "llama")) {
-    hf::LlamaModel llama2(args, quant_args, parallel_args, dtype, device);
+    hf::LlamaForCausalLM llama2(args, quant_args, parallel_args, dtype, device);
     // set the module in evaluation/inference mode
     llama2->eval();
-    return std::make_unique<llm::CausalLMImpl<hf::LlamaModel>>(
+    return std::make_unique<llm::CausalLMImpl<hf::LlamaForCausalLM>>(
         std::move(llama2));
   }
   if (boost::iequals(args.model_type(), "gpt2")) {
-    hf::GPT2Model gpt2(args, quant_args, parallel_args, dtype, device);
+    hf::GPT2ForCausalLM gpt2(args, quant_args, parallel_args, dtype, device);
     // set the module in evaluation/inference mode
     gpt2->eval();
-    return std::make_unique<llm::CausalLMImpl<hf::GPT2Model>>(std::move(gpt2));
+    return std::make_unique<llm::CausalLMImpl<hf::GPT2ForCausalLM>>(
+        std::move(gpt2));
   }
   if (boost::iequals(args.model_type(), "gpt_neox")) {
-    hf::GPTNeoXModel gpt_neox(args, quant_args, parallel_args, dtype, device);
+    hf::GPTNeoXForCausalLM gpt_neox(
+        args, quant_args, parallel_args, dtype, device);
     // set the module in evaluation/inference mode
     gpt_neox->eval();
-    return std::make_unique<llm::CausalLMImpl<hf::GPTNeoXModel>>(
+    return std::make_unique<llm::CausalLMImpl<hf::GPTNeoXForCausalLM>>(
         std::move(gpt_neox));
   }
   if (boost::iequals(args.model_type(), "mistral")) {
-    hf::MistralModel mistral(args, quant_args, parallel_args, dtype, device);
+    hf::MistralForCausalLM mistral(
+        args, quant_args, parallel_args, dtype, device);
     // set the module in evaluation/inference mode
     mistral->eval();
-    return std::make_unique<llm::CausalLMImpl<hf::MistralModel>>(
+    return std::make_unique<llm::CausalLMImpl<hf::MistralForCausalLM>>(
         std::move(mistral));
   }
   if (boost::iequals(args.model_type(), "aquila")) {
-    hf::AquilaModel aquila(args, quant_args, parallel_args, dtype, device);
+    hf::AquilaForCausalLM aquila(
+        args, quant_args, parallel_args, dtype, device);
     // set the module in evaluation/inference mode
     aquila->eval();
-    return std::make_unique<llm::CausalLMImpl<hf::AquilaModel>>(
+    return std::make_unique<llm::CausalLMImpl<hf::AquilaForCausalLM>>(
         std::move(aquila));
   }
+
+  // TODO: Model mpt and qwen is not supported yet
 
   LOG(ERROR) << "Unsupported model type: " << args.model_type();
   return nullptr;

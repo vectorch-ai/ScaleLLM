@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include "layers/activation.h"
 #include "layers/attention.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -21,13 +22,16 @@ class MPTMLPImpl : public torch::nn::Module {
              const ParallelArgs& parallel_args,
              torch::ScalarType dtype,
              const torch::Device& device) {
-    const int64_t dim = args.hidden_size();
-    const int64_t hidden_dim = args.intermediate_size();
+    act_ = Activation::get("silu", device);
+    CHECK(act_ != nullptr);
+
+    const int64_t hidden_size = args.hidden_size();
+    const int64_t intermediate_size = args.intermediate_size();
 
     // register the weight parameter
     up_proj_ = register_module("up_proj",
-                               ColumnParallelLinear(dim,
-                                                    hidden_dim,
+                               ColumnParallelLinear(hidden_size,
+                                                    intermediate_size,
                                                     /*bias=*/false,
                                                     /*gather_output=*/false,
                                                     quant_args,
@@ -36,8 +40,8 @@ class MPTMLPImpl : public torch::nn::Module {
                                                     device));
     down_proj_ =
         register_module("down_proj",
-                        RowParallelLinear(hidden_dim,
-                                          dim,
+                        RowParallelLinear(intermediate_size,
+                                          hidden_size,
                                           /*bias=*/false,
                                           /*input_is_parallelized=*/true,
                                           quant_args,
@@ -47,8 +51,7 @@ class MPTMLPImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    namespace F = torch::nn::functional;
-    return down_proj_(F::gelu(up_proj_(x)));
+    return down_proj_(act_(up_proj_(x)));
   }
 
   // load the weight from the checkpoint
@@ -67,28 +70,28 @@ class MPTMLPImpl : public torch::nn::Module {
   // parameter members, must be registered
   ColumnParallelLinear up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
+
+  ActFunc act_{nullptr};
 };
 TORCH_MODULE(MPTMLP);
 
 class MPTAttentionImpl : public torch::nn::Module {
  public:
-  MPTAttentionImpl(uint32_t layer_id,
-                   const ModelArgs& args,
+  MPTAttentionImpl(const ModelArgs& args,
                    const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
-                   const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+                   const torch::Device& device) {
     const auto world_size = parallel_args.world_size();
-    const int64_t dim = args.hidden_size();
+    const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    head_dim_ = dim / args.n_heads();
-    n_local_heads_ = n_heads / world_size;
+    const int64_t head_dim = hidden_size / args.n_heads();
+    const int64_t n_local_heads = n_heads / world_size;
 
     // register submodules
     wqkv_ = register_module("Wqkv",
-                            ColumnParallelLinear(dim,
-                                                 3 * dim,
+                            ColumnParallelLinear(hidden_size,
+                                                 3 * hidden_size,
                                                  /*bias=*/false,
                                                  /*gather_output=*/false,
                                                  quant_args,
@@ -104,8 +107,8 @@ class MPTAttentionImpl : public torch::nn::Module {
 
     out_proj_ =
         register_module("out_proj",
-                        RowParallelLinear(dim,
-                                          dim,
+                        RowParallelLinear(hidden_size,
+                                          hidden_size,
                                           /*bias=*/false,
                                           /*input_is_parallelized=*/true,
                                           quant_args,
@@ -116,13 +119,13 @@ class MPTAttentionImpl : public torch::nn::Module {
     // initialize positional embedding
     // TODO: use ALiBi positional embedding
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads_,
-                                               n_local_heads_,
-                                               head_dim_,
+                             AttentionWithRoPE(n_local_heads,
+                                               n_local_heads,
+                                               head_dim,
                                                scale,
-                                               /*rotary_dim=*/head_dim_,
+                                               /*rotary_dim=*/head_dim,
                                                args.rope_scaling(),
                                                args.rope_theta(),
                                                args.max_position_embeddings(),
@@ -169,31 +172,19 @@ class MPTAttentionImpl : public torch::nn::Module {
 
   // module members without parameters
   AttentionWithRoPE atten_{nullptr};
-
-  uint32_t layer_id_;
-
-  ParallelArgs parallel_args_;
-
-  // configs used in forward
-  int64_t n_local_heads_;
-  int64_t head_dim_;
 };
 TORCH_MODULE(MPTAttention);
 
 class MPTBlockImpl : public torch::nn::Module {
  public:
-  MPTBlockImpl(uint32_t layer_id,
-               const ModelArgs& args,
+  MPTBlockImpl(const ModelArgs& args,
                const QuantizationArgs& quant_args,
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
-               const torch::Device& device)
-      : layer_id_(layer_id), parallel_args_(parallel_args) {
+               const torch::Device& device) {
     // register submodules
     attn_ = register_module(
-        "attn",
-        MPTAttention(layer_id, args, quant_args, parallel_args, dtype, device));
-    // LayerNormOptions({2, 2}).elementwise_affine(false).eps(2e-5)
+        "attn", MPTAttention(args, quant_args, parallel_args, dtype, device));
     norm_1_ = register_module("norm_1",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
@@ -243,10 +234,6 @@ class MPTBlockImpl : public torch::nn::Module {
   LayerNorm norm_1_{nullptr};
 
   LayerNorm norm_2_{nullptr};
-
-  uint32_t layer_id_;
-
-  ParallelArgs parallel_args_;
 };
 TORCH_MODULE(MPTBlock);
 
@@ -256,8 +243,7 @@ class MPTModelImpl : public torch::nn::Module {
                const QuantizationArgs& quant_args,
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
-               const torch::Device& device)
-      : parallel_args_(parallel_args) {
+               const torch::Device& device) {
     // register submodules
     wte_ = register_module("wte",
                            ParallelEmbedding(args.vocab_size(),
@@ -268,7 +254,7 @@ class MPTModelImpl : public torch::nn::Module {
     blocks_ = register_module("blocks", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = MPTBlock(i, args, quant_args, parallel_args, dtype, device);
+      auto block = MPTBlock(args, quant_args, parallel_args, dtype, device);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -278,8 +264,67 @@ class MPTModelImpl : public torch::nn::Module {
                                         /*bias=*/false,
                                         dtype,
                                         device));
+  }
 
-    lm_head_ = register_module("wte",
+  // tokens: [num_tokens]
+  // positions: [num_tokens] token pos in the sequence
+  torch::Tensor forward(torch::Tensor tokens,
+                        torch::Tensor positions,
+                        std::vector<KVCache>& kv_caches,
+                        const InputParameters& input_params) {
+    auto h = wte_(tokens);
+    for (size_t i = 0; i < layers_.size(); i++) {
+      auto& layer = layers_[i];
+      h = layer(h, positions, kv_caches[i], input_params);
+    }
+    return norm_f_(h);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    wte_->load_state_dict(state_dict.select("wte."));
+    // call each layer's load_state_dict function
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->load_state_dict(
+          state_dict.select("blocks." + std::to_string(i) + "."));
+    }
+    norm_f_->load_state_dict(state_dict.select("norm_f."));
+  }
+
+  void verify_loaded_weights(const std::string& prefix) const {
+    wte_->verify_loaded_weights(prefix + "wte.");
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->verify_loaded_weights(prefix + "blocks." + std::to_string(i) +
+                                        ".");
+    }
+    norm_f_->verify_loaded_weights(prefix + "norm_f.");
+  }
+
+ private:
+  // parameter members, must be registered
+  ParallelEmbedding wte_{nullptr};
+
+  torch::nn::ModuleList blocks_{nullptr};
+  // hold same data but different type as blocks_ to avoid type cast
+  std::vector<MPTBlock> layers_;
+
+  LayerNorm norm_f_{nullptr};
+};
+TORCH_MODULE(MPTModel);
+
+class MPTForCausalLMImpl : public torch::nn::Module {
+ public:
+  MPTForCausalLMImpl(const ModelArgs& args,
+                     const QuantizationArgs& quant_args,
+                     const ParallelArgs& parallel_args,
+                     torch::ScalarType dtype,
+                     const torch::Device& device) {
+    // register submodules
+    transformer_ = register_module(
+        "transformer",
+        MPTModel(args, quant_args, parallel_args, dtype, device));
+
+    lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
                                                     /*bias=*/false,
@@ -295,12 +340,7 @@ class MPTModelImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = wte_(tokens);
-    for (size_t i = 0; i < layers_.size(); i++) {
-      auto& layer = layers_[i];
-      h = layer(h, positions, kv_caches[i], input_params);
-    }
-    h = norm_f_(h);
+    auto h = transformer_(tokens, positions, kv_caches, input_params);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
     return lm_head_(h);
@@ -308,40 +348,22 @@ class MPTModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    wte_->load_state_dict(state_dict.select("transformer.wte."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("transformer.blocks." + std::to_string(i) + "."));
-    }
-    norm_f_->load_state_dict(state_dict.select("transformer.norm_f."));
+    transformer_->load_state_dict(state_dict.select("transformer."));
+    // TODO: share weights between wte and lm_head to save memory
     lm_head_->load_state_dict(state_dict.select("transformer.wte."));
   }
 
   void verify_loaded_weights() const {
-    wte_->verify_loaded_weights("transformer.wte.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights("transformer.blocks." +
-                                        std::to_string(i) + ".");
-    }
-    norm_f_->verify_loaded_weights("transformer.norm_f.");
+    transformer_->verify_loaded_weights("transformer.");
     lm_head_->verify_loaded_weights("transformer.wte.");
   }
 
  private:
   // parameter members, must be registered
-  ParallelEmbedding wte_{nullptr};
-
-  torch::nn::ModuleList blocks_{nullptr};
-  // hold same data but different type as blocks_ to avoid type cast
-  std::vector<MPTBlock> layers_;
-
-  LayerNorm norm_f_{nullptr};
+  MPTModel transformer_{nullptr};
 
   ColumnParallelLinear lm_head_{nullptr};
-
-  ParallelArgs parallel_args_;
 };
-TORCH_MODULE(MPTModel);
+TORCH_MODULE(MPTForCausalLM);
 
 }  // namespace llm::hf

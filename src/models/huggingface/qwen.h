@@ -87,8 +87,8 @@ class QWenAttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
+    const int64_t head_dim = hidden_size / args.n_heads();
     const int64_t n_local_heads = n_heads / world_size;
-    const int64_t head_dim = hidden_size / n_heads;
 
     // register submodules
     c_attn_ = register_module("c_attn",
@@ -244,6 +244,65 @@ class QWenModelImpl : public torch::nn::Module {
     ln_f_ = register_module(
         "ln_f",
         RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+  }
+
+  // tokens: [num_tokens]
+  // positions: [num_tokens] token pos in the sequence
+  torch::Tensor forward(torch::Tensor tokens,
+                        torch::Tensor positions,
+                        std::vector<KVCache>& kv_caches,
+                        const InputParameters& input_params) {
+    auto h = wte_(tokens);
+    for (size_t i = 0; i < layers_.size(); i++) {
+      auto& layer = layers_[i];
+      h = layer(h, positions, kv_caches[i], input_params);
+    }
+    return ln_f_(h);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    wte_->load_state_dict(state_dict.select("wte."));
+    // call each layer's load_state_dict function
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->load_state_dict(
+          state_dict.select("h." + std::to_string(i) + "."));
+    }
+    ln_f_->load_state_dict(state_dict.select("ln_f."));
+  }
+
+  void verify_loaded_weights(const std::string& prefix) const {
+    wte_->verify_loaded_weights(prefix + "wte.");
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->verify_loaded_weights(prefix + "h." + std::to_string(i) +
+                                        ".");
+    }
+    ln_f_->verify_loaded_weights(prefix + "ln_f.");
+  }
+
+ private:
+  // parameter members, must be registered
+  ParallelEmbedding wte_{nullptr};
+
+  torch::nn::ModuleList blocks_{nullptr};
+  // hold same data but different type as blocks_ to avoid type cast
+  std::vector<QWenBlock> layers_;
+
+  RMSNorm ln_f_{nullptr};
+};
+TORCH_MODULE(QWenModel);
+
+class QWenForCausalLMImpl : public torch::nn::Module {
+ public:
+  QWenForCausalLMImpl(const ModelArgs& args,
+                      const QuantizationArgs& quant_args,
+                      const ParallelArgs& parallel_args,
+                      torch::ScalarType dtype,
+                      const torch::Device& device) {
+    // register submodules
+    transformer_ = register_module(
+        "transformer",
+        QWenModel(args, quant_args, parallel_args, dtype, device));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -261,12 +320,7 @@ class QWenModelImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = wte_(tokens);
-    for (size_t i = 0; i < layers_.size(); i++) {
-      auto& layer = layers_[i];
-      h = layer(h, positions, kv_caches[i], input_params);
-    }
-    h = ln_f_(h);
+    auto h = transformer_(tokens, positions, kv_caches, input_params);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
     return lm_head_(h);
@@ -274,38 +328,21 @@ class QWenModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    wte_->load_state_dict(state_dict.select("transformer.wte."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("transformer.h." + std::to_string(i) + "."));
-    }
-    ln_f_->load_state_dict(state_dict.select("transformer.ln_f."));
+    transformer_->load_state_dict(state_dict.select("transformer."));
     lm_head_->load_state_dict(state_dict.select("lm_head."));
   }
 
   void verify_loaded_weights() const {
-    wte_->verify_loaded_weights("transformer.wte.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights("transformer.h." + std::to_string(i) +
-                                        ".");
-    }
-    ln_f_->verify_loaded_weights("transformer.ln_f.");
+    transformer_->verify_loaded_weights("transformer.");
     lm_head_->verify_loaded_weights("lm_head.");
   }
 
  private:
   // parameter members, must be registered
-  ParallelEmbedding wte_{nullptr};
-
-  torch::nn::ModuleList blocks_{nullptr};
-  // hold same data but different type as blocks_ to avoid type cast
-  std::vector<QWenBlock> layers_;
-
-  RMSNorm ln_f_{nullptr};
+  QWenModel transformer_{nullptr};
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(QWenModel);
+TORCH_MODULE(QWenForCausalLM);
 
 }  // namespace llm::hf
