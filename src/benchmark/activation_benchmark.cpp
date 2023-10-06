@@ -1,6 +1,7 @@
 #include <benchmark/benchmark.h>
 #include <c10/core/DeviceType.h>
 #include <c10/core/ScalarType.h>
+#include <cuda_runtime.h>
 
 #include "kernels/activation_kernels.h"
 #include "layers/activation.h"
@@ -60,31 +61,53 @@ static void BM_activation_kernel(benchmark::State& state) {
   auto input =
       torch::rand({dim_0, dim_1}, torch::dtype(dtype).device(torch::kCUDA));
 
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+
   for (auto _ : state) {
-    // Call the implementation function
+    // Start measuring time
+    cudaEventRecord(start);
+
+    // Launch the CUDA kernel
     auto output = activation_func(input);
     // don't optimize out the output
     benchmark::DoNotOptimize(output);
+
+    // Stop measuring time and calculate the elapsed time
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    state.PauseTiming();
+
+    // Update the benchmark state with the measured time
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    state.SetIterationTime(milliseconds / 1000);
+    state.ResumeTiming();
   }
+
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
 
   state.SetLabel(activation + " " + torch::toString(dtype));
 }
 
 // Register functions as benchmarks
+const std::vector<int64_t> dtypes = {static_cast<int64_t>(torch::kFloat),
+                                     static_cast<int64_t>(torch::kHalf),
+                                     static_cast<int64_t>(torch::kBFloat16)};
+
+// benchmark for kernels
+BENCHMARK(BM_activation_kernel)
+    ->ArgsProduct({dtypes, {0, 1, 2}, {4096, 1000}, {20560, 1024}});
+
+// benchmark for gpus
+BENCHMARK_CAPTURE(BM_activation, "gpu", torch::kCUDA)
+    ->ArgsProduct({dtypes, {0, 1, 2, 3, 4, 5}, {4096, 1000}, {20560, 1024}});
+
 // benchmark for cpus
 BENCHMARK_CAPTURE(BM_activation, "cpu", torch::kCPU)
     ->ArgsProduct({{static_cast<int64_t>(torch::kFloat)},
                    {0, 1, 2, 3, 4, 5},
                    {4096, 1000},
                    {20560, 1024}});
-
-// benchmark for gpus
-const std::vector<int64_t> dtypes = {static_cast<int64_t>(torch::kFloat),
-                                     static_cast<int64_t>(torch::kHalf),
-                                     static_cast<int64_t>(torch::kBFloat16)};
-BENCHMARK_CAPTURE(BM_activation, "gpu", torch::kCUDA)
-    ->ArgsProduct({dtypes, {0, 1, 2, 3, 4, 5}, {4096, 1000}, {20560, 1024}});
-
-// benchmark for kernels
-BENCHMARK(BM_activation_kernel)
-    ->ArgsProduct({dtypes, {0, 1, 2}, {4096, 1000}, {20560, 1024}});
