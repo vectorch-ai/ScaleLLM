@@ -172,6 +172,8 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     load_llama_model_args(data, &args_);
   } else if (boost::iequals(args_.model_type(), "mistral")) {
     load_mistral_model_args(data, &args_);
+  } else if (boost::iequals(args_.model_type(), "aquila")) {
+    load_aquila_model_args(data, &args_);
   }
 
   // load quantization args if exists

@@ -11,6 +11,7 @@
 #include "huggingface/gpt_neox.h"
 #include "huggingface/llama.h"
 #include "huggingface/mistral.h"
+#include "huggingface/aquila.h"
 #include "input_parameters.h"
 #include "llama.h"
 #include "memory/kv_cache.h"
@@ -56,6 +57,13 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
     mistral->eval();
     return std::make_unique<llm::CausalLMImpl<hf::MistralModel>>(
         std::move(mistral));
+  }
+  if (boost::iequals(args.model_type(), "aquila")) {
+    hf::AquilaModel aquila(args, quant_args, parallel_args, dtype, device);
+    // set the module in evaluation/inference mode
+    aquila->eval();
+    return std::make_unique<llm::CausalLMImpl<hf::AquilaModel>>(
+        std::move(aquila));
   }
 
   LOG(ERROR) << "Unsupported model type: " << args.model_type();

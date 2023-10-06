@@ -17,4 +17,6 @@ bool load_gpt_neox_model_args(const nlohmann::json& data, ModelArgs* args);
 
 bool load_mistral_model_args(const nlohmann::json& data, ModelArgs* args);
 
+bool load_aquila_model_args(const nlohmann::json& data, ModelArgs* args);
+
 }  // namespace llm
