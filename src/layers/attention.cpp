@@ -91,12 +91,11 @@ AttentionImpl::AttentionImpl(int64_t n_heads,
   kv_head_mapping_ = register_buffer("kv_head_mapping", kv_head_mapping);
 }
 
-torch::Tensor AttentionImpl::forward(
-    const torch::Tensor& query,
-    const torch::Tensor& key,
-    const torch::Tensor& value,
-    KVCache& kv_cache,
-    const InputParameters& input_params) {
+torch::Tensor AttentionImpl::forward(const torch::Tensor& query,
+                                     const torch::Tensor& key,
+                                     const torch::Tensor& value,
+                                     KVCache& kv_cache,
+                                     const InputParameters& input_params) {
   const int64_t num_tokens = query.size(0);
   // (num_tokens, n_heads, head_dim)
   auto q = query.view({num_tokens, n_heads_, head_dim_});
@@ -282,8 +281,8 @@ void varlen_masked_self_attention_slow(
   if (num_heads != num_kv_heads) {
     CHECK(num_heads % num_kv_heads == 0);
     const auto num_goups = num_heads / num_kv_heads;
-    _key = _key.repeat_interleave(/*dim=*/1, /*repeats=*/num_goups);
-    _value = _value.repeat_interleave(/*dim=*/1, /*repeats=*/num_goups);
+    _key = _key.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
+    _value = _value.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
   }
 
   for (int64_t i = 0; i < num_seqs; ++i) {
@@ -396,8 +395,8 @@ void single_token_masked_self_attention_slow(
     if (num_heads != num_kv_heads) {
       CHECK(num_heads % num_kv_heads == 0);
       const auto num_goups = num_heads / num_kv_heads;
-      k = k.repeat_interleave(/*dim=*/1, /*repeats=*/num_goups);
-      v = v.repeat_interleave(/*dim=*/1, /*repeats=*/num_goups);
+      k = k.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
+      v = v.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
     }
 
     const auto attn = masked_self_attention(q, k, v, mask, scale);

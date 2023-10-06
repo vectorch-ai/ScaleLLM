@@ -2,6 +2,7 @@
 
 #include <c10/core/Device.h>
 #include <gtest/gtest.h>
+#include <torch/cuda.h>
 
 namespace llm {
 
@@ -45,6 +46,10 @@ void run_collective_test(
 
 TEST(ProcessGroupTest, NCCLAllReduce) {
   // skip test if less than two gpus
+  if (torch::cuda::device_count() < 2) {
+    GTEST_SKIP() << "Skipping test because less than two gpus";
+  }
+
   for (int i = 2; i <= torch::cuda::device_count(); i *= 2) {
     run_collective_test(
         i, [](const std::vector<torch::Tensor>& tensors, ProcessGroup* pg) {
@@ -66,6 +71,10 @@ TEST(ProcessGroupTest, NCCLAllReduce) {
 
 TEST(ProcessGroupTest, NCCLAllGather) {
   // skip test if less than two gpus
+  if (torch::cuda::device_count() < 2) {
+    GTEST_SKIP() << "Skipping test because less than two gpus";
+  }
+
   for (int i = 2; i <= torch::cuda::device_count(); i *= 2) {
     run_collective_test(
         i, [](const std::vector<torch::Tensor>& tensors, ProcessGroup* pg) {

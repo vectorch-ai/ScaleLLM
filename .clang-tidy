@@ -12,6 +12,7 @@ Checks: >
   performance-*,
   portability-*,
   readability-*,
+  -cert-err58-cpp,
   -modernize-use-nodiscard,
   -modernize-use-auto,
   -modernize-use-trailing-return-type,

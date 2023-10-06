@@ -1,4 +1,3 @@
-// adapted from https://github.com/NVIDIA/FasterTransformer
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/core/TensorImpl.h>
 #include <torch/extension.h>
@@ -6,9 +5,10 @@
 #include "activation_kernels.h"
 
 namespace llm::kernel {
+namespace {
 
 /* Gelu Activation */
-
+// adapted from https://github.com/NVIDIA/FasterTransformer
 __forceinline__ __device__ float copysignf_pos(float a, float b) {
   float r;
   r = __int_as_float(__float_as_int(a) | (__float_as_int(b) & 0x80000000));
@@ -53,33 +53,37 @@ template <typename T>
 struct SiluActivation {
   using return_type = T;
   static __device__ __forceinline__ T apply(const T& val) {
+    // x * sigmoid(x)
     return (T)((float)val / (1.0f + __expf((float)-val)));
   }
 };
 
 template <template <typename T> class Activation, typename T>
-__global__ void activation_kernel(T* output, const T* input, int stride) {
-  for (int idx = blockIdx.x * stride + threadIdx.x; idx < stride;
-       idx += blockDim.x) {
-    output[idx] = Activation<T>::apply(input[idx]);
+__global__ void activation_kernel(const T* input, T* output, int stride) {
+  const uint32_t base_idx = blockIdx.x * stride;
+  for (uint32_t i = threadIdx.x; i < stride; i += blockDim.x) {
+    const uint32_t idx = base_idx + i;
+    const T x = __ldg(&input[idx]);
+    output[idx] = Activation<T>::apply(x);
   }
 }
 
 // calculate act(x) * y where x = input[idx] and y = input[idx + stride]
 template <template <typename T> class Activation, typename T>
-__global__ void activation_and_mul_kernel(T* output,
-                                          const T* input,
+__global__ void activation_and_mul_kernel(const T* input,
+                                          T* output,
                                           int stride) {
-  for (int idx = blockIdx.x * stride + threadIdx.x; idx < stride;
-       idx += blockDim.x) {
-    const T x = __ldg(&input[2 * idx]);
-    const T y = __ldg(&input[2 * idx + stride]);
-    output[idx] = Activation<T>::apply(x) * y;
+  const uint32_t base_idx = blockIdx.x * stride;
+  for (uint32_t i = threadIdx.x; i < stride; i += blockDim.x) {
+    const uint32_t i_idx = 2 * base_idx + i;
+    const T x = __ldg(&input[i_idx]);
+    const T y = __ldg(&input[i_idx + stride]);
+    output[base_idx + i] = Activation<T>::apply(x) * y;
   }
 }
 
 template <template <typename T> class Activation>
-void launch_activation(torch::Tensor input, torch::Tensor& output) {
+void launch_activation(torch::Tensor input, torch::Tensor output) {
   const int stride = static_cast<int>(input.stride(0));
   dim3 grid(input.size(0));
   dim3 block(std::min(stride, 1024));
@@ -98,7 +102,7 @@ void launch_activation(torch::Tensor input, torch::Tensor& output) {
 }
 
 template <template <typename T> class Activation>
-void launch_activation_and_mul(torch::Tensor input, torch::Tensor& output) {
+void launch_activation_and_mul(torch::Tensor input, torch::Tensor output) {
   const int stride = static_cast<int>(input.stride(0));
   dim3 grid(input.size(0));
   dim3 block(std::min(stride, 1024));
@@ -116,17 +120,25 @@ void launch_activation_and_mul(torch::Tensor input, torch::Tensor& output) {
       }));
 }
 
+}  // namespace
+
 torch::Tensor gelu_new(torch::Tensor input) {
+  CHECK(input.is_contiguous()) << "input tensor must be contiguous";
+
   torch::Tensor output = torch::empty_like(input);
   launch_activation<GeluNewActivation>(input, output);
   return output;
 }
 torch::Tensor gelu_fast(torch::Tensor input) {
+  CHECK(input.is_contiguous()) << "input tensor must be contiguous";
+
   torch::Tensor output = torch::empty_like(input);
   launch_activation<GeluFastActivation>(input, output);
   return output;
 }
 torch::Tensor silu(torch::Tensor input) {
+  CHECK(input.is_contiguous()) << "input tensor must be contiguous";
+  
   torch::Tensor output = torch::empty_like(input);
   launch_activation<SiluActivation>(input, output);
   return output;

@@ -96,7 +96,7 @@ InterleavedRotaryEmbedding::InterleavedRotaryEmbedding(
   }
   const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
   // [a, b, c, d] => [a, a, b, b, c, c, d, d]
-  auto emd = torch::repeat_interleave(freqs, /*repeats=*/2, /*dim=*/-1);
+  auto emd = freqs.repeat_interleave(/*repeats=*/2, /*dim=*/-1);
   emd = emd.to(torch::dtype(dtype).device(device));
   // [max_seq_len, rotary_dim] => [max_seq_len, rotary_dim*2]
   const auto cos_sin = torch::cat({emd.cos(), emd.sin()}, /*dim=*/-1);

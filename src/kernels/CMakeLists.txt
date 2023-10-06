@@ -4,17 +4,18 @@ cc_library(
   NAME 
     kernels
   HDRS 
-    reduce_kernel_utils.cuh
+    # reduce_kernel_utils.cuh
     activation_kernels.h
   SRCS 
-    rms_norm_kernel.cu
-    pos_embedding_kernel.cu
+    # rms_norm_kernel.cu
+    # pos_embedding_kernel.cu
     activation_kernels.cu
   DEPS
+    glog::glog
     torch
     Python::Python
   COPTS
-    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
 cc_library(
