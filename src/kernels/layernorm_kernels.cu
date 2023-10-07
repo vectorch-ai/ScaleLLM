@@ -8,6 +8,7 @@ namespace llm::kernel {
 
 // calculate the root mean square norm.
 // equation: x -> w * x / sqrt(E[x^2] + eps)
+// The mean is calculated over the last dimension
 // equilvalent to layernorm module in the T5 style No bias and no subtraction of
 // mean.
 template <typename T>
@@ -62,6 +63,7 @@ void rms_norm(torch::Tensor& out,
 }
 
 // equation: x -> (x - E[x]) / sqrt(Var[x] + eps) * w + b
+// The mean and standard-deviation are calculated over the last dimension
 template <typename T>
 __global__ void layer_norm_kernel(T* __restrict__ out,
                                   const T* __restrict__ input,
