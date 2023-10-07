@@ -1,11 +1,31 @@
 #pragma once
 
+#include <ATen/core/TensorBody.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"
 
 namespace llm {
+namespace detail {
+inline torch::Tensor rms_norm(torch::Tensor input,
+                              const torch::Tensor& weight,
+                              float eps) {
+  const auto mean =
+      input.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
+  return input * torch::rsqrt(mean + eps) * weight;
+}
+
+inline torch::Tensor layer_norm(torch::Tensor input,
+                                const std::vector<int64_t>& normalized_shape,
+                                const torch::Tensor& weight,
+                                const torch::Tensor& bias,
+                                double eps) {
+  namespace F = torch::nn::functional;
+  return F::detail::layer_norm(input, normalized_shape, weight, bias, eps);
+}
+
+}  // namespace detail
 
 // apply layer normalization over a mini-batch of inputs as described in
 // the paper `Layer Normalization`: https://arxiv.org/abs/1607.06450
@@ -102,9 +122,7 @@ class RMSNormImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor input) {
-    // TODO: do we really need to cast to float?
-    auto output = norm(input.to(torch::kFloat)).type_as(input);
-    return output * weight_;
+    return detail::rms_norm(input, weight_, eps_);
   }
 
   // load the weight from the checkpoint
@@ -128,12 +146,6 @@ class RMSNormImpl : public torch::nn::Module {
   }
 
  private:
-  torch::Tensor norm(const torch::Tensor& x) {
-    return x *
-           torch::rsqrt(
-               x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true) + eps_);
-  }
-
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
 

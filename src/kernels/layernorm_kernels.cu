@@ -15,25 +15,25 @@ __global__ void rms_norm_kernel(T* __restrict__ out,
                                 const T* __restrict__ input,
                                 const T* __restrict__ weight,
                                 const float epsilon,
-                                int stride) {
+                                int n) {
   const int tidx = threadIdx.x;
   const int bidx = blockIdx.x;
 
   __shared__ float s_variance;
   float variance = 0.0f;
 
-  for (int i = tidx; i < stride; i += blockDim.x) {
-    const float x = __ldg(&input[bidx * stride + i]);
+  for (int i = tidx; i < n; i += blockDim.x) {
+    const float x = __ldg(&input[bidx * n + i]);
     variance += x * x;
   }
   variance = block_reduce_sum<float>(variance);
   if (tidx == 0) {
-    s_variance = rsqrtf(variance / stride + epsilon);
+    s_variance = rsqrtf(variance / n + epsilon);
   }
   __syncthreads();
 
-  for (int i = tidx; i < stride; i += blockDim.x) {
-    const int idx = bidx * stride + i;
+  for (int i = tidx; i < n; i += blockDim.x) {
+    const int idx = bidx * n + i;
     const float x = __ldg(&input[idx]);
     out[idx] = ((T)(x * s_variance)) * weight[i];
   }
@@ -43,13 +43,13 @@ void rms_norm(torch::Tensor& out,
               torch::Tensor input,
               torch::Tensor weight,
               float epsilon) {
-  DCHECK(input.is_contiguous());
-  DCHECK(out.is_contiguous());
+  DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
+  DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
 
-  const int stride = input.stride(0);
+  const int n = input.size(1);
 
   dim3 grid(input.size(0));
-  dim3 block(std::min(stride, 1024));
+  dim3 block(std::min(n, 1024));
   DISPATCH_FLOATING_TYPES(input.scalar_type(), "rms_norm_kernel", [&] {
     rms_norm_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -57,17 +57,18 @@ void rms_norm(torch::Tensor& out,
             input.data_ptr<scalar_t>(),
             weight.data_ptr<scalar_t>(),
             epsilon,
-            stride);
+            n);
   });
 }
 
+// equation: x -> (x - E[x]) / sqrt(Var[x] + eps) * w + b
 template <typename T>
 __global__ void layer_norm_kernel(T* __restrict__ out,
                                   const T* __restrict__ input,
                                   const T* __restrict__ weight,
                                   const T* __restrict__ bias,
                                   const float epsilon,
-                                  int stride) {
+                                  int n) {
   const int tidx = threadIdx.x;
   const int bidx = blockIdx.x;
 
@@ -77,36 +78,35 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
   float variance = 0.0f;
 
   // calculate mean of the input.
-  for (int i = tidx; i < stride; i += blockDim.x) {
-    const int idx = bidx * stride + i;
-    float local_out = __ldg(&input[idx]);
-    if (bias != nullptr) {
-      local_out += __ldg(&bias[i]);
-    }
-    mean += local_out;
-    // save local_out to out in order to save some recomputation.
-    out[idx] = local_out;
+  for (int i = tidx; i < n; i += blockDim.x) {
+    const int idx = bidx * n + i;
+    mean += __ldg(&input[idx]);
   }
   mean = block_reduce_sum<float>(mean);
   if (tidx == 0) {
-    s_mean = mean / stride;
+    s_mean = mean / n;
   }
   __syncthreads();
 
   // calculate variance of the input.
-  for (int i = tidx; i < stride; i += blockDim.x) {
-    const float x = out[bidx * stride + i] - s_mean;
+  for (int i = tidx; i < n; i += blockDim.x) {
+    const float x = input[bidx * n + i] - s_mean;
     variance += x * x;
   }
   variance = block_reduce_sum<float>(variance);
   if (tidx == 0) {
-    s_variance = rsqrtf(variance / stride + epsilon);
+    s_variance = rsqrtf(variance / n + epsilon);
   }
   __syncthreads();
 
-  for (int i = tidx; i < stride; i += blockDim.x) {
-    const int idx = bidx * stride + i;
-    out[idx] = (T)((out[idx] - s_mean) * s_variance * weight[i]);
+  for (int i = tidx; i < n; i += blockDim.x) {
+    const int idx = bidx * n + i;
+    float local_out =
+        (__ldg(&input[idx]) - s_mean) * s_variance * __ldg(&weight[i]);
+    if (bias != nullptr) {
+      local_out += __ldg(&bias[i]);
+    }
+    out[idx] = (T)(local_out);
   }
 }
 
@@ -118,10 +118,10 @@ void layer_norm(torch::Tensor& out,
   DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
   DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
 
-  const int stride = input.stride(0);
+  const int n = input.size(1);
 
   dim3 grid(input.size(0));
-  dim3 block(std::min(stride, 1024));
+  dim3 block(std::min(n, 1024));
   DISPATCH_FLOATING_TYPES(input.scalar_type(), "layer_norm_kernel", [&] {
     layer_norm_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -130,7 +130,7 @@ void layer_norm(torch::Tensor& out,
             weight.data_ptr<scalar_t>(),
             bias.data_ptr<scalar_t>(),
             epsilon,
-            stride);
+            n);
   });
 }
 

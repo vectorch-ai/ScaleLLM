@@ -4,8 +4,9 @@ cc_library(
   NAME 
     kernels
   HDRS 
-    # reduce_kernel_utils.cuh
+    reduce_kernel_utils.cuh
     activation_kernels.h
+    layernorm_kernels.h
   SRCS 
     # pos_embedding_kernel.cu
     activation_kernels.cu
