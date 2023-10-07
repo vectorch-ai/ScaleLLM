@@ -58,9 +58,6 @@ TEST(NormalizationTest, LayerNormKernel) {
 
   auto desired_output = detail::layer_norm(input, {dim}, weight, bias, eps);
 
-  LOG(ERROR) << output;
-  LOG(ERROR) << desired_output;
-
   EXPECT_TRUE(torch::allclose(output,
                               desired_output,
                               /*rtol=*/1e-02,
@@ -114,9 +111,6 @@ TEST(NormalizationTest, RMSNormKernel) {
   kernel::rms_norm(output, input, weight, eps);
 
   auto desired_output = detail::rms_norm(input, weight, eps);
-
-  LOG(ERROR) << output;
-  LOG(ERROR) << desired_output;
 
   EXPECT_TRUE(torch::allclose(output,
                               desired_output,
