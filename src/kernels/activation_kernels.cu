@@ -62,78 +62,70 @@ struct SiluActivation {
 template <template <typename T> class Activation, typename T>
 __global__ void activation_kernel(T* __restrict__ out,
                                   const T* __restrict__ input,
+                                  int n,
                                   int stride) {
-  const uint32_t base_idx = blockIdx.x * stride;
-  for (uint32_t i = threadIdx.x; i < stride; i += blockDim.x) {
-    const uint32_t idx = base_idx + i;
-    const T x = __ldg(&input[idx]);
-    out[idx] = Activation<T>::apply(x);
+  const uint32_t src_base_idx = blockIdx.x * stride;
+  const uint32_t dst_base_idx = blockIdx.x * n;
+  for (uint32_t i = threadIdx.x; i < n; i += blockDim.x) {
+    const T x = __ldg(&input[src_base_idx + i]);
+    out[dst_base_idx + i] = Activation<T>::apply(x);
   }
 }
 
-// calculate act(x) * y where x = input[idx] and y = input[idx + stride]
+// calculate act(x) * y where x = input[idx] and y = input[idx + n]
 template <template <typename T> class Activation, typename T>
 __global__ void activation_and_mul_kernel(T* __restrict__ out,
                                           const T* __restrict__ input,
-                                          int stride) {
-  const uint32_t base_idx = blockIdx.x * stride;
-  for (uint32_t i = threadIdx.x; i < stride; i += blockDim.x) {
+                                          int n) {
+  const uint32_t base_idx = blockIdx.x * n;
+  for (uint32_t i = threadIdx.x; i < n; i += blockDim.x) {
     const uint32_t i_idx = 2 * base_idx + i;
     const T x = __ldg(&input[i_idx]);
-    const T y = __ldg(&input[i_idx + stride]);
+    const T y = __ldg(&input[i_idx + n]);
     out[base_idx + i] = Activation<T>::apply(x) * y;
   }
 }
 
 template <template <typename T> class Activation>
 void launch_activation(torch::Tensor& out, torch::Tensor input) {
+  const int n = static_cast<int>(input.size(1));
   const int stride = static_cast<int>(input.stride(0));
   dim3 grid(input.size(0));
-  dim3 block(std::min(stride, 1024));
+  dim3 block(std::min(n, 1024));
   DISPATCH_FLOATING_TYPES(
       input.scalar_type(), "activation_kernel", ([&] {
         activation_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
-                out.data_ptr<scalar_t>(),
-                input.data_ptr<scalar_t>(),
-                stride);
+                out.data_ptr<scalar_t>(), input.data_ptr<scalar_t>(), n, stride);
       }));
 }
 
 template <template <typename T> class Activation>
 void launch_activation_and_mul(torch::Tensor& out, torch::Tensor input) {
-  const int stride = static_cast<int>(input.stride(0));
+  const int n = static_cast<int>(input.size(1));
   dim3 grid(input.size(0));
-  dim3 block(std::min(stride, 1024));
+  dim3 block(std::min(n, 1024));
   DISPATCH_FLOATING_TYPES(
       input.scalar_type(), "activation_and_mul_kernel", ([&] {
         activation_and_mul_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
-                out.data_ptr<scalar_t>(),
-                input.data_ptr<scalar_t>(),
-                stride);
+                out.data_ptr<scalar_t>(), input.data_ptr<scalar_t>(), n);
       }));
 }
 
 }  // namespace
 
 torch::Tensor gelu_new(torch::Tensor input) {
-  CHECK(input.is_contiguous()) << "input tensor must be contiguous";
-
   torch::Tensor out = torch::empty_like(input);
   launch_activation<GeluNewActivation>(out, input);
   return out;
 }
 torch::Tensor gelu_fast(torch::Tensor input) {
-  CHECK(input.is_contiguous()) << "input tensor must be contiguous";
-
   torch::Tensor out = torch::empty_like(input);
   launch_activation<GeluFastActivation>(out, input);
   return out;
 }
 torch::Tensor silu(torch::Tensor input) {
-  CHECK(input.is_contiguous()) << "input tensor must be contiguous";
-
   torch::Tensor out = torch::empty_like(input);
   launch_activation<SiluActivation>(out, input);
   return out;

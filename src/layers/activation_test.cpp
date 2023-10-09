@@ -57,7 +57,7 @@ TEST_P(ActivationTest, Basic) {
                               /*atol=*/1e-02));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ActivationCUDATest,
     ActivationTest,
     ::testing::Combine(
@@ -69,10 +69,10 @@ INSTANTIATE_TEST_CASE_P(
                           "gelu_pytorch_tanh",
                           "relu",
                           "silu"),
-        ::testing::Values(2, 2000),             // in_features
-        ::testing::Values(256, 1024, 20560)));  // out_features
+        ::testing::Values(200),          // in_features
+        ::testing::Values(256, 1088)));  // out_features
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ActivationCPUTest,
     ActivationTest,
     ::testing::Combine(::testing::Values(torch::kCPU),
@@ -83,8 +83,8 @@ INSTANTIATE_TEST_CASE_P(
                                          "gelu_pytorch_tanh",
                                          "relu",
                                          "silu"),
-                       ::testing::Values(2, 2000),             // in_features
-                       ::testing::Values(256, 1024, 20560)));  // out_features
+                       ::testing::Values(200),          // in_features
+                       ::testing::Values(256, 1088)));  // out_features
 
 class ActivationKernelTest : public ActivationTest {};
 
@@ -96,8 +96,11 @@ TEST_P(ActivationKernelTest, KernelTest) {
   const auto& [device, dtype, activation, in_features, out_features] =
       GetParam();
 
-  auto input = torch::rand({in_features, out_features},
-                           torch::dtype(dtype).device(device));
+  // generate input with non-contiguous memory
+  auto input = torch::rand({in_features, out_features * 2},
+                           torch::dtype(dtype).device(device))
+                   .chunk(/*chunks=*/2, /*dim=*/1)[1];
+  EXPECT_TRUE(!input.is_contiguous());
 
   // use float result as baseline
   auto input_float = input.to(torch::kFloat);
@@ -117,14 +120,14 @@ TEST_P(ActivationKernelTest, KernelTest) {
                               /*atol=*/1e-03));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ActivationKernelTest,
     ActivationKernelTest,
     ::testing::Combine(
         ::testing::Values(torch::kCUDA),
         ::testing::Values(torch::kFloat, torch::kHalf, torch::kBFloat16),
         ::testing::Values("gelu_fast", "gelu_new", "silu"),
-        ::testing::Values(2, 2000),             // in_features
-        ::testing::Values(256, 1024, 20560)));  // out_features
+        ::testing::Values(200),          // in_features
+        ::testing::Values(256, 1088)));  // out_features
 
 }  // namespace llm

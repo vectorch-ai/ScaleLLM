@@ -49,10 +49,10 @@ ActFunc Activation::get(const std::string& name, const torch::Device& device) {
     return gelu;
   }
   if (boost::iequals(name, "gelu_fast")) {
-    return gelu_fast;
+    return device.is_cuda()? kernel::gelu_fast : gelu_fast;
   }
   if (boost::iequals(name, "gelu_new")) {
-    return gelu_new;
+    return device.is_cuda()? kernel::gelu_new : gelu_new;
   }
   if (boost::iequals(name, "gelu_pytorch_tanh")) {
     return gelu_pytorch_tanh;
@@ -61,7 +61,7 @@ ActFunc Activation::get(const std::string& name, const torch::Device& device) {
     return relu;
   }
   if (boost::iequals(name, "silu")) {
-    return silu;
+    return device.is_cuda()? kernel::silu : silu;
   }
 
   LOG(ERROR) << "Unsupported activation function: " << name;
