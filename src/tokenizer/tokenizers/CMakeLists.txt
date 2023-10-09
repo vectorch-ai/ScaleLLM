@@ -1,5 +1,5 @@
-include(CMakeCargo)
-cargo_build(
+include(cargo_library)
+cargo_library(
   NAME 
     tokenizers
   HDRS

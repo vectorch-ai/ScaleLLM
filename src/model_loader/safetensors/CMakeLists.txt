@@ -1,5 +1,5 @@
-include(CMakeCargo)
-cargo_build(
+include(cargo_shared_library)
+cargo_shared_library(
   NAME 
     safetensors
   HDRS
