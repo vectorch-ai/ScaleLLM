@@ -4,6 +4,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "kernels/layernorm_kernels.h"
 #include "model_loader/state_dict.h"
 
 namespace llm {
@@ -13,9 +14,8 @@ inline torch::Tensor rms_norm(torch::Tensor input,
                               float eps) {
   // it is important to use float to calculate the mean and std
   const auto x = input.to(torch::kFloat);
-  const auto output =
-      x * torch::rsqrt(
-              x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true) + eps) * weight;
+  const auto mean = x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
+  const auto output = x * torch::rsqrt(mean + eps) * weight;
   // convert back to the original dtype
   return output.to(input);
 }
@@ -39,7 +39,7 @@ class LayerNormImpl : public torch::nn::Module {
   // dim: the dim over which the mean and std are calculated separately.
   // eps: a value added to the denominator for numerical stability.
   LayerNormImpl(int64_t dim,
-                double eps,
+                float eps,
                 bool bias,
                 torch::ScalarType dtype,
                 const torch::Device& device)
@@ -58,6 +58,11 @@ class LayerNormImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor input) {
+    if (input.is_cuda()) {
+      auto output = torch::empty_like(input);
+      kernel::layer_norm(output, input, weight_, bias_, eps_);
+      return output;
+    }
     namespace F = torch::nn::functional;
     return F::detail::layer_norm(
         input, normalized_shape_, weight_, bias_, eps_);
@@ -106,7 +111,7 @@ class LayerNormImpl : public torch::nn::Module {
   bool bias_is_loaded_ = false;
 
   // configs
-  double eps_;
+  float eps_;
   std::vector<int64_t> normalized_shape_;
 };
 TORCH_MODULE(LayerNorm);
@@ -126,6 +131,11 @@ class RMSNormImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor input) {
+    if (input.is_cuda()) {
+      auto output = torch::empty_like(input);
+      kernel::rms_norm(output, input, weight_, eps_);
+      return output;
+    }
     return detail::rms_norm(input, weight_, eps_);
   }
 

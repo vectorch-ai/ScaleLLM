@@ -36,7 +36,7 @@ __global__ void rms_norm_kernel(T* __restrict__ out,
   for (int i = tidx; i < n; i += blockDim.x) {
     const int idx = bidx * n + i;
     const float x = __ldg(&input[idx]);
-    out[idx] = ((T)(x * s_variance)) * weight[i];
+    out[idx] = (T)(x * s_variance * weight[i]);
   }
 }
 
