@@ -12,13 +12,13 @@ using torch::indexing::Slice;
 
 // Rotary code ported from llama repo, which is used as disired output
 torch::Tensor precompute_freqs_cis(int64_t dim,
-                                   int64_t max_seq_len,
+                                   int64_t max_position_embeddings,
                                    float theta) {
   auto range = torch::arange(0, dim, 2);
   auto slice =
       range.slice(/*dim=*/0, /*start=*/0, /*end=*/dim / 2).to(torch::kFloat32);
   auto freqs = 1.0 / torch::pow(theta, slice / dim);
-  auto t = torch::arange(0, max_seq_len, 1).to(torch::kFloat32);
+  auto t = torch::arange(0, max_position_embeddings, 1).to(torch::kFloat32);
   freqs = torch::outer(t, freqs).to(torch::kFloat32);
   return torch::polar(torch::ones_like(freqs), freqs);
 }
@@ -73,21 +73,30 @@ TEST(RotaryEmbeddingTest, Interleaved) {
   const int64_t num_tokens = 16;
   const int64_t n_heads = 4;
   const int64_t head_dim = 4;
-  const int64_t max_seq_len = 128;
+  const int64_t max_position_embeddings = 128;
   torch::ScalarType dtype(torch::kFloat);
   torch::Device device(torch::kCPU);
-  InterleavedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, 0.0f, 10000.0f, dtype, device);
+
+  RotaryEmbeddingGeneric rotary_embedding(head_dim,
+                                          max_position_embeddings,
+                                          /*scaling_factor*/ 0.0f,
+                                          /*theta=*/10000.0f,
+                                          /*interleaved=*/true,
+                                          dtype,
+                                          device);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});
-  const torch::Tensor positions = torch::randint(0, max_seq_len, {num_tokens});
+  const torch::Tensor positions =
+      torch::randint(0, max_position_embeddings, {num_tokens});
 
   // make a copy for inplace operation
   const auto [query_output, key_output] =
       rotary_embedding.forward(query, key, positions);
 
   // compute the desired output
-  auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len, 10000.0f);
+  auto freqs_cis =
+      precompute_freqs_cis(head_dim, max_position_embeddings, 10000.0f);
   namespace F = torch::nn::functional;
   auto selected_freqs_cis = F::embedding(positions, freqs_cis);
   const auto [desired_query, desired_key] =
@@ -108,21 +117,29 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
   const int64_t num_tokens = 16;
   const int64_t n_heads = 4;
   const int64_t head_dim = 4;
-  const int64_t max_seq_len = 128;
+  const int64_t max_position_embeddings = 128;
   torch::ScalarType dtype(torch::kFloat);
   torch::Device device(torch::kCPU);
-  RotatedRotaryEmbedding rotary_embedding(head_dim, max_seq_len, 0.0f, 10000.0f, dtype, device);
+  RotaryEmbeddingGeneric rotary_embedding(head_dim,
+                                          max_position_embeddings,
+                                          /*scaling_factor*/ 0.0f,
+                                          /*theta=*/10000.0f,
+                                          /*interleaved=*/false,
+                                          dtype,
+                                          device);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});
-  const torch::Tensor positions = torch::randint(0, max_seq_len, {num_tokens});
+  const torch::Tensor positions =
+      torch::randint(0, max_position_embeddings, {num_tokens});
 
   // make a copy for inplace operation
   const auto [query_output, key_output] =
       rotary_embedding.forward(query, key, positions);
 
   // compute the desired output
-  auto freqs_cis = precompute_freqs_cis(head_dim, max_seq_len, 10000.0f);
+  auto freqs_cis =
+      precompute_freqs_cis(head_dim, max_position_embeddings, 10000.0f);
   namespace F = torch::nn::functional;
   auto selected_freqs_cis = F::embedding(positions, freqs_cis);
   auto [desired_query, desired_key] = apply_rotary_emb(
@@ -141,5 +158,7 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
                               /*rtol=*/1e-03,
                               /*atol=*/1e-05));
 }
+
+// TODO: test kernel version
 
 }  // namespace llm

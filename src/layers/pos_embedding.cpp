@@ -1,9 +1,12 @@
 #include "pos_embedding.h"
 
+#include <c10/core/ScalarType.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <memory>
+
+#include "kernels/pos_embedding_kernels.h"
 
 namespace llm {
 
@@ -36,7 +39,7 @@ inline torch::Tensor rotate_half(const torch::Tensor& x) {
 }
 
 // apply rotary positional embedding
-inline std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
+inline std::tuple<torch::Tensor, torch::Tensor> apply_rotated_rotary_pos_emb(
     const torch::Tensor& q,
     const torch::Tensor& k,
     const torch::Tensor& cos,
@@ -48,109 +51,106 @@ inline std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
 
 // create right instance based on params
 std::shared_ptr<RotaryEmbeddingImpl> create(int64_t rotary_dim,
-                                            int64_t max_seq_len,
+                                            int64_t max_position_embeddings,
                                             float scaling_factor,
                                             float rope_theta,
                                             bool interleaved,
                                             torch::ScalarType dtype,
                                             const torch::Device& device) {
-  if (interleaved) {
-    return std::make_shared<InterleavedRotaryEmbedding>(
-        rotary_dim, max_seq_len, scaling_factor, rope_theta, dtype, device);
+  if (device.is_cuda()) {
+    return std::make_shared<RotaryEmbeddingKernel>(rotary_dim,
+                                                   max_position_embeddings,
+                                                   scaling_factor,
+                                                   rope_theta,
+                                                   interleaved,
+                                                   dtype,
+                                                   device);
   }
-  return std::make_shared<RotatedRotaryEmbedding>(
-      rotary_dim, max_seq_len, scaling_factor, rope_theta, dtype, device);
+  return std::make_shared<RotaryEmbeddingGeneric>(rotary_dim,
+                                                  max_position_embeddings,
+                                                  scaling_factor,
+                                                  rope_theta,
+                                                  interleaved,
+                                                  dtype,
+                                                  device);
 }
 }  // namespace
 
+namespace detail {
+// compute the inverse frequencies
+// returns float32 tensor with shape [max_position_embeddings, rotary_dim]
+torch::Tensor compute_freqs(int64_t max_position_embeddings,
+                            int64_t rotary_dim,
+                            float scaling_factor,
+                            float theta) {
+  CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
+  const auto slice = torch::arange(0, rotary_dim, 2, torch::kFloat32);
+  const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
+  auto t = torch::arange(0, max_position_embeddings, 1, torch::kFloat32);
+  if (scaling_factor != 0) {
+    t /= scaling_factor;
+  }
+  return torch::einsum("i,j->ij", {t, inv_freq});
+}
+
+std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
+    const torch::Tensor& q,
+    const torch::Tensor& k,
+    const torch::Tensor& cos_sin,
+    bool interleaved) {
+  const auto chunks = cos_sin.chunk(/*chunks=*/2, /*dim=*/-1);
+  if (interleaved) {
+    return apply_interleaved_rotary_pos_emb(q, k, chunks[0], chunks[1]);
+  }
+  return apply_rotated_rotary_pos_emb(q, k, chunks[0], chunks[1]);
+}
+
+}  // namespace detail
+
 RotaryEmbedding::RotaryEmbedding(int64_t rotary_dim,
-                                 int64_t max_seq_len,
+                                 int64_t max_position_embeddings,
                                  float scaling_factor,
                                  float rope_theta,
                                  bool interleaved,
                                  torch::ScalarType dtype,
                                  const torch::Device& device)
     : ModuleHolder(create(rotary_dim,
-                          max_seq_len,
+                          max_position_embeddings,
                           scaling_factor,
                           rope_theta,
                           interleaved,
                           dtype,
                           device)) {}
 
-InterleavedRotaryEmbedding::InterleavedRotaryEmbedding(
-    int64_t rotary_dim,
-    int64_t max_seq_len,
-    float scaling_factor,
-    float theta,
-    torch::ScalarType dtype,
-    const torch::Device& device)
-    : rotary_dim_(rotary_dim) {
-  CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
-  // Create cos and sin embeddings.
-  const auto slice = torch::arange(0, rotary_dim, 2);
-  const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
-  auto t = torch::arange(0, max_seq_len, 1);
-  if (scaling_factor != 0) {
-    t /= scaling_factor;
-  }
-  const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
-  // [a, b, c, d] => [a, a, b, b, c, c, d, d]
-  auto emd = freqs.repeat_interleave(/*repeats=*/2, /*dim=*/-1);
-  emd = emd.to(torch::dtype(dtype).device(device));
-  // [max_seq_len, rotary_dim] => [max_seq_len, rotary_dim*2]
-  const auto cos_sin = torch::cat({emd.cos(), emd.sin()}, /*dim=*/-1);
-  cos_sin_cache_ = register_buffer("cos_sin_cached", cos_sin);
-}
-
-// inplace rotary positional embedding
-std::tuple<torch::Tensor, torch::Tensor> InterleavedRotaryEmbedding::forward(
-    const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
-    const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& positions  // [num_tokens]
-) const {
-  DCHECK_GE(query.size(-1), rotary_dim_);
-  auto query_rotary = query.index({"...", Slice(0, rotary_dim_)});
-  auto query_pass = query.index({"...", Slice(rotary_dim_, None)});
-  auto key_rotary = key.index({"...", Slice(0, rotary_dim_)});
-  auto key_pass = key.index({"...", Slice(rotary_dim_, None)});
-
-  namespace F = torch::nn::functional;
-  auto cos_sin = F::embedding(positions, cos_sin_cache_);
-  // add a new dimension for n_heads
-  cos_sin = cos_sin.unsqueeze(1);
-  const auto chunks = cos_sin.chunk(/*chunks=*/2, /*dim=*/-1);
-  std::tie(query_rotary, key_rotary) = apply_interleaved_rotary_pos_emb(
-      query_rotary, key_rotary, chunks[0], chunks[1]);
-  return std::make_tuple(torch::cat({query_rotary, query_pass}, /*dim=*/-1),
-                         torch::cat({key_rotary, key_pass}, /*dim=*/-1));
-}
-
-RotatedRotaryEmbedding::RotatedRotaryEmbedding(int64_t rotary_dim,
-                                               int64_t max_seq_len,
+RotaryEmbeddingGeneric::RotaryEmbeddingGeneric(int64_t rotary_dim,
+                                               int64_t max_position_embeddings,
                                                float scaling_factor,
                                                float theta,
+                                               bool interleaved,
                                                torch::ScalarType dtype,
                                                const torch::Device& device)
-    : rotary_dim_(rotary_dim) {
+    : rotary_dim_(rotary_dim), interleaved_(interleaved) {
   CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
+
+  const auto freqs = detail::compute_freqs(
+      max_position_embeddings, rotary_dim, scaling_factor, theta);
   // Create cos and sin embeddings.
-  const auto slice = torch::arange(0, rotary_dim, 2);
-  const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
-  auto t = torch::arange(0, max_seq_len, 1);
-  if (scaling_factor != 0) {
-    t /= scaling_factor;
+  torch::Tensor emd;
+  if (interleaved) {
+    // [a, b, c, d] => [a, a, b, b, c, c, d, d]
+    emd = freqs.repeat_interleave(/*repeats=*/2, /*dim=*/-1);
+  } else {
+    // [a, b, c, d] => [a, b, c, d, a, b, c, d]
+    emd = torch::cat({freqs, freqs}, /*dim=*/-1);
   }
-  const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
-  // [a, b, c, d] => [a, b, c, d, a, b, c, d]
-  auto emd = torch::cat({freqs, freqs}, /*dim=*/-1);
-  emd = emd.to(torch::dtype(dtype).device(device));
+
   const auto cos_sin = torch::cat({emd.cos(), emd.sin()}, /*dim=*/-1);
+  const auto options = torch::dtype(dtype).device(device);
   cos_sin_cache_ = register_buffer("cos_sin_cached", cos_sin);
 }
 
 // inplace rotary positional embedding
-std::tuple<torch::Tensor, torch::Tensor> RotatedRotaryEmbedding::forward(
+std::tuple<torch::Tensor, torch::Tensor> RotaryEmbeddingGeneric::forward(
     const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
     const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& positions  // [num_tokens]
@@ -165,11 +165,44 @@ std::tuple<torch::Tensor, torch::Tensor> RotatedRotaryEmbedding::forward(
   auto cos_sin = F::embedding(positions, cos_sin_cache_);
   // add a new dimension for n_heads
   cos_sin = cos_sin.unsqueeze(1);
-  const auto chunks = cos_sin.chunk(/*chunks=*/2, /*dim=*/-1);
-  std::tie(query_rotary, key_rotary) =
-      apply_rotary_pos_emb(query_rotary, key_rotary, chunks[0], chunks[1]);
+  std::tie(query_rotary, key_rotary) = detail::apply_rotary_pos_emb(
+      query_rotary, key_rotary, cos_sin, interleaved_);
   return std::make_tuple(torch::cat({query_rotary, query_pass}, /*dim=*/-1),
                          torch::cat({key_rotary, key_pass}, /*dim=*/-1));
+}
+
+RotaryEmbeddingKernel::RotaryEmbeddingKernel(int64_t rotary_dim,
+                                             int64_t max_position_embeddings,
+                                             float scaling_factor,
+                                             float theta,
+                                             bool interleaved,
+                                             torch::ScalarType dtype,
+                                             const torch::Device& device)
+    : rotary_dim_(rotary_dim), interleaved_(interleaved) {
+  const auto freqs = detail::compute_freqs(
+      max_position_embeddings, rotary_dim, scaling_factor, theta);
+  const auto cos_sin = torch::cat({freqs.cos(), freqs.sin()}, /*dim=*/-1);
+
+  const auto options = torch::dtype(dtype).device(device);
+  cos_sin_cache_ = register_buffer("cos_sin_cache", cos_sin.to(options));
+}
+
+// inplace rotary positional embedding
+std::tuple<torch::Tensor, torch::Tensor> RotaryEmbeddingKernel::forward(
+    const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
+    const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& positions  // [num_tokens]
+) const {
+  DCHECK_GE(query.size(-1), rotary_dim_);
+  torch::Tensor _query = query;
+  torch::Tensor _key = key;
+  kernel::apply_rotary_pos_emb(_query,
+                               _key,
+                               positions,
+                               cos_sin_cache_,
+                               static_cast<int>(rotary_dim_),
+                               interleaved_);
+  return std::make_tuple(query, key);
 }
 
 }  // namespace llm

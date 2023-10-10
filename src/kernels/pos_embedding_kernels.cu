@@ -35,7 +35,7 @@ template <typename T>
 __global__ void rotary_embedding_kernel(
     T* __restrict__ query,                  // [n_tokens, n_heads, head_dim]
     T* __restrict__ key,                    // [n_tokens, n_kv_heads, head_dim]
-    const int64_t* __restrict__ positions,  // [n_tokens]
+    const int* __restrict__ positions,  // [n_tokens]
     const T* __restrict__ cos_sin,          // [max_positions, 2, rotary_dim/2]
     int head_dim,
     int rotary_dim,
@@ -107,7 +107,7 @@ void apply_rotary_pos_emb(
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
             query.data_ptr<scalar_t>(),
             key.data_ptr<scalar_t>(),
-            positions.data_ptr<int64_t>(),
+            positions.data_ptr<int>(),
             cos_sin.data_ptr<scalar_t>(),
             head_dim,
             rotary_dim,

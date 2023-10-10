@@ -8,6 +8,19 @@
 #include <tuple>
 
 namespace llm {
+namespace detail {
+torch::Tensor compute_freqs(int64_t max_position_embeddings,
+                            int64_t rotary_dim,
+                            float scaling_factor,
+                            float theta);
+
+std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
+    const torch::Tensor& q,
+    const torch::Tensor& k,
+    const torch::Tensor& cos_sin,
+    bool interleaved);
+}  // namespace detail
+
 // an interface for rotary positional embedding.
 // all rotary positional embedding classes should inherit from this class and
 // implement the forward function.
@@ -35,7 +48,7 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
   // construct a rotary positional embedding.
   // chose right implementation based on the args.
   RotaryEmbedding(int64_t rotary_dim,
-                  int64_t max_seq_len,
+                  int64_t max_position_embeddings,
                   float scaling_factor,
                   float rope_theta,
                   bool interleaved,
@@ -49,34 +62,13 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
 // (used in GPT-J and LLama).
 // 2> Half-half rotation style of rotary positional embedding (as seen in
 // GPT-Neo).
-class InterleavedRotaryEmbedding : public RotaryEmbeddingImpl {
+class RotaryEmbeddingGeneric : public RotaryEmbeddingImpl {
  public:
-  InterleavedRotaryEmbedding(int64_t rotary_dim,
-                             int64_t max_seq_len,
-                             float scaling_factor,
-                             float theta,
-                             torch::ScalarType dtype,
-                             const torch::Device& device);
-
-  // inplace rotary positional embedding
-  std::tuple<torch::Tensor, torch::Tensor> forward(
-      const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
-      const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
-      const torch::Tensor& positions  // [num_tokens]
-  ) const override;
-
- private:
-  torch::Tensor cos_sin_cache_;
-
-  int64_t rotary_dim_ = 0;
-};
-
-class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
- public:
-  RotatedRotaryEmbedding(int64_t rotary_dim,
-                         int64_t max_seq_len,
+  RotaryEmbeddingGeneric(int64_t rotary_dim,
+                         int64_t max_position_embeddings,
                          float scaling_factor,
                          float theta,
+                         bool interleaved,
                          torch::ScalarType dtype,
                          const torch::Device& device);
 
@@ -91,6 +83,33 @@ class RotatedRotaryEmbedding : public RotaryEmbeddingImpl {
   torch::Tensor cos_sin_cache_;
 
   int64_t rotary_dim_ = 0;
+
+  bool interleaved_ = false;
+};
+
+class RotaryEmbeddingKernel : public RotaryEmbeddingImpl {
+ public:
+  RotaryEmbeddingKernel(int64_t rotary_dim,
+                        int64_t max_position_embeddings,
+                        float scaling_factor,
+                        float theta,
+                        bool interleaved,
+                        torch::ScalarType dtype,
+                        const torch::Device& device);
+
+  // inplace rotary positional embedding
+  std::tuple<torch::Tensor, torch::Tensor> forward(
+      const torch::Tensor& query,     // [num_tokens, n_heads, head_dim]
+      const torch::Tensor& key,       // [num_tokens, n_kv_heads, head_dim]
+      const torch::Tensor& positions  // [num_tokens]
+  ) const override;
+
+ private:
+  torch::Tensor cos_sin_cache_;
+
+  int64_t rotary_dim_ = 0;
+
+  bool interleaved_ = false;
 };
 
 }  // namespace llm
