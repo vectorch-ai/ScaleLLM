@@ -31,6 +31,8 @@ extern std::vector<at::Tensor> mha_varlen_fwd(
     float softmax_scale,
     bool zero_tensors,
     bool is_causal,
+    int window_size_left,
+    int window_size_right,
     bool return_softmax,
     c10::optional<at::Generator> gen_);
 
@@ -331,6 +333,8 @@ void varlen_masked_self_attention_cuda(
                  /*softmax_scale=*/scale,
                  /*zero_tensors=*/false,
                  /*is_causal=*/true,
+                 /*window_size_left=*/-1,
+                 /*window_size_right=*/0,
                  /*return_softmax=*/false,
                  /*gen_=*/torch::nullopt);
 }

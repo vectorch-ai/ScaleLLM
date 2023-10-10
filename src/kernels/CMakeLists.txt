@@ -16,7 +16,7 @@ cc_library(
     glog::glog
     torch
   COPTS
-    "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
+    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
 cc_library(
