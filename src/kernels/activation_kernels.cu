@@ -1,6 +1,6 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/core/TensorImpl.h>
-#include <torch/extension.h>
+#include <torch/torch.h>
 
 #include "activation_kernels.h"
 #include "dispatch.h"

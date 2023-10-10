@@ -1,6 +1,5 @@
 #include <ATen/cuda/CUDAContext.h>
-#include <torch/extension.h>
-
+#include <torch/torch.h>
 #include "dispatch.h"
 #include "reduce_kernel_utils.cuh"
 

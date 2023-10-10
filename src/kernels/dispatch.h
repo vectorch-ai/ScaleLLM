@@ -1,5 +1,3 @@
-#include <torch/extension.h>
-
 namespace llm::kernel {
 
 // NOLINTBEGIN(cppcoreguidelines-macro-usage)

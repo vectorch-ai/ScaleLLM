@@ -2,7 +2,7 @@
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
 
-#include <torch/extension.h>
+#include <torch/torch.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
 

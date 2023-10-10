@@ -15,7 +15,6 @@ cc_library(
   DEPS
     glog::glog
     torch
-    Python::Python
   COPTS
     "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
@@ -28,7 +27,6 @@ cc_library(
     gptq/gptq_kernel_64.cu
   DEPS
     torch
-    Python::Python
   COPTS
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
@@ -41,7 +39,6 @@ cc_library(
     awq/gemm_cuda_gen.cu
   DEPS
     torch
-    Python::Python
   COPTS
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
@@ -57,7 +54,6 @@ cc_library(
     exllama/cuda_func/q4_matrix.cu
   DEPS
     torch
-    Python::Python
   COPTS
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )

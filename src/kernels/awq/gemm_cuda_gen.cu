@@ -9,10 +9,10 @@ Shang and Dang, Xingyu and Han, Song}, journal={arXiv}, year={2023}
 
  */
 
-#include <torch/extension.h>
 // #include "gemm_cuda.h"
 #include <c10/cuda/CUDAGuard.h>
 #include <cuda_fp16.h>
+#include <torch/torch.h>
 
 #include "dequantize.cuh"
 

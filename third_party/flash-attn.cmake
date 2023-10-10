@@ -27,5 +27,4 @@ cc_library(
     flash-attn/csrc/cutlass/include
   DEPS
     torch
-    Python::Python
 )

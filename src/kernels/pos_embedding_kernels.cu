@@ -1,5 +1,5 @@
 #include <ATen/cuda/CUDAContext.h>
-#include <torch/extension.h>
+#include <torch/torch.h>
 
 #include "dispatch.h"
 #include "pos_embedding_kernels.h"
@@ -33,10 +33,10 @@ struct RotaryEmbedding {
 // inplace update query and key
 template <typename T>
 __global__ void rotary_embedding_kernel(
-    T* __restrict__ query,                  // [n_tokens, n_heads, head_dim]
-    T* __restrict__ key,                    // [n_tokens, n_kv_heads, head_dim]
+    T* __restrict__ query,              // [n_tokens, n_heads, head_dim]
+    T* __restrict__ key,                // [n_tokens, n_kv_heads, head_dim]
     const int* __restrict__ positions,  // [n_tokens]
-    const T* __restrict__ cos_sin,          // [max_positions, 2, rotary_dim/2]
+    const T* __restrict__ cos_sin,      // [max_positions, 2, rotary_dim/2]
     int head_dim,
     int rotary_dim,
     int n_heads,

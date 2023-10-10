@@ -5,7 +5,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <torch/all.h>
-#include <torch/python.h>
+#include <torch/torch.h>
 
 // atomicAdd for double-precision floating-point numbers on hardware with
 // compute capability < 6.0 from:
