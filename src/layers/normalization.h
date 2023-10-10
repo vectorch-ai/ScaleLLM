@@ -11,9 +11,13 @@ namespace detail {
 inline torch::Tensor rms_norm(torch::Tensor input,
                               const torch::Tensor& weight,
                               float eps) {
-  const auto mean =
-      input.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
-  return input * torch::rsqrt(mean + eps) * weight;
+  // it is important to use float to calculate the mean and std
+  const auto x = input.to(torch::kFloat);
+  const auto output =
+      x * torch::rsqrt(
+              x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true) + eps) * weight;
+  // convert back to the original dtype
+  return output.to(input);
 }
 
 inline torch::Tensor layer_norm(torch::Tensor input,
