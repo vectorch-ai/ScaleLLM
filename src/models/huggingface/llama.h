@@ -21,8 +21,8 @@ class LlamaMLPImpl : public torch::nn::Module {
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
                const torch::Device& device) {
-    act_ = Activation::get("silu", device);
-    CHECK(act_ != nullptr);
+    act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
+    CHECK(act_with_mul_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
@@ -51,9 +51,7 @@ class LlamaMLPImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    auto gate_up_proj = gate_up_proj_(x);
-    auto chunks = gate_up_proj.chunk(/*chunks=*/2, /*dim=*/-1);
-    return down_proj_(act_(chunks[0]) * chunks[1]);
+    return down_proj_(act_with_mul_(gate_up_proj_(x)));
   }
 
   // load the weight from the checkpoint
@@ -73,7 +71,8 @@ class LlamaMLPImpl : public torch::nn::Module {
   ColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 
-  ActFunc act_{nullptr};
+  // calculate act(x) * y
+  ActFunc act_with_mul_{nullptr};
 };
 TORCH_MODULE(LlamaMLP);
 

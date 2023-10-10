@@ -25,7 +25,7 @@ class GPT2MLPImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_ = Activation::get(args.hidden_act(), device);
+    act_ = Activation::get_act_func(args.hidden_act(), device);
     CHECK(act_ != nullptr);
 
     // register the weight parameter
@@ -316,8 +316,8 @@ class GPT2ForCausalLMImpl : public torch::nn::Module {
                       torch::ScalarType dtype,
                       const torch::Device& device) {
     // register submodules
-    model_ = register_module("model",
-                             GPT2Model(args, quant_args, parallel_args, dtype, device));
+    model_ = register_module(
+        "model", GPT2Model(args, quant_args, parallel_args, dtype, device));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),

@@ -26,7 +26,7 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_ = Activation::get(args.hidden_act(), device);
+    act_ = Activation::get_act_func(args.hidden_act(), device);
     CHECK(act_ != nullptr);
 
     // register the weight parameter

@@ -22,7 +22,7 @@ class MPTMLPImpl : public torch::nn::Module {
              const ParallelArgs& parallel_args,
              torch::ScalarType dtype,
              const torch::Device& device) {
-    act_ = Activation::get("silu", device);
+    act_ = Activation::get_act_func("silu", device);
     CHECK(act_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();

@@ -22,8 +22,8 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
                        const torch::Device& device) {
-    act_ = Activation::get("silu", device);
-    CHECK(act_ != nullptr);
+    act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
+    CHECK(act_with_mul_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
@@ -50,9 +50,7 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    auto w1_w3 = w1_w3_(x);
-    auto chunks = w1_w3.chunk(/*chunks=*/2, /*dim=*/-1);
-    return w2_(act_(chunks[0]) * chunks[1]);
+    return w2_(act_with_mul_(w1_w3_(x)));
   }
 
   // load the weight from the checkpoint
@@ -72,7 +70,8 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
   ColumnParallelLinear w1_w3_{nullptr};
   RowParallelLinear w2_{nullptr};
 
-  ActFunc act_{nullptr};
+  // calculate act(x) * y
+  ActFunc act_with_mul_{nullptr};
 };
 TORCH_MODULE(LlamaFeedForward);
 

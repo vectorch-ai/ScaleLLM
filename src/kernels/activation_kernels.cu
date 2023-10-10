@@ -72,6 +72,23 @@ __global__ void activation_kernel(T* __restrict__ out,
   }
 }
 
+template <template <typename T> class Activation>
+void launch_activation(torch::Tensor& out, torch::Tensor input) {
+  const int n = static_cast<int>(input.size(1));
+  const int stride = static_cast<int>(input.stride(0));
+  dim3 grid(input.size(0));
+  dim3 block(std::min(n, 1024));
+  DISPATCH_FLOATING_TYPES(
+      input.scalar_type(), "activation_kernel", ([&] {
+        activation_kernel<Activation, scalar_t>
+            <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
+                out.data_ptr<scalar_t>(),
+                input.data_ptr<scalar_t>(),
+                n,
+                stride);
+      }));
+}
+
 // calculate act(x) * y where x = input[idx] and y = input[idx + n]
 template <template <typename T> class Activation, typename T>
 __global__ void activation_and_mul_kernel(T* __restrict__ out,
@@ -87,22 +104,8 @@ __global__ void activation_and_mul_kernel(T* __restrict__ out,
 }
 
 template <template <typename T> class Activation>
-void launch_activation(torch::Tensor& out, torch::Tensor input) {
-  const int n = static_cast<int>(input.size(1));
-  const int stride = static_cast<int>(input.stride(0));
-  dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
-  DISPATCH_FLOATING_TYPES(
-      input.scalar_type(), "activation_kernel", ([&] {
-        activation_kernel<Activation, scalar_t>
-            <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
-                out.data_ptr<scalar_t>(), input.data_ptr<scalar_t>(), n, stride);
-      }));
-}
-
-template <template <typename T> class Activation>
 void launch_activation_and_mul(torch::Tensor& out, torch::Tensor input) {
-  const int n = static_cast<int>(input.size(1));
+  const int n = static_cast<int>(input.size(1)) / 2;
   dim3 grid(input.size(0));
   dim3 block(std::min(n, 1024));
   DISPATCH_FLOATING_TYPES(
@@ -128,6 +131,35 @@ torch::Tensor gelu_fast(torch::Tensor input) {
 torch::Tensor silu(torch::Tensor input) {
   torch::Tensor out = torch::empty_like(input);
   launch_activation<SiluActivation>(out, input);
+  return out;
+}
+
+// calculate act(x) * y where x = input[0] and y = input[1]
+torch::Tensor gelu_new_with_mul(torch::Tensor input) {
+  CHECK(input.is_contiguous());
+  std::vector<int64_t> sizes = input.sizes().vec();
+  CHECK(sizes.size() == 2);
+  sizes[1] /= 2;
+  torch::Tensor out = torch::empty(sizes, input.options());
+  launch_activation_and_mul<GeluNewActivation>(out, input);
+  return out;
+}
+torch::Tensor gelu_fast_with_mul(torch::Tensor input) {
+  CHECK(input.is_contiguous());
+  std::vector<int64_t> sizes = input.sizes().vec();
+  CHECK(sizes.size() == 2);
+  sizes[1] /= 2;
+  torch::Tensor out = torch::empty(sizes, input.options());
+  launch_activation_and_mul<GeluFastActivation>(out, input);
+  return out;
+}
+torch::Tensor silu_with_mul(torch::Tensor input) {
+  CHECK(input.is_contiguous());
+  std::vector<int64_t> sizes = input.sizes().vec();
+  CHECK(sizes.size() == 2);
+  sizes[1] /= 2;
+  torch::Tensor out = torch::empty(sizes, input.options());
+  launch_activation_and_mul<SiluActivation>(out, input);
   return out;
 }
 
