@@ -34,6 +34,13 @@ torch::Tensor construct_weights(
 }  // namespace details
 
 // quantized linear layers using gptq
+using VecQuantMatmulFunc = void (*)(torch::Tensor vec,
+                                    torch::Tensor mat,
+                                    torch::Tensor mul,
+                                    torch::Tensor scales,
+                                    torch::Tensor zeros,
+                                    torch::Tensor g_idx,
+                                    int64_t bits);
 
 // Quantized Linear layer with column parallelism.
 // The linear layer is defined as Y = XA + b. A is parallelized along
@@ -75,6 +82,8 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
 
   // whether to gather the output
   bool gather_output_;
+
+  VecQuantMatmulFunc vec_quant_matmul_func_ = nullptr;
 };
 
 // Linear layer with row parallelism.
@@ -124,5 +133,7 @@ class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
 
   // whether the input is already parallelized
   bool input_is_parallelized_;
+
+  VecQuantMatmulFunc vec_quant_matmul_func_ = nullptr;
 };
 }  // namespace llm

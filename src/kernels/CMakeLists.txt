@@ -26,7 +26,7 @@ cc_library(
     gptq.kernels
   HDRS 
   SRCS 
-    gptq/gptq_kernel_64.cu
+    gptq/gptq_kernel.cu
   DEPS
     torch
   COPTS

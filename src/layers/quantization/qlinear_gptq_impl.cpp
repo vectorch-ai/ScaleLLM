@@ -16,33 +16,20 @@ DEFINE_string(qlinear_gptq_impl,
 
 DEFINE_bool(use_exllama, true, "use exllama for 4 bits");
 
-extern void vecquant2matmul_cuda(torch::Tensor vec,
+extern void vec_quant_matmul_64(torch::Tensor vec,
+                                torch::Tensor mat,
+                                torch::Tensor mul,
+                                torch::Tensor scales,
+                                torch::Tensor zeros,
+                                torch::Tensor g_idx,
+                                int64_t bits);
+extern void vec_quant_matmul_256(torch::Tensor vec,
                                  torch::Tensor mat,
                                  torch::Tensor mul,
                                  torch::Tensor scales,
                                  torch::Tensor zeros,
-                                 torch::Tensor g_idx);
-
-extern void vecquant3matmul_cuda(torch::Tensor vec,
-                                 torch::Tensor mat,
-                                 torch::Tensor mul,
-                                 torch::Tensor scales,
-                                 torch::Tensor zeros,
-                                 torch::Tensor g_idx);
-
-extern void vecquant4matmul_cuda(torch::Tensor vec,
-                                 torch::Tensor mat,
-                                 torch::Tensor mul,
-                                 torch::Tensor scales,
-                                 torch::Tensor zeros,
-                                 torch::Tensor g_idx);
-
-extern void vecquant8matmul_cuda(torch::Tensor vec,
-                                 torch::Tensor mat,
-                                 torch::Tensor mul,
-                                 torch::Tensor scales,
-                                 torch::Tensor zeros,
-                                 torch::Tensor g_idx);
+                                 torch::Tensor g_idx,
+                                 int64_t bits);
 
 // Create Q4Matrix, return handle
 extern uintptr_t make_q4(torch::Tensor qweight,
@@ -57,30 +44,6 @@ extern void q4_matmul(torch::Tensor x, uintptr_t w, torch::Tensor out);
 extern void free_q4(uintptr_t w);
 
 namespace llm {
-namespace {
-void vec_quant_matmul_cuda(torch::Tensor vec,
-                           torch::Tensor mat,
-                           torch::Tensor mul,
-                           torch::Tensor scales,
-                           torch::Tensor zeros,
-                           torch::Tensor g_idx,
-                           int64_t bits) {
-  switch (bits) {
-    case 2:
-      return vecquant2matmul_cuda(vec, mat, mul, scales, zeros, g_idx);
-    case 3:
-      return vecquant3matmul_cuda(vec, mat, mul, scales, zeros, g_idx);
-    case 4:
-      return vecquant4matmul_cuda(vec, mat, mul, scales, zeros, g_idx);
-    case 8:
-      return vecquant8matmul_cuda(vec, mat, mul, scales, zeros, g_idx);
-    default:
-      LOG(FATAL) << "Unsupported bits " << bits;
-  }
-  __builtin_unreachable();
-}
-
-}  // namespace
 
 namespace details {
 // construct weights matrix for gptq from quantized weights
@@ -202,6 +165,15 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
   g_idx_ = register_buffer(
       "g_idx",
       torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
+
+  vec_quant_matmul_func_ = vec_quant_matmul_256;
+  if (in_features % 256 != 0 || out_features % 256 != 0) {
+    vec_quant_matmul_func_ = vec_quant_matmul_64;
+  }
+  if (in_features % 64 != 0 || out_features % 64 != 0) {
+    LOG(FATAL) << "in_features and out_features size is not supported: ["
+               << in_features << ", " << out_features << "]";
+  }
 }
 
 ColumnParallelQLinearGPTQImpl::~ColumnParallelQLinearGPTQImpl() {
@@ -234,13 +206,13 @@ torch::Tensor ColumnParallelQLinearGPTQImpl::forward(
     auto output_float = torch::zeros({input_float.size(0), out_features},
                                      input_float.options());
 
-    vec_quant_matmul_cuda(input_float,
-                          qweight_,
-                          output_float,
-                          scales_float,
-                          qzeros_,
-                          g_idx_,
-                          bits_);
+    vec_quant_matmul_func_(input_float,
+                           qweight_,
+                           output_float,
+                           scales_float,
+                           qzeros_,
+                           g_idx_,
+                           bits_);
     output = output_float.to(input);
   }
 
@@ -288,6 +260,15 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
   g_idx_ = register_buffer(
       "g_idx",
       torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
+
+  vec_quant_matmul_func_ = vec_quant_matmul_256;
+  if (in_features % 256 != 0 || out_features % 256 != 0) {
+    vec_quant_matmul_func_ = vec_quant_matmul_64;
+  }
+  if (in_features % 64 != 0 || out_features % 64 != 0) {
+    LOG(FATAL) << "in_features and out_features size is not supported: ["
+               << in_features << ", " << out_features << "]";
+  }
 }
 
 RowParallelQLinearGPTQImpl::~RowParallelQLinearGPTQImpl() {
@@ -325,13 +306,13 @@ torch::Tensor RowParallelQLinearGPTQImpl::forward(torch::Tensor input) const {
     auto scales_float = scales_.to(torch::kFloat32);
     auto output_float = torch::zeros({input_float.size(0), out_features},
                                      input_float.options());
-    vec_quant_matmul_cuda(input_float,
-                          qweight_,
-                          output_float,
-                          scales_float,
-                          qzeros_,
-                          g_idx_,
-                          bits_);
+    vec_quant_matmul_func_(input_float,
+                           qweight_,
+                           output_float,
+                           scales_float,
+                           qzeros_,
+                           g_idx_,
+                           bits_);
     output = output_float.to(input);
   }
   if (bias_.defined()) {
