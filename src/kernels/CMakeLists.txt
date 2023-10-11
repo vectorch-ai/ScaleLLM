@@ -60,3 +60,16 @@ cc_library(
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
+cc_library(
+  NAME 
+    exllama2.kernels
+  SRCS 
+    exllamav2/ext.cpp
+    exllamav2/cuda/q_matrix.cu
+    exllamav2/cuda/q_gemm.cu
+  DEPS
+    torch
+  COPTS
+    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
+)
+
