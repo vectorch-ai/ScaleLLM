@@ -32,30 +32,26 @@ ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
                                 bits,
                                 group_size,
                                 /*qweight_pack_dim=*/1,
-                                parallel_args.rank(),
-                                parallel_args.world_size(),
+                                gather_output,
+                                parallel_args,
                                 dtype,
                                 device),
       bits_(bits),
-      group_size_(group_size),
-      parallel_args_(parallel_args),
-      gather_output_(gather_output) {
+      group_size_(group_size) {
   CHECK(bits == 4) << "Only 4 bits are supported for AWQ";
   CHECK(group_size > 0) << "group_size must be positive";
   pack_factor_ = 32 / bits;
 }
 
-torch::Tensor ColumnParallelQLinearAWQImpl::forward(torch::Tensor input) const {
-  const int64_t out_features = qweight_.size(-1) * pack_factor_;
+torch::Tensor ColumnParallelQLinearAWQImpl::quant_matmul(
+    const torch::Tensor& input,
+    const torch::Tensor& qweight,
+    const torch::Tensor& qzeros,
+    const torch::Tensor& scales) const {
+  const int64_t out_features = qweight.size(-1) * pack_factor_;
   torch::Tensor output =
-      gemm_forward_cuda(input, qweight_, scales_, qzeros_, pack_factor_);
+      gemm_forward_cuda(input, qweight, scales, qzeros, pack_factor_);
   output = output.view({-1, out_features});
-  if (bias_.defined()) {
-    output.add_(bias_);
-  }
-  if (parallel_args_.world_size() > 1 && gather_output_) {
-    output = gather_from_model_parallel_region(output, parallel_args_);
-  }
   return output;
 }
 
@@ -75,33 +71,26 @@ RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
                              bits,
                              group_size,
                              /*qweight_pack_dim=*/1,
-                             parallel_args.rank(),
-                             parallel_args.world_size(),
+                             input_is_parallelized,
+                             parallel_args,
                              dtype,
                              device),
       bits_(bits),
-      group_size_(group_size),
-      parallel_args_(parallel_args),
-      input_is_parallelized_(input_is_parallelized) {
+      group_size_(group_size) {
   CHECK(bits == 4) << "Only 4 bits are supported for AWQ";
   CHECK(group_size > 0) << "group_size must be positive";
   pack_factor_ = 32 / bits;
 }
 
-torch::Tensor RowParallelQLinearAWQImpl::forward(torch::Tensor input) const {
-  if (!input_is_parallelized_) {
-    input = scatter_to_model_parallel_region(input, parallel_args_);
-  }
-  const int64_t out_features = qweight_.size(-1) * pack_factor_;
+torch::Tensor RowParallelQLinearAWQImpl::quant_matmul(
+    const torch::Tensor& input,
+    const torch::Tensor& qweight,
+    const torch::Tensor& qzeros,
+    const torch::Tensor& scales) const {
+  const int64_t out_features = qweight.size(-1) * pack_factor_;
   torch::Tensor output =
-      gemm_forward_cuda(input, qweight_, scales_, qzeros_, pack_factor_);
+      gemm_forward_cuda(input, qweight, scales, qzeros, pack_factor_);
   output = output.view({-1, out_features});
-  if (bias_.defined()) {
-    output.add_(bias_);
-  }
-  if (parallel_args_.world_size() > 1) {
-    output = reduce_from_model_parallel_region(output, parallel_args_);
-  }
   return output;
 }
 

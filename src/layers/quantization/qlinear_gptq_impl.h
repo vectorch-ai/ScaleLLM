@@ -59,13 +59,10 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
 
   ~ColumnParallelQLinearGPTQImpl() override;
 
-  torch::Tensor forward(torch::Tensor input) const override;
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " g_idx=" << g_idx_.sizes() << " device=" << qweight_.device();
-  }
+  torch::Tensor quant_matmul(const torch::Tensor& input,
+                             const torch::Tensor& qweight,
+                             const torch::Tensor& qzeros,
+                             const torch::Tensor& scales) const override;
 
  private:
   // parameter members, must be registered
@@ -76,12 +73,6 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
 
   // quantization parameters
   int64_t bits_ = 0;
-
-  // parallel args
-  ParallelArgs parallel_args_;
-
-  // whether to gather the output
-  bool gather_output_;
 
   VecQuantMatmulFunc vec_quant_matmul_func_ = nullptr;
 };
@@ -110,13 +101,10 @@ class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
 
   ~RowParallelQLinearGPTQImpl() override;
 
-  torch::Tensor forward(torch::Tensor input) const override;
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " g_idx=" << g_idx_.sizes() << " device=" << qweight_.device();
-  }
+  torch::Tensor quant_matmul(const torch::Tensor& input,
+                             const torch::Tensor& qweight,
+                             const torch::Tensor& qzeros,
+                             const torch::Tensor& scales) const override;
 
  private:
   // parameter members, must be registered
@@ -127,12 +115,6 @@ class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
 
   // quantization parameters
   int64_t bits_ = 0;
-
-  // parallel args
-  ParallelArgs parallel_args_;
-
-  // whether the input is already parallelized
-  bool input_is_parallelized_;
 
   VecQuantMatmulFunc vec_quant_matmul_func_ = nullptr;
 };

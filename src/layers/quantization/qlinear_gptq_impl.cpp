@@ -146,13 +146,11 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
                                 bits,
                                 group_size,
                                 /*qweight_pack_dim=*/0,
-                                parallel_args.rank(),
-                                parallel_args.world_size(),
+                                gather_output,
+                                parallel_args,
                                 dtype,
                                 device),
-      bits_(bits),
-      parallel_args_(parallel_args),
-      gather_output_(gather_output) {
+      bits_(bits) {
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
@@ -182,45 +180,41 @@ ColumnParallelQLinearGPTQImpl::~ColumnParallelQLinearGPTQImpl() {
   }
 }
 
-torch::Tensor ColumnParallelQLinearGPTQImpl::forward(
-    torch::Tensor input) const {
-  const int64_t out_features = qweight_.size(-1);
+torch::Tensor ColumnParallelQLinearGPTQImpl::quant_matmul(
+    const torch::Tensor& input,
+    const torch::Tensor& qweight,
+    const torch::Tensor& qzeros,
+    const torch::Tensor& scales) const {
+  const int64_t out_features = qweight.size(-1);
   torch::Tensor output;
   if (FLAGS_qlinear_gptq_impl == "slow") {
     output = torch::zeros({input.size(0), out_features}, input.options());
     const auto weights =
-        details::construct_weights(qweight_, qzeros_, scales_, bits_);
+        details::construct_weights(qweight, qzeros, scales, bits_);
     torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
   } else if (FLAGS_use_exllama && bits_ == 4) {
     // use exllama for 4 bits, which is faster
     if (q4_ == 0) {
       auto none_tensor = torch::empty({1, 1}, torch::kMeta);
       q4_ = make_q4(
-          qweight_, qzeros_, scales_, none_tensor, qweight_.device().index());
+          qweight, qzeros, scales, none_tensor, qweight.device().index());
     }
     output = torch::zeros({input.size(0), out_features}, input.options());
     q4_matmul(input, q4_, output);
   } else {
     auto input_float = input.to(torch::kFloat32);
-    auto scales_float = scales_.to(torch::kFloat32);
+    auto scales_float = scales.to(torch::kFloat32);
     auto output_float = torch::zeros({input_float.size(0), out_features},
                                      input_float.options());
 
     vec_quant_matmul_func_(input_float,
-                           qweight_,
+                           qweight,
                            output_float,
                            scales_float,
-                           qzeros_,
+                           qzeros,
                            g_idx_,
                            bits_);
     output = output_float.to(input);
-  }
-
-  if (bias_.defined()) {
-    output.add_(bias_);
-  }
-  if (parallel_args_.world_size() > 1 && gather_output_) {
-    output = gather_from_model_parallel_region(output, parallel_args_);
   }
   return output;
 }
@@ -241,13 +235,11 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
                              bits,
                              group_size,
                              /*qweight_pack_dim=*/0,
-                             parallel_args.rank(),
-                             parallel_args.world_size(),
+                             input_is_parallelized,
+                             parallel_args,
                              dtype,
                              device),
-      bits_(bits),
-      parallel_args_(parallel_args),
-      input_is_parallelized_(input_is_parallelized) {
+      bits_(bits) {
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
@@ -277,49 +269,43 @@ RowParallelQLinearGPTQImpl::~RowParallelQLinearGPTQImpl() {
   }
 }
 
-torch::Tensor RowParallelQLinearGPTQImpl::forward(torch::Tensor input) const {
-  if (!input_is_parallelized_) {
-    input = scatter_to_model_parallel_region(input, parallel_args_);
-  }
-
-  const int64_t out_features = qweight_.size(-1);
+torch::Tensor RowParallelQLinearGPTQImpl::quant_matmul(
+    const torch::Tensor& input,
+    const torch::Tensor& qweight,
+    const torch::Tensor& qzeros,
+    const torch::Tensor& scales) const {
+  const int64_t out_features = qweight.size(-1);
   torch::Tensor output;
   if (FLAGS_qlinear_gptq_impl == "slow") {
     output = torch::zeros({input.size(0), out_features}, input.options());
     const auto weights =
-        details::construct_weights(qweight_, qzeros_, scales_, bits_);
+        details::construct_weights(qweight, qzeros, scales, bits_);
     torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
-  } else if (FLAGS_use_exllama && bits_ == 4 &&
-             parallel_args_.world_size() == 1) {
+  } else if (FLAGS_use_exllama && bits_ == 4 /*&&
+             parallel_args_.world_size() == 1*/) {
     // Exllama implementation does not support row tensor parallelism with
     // act-order, as it would require to reorder input activations that are
     // split unto several GPUs use exllama for 4 bits, which is faster
     if (q4_ == 0) {
       auto none_tensor = torch::empty({1, 1}, torch::kMeta);
       q4_ = make_q4(
-          qweight_, qzeros_, scales_, none_tensor, qweight_.device().index());
+          qweight, qzeros, scales, none_tensor, qweight.device().index());
     }
     output = torch::zeros({input.size(0), out_features}, input.options());
     q4_matmul(input, q4_, output);
   } else {
     auto input_float = input.to(torch::kFloat32);
-    auto scales_float = scales_.to(torch::kFloat32);
+    auto scales_float = scales.to(torch::kFloat32);
     auto output_float = torch::zeros({input_float.size(0), out_features},
                                      input_float.options());
     vec_quant_matmul_func_(input_float,
-                           qweight_,
+                           qweight,
                            output_float,
                            scales_float,
-                           qzeros_,
+                           qzeros,
                            g_idx_,
                            bits_);
     output = output_float.to(input);
-  }
-  if (bias_.defined()) {
-    output.add_(bias_);
-  }
-  if (parallel_args_.world_size() > 1) {
-    output = reduce_from_model_parallel_region(output, parallel_args_);
   }
   return output;
 }

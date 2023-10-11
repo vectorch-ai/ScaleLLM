@@ -25,25 +25,16 @@ class ColumnParallelQLinearAWQImpl : public ColumnParallelQLinearImpl {
                                torch::ScalarType dtype,
                                const torch::Device& device);
 
-  torch::Tensor forward(torch::Tensor input) const override;
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " device=" << qweight_.device();
-  }
+  torch::Tensor quant_matmul(const torch::Tensor& input,
+                             const torch::Tensor& qweight,
+                             const torch::Tensor& qzeros,
+                             const torch::Tensor& scales) const override;
 
  private:
   // quantization parameters
   int64_t bits_ = 0;
   int64_t group_size_ = 0;
   int pack_factor_ = 0;
-
-  // parallel args
-  ParallelArgs parallel_args_;
-
-  // whether to gather the output
-  bool gather_output_;
 };
 
 // Linear layer with row parallelism.
@@ -68,24 +59,15 @@ class RowParallelQLinearAWQImpl : public RowParallelQLinearImpl {
                             torch::ScalarType dtype,
                             const torch::Device& device);
 
-  torch::Tensor forward(torch::Tensor input) const override;
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " device=" << qweight_.device();
-  }
+  torch::Tensor quant_matmul(const torch::Tensor& input,
+                             const torch::Tensor& qweight,
+                             const torch::Tensor& qzeros,
+                             const torch::Tensor& scales) const override;
 
  private:
   // quantization parameters
   int64_t bits_ = 0;
   int64_t group_size_ = 0;
   int pack_factor_ = 0;
-
-  // parallel args
-  ParallelArgs parallel_args_;
-
-  // whether the input is already parallelized
-  bool input_is_parallelized_;
 };
 }  // namespace llm

@@ -24,14 +24,15 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     int64_t bits,
     int64_t group_size,
     int64_t qweight_pack_dim,
-    int rank,
-    int world_size,
+    bool gather_output,
+    const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device)
-    : rank_(rank), world_size_(world_size) {
+    : gather_output_(gather_output), parallel_args_(parallel_args) {
   CHECK(group_size > 0) << "group_size must be positive";
   CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
+  const int64_t world_size = parallel_args.world_size();
   CHECK(out_features % world_size == 0)
       << "out_features " << out_features << " not divisible by world_size "
       << world_size;
@@ -76,8 +77,8 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
   const auto qweight =
       state_dict.get_sharded_tensor("qweight",
                                     /*dim=*/1,
-                                    /*rank=*/rank_,
-                                    /*world_size=*/world_size_);
+                                    parallel_args_.rank(),
+                                    parallel_args_.world_size());
   if (qweight.defined()) {
     CHECK(!qweight_is_loaded_) << "qweight already loaded";
     CHECK_EQ(qweight_.sizes(), qweight.sizes())
@@ -85,10 +86,11 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
     qweight_.copy_(qweight);
     qweight_is_loaded_ = true;
   }
-  const auto qzeros = state_dict.get_sharded_tensor("qzeros",
-                                                    /*dim=*/1,
-                                                    rank_,
-                                                    world_size_);
+  const auto qzeros =
+      state_dict.get_sharded_tensor("qzeros",
+                                    /*dim=*/1,
+                                    parallel_args_.rank(),
+                                    parallel_args_.world_size());
   if (qzeros.defined()) {
     CHECK(qzeros_.defined()) << "qzeros is not defined for " << name();
     CHECK_EQ(qzeros_.sizes(), qzeros.sizes())
@@ -96,10 +98,11 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
     qzeros_.copy_(qzeros);
     qzeros_is_loaded_ = true;
   }
-  const auto scales = state_dict.get_sharded_tensor("scales",
-                                                    /*dim=*/1,
-                                                    rank_,
-                                                    world_size_);
+  const auto scales =
+      state_dict.get_sharded_tensor("scales",
+                                    /*dim=*/1,
+                                    parallel_args_.rank(),
+                                    parallel_args_.world_size());
   if (scales.defined()) {
     CHECK(!scales_is_loaded_) << "scales already loaded";
     CHECK_EQ(scales_.sizes(), scales.sizes())
@@ -109,10 +112,11 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
   }
 
   if (bias_.defined()) {
-    const auto bias = state_dict.get_sharded_tensor("bias",
-                                                    /*dim=*/0,
-                                                    rank_,
-                                                    world_size_);
+    const auto bias =
+        state_dict.get_sharded_tensor("bias",
+                                      /*dim=*/0,
+                                      parallel_args_.rank(),
+                                      parallel_args_.world_size());
     if (bias.defined()) {
       CHECK(!bias_is_loaded_) << "bias already loaded";
       CHECK_EQ(bias_.sizes(), bias.sizes())
@@ -135,30 +139,33 @@ void ColumnParallelQLinearImpl::load_state_dict(
 
   for (size_t i = 0; i < count; ++i) {
     std::string tensor_name = std::string(prefixes[i]) + "qweight";
-    const auto qweight = state_dict.get_sharded_tensor(tensor_name,
-                                                       /*dim=*/1,
-                                                       rank_,
-                                                       world_size_);
+    const auto qweight =
+        state_dict.get_sharded_tensor(tensor_name,
+                                      /*dim=*/1,
+                                      parallel_args_.rank(),
+                                      parallel_args_.world_size());
     if (qweight.defined()) {
       CHECK(!qweight_is_loaded_) << "qweight already loaded";
       CHECK(!qweight_list[i].defined()) << "qweight already loaded";
       qweight_list[i] = qweight;
     }
     tensor_name = std::string(prefixes[i]) + "qzeros";
-    const auto qzeros = state_dict.get_sharded_tensor(tensor_name,
-                                                      /*dim=*/1,
-                                                      rank_,
-                                                      world_size_);
+    const auto qzeros =
+        state_dict.get_sharded_tensor(tensor_name,
+                                      /*dim=*/1,
+                                      parallel_args_.rank(),
+                                      parallel_args_.world_size());
     if (qzeros.defined()) {
       CHECK(!qzeros_is_loaded_) << "qzeros already loaded";
       CHECK(!qzeros_list[i].defined()) << "qzeros already loaded";
       qzeros_list[i] = qzeros;
     }
     tensor_name = std::string(prefixes[i]) + "scales";
-    const auto scales = state_dict.get_sharded_tensor(tensor_name,
-                                                      /*dim=*/1,
-                                                      rank_,
-                                                      world_size_);
+    const auto scales =
+        state_dict.get_sharded_tensor(tensor_name,
+                                      /*dim=*/1,
+                                      parallel_args_.rank(),
+                                      parallel_args_.world_size());
     if (scales.defined()) {
       CHECK(!scales_is_loaded_) << "scales already loaded";
       CHECK(!scales_list[i].defined()) << "scales already loaded";
@@ -167,10 +174,11 @@ void ColumnParallelQLinearImpl::load_state_dict(
     // load bias if defined
     if (bias_.defined()) {
       tensor_name = std::string(prefixes[i]) + "bias";
-      const auto bias = state_dict.get_sharded_tensor(tensor_name,
-                                                      /*dim=*/0,
-                                                      rank_,
-                                                      world_size_);
+      const auto bias =
+          state_dict.get_sharded_tensor(tensor_name,
+                                        /*dim=*/0,
+                                        parallel_args_.rank(),
+                                        parallel_args_.world_size());
       if (bias.defined()) {
         CHECK(!bias_is_loaded_) << "bias already loaded";
         CHECK(!bias_list[i].defined()) << "bias already loaded";
@@ -224,20 +232,23 @@ void ColumnParallelQLinearImpl::verify_loaded_weights(
       << "bias is not loaded for " << prefix + "bias";
 }
 
-RowParallelQLinearImpl::RowParallelQLinearImpl(int64_t in_features,
-                                               int64_t out_features,
-                                               bool bias,
-                                               int64_t bits,
-                                               int64_t group_size,
-                                               int64_t qweight_pack_dim,
-                                               int rank,
-                                               int world_size,
-                                               torch::ScalarType dtype,
-                                               const torch::Device& device)
-    : rank_(rank), world_size_(world_size) {
+RowParallelQLinearImpl::RowParallelQLinearImpl(
+    int64_t in_features,
+    int64_t out_features,
+    bool bias,
+    int64_t bits,
+    int64_t group_size,
+    int64_t qweight_pack_dim,
+    bool input_is_parallelized,
+    const ParallelArgs& parallel_args,
+    torch::ScalarType dtype,
+    const torch::Device& device)
+    : input_is_parallelized_(input_is_parallelized),
+      parallel_args_(parallel_args) {
   CHECK(group_size > 0) << "group_size must be positive";
   CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
+  const int64_t world_size = parallel_args.world_size();
   CHECK(in_features % world_size == 0)
       << "in_features " << in_features << " not divisible by world_size "
       << world_size;
@@ -281,30 +292,33 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(int64_t in_features,
 
 // load the weight from the checkpoint
 void RowParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto qweight = state_dict.get_sharded_tensor("qweight",
-                                                     /*dim=*/0,
-                                                     rank_,
-                                                     world_size_);
+  const auto qweight =
+      state_dict.get_sharded_tensor("qweight",
+                                    /*dim=*/0,
+                                    parallel_args_.rank(),
+                                    parallel_args_.world_size());
   if (qweight.defined()) {
     CHECK_EQ(qweight_.sizes(), qweight.sizes())
         << "qweight size mismatch for " << name();
     qweight_.copy_(qweight);
     qweight_is_loaded_ = true;
   }
-  const auto qzeros = state_dict.get_sharded_tensor("qzeros",
-                                                    /*dim=*/0,
-                                                    rank_,
-                                                    world_size_);
+  const auto qzeros =
+      state_dict.get_sharded_tensor("qzeros",
+                                    /*dim=*/0,
+                                    parallel_args_.rank(),
+                                    parallel_args_.world_size());
   if (qzeros.defined()) {
     CHECK_EQ(qzeros_.sizes(), qzeros.sizes())
         << "qzeros size mismatch for " << name();
     qzeros_.copy_(qzeros);
     qzeros_is_loaded_ = true;
   }
-  const auto scales = state_dict.get_sharded_tensor("scales",
-                                                    /*dim=*/0,
-                                                    rank_,
-                                                    world_size_);
+  const auto scales =
+      state_dict.get_sharded_tensor("scales",
+                                    /*dim=*/0,
+                                    parallel_args_.rank(),
+                                    parallel_args_.world_size());
   if (scales.defined()) {
     CHECK_EQ(scales_.sizes(), scales.sizes())
         << "scales size mismatch for " << name();
