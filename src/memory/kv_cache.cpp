@@ -8,11 +8,7 @@
 #include <cstdint>
 #include <vector>
 
-extern void reshape_and_cache(torch::Tensor& key,
-                              torch::Tensor& value,
-                              torch::Tensor& key_cache,
-                              torch::Tensor& value_cache,
-                              torch::Tensor& slot_mapping);
+#include "kernels/kv_cache_kernels.h"
 
 namespace llm {
 
@@ -67,11 +63,7 @@ void KVCache::set_kv_cache_slow(const torch::Tensor& slot_ids,
 void KVCache::set_kv_cache_cuda(const torch::Tensor& slot_ids,
                                 const torch::Tensor& keys,
                                 const torch::Tensor& values) {
-  // make a 'copy' of variables since the kernel is using non-const reference
-  torch::Tensor _slot_ids = slot_ids;
-  torch::Tensor _keys = keys;
-  torch::Tensor _values = values;
-  reshape_and_cache(_keys, _values, key_cache_, value_cache_, _slot_ids);
+  kernel::set_kv_cache(slot_ids, keys, values, key_cache_, value_cache_);
 }
 
 std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(

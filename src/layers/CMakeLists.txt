@@ -30,6 +30,7 @@ cc_library(
     :state_dict
     :memory
     :kernels
+    :vllm.kernels
     :flash-attn.kernels
     :gptq.kernels
     :awq.kernels

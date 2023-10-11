@@ -50,11 +50,11 @@ TEST(KVCacheTest, Basic) {
 }
 
 TEST(KVCacheTest, Random) {
-  const int num_kv_heads = 1;
-  const int head_dim = 8;
-  const int block_size = 8;
+  const int num_kv_heads = 12;
+  const int head_dim = 128;
+  const int block_size = 4;
   const int x = 8;
-  const int num_blocks = 8;
+  const int num_blocks = 2;
 
   // auto dtype = torch::kFloat16;
   torch::set_default_dtype(
@@ -75,7 +75,8 @@ TEST(KVCacheTest, Random) {
   for (int32_t i = 0; i < 10000; ++i) {
     using torch::indexing::Slice;
 
-    const int num_slots = i % 10 + 1;
+    const int sample_size = std::min(num_blocks * block_size, 10);
+    const int num_slots = i % sample_size + 1;
     torch::Tensor slot_ids =
         torch::randperm(
             num_blocks * block_size,
