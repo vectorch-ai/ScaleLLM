@@ -19,8 +19,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
   ColumnParallelQLinearImpl(int64_t in_features,
                             int64_t out_features,
                             bool bias,
-                            int64_t bits,
-                            int64_t group_size,
+                            const QuantizationArgs& quant_args,
                             int64_t qweight_pack_dim,
                             bool gather_output,
                             const ParallelArgs& parallel_args,
@@ -82,9 +81,6 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
 
   // parallel args
   ParallelArgs parallel_args_;
-
-  // int rank_ = 0;
-  // int world_size_ = 0;
 };
 
 // Base QLinear class that handles quantized weights loading.
@@ -102,8 +98,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
   RowParallelQLinearImpl(int64_t in_features,
                          int64_t out_features,
                          bool bias,
-                         int64_t bits,
-                         int64_t group_size,
+                         const QuantizationArgs& quant_args,
                          int64_t qweight_pack_dim,
                          bool input_is_parallelized,
                          const ParallelArgs& parallel_args,
@@ -162,7 +157,5 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
 
   // parallel args
   ParallelArgs parallel_args_;
-  // int rank_ = 0;
-  // int world_size_ = 0;
 };
 }  // namespace llm

@@ -21,14 +21,15 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
-    int64_t bits,
-    int64_t group_size,
+    const QuantizationArgs& quant_args,
     int64_t qweight_pack_dim,
     bool gather_output,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device)
     : gather_output_(gather_output), parallel_args_(parallel_args) {
+  const auto bits = quant_args.bits();
+  const auto group_size = quant_args.group_size();
   CHECK(group_size > 0) << "group_size must be positive";
   CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
@@ -236,8 +237,7 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
-    int64_t bits,
-    int64_t group_size,
+    const QuantizationArgs& quant_args,
     int64_t qweight_pack_dim,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
@@ -245,6 +245,8 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
     const torch::Device& device)
     : input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
+  const auto bits = quant_args.bits();
+  const auto group_size = quant_args.group_size();
   CHECK(group_size > 0) << "group_size must be positive";
   CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";

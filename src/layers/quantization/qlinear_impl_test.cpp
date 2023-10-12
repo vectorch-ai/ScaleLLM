@@ -1,10 +1,10 @@
-#include "qlinear_gptq_impl.h"
-
 #include <c10/core/TensorOptions.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"
+#include "models/args.h"
+#include "qlinear_gptq_impl.h"
 
 namespace llm {
 
@@ -26,13 +26,13 @@ TEST(QlinearTest, Basic) {
 TEST(QlinearTest, ColumnParallelQuantLinear) {
   const int64_t in_features = 4096;
   const int64_t out_features = 4096;
-  const int64_t bits = 4;
-  const int64_t group_size = 128;
+  QuantizationArgs quant_args;
+  quant_args.bits(4);
+  quant_args.group_size(128);
   ColumnParallelQLinearGPTQImpl qlinear(in_features,
                                         out_features,
                                         /*bias=*/false,
-                                        bits,
-                                        group_size,
+                                        quant_args,
                                         /*gather_output=*/false,
                                         ParallelArgs(0, 1, nullptr),
                                         /*dtype=*/torch::kHalf,
@@ -61,13 +61,13 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
 TEST(QlinearTest, RowParallelQuantLinear) {
   const int64_t in_features = 4096;
   const int64_t out_features = 4096;
-  const int64_t bits = 4;
-  const int64_t group_size = 128;
+  QuantizationArgs quant_args;
+  quant_args.bits(4);
+  quant_args.group_size(128);
   RowParallelQLinearGPTQImpl qlinear(in_features,
                                      out_features,
                                      /*bias=*/false,
-                                     bits,
-                                     group_size,
+                                     quant_args,
                                      /*input_is_parallelized=*/true,
                                      ParallelArgs(0, 1, nullptr),
                                      /*dtype=*/torch::kHalf,

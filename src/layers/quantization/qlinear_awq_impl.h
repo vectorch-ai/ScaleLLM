@@ -18,8 +18,7 @@ class ColumnParallelQLinearAWQImpl : public ColumnParallelQLinearImpl {
   ColumnParallelQLinearAWQImpl(int64_t in_features,
                                int64_t out_features,
                                bool bias,
-                               int64_t bits,
-                               int64_t group_size,
+                               const QuantizationArgs& quant_args,
                                bool gather_output,
                                const ParallelArgs& parallel_args,
                                torch::ScalarType dtype,
@@ -32,8 +31,6 @@ class ColumnParallelQLinearAWQImpl : public ColumnParallelQLinearImpl {
 
  private:
   // quantization parameters
-  int64_t bits_ = 0;
-  int64_t group_size_ = 0;
   int pack_factor_ = 0;
 };
 
@@ -52,8 +49,7 @@ class RowParallelQLinearAWQImpl : public RowParallelQLinearImpl {
   RowParallelQLinearAWQImpl(int64_t in_features,
                             int64_t out_features,
                             bool bias,
-                            int64_t bits,
-                            int64_t group_size,
+                            const QuantizationArgs& quant_args,
                             bool input_is_parallelized,
                             const ParallelArgs& parallel_args,
                             torch::ScalarType dtype,
@@ -66,8 +62,6 @@ class RowParallelQLinearAWQImpl : public RowParallelQLinearImpl {
 
  private:
   // quantization parameters
-  int64_t bits_ = 0;
-  int64_t group_size_ = 0;
   int pack_factor_ = 0;
 };
 }  // namespace llm

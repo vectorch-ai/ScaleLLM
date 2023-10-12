@@ -134,8 +134,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
-    int64_t bits,
-    int64_t group_size,
+    const QuantizationArgs& quant_args,
     bool gather_output,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
@@ -143,14 +142,15 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
                                 bias,
-                                bits,
-                                group_size,
+                                quant_args,
                                 /*qweight_pack_dim=*/0,
                                 gather_output,
                                 parallel_args,
                                 dtype,
                                 device),
-      bits_(bits) {
+      bits_(quant_args.bits()) {
+  const auto bits = quant_args.bits();
+  const auto group_size = quant_args.group_size();
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
@@ -223,8 +223,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
-    int64_t bits,
-    int64_t group_size,
+    const QuantizationArgs& quant_args,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
@@ -232,14 +231,15 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     : RowParallelQLinearImpl(in_features,
                              out_features,
                              bias,
-                             bits,
-                             group_size,
+                             quant_args,
                              /*qweight_pack_dim=*/0,
                              input_is_parallelized,
                              parallel_args,
                              dtype,
                              device),
-      bits_(bits) {
+      bits_(quant_args.bits()) {
+  const auto bits = quant_args.bits();
+  const auto group_size = quant_args.group_size();
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
   CHECK(group_size > 0) << "group_size must be positive";
