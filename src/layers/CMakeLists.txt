@@ -15,6 +15,7 @@ cc_library(
     activation.h
     quantization/qlinear_impl.h
     quantization/qlinear_gptq_impl.h
+    quantization/qlinear_exllama_impl.h
     quantization/qlinear_awq_impl.h
   SRCS 
     linear.cpp
@@ -25,6 +26,7 @@ cc_library(
     activation.cpp
     quantization/qlinear_impl.cpp
     quantization/qlinear_gptq_impl.cpp
+    quantization/qlinear_exllama_impl.cpp
     quantization/qlinear_awq_impl.cpp
   DEPS
     :state_dict

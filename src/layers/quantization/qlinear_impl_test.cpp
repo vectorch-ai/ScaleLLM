@@ -11,11 +11,11 @@ namespace llm {
 TEST(QlinearTest, Basic) {
   auto state_dict = StateDict::load_safetensors(
       "data/gptq_small.safetensors", /*shard_id=*/0, /*num_shards=*/1);
-  auto weights = details::construct_weights(state_dict->get_tensor("qweight"),
+  auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
                                             state_dict->get_tensor("qzeros"),
                                             state_dict->get_tensor("scales"),
                                             /*bits=*/4);
-  auto weights_2 = details::construct_weights(state_dict->get_tensor("qweight"),
+  auto weights_2 = detail::construct_weights(state_dict->get_tensor("qweight"),
                                               state_dict->get_tensor("qzeros"),
                                               state_dict->get_tensor("scales"),
                                               state_dict->get_tensor("g_idx"),
@@ -39,7 +39,7 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
                                         /*device=*/torch::kCUDA);
   auto state_dict = StateDict::load_safetensors(
       "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
-  auto weights = details::construct_weights(state_dict->get_tensor("qweight"),
+  auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
                                             state_dict->get_tensor("qzeros"),
                                             state_dict->get_tensor("scales"),
                                             /*bits=*/4);
@@ -74,7 +74,7 @@ TEST(QlinearTest, RowParallelQuantLinear) {
                                      /*device=*/torch::kCUDA);
   auto state_dict = StateDict::load_safetensors(
       "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
-  auto weights = details::construct_weights(state_dict->get_tensor("qweight"),
+  auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
                                             state_dict->get_tensor("qzeros"),
                                             state_dict->get_tensor("scales"),
                                             /*bits=*/4);

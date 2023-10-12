@@ -11,6 +11,30 @@
 
 namespace llm {
 
+namespace detail {
+// slow implementation for quantized matmul, used for testing and comparison
+// construct weights matrix for gptq from quantized weights
+// return the weights matrix [in_features, out_features] with following formula:
+// weights = scales * (qweights - qzeros)
+torch::Tensor construct_weights(
+    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
+    const torch::Tensor& g_idx,     // [in_features] IntTensor
+    int64_t bits);
+
+// construct weights matrix for gptq from quantized weights without using g_idx
+// slower than construct_weights with g_idx
+// return the weights matrix [in_features, out_features] with following formula:
+// weights = scales * (qweights - qzeros)
+torch::Tensor construct_weights(
+    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
+    int64_t bits);
+
+}  // namespace detail
+
 // Base QLinear class that handles quantized weights loading.
 // The linear layer is defined as Y = XA + b. A is parallelized along
 // its second dimension as A = [A_1, ..., A_p].
@@ -33,7 +57,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
   virtual torch::Tensor quant_matmul(const torch::Tensor& input,
                                      const torch::Tensor& qweight,
                                      const torch::Tensor& qzeros_,
-                                     const torch::Tensor& scales_) const = 0;
+                                     const torch::Tensor& scales_) const;
 
   torch::Tensor forward(torch::Tensor input) const override {
     auto output = quant_matmul(input, qweight_, qzeros_, scales_);
@@ -76,6 +100,9 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
   std::vector<torch::Tensor> scales_list_;
   std::vector<torch::Tensor> bias_list_;
 
+  // quantization parameters
+  int64_t bits_ = 0;
+
   // whether to gather the output
   bool gather_output_;
 
@@ -109,7 +136,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
   virtual torch::Tensor quant_matmul(const torch::Tensor& input,
                                      const torch::Tensor& qweight,
                                      const torch::Tensor& qzeros_,
-                                     const torch::Tensor& scales_) const = 0;
+                                     const torch::Tensor& scales_) const;
 
   torch::Tensor forward(torch::Tensor input) const override {
     if (!input_is_parallelized_) {
@@ -151,6 +178,9 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
   bool qzeros_is_loaded_ = false;
   bool scales_is_loaded_ = false;
   bool bias_is_loaded_ = false;
+
+  // quantization parameters
+  int64_t bits_ = 0;
 
   // whether the input is already parallelized
   bool input_is_parallelized_;

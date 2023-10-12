@@ -10,21 +10,10 @@
 
 namespace llm {
 
-// quantized linear layers using gptq
-using VecQuantMatmulFunc = void (*)(torch::Tensor vec,
-                                    torch::Tensor mat,
-                                    torch::Tensor mul,
-                                    torch::Tensor scales,
-                                    torch::Tensor zeros,
-                                    torch::Tensor g_idx,
-                                    int64_t bits);
-
 // Quantized Linear layer with column parallelism.
-// The linear layer is defined as Y = XA + b. A is parallelized along
-// its second dimension as A = [A_1, ..., A_p].
-class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
+class ColumnParallelQLinearExllamaImpl : public ColumnParallelQLinearImpl {
  public:
-  ColumnParallelQLinearGPTQImpl(int64_t in_features,
+  ColumnParallelQLinearExllamaImpl(int64_t in_features,
                                 int64_t out_features,
                                 bool bias,
                                 const QuantizationArgs& quant_args,
@@ -33,7 +22,7 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
                                 torch::ScalarType dtype,
                                 const torch::Device& device);
 
-  ~ColumnParallelQLinearGPTQImpl() override;
+  ~ColumnParallelQLinearExllamaImpl() override;
 
   torch::Tensor quant_matmul(const torch::Tensor& input,
                              const torch::Tensor& qweight,
@@ -44,25 +33,14 @@ class ColumnParallelQLinearGPTQImpl : public ColumnParallelQLinearImpl {
   // parameter members, must be registered
   torch::Tensor g_idx_{nullptr};
 
-  // quantization parameters
-  int64_t bits_ = 0;
-
-  VecQuantMatmulFunc vec_quant_matmul_func_ = nullptr;
+  // Q4Matrix handler for exllama
+  mutable uintptr_t q4_ = 0;
 };
 
 // Linear layer with row parallelism.
-//     The linear layer is defined as Y = XA + b. A is parallelized along
-//     its first dimension and X along its second dimension as:
-//                -   -
-//               | A_1 |
-//               | .   |
-//           A = | .   |       X = [X_1, ..., X_p]
-//               | .   |
-//               | A_p |
-//                -   -
-class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
+class RowParallelQLinearExllamaImpl : public RowParallelQLinearImpl {
  public:
-  RowParallelQLinearGPTQImpl(int64_t in_features,
+  RowParallelQLinearExllamaImpl(int64_t in_features,
                              int64_t out_features,
                              bool bias,
                              const QuantizationArgs& quant_args,
@@ -71,7 +49,7 @@ class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
                              torch::ScalarType dtype,
                              const torch::Device& device);
 
-  ~RowParallelQLinearGPTQImpl() override;
+  ~RowParallelQLinearExllamaImpl() override;
 
   torch::Tensor quant_matmul(const torch::Tensor& input,
                              const torch::Tensor& qweight,
@@ -82,9 +60,7 @@ class RowParallelQLinearGPTQImpl : public RowParallelQLinearImpl {
   // parameter members, must be registered
   torch::Tensor g_idx_{nullptr};
 
-  // quantization parameters
-  int64_t bits_ = 0;
-
-  VecQuantMatmulFunc vec_quant_matmul_func_ = nullptr;
+  // Q4Matrix handler for exllama
+  mutable uintptr_t q4_ = 0;
 };
 }  // namespace llm
