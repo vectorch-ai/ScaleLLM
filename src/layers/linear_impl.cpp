@@ -226,9 +226,13 @@ torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) const {
   if (!input_is_parallelized_) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
   }
-  auto output = F::linear(input, weight_, bias_);
+  auto output = F::linear(input, weight_);
   if (parallel_args_.world_size() > 1) {
     output = reduce_from_model_parallel_region(output, parallel_args_);
+  }
+  // N.B. need to apply bias after the reduce
+  if (bias_.defined()) {
+    output.add_(bias_);
   }
   return output;
 }
