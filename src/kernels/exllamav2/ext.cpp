@@ -22,6 +22,10 @@
 
 
 // Quant matrix
+void free_q_matrix(uintptr_t w) {
+  QMatrix* wm = reinterpret_cast<QMatrix*>(w);
+  delete wm;
+}
 
 uintptr_t make_q_matrix
 (

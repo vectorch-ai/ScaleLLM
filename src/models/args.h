@@ -95,12 +95,14 @@ struct QuantizationArgs {
   // quantization group size
   DEFINE_ARG(int64_t, group_size) = 0;
 
+  // aka act_order, true results in better quantisation accuracy.
   DEFINE_ARG(bool, desc_act) = false;
 
   DEFINE_ARG(bool, true_sequential) = false;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const QuantizationArgs& args) {
+inline std::ostream& operator<<(std::ostream& os,
+                                const QuantizationArgs& args) {
   os << "QuantizationArgs: [";
   os << "quant_method: " << args.quant_method();
   os << ", bits: " << args.bits();
@@ -110,7 +112,6 @@ inline std::ostream& operator<<(std::ostream& os, const QuantizationArgs& args) 
   os << "]";
   return os;
 }
-
 
 struct ParallelArgs {
   ParallelArgs(int32_t rank, int32_t world_size, ProcessGroup* process_group)

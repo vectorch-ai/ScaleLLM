@@ -59,7 +59,7 @@ public:
         half* _temp_dq
     );
 
-    ~QMatrix();
+    ~QMatrix() = default;
 
     void reconstruct(half* out);
     void make_sequential(const uint32_t* cpu_g_idx);

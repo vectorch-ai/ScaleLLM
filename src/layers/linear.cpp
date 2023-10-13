@@ -12,6 +12,7 @@
 #include "models/args.h"
 #include "quantization/qlinear_awq_impl.h"
 #include "quantization/qlinear_exllama_impl.h"
+#include "quantization/qlinear_exllamav2_impl.h"
 #include "quantization/qlinear_gptq_impl.h"
 
 DEFINE_string(
@@ -50,6 +51,16 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
                                                            parallel_args,
                                                            dtype,
                                                            device);
+  }
+  if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllamav2")) {
+    return std::make_shared<ColumnParallelQLinearExllamav2Impl>(in_features,
+                                                                out_features,
+                                                                bias,
+                                                                quant_args,
+                                                                gather_output,
+                                                                parallel_args,
+                                                                dtype,
+                                                                device);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllama")) {
     return std::make_shared<ColumnParallelQLinearExllamaImpl>(in_features,
@@ -94,6 +105,17 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear_by_impl(
                                                         dtype,
                                                         device);
   }
+  if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllamav2")) {
+    return std::make_shared<RowParallelQLinearExllamav2Impl>(
+        in_features,
+        out_features,
+        bias,
+        quant_args,
+        input_is_parallelized,
+        parallel_args,
+        dtype,
+        device);
+  }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllama")) {
     return std::make_shared<RowParallelQLinearExllamaImpl>(
         in_features,
@@ -128,16 +150,16 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
     return qlinear;
   }
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
-    // use exllama for 4 bits which is faster
+    // use exllamav2 for 4 bits which is faster
     if (quant_args.bits() == 4) {
-      return std::make_shared<ColumnParallelQLinearExllamaImpl>(in_features,
-                                                                out_features,
-                                                                bias,
-                                                                quant_args,
-                                                                gather_output,
-                                                                parallel_args,
-                                                                dtype,
-                                                                device);
+      return std::make_shared<ColumnParallelQLinearExllamav2Impl>(in_features,
+                                                                  out_features,
+                                                                  bias,
+                                                                  quant_args,
+                                                                  gather_output,
+                                                                  parallel_args,
+                                                                  dtype,
+                                                                  device);
     }
     return std::make_shared<ColumnParallelQLinearGPTQImpl>(in_features,
                                                            out_features,
@@ -184,11 +206,11 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
     return qlinear;
   }
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
-    // use exllama for 4 bits which is faster
+    // use exllamav2 for 4 bits which is faster
     if (quant_args.bits() == 4) {
-      // TODO: double chekc if exllama supports row tensor parallelism with
+      // TODO: double check if exllama supports row tensor parallelism with
       // act-order.
-      return std::make_shared<RowParallelQLinearExllamaImpl>(
+      return std::make_shared<RowParallelQLinearExllamav2Impl>(
           in_features,
           out_features,
           bias,

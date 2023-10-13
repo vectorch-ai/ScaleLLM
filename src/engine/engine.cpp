@@ -70,6 +70,20 @@ bool Engine::init_model(const std::string& model_weights_path) {
   const auto& quant_args = model_loader->quant_args();
   LOG(INFO) << "Initializing model with " << args_ << ", " << quant_args;
 
+  if (workers_.size() == 1) {
+    Worker* worker = workers_[0].get();
+    // only one worker, call init_model in current thread
+    if (!worker->init_model(args_, quant_args)) {
+      return false;
+    }
+    // load the weights from the checkpoint
+    for (const auto& state_dict : *model_loader) {
+      worker->load_state_dict(state_dict);
+    }
+    worker->verify_loaded_weights();
+    return true;
+  }
+
   // init model for each worker in parallel
   // multiple workers, call async init
   std::vector<folly::SemiFuture<bool>> futures;
@@ -178,7 +192,14 @@ bool Engine::init_kv_cache() {
   LOG(INFO) << "Initializing kv cache with key shape: [" << key_cache_shape
             << "], value shape: [" << value_cache_shape << "]";
 
+  block_manager_ = std::make_unique<BlockManager>(num_blocks, block_size);
+
   // init kv cache for each worker in parallel
+  if (workers_.size() == 1) {
+    // only one worker, call init_kv_cache in current thread
+    return workers_[0]->init_kv_cache(key_cache_shape, value_cache_shape);
+  }
+
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
@@ -192,8 +213,6 @@ bool Engine::init_kv_cache() {
       return false;
     }
   }
-
-  block_manager_ = std::make_unique<BlockManager>(num_blocks, block_size);
   return true;
 }
 

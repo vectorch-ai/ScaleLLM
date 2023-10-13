@@ -62,7 +62,7 @@ cc_library(
 
 cc_library(
   NAME 
-    exllama2.kernels
+    exllamav2.kernels
   SRCS 
     exllamav2/ext.cpp
     exllamav2/cuda/q_matrix.cu

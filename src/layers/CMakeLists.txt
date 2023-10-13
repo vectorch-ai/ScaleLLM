@@ -16,6 +16,7 @@ cc_library(
     quantization/qlinear_impl.h
     quantization/qlinear_gptq_impl.h
     quantization/qlinear_exllama_impl.h
+    quantization/qlinear_exllamav2_impl.h
     quantization/qlinear_awq_impl.h
   SRCS 
     linear.cpp
@@ -27,6 +28,7 @@ cc_library(
     quantization/qlinear_impl.cpp
     quantization/qlinear_gptq_impl.cpp
     quantization/qlinear_exllama_impl.cpp
+    quantization/qlinear_exllamav2_impl.cpp
     quantization/qlinear_awq_impl.cpp
   DEPS
     :state_dict
@@ -37,6 +39,7 @@ cc_library(
     :gptq.kernels
     :awq.kernels
     :exllama.kernels
+    :exllamav2.kernels
     glog::glog
     gflags::gflags
     torch
