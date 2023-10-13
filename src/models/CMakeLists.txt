@@ -14,6 +14,7 @@ cc_library(
     huggingface/aquila.h
     huggingface/mpt.h
     huggingface/qwen.h
+    huggingface/internlm.h
   SRCS
   DEPS
     :model_args

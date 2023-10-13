@@ -21,4 +21,6 @@ bool load_mistral_model_args(const nlohmann::json& data, ModelArgs* args);
 
 bool load_aquila_model_args(const nlohmann::json& data, ModelArgs* args);
 
+bool load_internlm_model_args(const nlohmann::json& data, ModelArgs* args);
+
 }  // namespace llm

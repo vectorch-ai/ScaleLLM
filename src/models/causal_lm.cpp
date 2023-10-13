@@ -13,6 +13,7 @@
 #include "huggingface/gpt_neox.h"
 #include "huggingface/gpt_j.h"
 #include "huggingface/llama.h"
+#include "huggingface/internlm.h"
 #include "huggingface/mistral.h"
 #include "input_parameters.h"
 #include "llama.h"
@@ -78,6 +79,13 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
     aquila->eval();
     return std::make_unique<llm::CausalLMImpl<hf::AquilaForCausalLM>>(
         std::move(aquila));
+  }
+  if (boost::iequals(args.model_type(), "internlm")) {
+    hf::InternlmForCausalLM internlm(args, quant_args, parallel_args, dtype, device);
+    // set the module in evaluation/inference mode
+    internlm->eval();
+    return std::make_unique<llm::CausalLMImpl<hf::InternlmForCausalLM>>(
+        std::move(internlm));
   }
 
   // TODO: Model mpt and qwen is not supported yet

@@ -18,6 +18,7 @@
 
 DEFINE_int64(max_position_embeddings, 0, "Maximum position embeddings.");
 DEFINE_string(model_type, "", "model type, e.g. llama2, llama, gpt_neox");
+DEFINE_string(quant_method, "", "quantization method, e.g. awq, gptq");
 
 DEFINE_string(tokenizer_path, "", "Path to the tokenizer file.");
 
@@ -56,18 +57,19 @@ const StateDict* StateDictIterator::get_state_dict() const {
 
 std::unique_ptr<ModelLoader> ModelLoader::create(
     const std::string& model_weights_path) {
-  bool has_pytorch_weight_files = false;
+  bool has_hf_weight_files = false;
   for (const auto& entry :
        std::filesystem::directory_iterator(model_weights_path)) {
-    if (entry.path().extension() == ".pth") {
-      has_pytorch_weight_files = true;
+    if (entry.path().extension() == ".safetensors" ||
+        entry.path().extension() == ".bin") {
+      has_hf_weight_files = true;
       break;
     }
   }
-  if (has_pytorch_weight_files) {
-    return std::make_unique<PTModelLoader>(model_weights_path);
+  if (has_hf_weight_files) {
+    return std::make_unique<HFModelLoader>(model_weights_path);
   }
-  return std::make_unique<HFModelLoader>(model_weights_path);
+  return std::make_unique<PTModelLoader>(model_weights_path);
 }
 
 std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
@@ -141,11 +143,22 @@ HFModelLoader::HFModelLoader(const std::string& model_weights_path)
 std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
   // use the tokenizer path specified by the user if exists
   const std::string tokenizer_path = model_weights_path_ + "/tokenizer.json";
-  if (!std::filesystem::exists(tokenizer_path)) {
-    LOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
-    return nullptr;
+  if (std::filesystem::exists(tokenizer_path)) {
+    return HFTokenizer::from_file(tokenizer_path);
   }
-  return HFTokenizer::from_file(tokenizer_path);
+
+  const std::string vocab_path = model_weights_path_ + "/tokenizer.model";
+  if (std::filesystem::exists(vocab_path)) {
+    LOG(WARNING) << "Failed to find tokenizer.json, use tokenizer.model "
+                    "instead. Please consider to convert the tokenizer.model "
+                    "to tokenizer.json for better performance.";
+    return std::make_unique<SentencePieceTokenizer>(vocab_path);
+  }
+
+  LOG(ERROR)
+      << "Failed to find tokenizer file tokenizer.json or tokenizer.model from "
+      << model_weights_path_;
+  return nullptr;
 }
 
 bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
@@ -176,6 +189,8 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     load_mistral_model_args(data, &args_);
   } else if (boost::iequals(args_.model_type(), "aquila")) {
     load_aquila_model_args(data, &args_);
+  } else if (boost::iequals(args_.model_type(), "internlm")) {
+    load_internlm_model_args(data, &args_);
   }
 
   // load quantization args if exists
@@ -221,6 +236,10 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     if (data.contains("q_group_size")) {
       quant_args_.group_size() = data["q_group_size"].get<int64_t>();
     }
+    // hardcode the quant_method to awq
+    if (quant_args_.quant_method().empty()) {
+      quant_args_.quant_method() = "awq";
+    }
   }
 
   // load quantization args for gptq if exists
@@ -249,6 +268,16 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     if (data.contains("true_sequential")) {
       quant_args_.true_sequential() = data["true_sequential"].get<bool>();
     }
+    // hardcode the quant_method to gptq
+    if (quant_args_.quant_method().empty()) {
+      quant_args_.quant_method() = "gptq";
+    }
+  }
+
+  if (!FLAGS_quant_method.empty() &&
+      quant_args_.quant_method() != FLAGS_quant_method) {
+    LOG(WARNING) << "Overwriting quant_method to " << FLAGS_quant_method;
+    quant_args_.quant_method() = FLAGS_quant_method;
   }
 
   return true;
