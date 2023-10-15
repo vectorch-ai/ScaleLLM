@@ -7,3 +7,6 @@
 [submodule "third_party/exllama"]
 	path = third_party/exllama
 	url = https://github.com/turboderp/exllama.git
+[submodule "src/kernels/cutlass"]
+	path = src/kernels/cutlass
+	url = https://github.com/NVIDIA/cutlass.git
