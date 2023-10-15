@@ -50,6 +50,7 @@ cc_test(
     layers_test
   SRCS
     activation_test.cpp
+    attention_test.cpp
     layers_test.cpp
     pos_embedding_test.cpp
     normalization_test.cpp

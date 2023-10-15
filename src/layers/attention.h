@@ -93,6 +93,7 @@ void varlen_masked_self_attention(
     const torch::Tensor& query,        // [num_tokens, n_heads, head_dim]
     const torch::Tensor& key,          // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,        // [num_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& alibi_slope,  // [n_heads]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
     int32_t max_seq_len,               // maximum sequence length
     float scale,
@@ -102,6 +103,7 @@ void varlen_masked_self_attention_slow(
     const torch::Tensor& query,        // [num_tokens, n_heads, head_dim]
     const torch::Tensor& key,          // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,        // [num_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& alibi_slope,  // [n_heads]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
     int32_t max_seq_len,               // maximum sequence length
     float scale,
@@ -111,6 +113,7 @@ void varlen_masked_self_attention_cuda(
     const torch::Tensor& query,        // [num_tokens, n_heads, head_dim]
     const torch::Tensor& key,          // [num_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,        // [num_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& alibi_slope,  // [n_heads]
     const torch::Tensor& cu_seq_lens,  // [num_seq + 1]
     int32_t max_seq_len,               // maximum sequence length
     float scale,

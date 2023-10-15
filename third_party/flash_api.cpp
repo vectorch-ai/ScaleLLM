@@ -9,6 +9,7 @@
 #include <c10/cuda/CUDAGuard.h>
 
 #include <cutlass/numeric_types.h>
+#include <torch/types.h>
 
 #include "flash.h"
 #include "static_switch.h"
@@ -36,6 +37,7 @@ void set_params_fprop(Flash_fwd_params &params,
                       at::Tensor out,
                       void *cu_seqlens_q_d,
                       void *cu_seqlens_k_d,
+                      void *alibi_slopes_d,
                       void *p_d,
                       void *softmax_lse_d,
                       float p_dropout,
@@ -72,6 +74,7 @@ void set_params_fprop(Flash_fwd_params &params,
 
     params.cu_seqlens_q = static_cast<int *>(cu_seqlens_q_d);
     params.cu_seqlens_k = static_cast<int *>(cu_seqlens_k_d);
+    params.alibi_slopes = static_cast<float *>(alibi_slopes_d);
 
     // P = softmax(QK^T)
     params.p_ptr = p_d;
@@ -133,6 +136,7 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                c10::optional<at::Tensor> &out_, // total_q x num_heads x head_size, total_k := \sum_{i=0}^{b} s_i
                const at::Tensor &cu_seqlens_q,  // b+1
                const at::Tensor &cu_seqlens_k,  // b+1
+               const at::Tensor &alibi_slopes,  // num_heads
                int max_seqlen_q,
                int max_seqlen_k,
                float p_dropout,
@@ -191,6 +195,13 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
     CHECK_SHAPE(v, total_k, num_heads_k, head_size_og);
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
+    
+    if (alibi_slopes.defined()) {
+        CHECK_DEVICE(alibi_slopes);
+        CHECK_CONTIGUOUS(alibi_slopes);
+        CHECK_SHAPE(alibi_slopes, num_heads);
+        TORCH_CHECK(alibi_slopes.dtype() == torch::kFloat32, "alibi_slopes must have dtype float32");
+    }
 
     at::Tensor q_padded, k_padded, v_padded;
     if (head_size_og % 8 != 0) {
@@ -251,6 +262,7 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                      q_padded, k_padded, v_padded, out,
                      cu_seqlens_q.data_ptr(),
                      cu_seqlens_k.data_ptr(),
+                     alibi_slopes.defined() ? alibi_slopes.data_ptr() : nullptr,
                      return_softmax ? p.data_ptr() : nullptr,
                      softmax_lse.data_ptr(),
                      p_dropout,
