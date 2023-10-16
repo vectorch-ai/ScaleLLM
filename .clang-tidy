@@ -22,6 +22,7 @@ Checks: >
   -performance-unnecessary-value-param,
   -bugprone-easily-swappable-parameters,
   -bugprone-unused-return-value,
+  -bugprone-macro-parentheses,
   -readability-identifier-length,
   -readability-use-anyofallof,
   -readability-magic-numbers,
@@ -33,6 +34,7 @@ Checks: >
   -cppcoreguidelines-avoid-do-while,
   -cppcoreguidelines-non-private-member-variables-in-classes,
   -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-macro-usage,
 
 
 HeaderFilterRegex: '.*'

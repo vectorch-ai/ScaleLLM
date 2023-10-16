@@ -22,6 +22,44 @@ DEFINE_string(
 
 namespace llm {
 namespace {
+#define MAKE_ROW_PARALLEL_QLINEAR(QLinearlImplClass)         \
+  std::make_shared<QLinearlImplClass>(in_features,           \
+                                      out_features,          \
+                                      bias,                  \
+                                      quant_args,            \
+                                      input_is_parallelized, \
+                                      parallel_args,         \
+                                      dtype,                 \
+                                      device);
+
+#define MAKE_COLUMN_PARALLEL_QLINEAR(QLinearlImplClass) \
+  std::make_shared<QLinearlImplClass>(in_features,      \
+                                      out_features,     \
+                                      bias,             \
+                                      quant_args,       \
+                                      gather_output,    \
+                                      parallel_args,    \
+                                      dtype,            \
+                                      device);
+
+#define MAKE_ROW_PARALLEL_LINEAR(LinearlImplClass)          \
+  std::make_shared<LinearlImplClass>(in_features,           \
+                                     out_features,          \
+                                     bias,                  \
+                                     input_is_parallelized, \
+                                     parallel_args,         \
+                                     dtype,                 \
+                                     device);
+
+#define MAKE_COLUMN_PARALLEL_LINEAR(LinearlImplClass) \
+  std::make_shared<LinearlImplClass>(in_features,     \
+                                     out_features,    \
+                                     bias,            \
+                                     gather_output,   \
+                                     parallel_args,   \
+                                     dtype,           \
+                                     device);
+
 std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
     int64_t in_features,
     int64_t out_features,
@@ -43,34 +81,13 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
                                                        device);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "cuda")) {
-    return std::make_shared<ColumnParallelQLinearGPTQImpl>(in_features,
-                                                           out_features,
-                                                           bias,
-                                                           quant_args,
-                                                           gather_output,
-                                                           parallel_args,
-                                                           dtype,
-                                                           device);
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearGPTQImpl);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllamav2")) {
-    return std::make_shared<ColumnParallelQLinearExllamav2Impl>(in_features,
-                                                                out_features,
-                                                                bias,
-                                                                quant_args,
-                                                                gather_output,
-                                                                parallel_args,
-                                                                dtype,
-                                                                device);
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearExllamav2Impl);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllama")) {
-    return std::make_shared<ColumnParallelQLinearExllamaImpl>(in_features,
-                                                              out_features,
-                                                              bias,
-                                                              quant_args,
-                                                              gather_output,
-                                                              parallel_args,
-                                                              dtype,
-                                                              device);
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearExllamaImpl);
   }
   return nullptr;
 }
@@ -96,36 +113,13 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear_by_impl(
                                                     device);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "cuda")) {
-    return std::make_shared<RowParallelQLinearGPTQImpl>(in_features,
-                                                        out_features,
-                                                        bias,
-                                                        quant_args,
-                                                        input_is_parallelized,
-                                                        parallel_args,
-                                                        dtype,
-                                                        device);
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearGPTQImpl);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllamav2")) {
-    return std::make_shared<RowParallelQLinearExllamav2Impl>(
-        in_features,
-        out_features,
-        bias,
-        quant_args,
-        input_is_parallelized,
-        parallel_args,
-        dtype,
-        device);
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearExllamav2Impl);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllama")) {
-    return std::make_shared<RowParallelQLinearExllamaImpl>(
-        in_features,
-        out_features,
-        bias,
-        quant_args,
-        input_is_parallelized,
-        parallel_args,
-        dtype,
-        device);
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearExllamaImpl);
   }
   return nullptr;
 }
@@ -152,35 +146,14 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
     // use exllamav2 for 4 bits which is faster
     if (quant_args.bits() == 4) {
-      return std::make_shared<ColumnParallelQLinearExllamav2Impl>(in_features,
-                                                                  out_features,
-                                                                  bias,
-                                                                  quant_args,
-                                                                  gather_output,
-                                                                  parallel_args,
-                                                                  dtype,
-                                                                  device);
+      return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearExllamav2Impl);
     }
-    return std::make_shared<ColumnParallelQLinearGPTQImpl>(in_features,
-                                                           out_features,
-                                                           bias,
-                                                           quant_args,
-                                                           gather_output,
-                                                           parallel_args,
-                                                           dtype,
-                                                           device);
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearGPTQImpl);
   }
   if (boost::iequals(quant_args.quant_method(), "awq") ||
       boost::iequals(quant_args.quant_method(), "GEMM")) {
     // default to use awq implementation for gemm
-    return std::make_shared<ColumnParallelQLinearAWQImpl>(in_features,
-                                                          out_features,
-                                                          bias,
-                                                          quant_args,
-                                                          gather_output,
-                                                          parallel_args,
-                                                          dtype,
-                                                          device);
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearAWQImpl);
   }
   // not supported quant method
   LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
@@ -210,36 +183,14 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
     if (quant_args.bits() == 4) {
       // TODO: double check if exllama supports row tensor parallelism with
       // act-order.
-      return std::make_shared<RowParallelQLinearExllamav2Impl>(
-          in_features,
-          out_features,
-          bias,
-          quant_args,
-          input_is_parallelized,
-          parallel_args,
-          dtype,
-          device);
+      return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearExllamav2Impl);
     }
-    return std::make_shared<RowParallelQLinearGPTQImpl>(in_features,
-                                                        out_features,
-                                                        bias,
-                                                        quant_args,
-                                                        input_is_parallelized,
-                                                        parallel_args,
-                                                        dtype,
-                                                        device);
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearGPTQImpl);
   }
   if (boost::iequals(quant_args.quant_method(), "awq") ||
       boost::iequals(quant_args.quant_method(), "GEMM")) {
     // default to use awq implementation for gemm
-    return std::make_shared<RowParallelQLinearAWQImpl>(in_features,
-                                                       out_features,
-                                                       bias,
-                                                       quant_args,
-                                                       input_is_parallelized,
-                                                       parallel_args,
-                                                       dtype,
-                                                       device);
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearAWQImpl);
   }
   // not supported quant method
   LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
@@ -264,14 +215,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
                                           dtype,
                                           device);
   }
-
-  return std::make_shared<ColumnParallelLinearImpl>(in_features,
-                                                    out_features,
-                                                    bias,
-                                                    gather_output,
-                                                    parallel_args,
-                                                    dtype,
-                                                    device);
+  return MAKE_COLUMN_PARALLEL_LINEAR(ColumnParallelLinearImpl);
 }
 
 std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
@@ -293,13 +237,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
                                        dtype,
                                        device);
   }
-  return std::make_shared<RowParallelLinearImpl>(in_features,
-                                                 out_features,
-                                                 bias,
-                                                 input_is_parallelized,
-                                                 parallel_args,
-                                                 dtype,
-                                                 device);
+  return MAKE_ROW_PARALLEL_LINEAR(RowParallelLinearImpl);
 }
 }  // namespace
 
