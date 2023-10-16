@@ -42,24 +42,24 @@ TEST(AttentionTest, VarlenMaskedSelfAttention) {
   torch::Tensor none_tensor;
 
   torch::Tensor output = torch::empty_like(query);
-  varlen_masked_self_attention_slow(query,
-                                    key,
-                                    value,
-                                    alibi_slopes,
-                                    cu_seq_lens,
-                                    max_seq_len,
-                                    /*scale=*/1.0,
-                                    output);
+  detail::varlen_masked_self_attention_generic(query,
+                                               key,
+                                               value,
+                                               alibi_slopes,
+                                               cu_seq_lens,
+                                               max_seq_len,
+                                               /*scale=*/1.0,
+                                               output);
 
   torch::Tensor output_cuda = torch::empty_like(query);
-  varlen_masked_self_attention_cuda(query,
-                                    key,
-                                    value,
-                                    alibi_slopes,
-                                    cu_seq_lens,
-                                    max_seq_len,
-                                    /*scale=*/1.0,
-                                    output_cuda);
+  detail::varlen_masked_self_attention_cuda(query,
+                                            key,
+                                            value,
+                                            alibi_slopes,
+                                            cu_seq_lens,
+                                            max_seq_len,
+                                            /*scale=*/1.0,
+                                            output_cuda);
   EXPECT_TRUE(
       torch::allclose(output, output_cuda, /*rtol=*/1e-2, /*atol=*/1e-2));
 }
