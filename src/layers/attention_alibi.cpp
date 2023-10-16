@@ -1,4 +1,4 @@
-#include "attention_rope.h"
+#include "attention_alibi.h"
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -8,43 +8,33 @@
 
 namespace llm {
 
-AttentionWithRoPEImpl::AttentionWithRoPEImpl(int64_t n_heads,
-                                             int64_t n_kv_heads,
-                                             int64_t head_dim,
-                                             float scale,
-                                             int64_t rotary_dim,
-                                             float rope_sclaing,
-                                             float rope_theta,
-                                             int64_t max_position,
-                                             bool interleaved,
-                                             torch::ScalarType dtype,
-                                             const torch::Device& device)
+AttentionWithAlibiImpl::AttentionWithAlibiImpl(int64_t n_heads,
+                                               int64_t n_kv_heads,
+                                               int64_t head_dim,
+                                               float scale,
+                                               torch::Tensor alibi_slopes,
+                                               torch::ScalarType /*dtype*/,
+                                               const torch::Device& device)
     : n_heads_(n_heads),
       n_kv_heads_(n_kv_heads),
       head_dim_(head_dim),
-      scale_(scale) {
+      scale_(scale),
+      alibi_slopes_(alibi_slopes.to(device)) {
   CHECK(n_heads % n_kv_heads == 0)
       << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
-  // register rotary positional embedding
-  pos_emb_ = register_module("pos_emb",
-                             RotaryEmbedding(rotary_dim,
-                                             max_position,
-                                             rope_sclaing,
-                                             rope_theta,
-                                             interleaved,
-                                             dtype,
-                                             device));
+  CHECK(alibi_slopes.dim() == 1 && alibi_slopes.size(0) == n_heads)
+      << "alibi_slopes should be a 1D tensor of size " << n_heads << " but got "
+      << alibi_slopes_.sizes() << " instead.";
 
   kv_head_mapping_ = register_buffer(
       "kv_head_mapping",
       detail::prepare_kv_head_mapping(n_heads, n_kv_heads, device));
 }
 
-torch::Tensor AttentionWithRoPEImpl::forward(
+torch::Tensor AttentionWithAlibiImpl::forward(
     const torch::Tensor& query,
     const torch::Tensor& key,
     const torch::Tensor& value,
-    const torch::Tensor& positions,
     KVCache& kv_cache,
     const InputParameters& input_params) {
   const int64_t num_tokens = query.size(0);
@@ -53,10 +43,6 @@ torch::Tensor AttentionWithRoPEImpl::forward(
   auto q = query.view({num_tokens, n_heads_, head_dim_});
   auto k = key.view({num_tokens, n_kv_heads_, head_dim_});
   auto v = value.view({num_tokens, n_kv_heads_, head_dim_});
-
-  // (num_tokens, n_local_heads, head_dim)
-  // apply positional embedding
-  std::tie(q, k) = pos_emb_(q, k, positions);
 
   // store k/v into cache based on slots
   kv_cache.set_kv_cache(input_params.slot_ids, k, v);
@@ -77,7 +63,7 @@ torch::Tensor AttentionWithRoPEImpl::forward(
                                          sliced_key,
                                          sliced_value,
                                          input_params.cu_seq_lens,
-                                         /*alibi_slopes=*/torch::nullopt,
+                                         alibi_slopes_,
                                          input_params.max_seq_len,
                                          scale_,
                                          sliced_output);
@@ -92,7 +78,7 @@ torch::Tensor AttentionWithRoPEImpl::forward(
                                                sliced_query,
                                                input_params.block_tables,
                                                input_params.context_lens,
-                                               /*alibi_slopes=*/torch::nullopt,
+                                               alibi_slopes_,
                                                input_params.max_context_len,
                                                scale_,
                                                sliced_output);

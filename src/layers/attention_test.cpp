@@ -45,9 +45,8 @@ TEST(AttentionTest, VarlenMaskedSelfAttention) {
   detail::varlen_masked_self_attention_generic(query,
                                                key,
                                                value,
-                                               alibi_slopes,
                                                cu_seq_lens,
-                                               max_seq_len,
+                                               alibi_slopes,
                                                /*scale=*/1.0,
                                                output);
 
@@ -55,8 +54,8 @@ TEST(AttentionTest, VarlenMaskedSelfAttention) {
   detail::varlen_masked_self_attention_cuda(query,
                                             key,
                                             value,
-                                            alibi_slopes,
                                             cu_seq_lens,
+                                            alibi_slopes,
                                             max_seq_len,
                                             /*scale=*/1.0,
                                             output_cuda);

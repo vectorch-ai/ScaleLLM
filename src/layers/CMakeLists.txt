@@ -13,6 +13,7 @@ cc_library(
     pos_embedding.h
     attention.h
     attention_rope.h
+    attention_alibi.h
     activation.h
     quantization/qlinear_impl.h
     quantization/qlinear_gptq_impl.h
@@ -26,6 +27,7 @@ cc_library(
     pos_embedding.cpp
     attention.cpp
     attention_rope.cpp
+    attention_alibi.cpp
     activation.cpp
     quantization/qlinear_impl.cpp
     quantization/qlinear_gptq_impl.cpp

@@ -3,6 +3,7 @@
  ******************************************************************************/
 
 // Include these 2 headers instead of torch/extension.h since we don't need all of the torch headers.
+#include <ATen/core/TensorBody.h>
 #include <torch/torch.h>
 #include <torch/nn/functional.h>
 #include <ATen/cuda/CUDAContext.h>
@@ -136,7 +137,7 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                c10::optional<at::Tensor> &out_, // total_q x num_heads x head_size, total_k := \sum_{i=0}^{b} s_i
                const at::Tensor &cu_seqlens_q,  // b+1
                const at::Tensor &cu_seqlens_k,  // b+1
-               const at::Tensor &alibi_slopes,  // num_heads
+               c10::optional<at::Tensor> alibi_slopes,  // [num_heads]
                int max_seqlen_q,
                int max_seqlen_k,
                float p_dropout,
@@ -196,11 +197,12 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
     
-    if (alibi_slopes.defined()) {
-        CHECK_DEVICE(alibi_slopes);
-        CHECK_CONTIGUOUS(alibi_slopes);
-        CHECK_SHAPE(alibi_slopes, num_heads);
-        TORCH_CHECK(alibi_slopes.dtype() == torch::kFloat32, "alibi_slopes must have dtype float32");
+    if (alibi_slopes) {
+        at::Tensor slopes = alibi_slopes.value();
+        CHECK_DEVICE(slopes);
+        CHECK_CONTIGUOUS(slopes);
+        CHECK_SHAPE(slopes, num_heads);
+        TORCH_CHECK(slopes.dtype() == torch::kFloat32, "alibi_slopes must have dtype float32");
     }
 
     at::Tensor q_padded, k_padded, v_padded;
@@ -262,7 +264,7 @@ mha_varlen_fwd(const at::Tensor &q,  // total_q x num_heads x head_size, total_q
                      q_padded, k_padded, v_padded, out,
                      cu_seqlens_q.data_ptr(),
                      cu_seqlens_k.data_ptr(),
-                     alibi_slopes.defined() ? alibi_slopes.data_ptr() : nullptr,
+                     alibi_slopes ? alibi_slopes->data_ptr() : nullptr,
                      return_softmax ? p.data_ptr() : nullptr,
                      softmax_lse.data_ptr(),
                      p_dropout,
