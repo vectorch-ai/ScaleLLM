@@ -10,6 +10,7 @@
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_registry.h"
 
 // gpt2 model compatible with huggingface weights
 
@@ -360,5 +361,8 @@ class GPT2ForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear lm_head_{nullptr};
 };
 TORCH_MODULE(GPT2ForCausalLM);
+
+// register the model to make it available
+REGISTER_CAUSAL_MODEL(gpt2, GPT2ForCausalLM);
 
 }  // namespace llm::hf

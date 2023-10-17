@@ -10,6 +10,7 @@
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_registry.h"
 
 // GPTJ model compatible with huggingface weights
 
@@ -341,5 +342,8 @@ class GPTJForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear lm_head_{nullptr};
 };
 TORCH_MODULE(GPTJForCausalLM);
+
+// register the model to make it available
+REGISTER_CAUSAL_MODEL(gptj, GPTJForCausalLM);
 
 }  // namespace llm::hf

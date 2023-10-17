@@ -11,6 +11,7 @@
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_registry.h"
 
 // gpt-neox model compatible with huggingface weights
 
@@ -394,5 +395,8 @@ class GPTNeoXForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear embed_out_{nullptr};
 };
 TORCH_MODULE(GPTNeoXForCausalLM);
+
+// register the model to make it available
+REGISTER_CAUSAL_MODEL(gpt_neox, GPTNeoXForCausalLM);
 
 }  // namespace llm::hf

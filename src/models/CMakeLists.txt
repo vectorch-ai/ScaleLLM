@@ -5,6 +5,7 @@ cc_library(
   NAME 
     models
   HDRS
+    model_registry.h
     input_parameters.h 
     llama.h
     huggingface/llama.h

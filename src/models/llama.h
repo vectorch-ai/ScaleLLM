@@ -2,6 +2,8 @@
 
 #include <torch/torch.h>
 
+#include "args.h"
+#include "input_parameters.h"
 #include "layers/activation.h"
 #include "layers/attention_rope.h"
 #include "layers/embedding.h"
@@ -9,8 +11,7 @@
 #include "layers/normalization.h"
 #include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
-#include "models/args.h"
-#include "models/input_parameters.h"
+#include "model_registry.h"
 
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py
@@ -333,5 +334,8 @@ class LlamaModelImpl : public torch::nn::Module {
   ParallelArgs parallel_args_;
 };
 TORCH_MODULE(LlamaModel);
+
+// register the model to make it available
+REGISTER_CAUSAL_MODEL(llama2, LlamaModel);
 
 }  // namespace llm

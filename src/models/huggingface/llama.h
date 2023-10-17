@@ -10,6 +10,7 @@
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_registry.h"
 
 // llama2 model compatible with huggingface weights
 namespace llm::hf {
@@ -360,5 +361,8 @@ class LlamaForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear lm_head_{nullptr};
 };
 TORCH_MODULE(LlamaForCausalLM);
+
+// register the model to make it available
+REGISTER_CAUSAL_MODEL(llama, LlamaForCausalLM);
 
 }  // namespace llm::hf

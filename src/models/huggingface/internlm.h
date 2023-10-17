@@ -10,6 +10,7 @@
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_registry.h"
 
 // Internlm model compatible with huggingface weights
 namespace llm::hf {
@@ -17,10 +18,10 @@ namespace llm::hf {
 class InternlmMLPImpl : public torch::nn::Module {
  public:
   InternlmMLPImpl(const ModelArgs& args,
-               const QuantizationArgs& quant_args,
-               const ParallelArgs& parallel_args,
-               torch::ScalarType dtype,
-               const torch::Device& device) {
+                  const QuantizationArgs& quant_args,
+                  const ParallelArgs& parallel_args,
+                  torch::ScalarType dtype,
+                  const torch::Device& device) {
     act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
     CHECK(act_with_mul_ != nullptr);
 
@@ -79,10 +80,10 @@ TORCH_MODULE(InternlmMLP);
 class InternlmAttentionImpl : public torch::nn::Module {
  public:
   InternlmAttentionImpl(const ModelArgs& args,
-                     const QuantizationArgs& quant_args,
-                     const ParallelArgs& parallel_args,
-                     torch::ScalarType dtype,
-                     const torch::Device& device) {
+                        const QuantizationArgs& quant_args,
+                        const ParallelArgs& parallel_args,
+                        torch::ScalarType dtype,
+                        const torch::Device& device) {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
@@ -90,16 +91,15 @@ class InternlmAttentionImpl : public torch::nn::Module {
     const int64_t n_local_heads = n_heads / world_size;
 
     // register submodules
-    qkv_proj_ = register_module(
-        "qkv_proj",
-        ColumnParallelLinear(hidden_size,
-                             3 * hidden_size,
-                             /*bias=*/false,
-                             /*gather_output=*/false,
-                             quant_args,
-                             parallel_args,
-                             dtype,
-                             device));
+    qkv_proj_ = register_module("qkv_proj",
+                                ColumnParallelLinear(hidden_size,
+                                                     3 * hidden_size,
+                                                     /*bias=*/false,
+                                                     /*gather_output=*/false,
+                                                     quant_args,
+                                                     parallel_args,
+                                                     dtype,
+                                                     device));
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(hidden_size,
@@ -168,10 +168,10 @@ TORCH_MODULE(InternlmAttention);
 class InternlmDecoderLayerImpl : public torch::nn::Module {
  public:
   InternlmDecoderLayerImpl(const ModelArgs& args,
-                        const QuantizationArgs& quant_args,
-                        const ParallelArgs& parallel_args,
-                        torch::ScalarType dtype,
-                        const torch::Device& device) {
+                           const QuantizationArgs& quant_args,
+                           const ParallelArgs& parallel_args,
+                           torch::ScalarType dtype,
+                           const torch::Device& device) {
     // register submodules
     self_attn_ = register_module(
         "self_attn",
@@ -228,10 +228,10 @@ TORCH_MODULE(InternlmDecoderLayer);
 class InternlmModelImpl : public torch::nn::Module {
  public:
   InternlmModelImpl(const ModelArgs& args,
-                 const QuantizationArgs& quant_args,
-                 const ParallelArgs& parallel_args,
-                 torch::ScalarType dtype,
-                 const torch::Device& device) {
+                    const QuantizationArgs& quant_args,
+                    const ParallelArgs& parallel_args,
+                    torch::ScalarType dtype,
+                    const torch::Device& device) {
     // register submodules
     embed_tokens_ = register_module("embed_tokens",
                                     ParallelEmbedding(args.vocab_size(),
@@ -301,10 +301,10 @@ TORCH_MODULE(InternlmModel);
 class InternlmForCausalLMImpl : public torch::nn::Module {
  public:
   InternlmForCausalLMImpl(const ModelArgs& args,
-                       const QuantizationArgs& quant_args,
-                       const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device) {
+                          const QuantizationArgs& quant_args,
+                          const ParallelArgs& parallel_args,
+                          torch::ScalarType dtype,
+                          const torch::Device& device) {
     // register submodules
     model_ = register_module(
         "model", InternlmModel(args, quant_args, parallel_args, dtype, device));
@@ -349,5 +349,8 @@ class InternlmForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear lm_head_{nullptr};
 };
 TORCH_MODULE(InternlmForCausalLM);
+
+// register the model to make it available
+REGISTER_CAUSAL_MODEL(internlm, InternlmForCausalLM);
 
 }  // namespace llm::hf

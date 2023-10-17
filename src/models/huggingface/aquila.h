@@ -10,6 +10,7 @@
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_registry.h"
 
 // Aquila model compatible with huggingface weights
 namespace llm::hf {
@@ -360,5 +361,8 @@ class AquilaForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear lm_head_{nullptr};
 };
 TORCH_MODULE(AquilaForCausalLM);
+
+// register the model to make it available
+REGISTER_CAUSAL_MODEL(aquila, AquilaForCausalLM);
 
 }  // namespace llm::hf
