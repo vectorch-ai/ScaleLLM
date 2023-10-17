@@ -16,7 +16,10 @@ cc_library(
     huggingface/mpt.h
     huggingface/qwen.h
     huggingface/internlm.h
+    causal_lm.h
   SRCS
+    model_registry.cpp
+    causal_lm.cpp
   DEPS
     :model_args
     :layers
@@ -35,19 +38,6 @@ cc_test(
     :models
     :state_dict
     GTest::gtest_main
-)
-
-cc_library(
-  NAME 
-    causal_lm
-  HDRS 
-    causal_lm.h
-  SRCS
-    causal_lm.cpp 
-  DEPS
-    :models
-    glog::glog
-    torch
 )
 
 cc_library(

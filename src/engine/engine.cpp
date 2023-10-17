@@ -64,9 +64,6 @@ bool Engine::init_model(const std::string& model_weights_path) {
   CHECK(tokenizer_ != nullptr);
 
   args_ = model_loader->model_args();
-  if (args_.vocab_size() == -1) {
-    args_.vocab_size(static_cast<int64_t>(tokenizer_->vocab_size()));
-  }
   const auto& quant_args = model_loader->quant_args();
   LOG(INFO) << "Initializing model with " << args_ << ", " << quant_args;
 

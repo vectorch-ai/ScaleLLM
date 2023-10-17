@@ -398,6 +398,40 @@ inline bool load_meta_llama_model_args(const nlohmann::json& data,
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(llama2, LlamaModel);
-REGISTER_MODEL_ARGS_LOADER(llama2, load_meta_llama_model_args);
+REGISTER_MODEL_ARGS(llama2, [&] {
+  LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
+  LOAD_ARG_OR(hidden_size, "dim", 4096);
+  LOAD_ARG_OR(n_layers, "n_layers", 32);
+  LOAD_ARG_OR(n_heads, "n_heads", 32);
+  LOAD_OPTIONAL_ARG(n_kv_heads, "num_key_value_heads");
+  LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
+  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 2048);
+  LOAD_ARG_OR(rms_norm_eps, "norm_eps", 1e-5);
+  LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
+  LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
+  LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
+  LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+
+  LOAD_ARG_WITH_FUNC(intermediate_size, "intermediate_size", [&]() {
+    int64_t multiple_of = 256;
+    float ffn_dim_multiplier = 1.0f;
+    if (data.contains("multiple_of")) {
+      multiple_of = data["multiple_of"].get<int64_t>();
+    }
+    if (data.contains("ffn_dim_multiplier")) {
+      ffn_dim_multiplier = data["ffn_dim_multiplier"].get<float>();
+    }
+
+    // calculate hidden_dim from dim
+    int64_t intermediate_size = args->hidden_size() * 4;
+    intermediate_size = 2 * intermediate_size / 3;
+    // custom dim factor multiplier
+    intermediate_size *= ffn_dim_multiplier;
+    // round up to make hidden layer size multiple of large power of 2
+    intermediate_size =
+        multiple_of * ((intermediate_size + multiple_of - 1) / multiple_of);
+    return intermediate_size;
+  });
+});
 
 }  // namespace llm

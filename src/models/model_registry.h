@@ -1,4 +1,6 @@
 #pragma once
+#include <glog/logging.h>
+
 #include <functional>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -32,23 +34,26 @@ struct ModelMeta {
 // ModelFactory, ModelArgParser to facilitate model loading.
 class ModelRegistry {
  public:
-  static ModelRegistry* get() {
-    static ModelRegistry registry;
-    return &registry;
-  }
+  static ModelRegistry* get();
 
   void register_causallm_factory(const std::string& name,
                                  CausalLMFactory factory) {
+    CHECK(model_registry_[name].causal_lm_factory == nullptr)
+        << "causal lm factor for " << name << " already registered";
     model_registry_[name].causal_lm_factory = factory;
   }
 
   void register_model_args_loader(const std::string& name,
                                   ModelArgsLoader loader) {
+    CHECK(model_registry_[name].model_args_loader == nullptr)
+        << "model args loader for " << name << " already registered";
     model_registry_[name].model_args_loader = loader;
   }
 
   void register_quant_args_loader(const std::string& name,
                                   QuantizationArgsLoader loader) {
+    CHECK(model_registry_[name].quant_args_loader == nullptr)
+        << "quant args loader for " << name << " already registered";
     model_registry_[name].quant_args_loader = loader;
   }
 
@@ -99,5 +104,34 @@ class ModelRegistry {
     ModelRegistry::get()->register_quant_args_loader(#ModelType, Loader); \
     return true;                                                          \
   }();
+
+#define REGISTER_MODEL_ARGS(ModelType, ...)                                    \
+  REGISTER_MODEL_ARGS_LOADER(ModelType,                                        \
+                             [](const nlohmann::json& data, ModelArgs* args) { \
+                               __VA_ARGS__();                                  \
+                               return true;                                    \
+                             });
+
+#define LOAD_ARG_OR(arg_name, json_name, default_value)         \
+  if (data.contains(json_name) && !data[json_name].is_null()) { \
+    auto value = args->arg_name();                              \
+    args->arg_name() = data[json_name].get<decltype(value)>();  \
+  } else {                                                      \
+    args->arg_name() = default_value;                           \
+  }
+
+#define LOAD_OPTIONAL_ARG(arg_name, json_name)                             \
+  if (data.contains(json_name) && !data[json_name].is_null()) {            \
+    auto value = args->arg_name();                                         \
+    args->arg_name() = data[json_name].get<decltype(value)::value_type>(); \
+  }
+
+#define LOAD_ARG_WITH_FUNC(arg_name, json_name, ...)            \
+  if (data.contains(json_name) && !data[json_name].is_null()) { \
+    auto value = args->arg_name();                              \
+    args->arg_name() = data[json_name].get<decltype(value)>();  \
+  } else {                                                      \
+    args->arg_name() = __VA_ARGS__();                           \
+  }
 
 }  // namespace llm

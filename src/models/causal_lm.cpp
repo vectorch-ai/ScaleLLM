@@ -8,15 +8,7 @@
 #include <vector>
 
 #include "args.h"
-#include "huggingface/aquila.h"
-#include "huggingface/gpt2.h"
-#include "huggingface/gpt_j.h"
-#include "huggingface/gpt_neox.h"
-#include "huggingface/internlm.h"
-#include "huggingface/llama.h"
-#include "huggingface/mistral.h"
 #include "input_parameters.h"
-#include "llama.h"
 #include "memory/kv_cache.h"
 #include "model_loader/state_dict.h"
 #include "models/model_registry.h"

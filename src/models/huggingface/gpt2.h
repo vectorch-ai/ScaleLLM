@@ -362,59 +362,21 @@ class GPT2ForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(GPT2ForCausalLM);
 
-inline bool load_gpt2_model_args(const nlohmann::json& data, ModelArgs* args) {
-  // example config: https://huggingface.co/gpt2/blob/main/config.json
-  // set default values for args explicitly with values from:
-  // https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/configuration_gpt2.py#L142
-  args->vocab_size() = 50257;
-  args->hidden_size() = 768;
-  args->n_layers() = 12;
-  args->n_heads() = 12;
-  args->intermediate_size() = 3072;
-  args->hidden_act() = "gelu_new";
-  args->max_position_embeddings() = 1024;
-  args->layer_norm_eps() = 1e-5;
-  args->bos_token_id() = 50256;
-  args->eos_token_id() = 50256;
-
-  if (data.contains("n_embd")) {
-    args->hidden_size() = data["n_embd"].get<int64_t>();
-  }
-  if (data.contains("vocab_size")) {
-    args->vocab_size() = data["vocab_size"].get<int64_t>();
-  }
-  if (data.contains("n_layer")) {
-    args->n_layers() = data["n_layer"].get<int64_t>();
-  }
-  if (data.contains("n_head")) {
-    args->n_heads() = data["n_head"].get<int64_t>();
-  }
-  if (data.contains("n_inner")) {
-    args->intermediate_size() = data["n_inner"].get<int64_t>();
-  } else {
-    // set it to 4 times n_embd
-    args->intermediate_size() = args->hidden_size() * 4;
-  }
-  if (data.contains("activation_function")) {
-    args->hidden_act() = data["activation_function"].get<std::string>();
-  }
-  if (data.contains("n_positions")) {
-    args->max_position_embeddings() = data["n_positions"].get<int64_t>();
-  }
-  if (data.contains("layer_norm_epsilon")) {
-    args->layer_norm_eps() = data["layer_norm_epsilon"].get<float>();
-  }
-  if (data.contains("bos_token_id")) {
-    args->bos_token_id() = data["bos_token_id"].get<int32_t>();
-  }
-  if (data.contains("eos_token_id")) {
-    args->eos_token_id() = data["eos_token_id"].get<int32_t>();
-  }
-  return true;
-}
-
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gpt2, GPT2ForCausalLM);
-REGISTER_MODEL_ARGS_LOADER(gpt2, load_gpt2_model_args);
+REGISTER_MODEL_ARGS(gpt2, [&] {
+  LOAD_ARG_OR(vocab_size, "vocab_size", 50257);
+  LOAD_ARG_OR(hidden_size, "n_embd", 768);
+  LOAD_ARG_OR(n_layers, "n_layer", 12);
+  LOAD_ARG_OR(n_heads, "n_head", 12);
+  LOAD_ARG_OR(hidden_act, "activation_function", "gelu_new");
+  LOAD_ARG_OR(max_position_embeddings, "n_positions", 1024);
+  LOAD_ARG_OR(layer_norm_eps, "layer_norm_epsilon", 1e-5);
+  LOAD_ARG_OR(bos_token_id, "bos_token_id", 50256);
+  LOAD_ARG_OR(eos_token_id, "eos_token_id", 50256);
+
+  LOAD_ARG_WITH_FUNC(
+      intermediate_size, "n_inner", [&]() { return args->hidden_size() * 4; });
+});
 
 }  // namespace llm::hf

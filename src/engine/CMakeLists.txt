@@ -17,7 +17,7 @@ cc_library(
     :common
     :request
     :state_dict
-    :causal_lm
+    :models
     :logits_processor
     :sampler
     :tokenizer
