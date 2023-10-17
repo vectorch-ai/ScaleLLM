@@ -32,13 +32,11 @@ cc_library(
   NAME 
     model_loader
   HDRS 
-    args_loader.h
     model_loader.h
   SRCS 
-    args_loader.cpp
     model_loader.cpp
   DEPS
-    :model_args
+    :models
     :tokenizer
     nlohmann_json::nlohmann_json
     torch

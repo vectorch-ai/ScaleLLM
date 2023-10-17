@@ -10,11 +10,11 @@
 #include <nlohmann/json.hpp>
 #include <vector>
 
-#include "args_loader.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 #include "tokenizer/hf_tokenizer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
+#include "models/model_registry.h"
 
 DEFINE_int64(max_position_embeddings, 0, "Maximum position embeddings.");
 DEFINE_string(model_type, "", "model type, e.g. llama2, llama, gpt_neox");
@@ -109,7 +109,14 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   }
 
   json data = json::parse(ifs);
-  return load_meta_llama_model_args(data, &args_);
+  auto args_loader =
+      ModelRegistry::get()->get_model_args_loader("llama2");
+  if (args_loader == nullptr) {
+    LOG(ERROR) << "Failed to find model args loader for model type "
+               << args_.model_type();
+    return false;
+  }
+  return args_loader(data, &args_);
 }
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path)
@@ -177,21 +184,14 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     return false;
   }
 
-  if (boost::iequals(args_.model_type(), "gpt2")) {
-    load_gpt2_model_args(data, &args_);
-  } else if (boost::iequals(args_.model_type(), "gptj")) {
-    load_gptj_model_args(data, &args_);
-  } else if (boost::iequals(args_.model_type(), "gpt_neox")) {
-    load_gpt_neox_model_args(data, &args_);
-  } else if (boost::iequals(args_.model_type(), "llama")) {
-    load_llama_model_args(data, &args_);
-  } else if (boost::iequals(args_.model_type(), "mistral")) {
-    load_mistral_model_args(data, &args_);
-  } else if (boost::iequals(args_.model_type(), "aquila")) {
-    load_aquila_model_args(data, &args_);
-  } else if (boost::iequals(args_.model_type(), "internlm")) {
-    load_internlm_model_args(data, &args_);
+  auto args_loader =
+      ModelRegistry::get()->get_model_args_loader(args_.model_type());
+  if (args_loader == nullptr) {
+    LOG(ERROR) << "Failed to find model args loader for model type "
+               << args_.model_type();
+    return false;
   }
+  args_loader(data, &args_);
 
   // load quantization args if exists
   if (data.contains("quantization_config")) {

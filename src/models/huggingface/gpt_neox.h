@@ -396,7 +396,73 @@ class GPTNeoXForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(GPTNeoXForCausalLM);
 
+inline bool load_gpt_neox_model_args(const nlohmann::json& data, ModelArgs* args) {
+  // example config:
+  // https://huggingface.co/EleutherAI/gpt-neox-20b/blob/main/config.json set
+  // set default values for args explicitly with values from:
+  // https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/configuration_gpt_neox.py#L106
+  args->vocab_size() = 50432;
+  args->hidden_size() = 6144;
+  args->n_layers() = 44;
+  args->n_heads() = 64;
+  args->intermediate_size() = 24576;
+  args->hidden_act() = "gelu";
+  args->rotary_pct() = 0.25;
+  args->rope_theta() = 10000.0f;
+  args->max_position_embeddings() = 2048;
+  args->layer_norm_eps() = 1e-5;
+  args->bos_token_id() = 0;
+  args->eos_token_id() = 2;
+  args->use_parallel_residual() = true;
+
+  if (data.contains("vocab_size")) {
+    args->vocab_size() = data["vocab_size"].get<int64_t>();
+  }
+  if (data.contains("hidden_size")) {
+    args->hidden_size() = data["hidden_size"].get<int64_t>();
+  }
+  if (data.contains("num_hidden_layers")) {
+    args->n_layers() = data["num_hidden_layers"].get<int64_t>();
+  }
+  if (data.contains("num_attention_heads")) {
+    args->n_heads() = data["num_attention_heads"].get<int64_t>();
+  }
+  if (data.contains("intermediate_size")) {
+    args->intermediate_size() = data["intermediate_size"].get<int64_t>();
+  }
+  if (data.contains("hidden_act")) {
+    args->hidden_act() = data["hidden_act"].get<std::string>();
+  }
+  if (data.contains("rotary_pct")) {
+    args->rotary_pct() = data["rotary_pct"].get<float>();
+  }
+  if (data.contains("rotary_emb_base")) {
+    args->rope_theta() = data["rotary_emb_base"].get<float>();
+  }
+  if (data.contains("rope_scaling") && data["rope_scaling"].is_number_float()) {
+    args->rope_scaling() = data["rope_scaling"].get<float>();
+  }
+  if (data.contains("max_position_embeddings")) {
+    args->max_position_embeddings() =
+        data["max_position_embeddings"].get<int64_t>();
+  }
+  if (data.contains("layer_norm_eps")) {
+    args->layer_norm_eps() = data["layer_norm_eps"].get<float>();
+  }
+  if (data.contains("bos_token_id")) {
+    args->bos_token_id() = data["bos_token_id"].get<int32_t>();
+  }
+  if (data.contains("eos_token_id")) {
+    args->eos_token_id() = data["eos_token_id"].get<int32_t>();
+  }
+  if (data.contains("use_parallel_residual")) {
+    args->use_parallel_residual() = data["use_parallel_residual"].get<bool>();
+  }
+  return true;
+}
+
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gpt_neox, GPTNeoXForCausalLM);
+REGISTER_MODEL_ARGS_LOADER(gpt_neox, load_gpt_neox_model_args);
 
 }  // namespace llm::hf

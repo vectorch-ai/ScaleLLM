@@ -87,17 +87,17 @@ class ModelRegistry {
   }();
 
 // Macro to register a model args loader with the ModelRegistry
-#define REGISTER_MODEL_ARGS_LOADER(Name, Loader)                    \
-  const bool Name##_args_loader_registered = []() {                 \
-    ModelRegistry::get()->register_model_args_loader(Name, Loader); \
-    return true;                                                    \
+#define REGISTER_MODEL_ARGS_LOADER(ModelType, Loader)                     \
+  const bool ModelType##_args_loader_registered = []() {                  \
+    ModelRegistry::get()->register_model_args_loader(#ModelType, Loader); \
+    return true;                                                          \
   }();
 
 // Macro to register a quantization args loader with the ModelRegistry
-#define REGISTER_QUANT_ARGS_LOADER(Name, Loader)                    \
-  const bool Name##_quant_args_loader_registered = []() {           \
-    ModelRegistry::get()->register_quant_args_loader(Name, Loader); \
-    return true;                                                    \
+#define REGISTER_QUANT_ARGS_LOADER(ModelType, Loader)                     \
+  const bool ModelType##_quant_args_loader_registered = []() {            \
+    ModelRegistry::get()->register_quant_args_loader(#ModelType, Loader); \
+    return true;                                                          \
   }();
 
 }  // namespace llm

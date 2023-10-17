@@ -335,7 +335,69 @@ class LlamaModelImpl : public torch::nn::Module {
 };
 TORCH_MODULE(LlamaModel);
 
+inline bool load_meta_llama_model_args(const nlohmann::json& data,
+                                       ModelArgs* args) {
+  // example config:
+  // https://huggingface.co/meta-llama/Llama-2-7b/blob/main/params.json
+  args->model_type() = "llama2";
+  args->vocab_size() = 32000;
+  args->hidden_size() = 4096;
+  args->n_layers() = 32;
+  args->n_heads() = 32;
+  args->intermediate_size() = 11008;
+  args->hidden_act() = "silu";
+  args->max_position_embeddings() = 4096;
+  args->rope_theta() = 10000.0f;
+  args->rms_norm_eps() = 1e-5;
+  args->bos_token_id() = 1;
+  args->eos_token_id() = 2;
+
+  if (data.contains("dim")) {
+    args->hidden_size() = data["dim"].get<int64_t>();
+  }
+  if (data.contains("n_layers")) {
+    args->n_layers() = data["n_layers"].get<int64_t>();
+  }
+  if (data.contains("n_heads")) {
+    args->n_heads() = data["n_heads"].get<int64_t>();
+  }
+  if (data.contains("n_kv_heads")) {
+    args->n_kv_heads() = data["n_kv_heads"].get<int64_t>();
+  }
+  if (data.contains("vocab_size")) {
+    args->vocab_size() = data["vocab_size"].get<int64_t>();
+  }
+  if (data.contains("norm_eps")) {
+    args->rms_norm_eps() = data["norm_eps"].get<float>();
+  }
+  if (data.contains("rope_theta")) {
+    args->rope_theta() = data["rope_theta"].get<float>();
+  }
+
+  // calculate intermediate_size from hidden_size
+  int64_t multiple_of = 256;
+  float ffn_dim_multiplier = 1.0f;
+  if (data.contains("multiple_of")) {
+    multiple_of = data["multiple_of"].get<int64_t>();
+  }
+  if (data.contains("ffn_dim_multiplier")) {
+    ffn_dim_multiplier = data["ffn_dim_multiplier"].get<float>();
+  }
+
+  // calculate hidden_dim from dim
+  int64_t intermediate_size = args->hidden_size() * 4;
+  intermediate_size = 2 * intermediate_size / 3;
+  // custom dim factor multiplier
+  intermediate_size *= ffn_dim_multiplier;
+  // round up to make hidden layer size multiple of large power of 2
+  intermediate_size =
+      multiple_of * ((intermediate_size + multiple_of - 1) / multiple_of);
+  args->intermediate_size() = intermediate_size;
+  return true;
+}
+
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(llama2, LlamaModel);
+REGISTER_MODEL_ARGS_LOADER(llama2, load_meta_llama_model_args);
 
 }  // namespace llm
