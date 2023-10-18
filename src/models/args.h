@@ -77,6 +77,9 @@ struct ModelArgs {
 
   // whether to use bias
   DEFINE_ARG(bool, no_bias) = false;
+
+  // whether to apply residual connection post layernorm
+  DEFINE_ARG(bool, residual_post_layernorm) = false;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {

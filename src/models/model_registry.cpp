@@ -4,6 +4,7 @@
 
 // list all registered models here
 #include "huggingface/aquila.h"
+#include "huggingface/bloom.h"
 #include "huggingface/gpt2.h"
 #include "huggingface/gpt_j.h"
 #include "huggingface/gpt_neox.h"

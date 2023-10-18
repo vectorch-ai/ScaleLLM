@@ -133,8 +133,8 @@ class MPTAttentionImpl : public torch::nn::Module {
     CHECK(args.attn_alibi()) << "only support alibi attention";
 
     // calculate alibi_slopes
-    torch::Tensor alibi_slopes = prepare_alibi_slopes(
-        n_heads, args.alibi_bias_max(), parallel_args, device);
+    torch::Tensor alibi_slopes =
+        prepare_alibi_slopes(n_heads, args.alibi_bias_max(), parallel_args);
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     atten_ = register_module("atten",
                              AttentionWithAlibi(n_local_heads,
@@ -199,18 +199,16 @@ class MPTAttentionImpl : public torch::nn::Module {
  private:
   static torch::Tensor prepare_alibi_slopes(int64_t n_heads,
                                             float bias_max,
-                                            const ParallelArgs& parallel_args,
-                                            const torch::Device& device) {
-    const int64_t next_power_of_2 = 1 << (32 - __builtin_clzl(n_heads - 1));
+                                            const ParallelArgs& parallel_args) {
+    const int64_t next_power_of_2 = std::pow(2, std::ceil(std::log2(n_heads)));
     auto m = torch::arange(
-        1, next_power_of_2 + 1, torch::dtype(torch::kFloat32).device(device));
+        /*start=*/1, /*end=*/next_power_of_2 + 1, torch::kFloat32);
     m.mul_(bias_max / next_power_of_2);
     auto slopes = 1.0f / torch::pow(2, m);
     if (next_power_of_2 != n_heads) {
-      using torch::indexing::Slice;
-      slopes =
-          torch::cat({slopes.index({Slice(1, c10::nullopt, 2)}),
-                      slopes.index({Slice(c10::nullopt, c10::nullopt, 2)})});
+      using namespace torch::indexing;
+      slopes = torch::cat({slopes.index({Slice(1, None, 2)}),
+                           slopes.index({Slice(None, None, 2)})});
     }
     if (parallel_args.world_size() > 1) {
       slopes = slopes.chunk(/*chunks=*/parallel_args.world_size(),
