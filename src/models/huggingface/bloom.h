@@ -115,7 +115,8 @@ class BloomAttentionImpl : public torch::nn::Module {
                                                device));
 
     // initialize positional embedding
-    const torch::Tensor alibi_slopes = prepare_alibi_slopes(n_heads, parallel_args);
+    const torch::Tensor alibi_slopes =
+        prepare_alibi_slopes(n_heads, parallel_args);
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
                              AttentionWithAlibi(n_local_heads,
@@ -160,7 +161,7 @@ class BloomAttentionImpl : public torch::nn::Module {
         std::pow(2, std::floor(std::log2(n_heads)));
     const float base =
         std::pow(2, -(std::pow(2, -(std::log2(closest_power_of_2) - 3))));
-    torch::Tensor powers = torch::arange(
+    const torch::Tensor powers = torch::arange(
         /*start=*/1, /*end=*/1 + closest_power_of_2, torch::kFloat32);
     torch::Tensor slopes = torch::pow(base, powers);
 
@@ -169,13 +170,13 @@ class BloomAttentionImpl : public torch::nn::Module {
           std::pow(2, -(std::pow(2, -(std::log2(2 * closest_power_of_2) - 3))));
       const int64_t n_remaining_heads =
           std::min(closest_power_of_2, n_heads - closest_power_of_2);
-      torch::Tensor extraPowers =
+      const torch::Tensor extra_powers =
           torch::arange(/*start=*/1,
                         /*end=*/1 + 2 * n_remaining_heads,
                         /*step=*/2,
                         torch::kFloat32);
-      torch::Tensor extraSlopes = torch::pow(extra_base, extraPowers);
-      slopes = torch::cat({slopes, extraSlopes}, /*dim=*/0);
+      const torch::Tensor extra_slopes = torch::pow(extra_base, extra_powers);
+      slopes = torch::cat({slopes, extra_slopes}, /*dim=*/0);
     }
     if (parallel_args.world_size() > 1) {
       slopes = slopes.chunk(/*chunks=*/parallel_args.world_size(),

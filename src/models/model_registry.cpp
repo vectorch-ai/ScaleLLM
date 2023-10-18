@@ -16,7 +16,7 @@
 
 namespace llm {
 
-ModelRegistry* ModelRegistry::get() {
+ModelRegistry* ModelRegistry::get_instance() {
   static ModelRegistry registry;
   return &registry;
 }

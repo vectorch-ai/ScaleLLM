@@ -39,7 +39,7 @@ const StateDict* StateDictIterator::get_state_dict() const {
   // lazy loading
   if (!state_dict_) {
     LOG(INFO) << "Loading model weights from " << model_weights_files_[index_];
-    
+
     const int shard_id = is_sharded_ ? static_cast<int>(index_) : 0;
     const int num_shards = is_sharded_ ? static_cast<int>(num_weight_files) : 1;
     if (is_pickle_) {
@@ -105,7 +105,9 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
     LOG(ERROR) << "Failed to parse model args file: " << args_file_path;
     return false;
   }
-  auto args_loader = ModelRegistry::get()->get_model_args_loader("llama2");
+  // hardcode the model type to llama2 for now.
+  args_.model_type() = "llama2";
+  auto args_loader = ModelRegistry::get_model_args_loader(args_.model_type());
   if (args_loader == nullptr) {
     LOG(ERROR) << "Failed to find model args loader for model type "
                << args_.model_type();
@@ -178,8 +180,7 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     return false;
   }
 
-  auto args_loader =
-      ModelRegistry::get()->get_model_args_loader(args_.model_type());
+  auto args_loader = ModelRegistry::get_model_args_loader(args_.model_type());
   if (args_loader == nullptr) {
     LOG(ERROR) << "Failed to find model args loader for model type "
                << args_.model_type();

@@ -21,7 +21,7 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
                                            torch::ScalarType dtype,
                                            const torch::Device& device) {
   // get the factory function for the model type from model registry
-  auto factory = ModelRegistry::get()->get_causallm_factory(args.model_type());
+  auto factory = ModelRegistry::get_causallm_factory(args.model_type());
   if (factory) {
     return factory(args, quant_args, parallel_args, dtype, device);
   }

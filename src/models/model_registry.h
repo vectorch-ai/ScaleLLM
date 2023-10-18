@@ -34,39 +34,45 @@ struct ModelMeta {
 // ModelFactory, ModelArgParser to facilitate model loading.
 class ModelRegistry {
  public:
-  static ModelRegistry* get();
+  static ModelRegistry* get_instance();
 
-  void register_causallm_factory(const std::string& name,
-                                 CausalLMFactory factory) {
-    CHECK(model_registry_[name].causal_lm_factory == nullptr)
+  static void register_causallm_factory(const std::string& name,
+                                        CausalLMFactory factory) {
+    ModelRegistry* instance = get_instance();
+    CHECK(instance->model_registry_[name].causal_lm_factory == nullptr)
         << "causal lm factor for " << name << " already registered";
-    model_registry_[name].causal_lm_factory = factory;
+    instance->model_registry_[name].causal_lm_factory = factory;
   }
 
-  void register_model_args_loader(const std::string& name,
-                                  ModelArgsLoader loader) {
-    CHECK(model_registry_[name].model_args_loader == nullptr)
+  static void register_model_args_loader(const std::string& name,
+                                         ModelArgsLoader loader) {
+    ModelRegistry* instance = get_instance();
+    CHECK(instance->model_registry_[name].model_args_loader == nullptr)
         << "model args loader for " << name << " already registered";
-    model_registry_[name].model_args_loader = loader;
+    instance->model_registry_[name].model_args_loader = loader;
   }
 
-  void register_quant_args_loader(const std::string& name,
-                                  QuantizationArgsLoader loader) {
-    CHECK(model_registry_[name].quant_args_loader == nullptr)
+  static void register_quant_args_loader(const std::string& name,
+                                         QuantizationArgsLoader loader) {
+    ModelRegistry* instance = get_instance();
+    CHECK(instance->model_registry_[name].quant_args_loader == nullptr)
         << "quant args loader for " << name << " already registered";
-    model_registry_[name].quant_args_loader = loader;
+    instance->model_registry_[name].quant_args_loader = loader;
   }
 
-  CausalLMFactory get_causallm_factory(const std::string& name) {
-    return model_registry_[name].causal_lm_factory;
+  static CausalLMFactory get_causallm_factory(const std::string& name) {
+    ModelRegistry* instance = get_instance();
+    return instance->model_registry_[name].causal_lm_factory;
   }
 
-  ModelArgsLoader get_model_args_loader(const std::string& name) {
-    return model_registry_[name].model_args_loader;
+  static ModelArgsLoader get_model_args_loader(const std::string& name) {
+    ModelRegistry* instance = get_instance();
+    return instance->model_registry_[name].model_args_loader;
   }
 
-  QuantizationArgsLoader get_quant_args_loader(const std::string& name) {
-    return model_registry_[name].quant_args_loader;
+  static QuantizationArgsLoader get_quant_args_loader(const std::string& name) {
+    ModelRegistry* instance = get_instance();
+    return instance->model_registry_[name].quant_args_loader;
   }
 
  private:
@@ -76,7 +82,7 @@ class ModelRegistry {
 // Macro to register a model with the ModelRegistry
 #define REGISTER_CAUSAL_MODEL(ModelType, ModelClass)                        \
   const bool ModelType##_registered = []() {                                \
-    ModelRegistry::get()->register_causallm_factory(                        \
+    ModelRegistry::register_causallm_factory(                               \
         #ModelType,                                                         \
         [](const ModelArgs& args,                                           \
            const QuantizationArgs& quant_args,                              \
@@ -92,17 +98,17 @@ class ModelRegistry {
   }()
 
 // Macro to register a model args loader with the ModelRegistry
-#define REGISTER_MODEL_ARGS_LOADER(ModelType, Loader)                     \
-  const bool ModelType##_args_loader_registered = []() {                  \
-    ModelRegistry::get()->register_model_args_loader(#ModelType, Loader); \
-    return true;                                                          \
+#define REGISTER_MODEL_ARGS_LOADER(ModelType, Loader)              \
+  const bool ModelType##_args_loader_registered = []() {           \
+    ModelRegistry::register_model_args_loader(#ModelType, Loader); \
+    return true;                                                   \
   }()
 
 // Macro to register a quantization args loader with the ModelRegistry
-#define REGISTER_QUANT_ARGS_LOADER(ModelType, Loader)                     \
-  const bool ModelType##_quant_args_loader_registered = []() {            \
-    ModelRegistry::get()->register_quant_args_loader(#ModelType, Loader); \
-    return true;                                                          \
+#define REGISTER_QUANT_ARGS_LOADER(ModelType, Loader)              \
+  const bool ModelType##_quant_args_loader_registered = []() {     \
+    ModelRegistry::register_quant_args_loader(#ModelType, Loader); \
+    return true;                                                   \
   }()
 
 #define REGISTER_MODEL_ARGS(ModelType, ...)                                \
