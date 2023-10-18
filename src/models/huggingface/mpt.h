@@ -24,7 +24,7 @@ class MPTMLPImpl : public torch::nn::Module {
              const ParallelArgs& parallel_args,
              torch::ScalarType dtype,
              const torch::Device& device) {
-    act_ = Activation::get_act_func("silu", device);
+    act_ = Activation::get_act_func("gelu", device);
     CHECK(act_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
@@ -91,6 +91,8 @@ class MPTAttentionImpl : public torch::nn::Module {
     const int64_t n_heads = args.n_heads();
     const int64_t head_dim = hidden_size / args.n_heads();
     const int64_t n_local_heads = n_heads / world_size;
+    hidden_size_ = hidden_size;
+    head_dim_ = head_dim;
 
     // register submodules
     wqkv_ = register_module("Wqkv",
@@ -155,7 +157,6 @@ class MPTAttentionImpl : public torch::nn::Module {
       qkv.clamp_(/*min=*/-value, /*max=*/value);
     }
     auto chunks = qkv.chunk(/*chunks=*/3, /*dim=*/-1);
-    DCHECK_EQ(chunks.size(), 3);
     auto q = chunks[0];
     auto k = chunks[1];
     auto v = chunks[2];
@@ -171,7 +172,15 @@ class MPTAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    wqkv_->load_state_dict(state_dict.select("Wqkv."));
+    auto qkv_state_dict = state_dict.select("Wqkv.");
+    // reshape qkv from [3, n_heads, ...] to [n_heads, 3, ...] before sharding
+    qkv_state_dict.set_tensor_transform([this](const torch::Tensor& tensor) {
+      return reshape_qkv_before_sharding(tensor);
+    });
+    // reshape local qkv back to [3, n_heads, ...] after sharding
+    wqkv_->load_state_dict(qkv_state_dict, [this](const torch::Tensor& tensor) {
+      return reshape_qkv_after_sharding(tensor);
+    });
     out_proj_->load_state_dict(state_dict.select("out_proj."));
     if (qk_layer_norm_) {
       q_ln_->load_state_dict(state_dict.select("q_ln."));
@@ -210,6 +219,33 @@ class MPTAttentionImpl : public torch::nn::Module {
     }
     return slopes;
   }
+
+  // reshape qkv tensor from [3, n_heads, ...] => [n_heads, 3, ...]
+  torch::Tensor reshape_qkv_before_sharding(const torch::Tensor& tensor) {
+    CHECK(tensor.dim() == 2 || tensor.dim() == 1)
+        << "unexpected tensor dim: " << tensor.dim();
+    if (tensor.dim() == 2) {
+      return tensor.view({3, -1, head_dim_, hidden_size_})
+          .permute({1, 0, 2, 3})
+          .reshape({-1, hidden_size_});
+    }
+    return tensor.view({3, -1, head_dim_}).permute({1, 0, 2}).reshape({-1});
+  }
+
+  // reshape local qkv tensor from [n_heads, 3, ...] => [3, n_heads, ...]
+  torch::Tensor reshape_qkv_after_sharding(const torch::Tensor& tensor) {
+    // N.B. Fused qkv weights in GPT-NeoX has the shape of [n_heads * 3 *
+    // head_dim, hidden_size], while the desired shape is [3 * n_heads *
+    // head_dim, hidden_size].
+    CHECK(tensor.dim() == 2 || tensor.dim() == 1)
+        << "unexpected tensor dim: " << tensor.dim();
+    if (tensor.dim() == 2) {
+      return tensor.view({-1, 3, head_dim_, hidden_size_})
+          .permute({1, 0, 2, 3})
+          .reshape({-1, hidden_size_});
+    }
+    return tensor.view({-1, 3, head_dim_}).permute({1, 0, 2}).reshape({-1});
+  }
   // parameter members, must be registered
   ColumnParallelLinear wqkv_{nullptr};
 
@@ -226,6 +262,9 @@ class MPTAttentionImpl : public torch::nn::Module {
   bool qk_layer_norm_{false};
 
   std::optional<float> attn_qkv_clip_;
+
+  int64_t hidden_size_ = 0;
+  int64_t head_dim_ = 0;
 };
 TORCH_MODULE(MPTAttention);
 
