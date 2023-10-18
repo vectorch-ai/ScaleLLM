@@ -3,9 +3,9 @@
 
 #include <functional>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <string>
 
+#include "common/json_reader.h"
 #include "models/args.h"
 #include "models/causal_lm.h"
 
@@ -18,10 +18,10 @@ using CausalLMFactory =
                                             torch::ScalarType dtype,
                                             const torch::Device& device)>;
 using ModelArgsLoader =
-    std::function<bool(const nlohmann::json& data, ModelArgs* args)>;
+    std::function<bool(const JsonReader& json, ModelArgs* args)>;
 
 using QuantizationArgsLoader =
-    std::function<bool(const nlohmann::json& data, QuantizationArgs* args)>;
+    std::function<bool(const JsonReader& json, QuantizationArgs* args)>;
 
 // TODO: add default args loader.
 struct ModelMeta {
@@ -105,33 +105,34 @@ class ModelRegistry {
     return true;                                                          \
   }();
 
-#define REGISTER_MODEL_ARGS(ModelType, ...)                                    \
-  REGISTER_MODEL_ARGS_LOADER(ModelType,                                        \
-                             [](const nlohmann::json& data, ModelArgs* args) { \
-                               __VA_ARGS__();                                  \
-                               return true;                                    \
+#define REGISTER_MODEL_ARGS(ModelType, ...)                                  \
+  REGISTER_MODEL_ARGS_LOADER(ModelType,                                      \
+                             [](const JsonReader& json, ModelArgs* args) { \
+                               __VA_ARGS__();                                \
+                               return true;                                  \
                              });
 
-#define LOAD_ARG_OR(arg_name, json_name, default_value)         \
-  if (data.contains(json_name) && !data[json_name].is_null()) { \
-    auto value = args->arg_name();                              \
-    args->arg_name() = data[json_name].get<decltype(value)>();  \
-  } else {                                                      \
-    args->arg_name() = default_value;                           \
-  }
+#define LOAD_ARG_OR(arg_name, json_name, default_value)             \
+  [&] {                                                             \
+    auto value = args->arg_name();                                  \
+    args->arg_name() =                                              \
+        json.value_or<decltype(value)>(json_name, default_value); \
+  }()
 
-#define LOAD_OPTIONAL_ARG(arg_name, json_name)                             \
-  if (data.contains(json_name) && !data[json_name].is_null()) {            \
-    auto value = args->arg_name();                                         \
-    args->arg_name() = data[json_name].get<decltype(value)::value_type>(); \
-  }
+#define LOAD_OPTIONAL_ARG(arg_name, json_name)                               \
+  [&] {                                                                      \
+    auto value = args->arg_name();                                           \
+    args->arg_name() = json.value<decltype(value)::value_type>(json_name); \
+  }()
 
-#define LOAD_ARG_WITH_FUNC(arg_name, json_name, ...)            \
-  if (data.contains(json_name) && !data[json_name].is_null()) { \
-    auto value = args->arg_name();                              \
-    args->arg_name() = data[json_name].get<decltype(value)>();  \
-  } else {                                                      \
-    args->arg_name() = __VA_ARGS__();                           \
-  }
+#define LOAD_ARG_WITH_FUNC(arg_name, json_name, ...)                  \
+  [&] {                                                               \
+    auto value = args->arg_name();                                    \
+    if (auto data_value = json.value<decltype(value)>(json_name)) { \
+      args->arg_name() = data_value.value();                          \
+    } else {                                                          \
+      args->arg_name() = __VA_ARGS__();                               \
+    }                                                                 \
+  }()
 
 }  // namespace llm

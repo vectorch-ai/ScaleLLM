@@ -36,9 +36,9 @@ cc_library(
   SRCS 
     model_loader.cpp
   DEPS
+    :common
     :models
     :tokenizer
-    nlohmann_json::nlohmann_json
     torch
 )
 

@@ -10,11 +10,15 @@ cc_library(
     concurrent_queue.h
     executor.h
     pretty_print.h
+    json_reader.h
   SRCS
     executor.cpp
     pretty_print.cpp
+    json_reader.cpp
   DEPS
+    absl::strings
     prometheus-cpp::core
+    nlohmann_json::nlohmann_json
 )
 
 cc_library(

@@ -413,14 +413,8 @@ REGISTER_MODEL_ARGS(llama2, [&] {
   LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
   LOAD_ARG_WITH_FUNC(intermediate_size, "intermediate_size", [&]() {
-    int64_t multiple_of = 256;
-    float ffn_dim_multiplier = 1.0f;
-    if (data.contains("multiple_of")) {
-      multiple_of = data["multiple_of"].get<int64_t>();
-    }
-    if (data.contains("ffn_dim_multiplier")) {
-      ffn_dim_multiplier = data["ffn_dim_multiplier"].get<float>();
-    }
+    const int64_t multiple_of = json.value_or<int64_t>("multiple_of", 256);
+    const float ffn_dim_multiplier = json.value_or<float>("ffn_dim_multiplier", 1.0f);
 
     // calculate hidden_dim from dim
     int64_t intermediate_size = args->hidden_size() * 4;
