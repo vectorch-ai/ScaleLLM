@@ -21,7 +21,7 @@ class ParallelLinearImpl : public torch::nn::Module {
   virtual void verify_loaded_weights(const std::string& prefix = "") const = 0;
 
   // load state dict with a transform function
-  using TensorTransform = std::function<torch::Tensor(const torch::Tensor&)>;
+  using TensorTransform = std::function<torch::Tensor(torch::Tensor)>;
   virtual void load_state_dict(const StateDict& /*state_dict*/,
                                TensorTransform /*transform_func*/) {
     LOG(FATAL) << "not implemented";

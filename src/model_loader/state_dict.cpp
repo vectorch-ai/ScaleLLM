@@ -1,7 +1,8 @@
 #include "state_dict.h"
-#include <glog/logging.h>
+
 #include <ATen/core/TensorBody.h>
 #include <caffe2/serialize/inline_container.h>
+#include <glog/logging.h>
 #include <torch/csrc/jit/serialization/import_read.h>
 #include <torch/csrc/jit/serialization/storage_context.h>
 #include <torch/torch.h>
@@ -230,6 +231,14 @@ StateDict StateDict::select(const std::string_view& prefix) const {
     }
   }
   return {std::move(selected), shard_id_, num_shards_};
+}
+
+StateDict StateDict::select_with_transform(
+    const std::string_view& prefix,
+    TensorTransform transform_func) const {
+  auto selected = select(prefix);
+  selected.transform_func_ = std::move(transform_func);
+  return selected;
 }
 
 }  // namespace llm

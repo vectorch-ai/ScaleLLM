@@ -57,10 +57,10 @@ class GPT2MLPImpl : public torch::nn::Module {
     // call each submodule's load_state_dict function
     // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
     // need to transpose the weight.
-    c_fc_->load_state_dict(state_dict.select("c_fc.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
-    c_proj_->load_state_dict(state_dict.select("c_proj.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
+    c_fc_->load_state_dict(state_dict.select_with_transform(
+        "c_fc.", [](torch::Tensor tensor) { return tensor.t(); }));
+    c_proj_->load_state_dict(state_dict.select_with_transform(
+        "c_proj.", [](torch::Tensor tensor) { return tensor.t(); }));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -137,10 +137,10 @@ class GPT2AttentionImpl : public torch::nn::Module {
   void load_state_dict(const StateDict& state_dict) {
     // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
     // need to transpose the weight.
-    c_attn_->load_state_dict(state_dict.select("c_attn.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
-    c_proj_->load_state_dict(state_dict.select("c_proj.").set_tensor_transform(
-        [this](const torch::Tensor& tensor) { return tensor.t(); }));
+    c_attn_->load_state_dict(state_dict.select_with_transform(
+        "c_attn.", [](torch::Tensor tensor) { return tensor.t(); }));
+    c_proj_->load_state_dict(state_dict.select_with_transform(
+        "c_proj.", [](torch::Tensor tensor) { return tensor.t(); }));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {

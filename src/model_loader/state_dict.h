@@ -38,15 +38,15 @@ class StateDict final {
                                    int rank,
                                    int world_size) const;
 
-  using TensorTransform = std::function<torch::Tensor(const torch::Tensor&)>;
-  StateDict& set_tensor_transform(TensorTransform transform_func) {
-    transform_func_ = std::move(transform_func);
-    return *this;
-  }
-
   // select all the tensors whose name starts with prefix.
   // the returned tensor name will be the suffix of the original name.
   StateDict select(const std::string_view& prefix) const;
+
+  // select all tensors whose name starts with prefix and apply the transform
+  // for each tensor.
+  using TensorTransform = std::function<torch::Tensor(torch::Tensor)>;
+  StateDict select_with_transform(const std::string_view& prefix,
+                                  TensorTransform transform_func) const;
 
   size_t size() const { return dict_.size(); }
 
