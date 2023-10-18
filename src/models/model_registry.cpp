@@ -10,6 +10,7 @@
 #include "huggingface/internlm.h"
 #include "huggingface/llama.h"
 #include "huggingface/mistral.h"
+#include "huggingface/mpt.h"
 #include "llama.h"
 
 namespace llm {

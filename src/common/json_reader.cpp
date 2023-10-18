@@ -10,13 +10,11 @@ namespace llm {
 
 bool JsonReader::parse(const std::string& json_file_path) {
   if (!std::filesystem::exists(json_file_path)) {
-    LOG(ERROR) << "json file does not exist: " << json_file_path;
     return false;
   }
 
   std::ifstream ifs(json_file_path);
   if (!ifs.is_open()) {
-    LOG(ERROR) << "failed to open json file: " << json_file_path;
     return false;
   }
 

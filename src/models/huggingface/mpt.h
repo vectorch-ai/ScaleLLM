@@ -2,15 +2,17 @@
 
 #include <torch/torch.h>
 
+#include <optional>
+
 #include "layers/activation.h"
-#include "layers/attention_rope.h"
+#include "layers/attention_alibi.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
-#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_registry.h"
 
 // mpt model compatible with huggingface weights
 namespace llm::hf {
@@ -32,7 +34,7 @@ class MPTMLPImpl : public torch::nn::Module {
     up_proj_ = register_module("up_proj",
                                ColumnParallelLinear(hidden_size,
                                                     intermediate_size,
-                                                    /*bias=*/false,
+                                                    /*bias=*/!args.no_bias(),
                                                     /*gather_output=*/false,
                                                     quant_args,
                                                     parallel_args,
@@ -42,7 +44,7 @@ class MPTMLPImpl : public torch::nn::Module {
         register_module("down_proj",
                         RowParallelLinear(intermediate_size,
                                           hidden_size,
-                                          /*bias=*/false,
+                                          /*bias=*/!args.no_bias(),
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
@@ -81,7 +83,9 @@ class MPTAttentionImpl : public torch::nn::Module {
                    const QuantizationArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
-                   const torch::Device& device) {
+                   const torch::Device& device)
+      : qk_layer_norm_(args.attn_qk_ln()),
+        attn_qkv_clip_(args.attn_qkv_clip()) {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
@@ -92,63 +96,75 @@ class MPTAttentionImpl : public torch::nn::Module {
     wqkv_ = register_module("Wqkv",
                             ColumnParallelLinear(hidden_size,
                                                  3 * hidden_size,
-                                                 /*bias=*/false,
+                                                 /*bias=*/!args.no_bias(),
                                                  /*gather_output=*/false,
                                                  quant_args,
                                                  parallel_args,
                                                  dtype,
                                                  device));
-
-    // self.clip_qkv = config.attn_config["clip_qkv"]
-    //     self.qk_ln = config.attn_config["qk_ln"]
-    //     self.alibi_bias_max = config.attn_config["alibi_bias_max"]
-    //     assert not config.attn_config["prefix_lm"]
-    //     assert config.attn_config["alibi"]
+    if (args.attn_qk_ln()) {
+      q_ln_ = register_module("q_ln",
+                              LayerNorm(args.hidden_size(),
+                                        args.layer_norm_eps(),
+                                        /*bias=*/!args.no_bias(),
+                                        dtype,
+                                        device));
+      k_ln_ = register_module("k_ln",
+                              LayerNorm(args.hidden_size(),
+                                        args.layer_norm_eps(),
+                                        /*bias=*/!args.no_bias(),
+                                        dtype,
+                                        device));
+    }
 
     out_proj_ =
         register_module("out_proj",
                         RowParallelLinear(hidden_size,
                                           hidden_size,
-                                          /*bias=*/false,
+                                          /*bias=*/!args.no_bias(),
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
                                           dtype,
                                           device));
 
-    // initialize positional embedding
-    // TODO: use ALiBi positional embedding
-    // initialize attention
+    CHECK(args.attn_alibi()) << "only support alibi attention";
+
+    // calculate alibi_slopes
+    torch::Tensor alibi_slopes = prepare_alibi_slopes(
+        n_heads, args.alibi_bias_max(), parallel_args, device);
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads,
-                                               n_local_heads,
-                                               head_dim,
-                                               scale,
-                                               /*rotary_dim=*/head_dim,
-                                               args.rope_scaling(),
-                                               args.rope_theta(),
-                                               args.max_position_embeddings(),
-                                               /*interleaved=*/false,
-                                               dtype,
-                                               device));
+                             AttentionWithAlibi(n_local_heads,
+                                                n_local_heads,
+                                                head_dim,
+                                                scale,
+                                                alibi_slopes,
+                                                dtype,
+                                                device));
   }
 
   torch::Tensor forward(torch::Tensor x,
-                        torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_heads * head_dim)
     // => (num_tokens, n_heads * head_dim)
     auto qkv = wqkv_(x);
-    // TODO: apply clip_qkv if not None
-
+    if (attn_qkv_clip_) {
+      const auto value = attn_qkv_clip_.value();
+      qkv.clamp_(/*min=*/-value, /*max=*/value);
+    }
     auto chunks = qkv.chunk(/*chunks=*/3, /*dim=*/-1);
     DCHECK_EQ(chunks.size(), 3);
+    auto q = chunks[0];
+    auto k = chunks[1];
+    auto v = chunks[2];
+    if (qk_layer_norm_) {
+      q = q_ln_(q);
+      k = k_ln_(k);
+    }
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    auto output =
-        atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
+    auto output = atten_(q, k, v, kv_cache, input_params);
     return out_proj_(output);
   }
 
@@ -157,21 +173,59 @@ class MPTAttentionImpl : public torch::nn::Module {
     // call each submodule's load_state_dict function
     wqkv_->load_state_dict(state_dict.select("Wqkv."));
     out_proj_->load_state_dict(state_dict.select("out_proj."));
+    if (qk_layer_norm_) {
+      q_ln_->load_state_dict(state_dict.select("q_ln."));
+      k_ln_->load_state_dict(state_dict.select("k_ln."));
+    }
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
     wqkv_->verify_loaded_weights(prefix + "Wqkv.");
     out_proj_->verify_loaded_weights(prefix + "out_proj.");
+    if (qk_layer_norm_) {
+      q_ln_->verify_loaded_weights(prefix + "q_ln.");
+      k_ln_->verify_loaded_weights(prefix + "k_ln.");
+    }
   }
 
  private:
+  static torch::Tensor prepare_alibi_slopes(int64_t n_heads,
+                                            float bias_max,
+                                            const ParallelArgs& parallel_args,
+                                            const torch::Device& device) {
+    const int64_t next_power_of_2 = 1 << (32 - __builtin_clzl(n_heads - 1));
+    auto m = torch::arange(
+        1, next_power_of_2 + 1, torch::dtype(torch::kFloat32).device(device));
+    m.mul_(bias_max / next_power_of_2);
+    auto slopes = 1.0f / torch::pow(2, m);
+    if (next_power_of_2 != n_heads) {
+      using torch::indexing::Slice;
+      slopes =
+          torch::cat({slopes.index({Slice(1, c10::nullopt, 2)}),
+                      slopes.index({Slice(c10::nullopt, c10::nullopt, 2)})});
+    }
+    if (parallel_args.world_size() > 1) {
+      slopes = slopes.chunk(/*chunks=*/parallel_args.world_size(),
+                            /*dim=*/0)[parallel_args.rank()];
+    }
+    return slopes;
+  }
   // parameter members, must be registered
   ColumnParallelLinear wqkv_{nullptr};
 
   RowParallelLinear out_proj_{nullptr};
 
+  LayerNorm q_ln_{nullptr};
+
+  LayerNorm k_ln_{nullptr};
+
   // module members without parameters
-  AttentionWithRoPE atten_{nullptr};
+  AttentionWithAlibi atten_{nullptr};
+
+  // whether to apply layer norm to qk
+  bool qk_layer_norm_{false};
+
+  std::optional<float> attn_qkv_clip_;
 };
 TORCH_MODULE(MPTAttention);
 
@@ -188,13 +242,13 @@ class MPTBlockImpl : public torch::nn::Module {
     norm_1_ = register_module("norm_1",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
-                                        /*bias=*/false,
+                                        /*bias=*/!args.no_bias(),
                                         dtype,
                                         device));
     norm_2_ = register_module("norm_2",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
-                                        /*bias=*/false,
+                                        /*bias=*/!args.no_bias(),
                                         dtype,
                                         device));
     ffn_ = register_module(
@@ -202,10 +256,9 @@ class MPTBlockImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x,
-                        torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    auto h = x + attn_(norm_1_(x), positions, kv_cache, input_params);
+    auto h = x + attn_(norm_1_(x), kv_cache, input_params);
     return h + ffn_(norm_2_(h));
   }
 
@@ -261,7 +314,7 @@ class MPTModelImpl : public torch::nn::Module {
     norm_f_ = register_module("norm_f",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
-                                        /*bias=*/false,
+                                        /*bias=*/!args.no_bias(),
                                         dtype,
                                         device));
   }
@@ -269,13 +322,12 @@ class MPTModelImpl : public torch::nn::Module {
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
   torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
     auto h = wte_(tokens);
     for (size_t i = 0; i < layers_.size(); i++) {
       auto& layer = layers_[i];
-      h = layer(h, positions, kv_caches[i], input_params);
+      h = layer(h, kv_caches[i], input_params);
     }
     return norm_f_(h);
   }
@@ -324,10 +376,11 @@ class MPTForCausalLMImpl : public torch::nn::Module {
         "transformer",
         MPTModel(args, quant_args, parallel_args, dtype, device));
 
-    lm_head_ = register_module("lm_head",
+    // TODO: share weights between wte and lm_head to save memory
+    lm_head_ = register_module("wte",
                                ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
-                                                    /*bias=*/false,
+                                                    /*bias=*/!args.no_bias(),
                                                     /*gather_output=*/true,
                                                     parallel_args,
                                                     dtype,
@@ -337,10 +390,10 @@ class MPTForCausalLMImpl : public torch::nn::Module {
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
   torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+                        torch::Tensor /*positions*/,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = transformer_(tokens, positions, kv_caches, input_params);
+    auto h = transformer_(tokens, kv_caches, input_params);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
     return lm_head_(h);
@@ -349,7 +402,6 @@ class MPTForCausalLMImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     transformer_->load_state_dict(state_dict.select("transformer."));
-    // TODO: share weights between wte and lm_head to save memory
     lm_head_->load_state_dict(state_dict.select("transformer.wte."));
   }
 
@@ -365,5 +417,27 @@ class MPTForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear lm_head_{nullptr};
 };
 TORCH_MODULE(MPTForCausalLM);
+
+REGISTER_CAUSAL_MODEL(mpt, MPTForCausalLM);
+REGISTER_MODEL_ARGS(mpt, [&] {
+  LOAD_ARG_OR(vocab_size, "vocab_size", 50368);
+  LOAD_ARG_OR(hidden_size, "d_model", 2048);
+  LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
+  LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
+  LOAD_ARG_OR(max_position_embeddings, "max_seq_len", 2048);
+  LOAD_ARG_OR(layer_norm_eps, "layer_norm_eps", 1e-5);
+  LOAD_ARG_OR(no_bias, "no_bias", true);
+
+  // load config for attention
+  LOAD_OPTIONAL_ARG(attn_qkv_clip, "attn_config.clip_qkv");
+  LOAD_ARG_OR(attn_qk_ln, "attn_config.qk_ln", false);
+  LOAD_ARG_OR(attn_alibi, "attn_config.alibi", false);
+  LOAD_ARG_OR(alibi_bias_max, "attn_config.alibi_bias_max", 0.0f);
+
+  LOAD_ARG_WITH_FUNC(intermediate_size, "intermediate_size", [&] {
+    const int64_t expansion_ratio = json.value_or<int64_t>("expansion_ratio", 4);
+    return expansion_ratio * args->hidden_size();
+  });
+});
 
 }  // namespace llm::hf

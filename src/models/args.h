@@ -61,6 +61,22 @@ struct ModelArgs {
   // whether to use a 'parallel' formulation in each transformer layer, which
   // can provide a slight training speedup at large scales (e.g. 20B).
   DEFINE_ARG(bool, use_parallel_residual) = false;
+
+  // configs for MPT attention
+  // the clip value for qkv which limits the range of qkv values within [-qkv_clip, qkv_clip]
+  DEFINE_ARG(std::optional<float>, attn_qkv_clip);
+
+  // whether to use layer norm for qk
+  DEFINE_ARG(bool, attn_qk_ln) = false;
+
+  // whether to use alibi
+  DEFINE_ARG(bool, attn_alibi) = false;
+
+  // max alibi bias
+  DEFINE_ARG(float, alibi_bias_max) = 0.0f;
+
+  // whether to use bias
+  DEFINE_ARG(bool, no_bias) = false;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
@@ -82,6 +98,11 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", bos_token_id: " << args.bos_token_id();
   os << ", eos_token_id: " << args.eos_token_id();
   os << ", use_parallel_residual: " << args.use_parallel_residual();
+  os << ", attn_qkv_clip: " << args.attn_qkv_clip().value_or(0.0f);
+  os << ", attn_qk_ln: " << args.attn_qk_ln();
+  os << ", attn_alibi: " << args.attn_alibi();
+  os << ", alibi_bias_max: " << args.alibi_bias_max();
+  os << ", no_bias: " << args.no_bias();
   os << "]";
   return os;
 }

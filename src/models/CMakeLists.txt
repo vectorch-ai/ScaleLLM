@@ -5,23 +5,15 @@ cc_library(
   NAME 
     models
   HDRS
+    args.h
+    input_parameters.h
     model_registry.h
-    input_parameters.h 
-    llama.h
-    huggingface/llama.h
-    huggingface/gpt2.h
-    huggingface/gpt_neox.h
-    huggingface/mistral.h
-    huggingface/aquila.h
-    huggingface/mpt.h
-    huggingface/qwen.h
-    huggingface/internlm.h
     causal_lm.h
   SRCS
     model_registry.cpp
     causal_lm.cpp
   DEPS
-    :model_args
+    :common
     :layers
     :memory
     glog::glog
@@ -40,12 +32,3 @@ cc_test(
     GTest::gtest_main
 )
 
-cc_library(
-  NAME 
-    model_args
-  HDRS 
-    args.h
-  SRCS
-  DEPS
-    :common
-)
