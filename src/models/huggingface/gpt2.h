@@ -375,8 +375,8 @@ REGISTER_MODEL_ARGS(gpt2, [&] {
   LOAD_ARG_OR(bos_token_id, "bos_token_id", 50256);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 50256);
 
-  LOAD_ARG_WITH_FUNC(
-      intermediate_size, "n_inner", [&]() { return args->hidden_size() * 4; });
+  LOAD_ARG_OR_FUNC(
+      intermediate_size, "n_inner", [&] { return args->hidden_size() * 4; });
 });
 
 }  // namespace llm::hf

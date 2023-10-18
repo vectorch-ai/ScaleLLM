@@ -84,8 +84,6 @@ std::unique_ptr<StateDict> StateDict::load_pickle_file(
       << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
 
   using caffe2::serialize::PyTorchStreamReader;
-  LOG(INFO) << "Loading model weights from " << weights_file;
-
   const torch::IValue data = pickle_load(weights_file);
 
   // convert to typed dict
@@ -104,8 +102,6 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
     int num_shards) {
   CHECK(shard_id >= 0 && shard_id < num_shards)
       << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
-
-  LOG(INFO) << "Loading model weights from " << weights_file;
   folly::MemoryMapping::Options options;
   options.setPrefault(true).setReadable(true);
   auto mem_map = std::make_unique<folly::MemoryMapping>(weights_file.c_str(),

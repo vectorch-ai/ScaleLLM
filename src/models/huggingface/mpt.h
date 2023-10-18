@@ -434,8 +434,9 @@ REGISTER_MODEL_ARGS(mpt, [&] {
   LOAD_ARG_OR(attn_alibi, "attn_config.alibi", false);
   LOAD_ARG_OR(alibi_bias_max, "attn_config.alibi_bias_max", 0.0f);
 
-  LOAD_ARG_WITH_FUNC(intermediate_size, "intermediate_size", [&] {
-    const int64_t expansion_ratio = json.value_or<int64_t>("expansion_ratio", 4);
+  LOAD_ARG_OR_FUNC(intermediate_size, "intermediate_size", [&] {
+    const int64_t expansion_ratio =
+        json.value_or<int64_t>("expansion_ratio", 4);
     return expansion_ratio * args->hidden_size();
   });
 });

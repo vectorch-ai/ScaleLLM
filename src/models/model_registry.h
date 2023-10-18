@@ -89,50 +89,50 @@ class ModelRegistry {
               std::move(model));                                            \
         });                                                                 \
     return true;                                                            \
-  }();
+  }()
 
 // Macro to register a model args loader with the ModelRegistry
 #define REGISTER_MODEL_ARGS_LOADER(ModelType, Loader)                     \
   const bool ModelType##_args_loader_registered = []() {                  \
     ModelRegistry::get()->register_model_args_loader(#ModelType, Loader); \
     return true;                                                          \
-  }();
+  }()
 
 // Macro to register a quantization args loader with the ModelRegistry
 #define REGISTER_QUANT_ARGS_LOADER(ModelType, Loader)                     \
   const bool ModelType##_quant_args_loader_registered = []() {            \
     ModelRegistry::get()->register_quant_args_loader(#ModelType, Loader); \
     return true;                                                          \
-  }();
+  }()
 
-#define REGISTER_MODEL_ARGS(ModelType, ...)                                  \
-  REGISTER_MODEL_ARGS_LOADER(ModelType,                                      \
+#define REGISTER_MODEL_ARGS(ModelType, ...)                                \
+  REGISTER_MODEL_ARGS_LOADER(ModelType,                                    \
                              [](const JsonReader& json, ModelArgs* args) { \
-                               __VA_ARGS__();                                \
-                               return true;                                  \
-                             });
+                               __VA_ARGS__();                              \
+                               return true;                                \
+                             })
 
-#define LOAD_ARG_OR(arg_name, json_name, default_value)             \
-  [&] {                                                             \
-    auto value = args->arg_name();                                  \
-    args->arg_name() =                                              \
+#define LOAD_ARG_OR(arg_name, json_name, default_value)           \
+  [&] {                                                           \
+    auto value = args->arg_name();                                \
+    args->arg_name() =                                            \
         json.value_or<decltype(value)>(json_name, default_value); \
   }()
 
-#define LOAD_OPTIONAL_ARG(arg_name, json_name)                               \
-  [&] {                                                                      \
-    auto value = args->arg_name();                                           \
+#define LOAD_OPTIONAL_ARG(arg_name, json_name)                             \
+  [&] {                                                                    \
+    auto value = args->arg_name();                                         \
     args->arg_name() = json.value<decltype(value)::value_type>(json_name); \
   }()
 
-#define LOAD_ARG_WITH_FUNC(arg_name, json_name, ...)                  \
-  [&] {                                                               \
-    auto value = args->arg_name();                                    \
+#define LOAD_ARG_OR_FUNC(arg_name, json_name, ...)                  \
+  [&] {                                                             \
+    auto value = args->arg_name();                                  \
     if (auto data_value = json.value<decltype(value)>(json_name)) { \
-      args->arg_name() = data_value.value();                          \
-    } else {                                                          \
-      args->arg_name() = __VA_ARGS__();                               \
-    }                                                                 \
+      args->arg_name() = data_value.value();                        \
+    } else {                                                        \
+      args->arg_name() = __VA_ARGS__();                             \
+    }                                                               \
   }()
 
 }  // namespace llm

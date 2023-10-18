@@ -129,7 +129,7 @@ void layer_norm(torch::Tensor& out,
             out.data_ptr<scalar_t>(),
             input.data_ptr<scalar_t>(),
             weight.data_ptr<scalar_t>(),
-            bias.data_ptr<scalar_t>(),
+            bias.defined() ? bias.data_ptr<scalar_t>() : nullptr,
             epsilon,
             n);
   });

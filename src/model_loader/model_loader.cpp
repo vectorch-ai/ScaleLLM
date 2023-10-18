@@ -38,6 +38,8 @@ const StateDict* StateDictIterator::get_state_dict() const {
   CHECK(index_ < num_weight_files);
   // lazy loading
   if (!state_dict_) {
+    LOG(INFO) << "Loading model weights from " << model_weights_files_[index_];
+    
     const int shard_id = is_sharded_ ? static_cast<int>(index_) : 0;
     const int num_shards = is_sharded_ ? static_cast<int>(num_weight_files) : 1;
     if (is_pickle_) {
@@ -47,8 +49,6 @@ const StateDict* StateDictIterator::get_state_dict() const {
       state_dict_ = StateDict::load_safetensors(
           model_weights_files_[index_], shard_id, num_shards);
     }
-
-    LOG(INFO) << "Loaded model weights from " << model_weights_files_[index_];
   }
   return state_dict_.get();
 }
