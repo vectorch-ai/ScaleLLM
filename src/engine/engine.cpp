@@ -218,6 +218,7 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   torch::Tensor input_token_ids;
   torch::Tensor input_positions;
   // track the sequence indices in the batch
+  // from original index to the new index in the batch
   torch::Tensor seq_indices;
   InputParameters input_params;
   SamplingParameters sampling_params;

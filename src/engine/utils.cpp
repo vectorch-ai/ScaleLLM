@@ -59,10 +59,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   int32_t max_num_tokens = 0;
 
   // track the sequence indices in the batch
-  // used to map the output back to the original sequence order
-  std::vector<int32_t> seq_indices_vec;
-  // from original sequence index to the index in the new order
-  seq_indices_vec.resize(batch.size());
+  // from original sequence index to the new index in the batch
+  std::vector<int32_t> seq_indices_vec(batch.size());
 
   // process prefill requests
   int32_t num_prompt_tokens = 0;
@@ -133,10 +131,12 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
 
   using torch::indexing::Slice;
   // padding token ids to the same length
+  std::vector<int32_t> seq_lens;
   auto token_ids_tensor = torch::empty(
       {static_cast<int64_t>(token_ids.size()), max_num_tokens}, torch::kLong);
   for (int64_t i = 0; i < token_ids.size(); ++i) {
     auto& ids = token_ids[i];
+    seq_lens.push_back(static_cast<int32_t>(ids.size()));
     ids.resize(max_num_tokens, /*pad_id=*/0);
     token_ids_tensor.index_put_({i, Slice()}, torch::tensor(ids, torch::kLong));
   }
@@ -163,6 +163,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   input_params->context_lens = torch::tensor(context_lens, torch::kInt);
   input_params->last_token_indicies = torch::tensor(sample_idx, torch::kInt);
   input_params->token_ids = token_ids_tensor;
+  input_params->seq_lens = torch::tensor(seq_lens, torch::kInt);
 }
 
 }  // namespace llm
