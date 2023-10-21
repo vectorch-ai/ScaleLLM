@@ -14,8 +14,8 @@
 #include "common/executor.h"
 #include "model_loader/state_dict.h"
 #include "models/input_parameters.h"
-#include "samplers/logits_processor.h"
-#include "samplers/sampler.h"
+#include "sampling/logits_processor.h"
+#include "sampling/sampler.h"
 
 namespace llm {
 

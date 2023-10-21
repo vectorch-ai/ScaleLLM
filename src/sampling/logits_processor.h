@@ -153,24 +153,22 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
   TemperatureLogitsProcessor(const std::vector<float>& temperatures,
                              torch::ScalarType dtype,
                              const torch::Device& device) {
-    // Convert temperature to a tensor and unsqueeze it for broadcasting
-    temperatures_ =
-        torch::tensor(temperatures, torch::dtype(dtype).device(device))
-            .unsqueeze(1);
-
-    // Replace 0. with 1. to avoid division by 0
-    temperatures_ =
-        torch::where(temperatures_ == 0., torch::tensor(1.0), temperatures_);
+    // add a small value to avoid division by zero
+    inv_temperatures_ =
+        1.0f / (1e-6f + torch::tensor(temperatures,
+                                      torch::dtype(dtype).device(device)));
+    // unsqueeze it for broadcasting. [batch_size, 1]
+    inv_temperatures_.unsqueeze_(/*dim=*/1);
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
                         const torch::Tensor& logits) const override {
-    logits.div_(temperatures_);
+    logits.mul_(inv_temperatures_);
     return logits;
   }
 
  private:
-  torch::Tensor temperatures_;
+  torch::Tensor inv_temperatures_;
 };
 
 class TopPLogitsProcessor : public LogitsProcessor {

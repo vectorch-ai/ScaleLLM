@@ -1,3 +1,6 @@
+include(cc_library)
+include(cc_test)
+
 cc_library(
   NAME 
     logits_processor
@@ -20,4 +23,14 @@ cc_library(
   DEPS
     glog::glog
     torch
+)
+
+cc_test(
+  NAME
+    logits_processor_test
+  SRCS
+    logits_processor_test.cpp
+  DEPS
+    :logits_processor
+    GTest::gtest_main
 )

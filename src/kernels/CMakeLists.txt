@@ -9,11 +9,13 @@ cc_library(
     layernorm_kernels.h
     pos_embedding_kernels.h
     kv_cache_kernels.h
+    sampling/sampling_kernels.h
   SRCS 
     activation_kernels.cu
     layernorm_kernels.cu
     pos_embedding_kernels.cu
     kv_cache_kernels.cu
+    sampling/penalty_kernels.cu
   DEPS
     glog::glog
     torch
