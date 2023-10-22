@@ -11,4 +11,7 @@ void apply_repetition_penalty(torch::Tensor& logits,
                               torch::Tensor seq_lens,
                               torch::Tensor penalities);
 
+// calculate softmax in place
+void invoke_softmax(torch::Tensor& logits);
+
 }  // namespace llm::kernel

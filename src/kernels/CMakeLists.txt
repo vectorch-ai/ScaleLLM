@@ -16,6 +16,7 @@ cc_library(
     pos_embedding_kernels.cu
     kv_cache_kernels.cu
     sampling/penalty_kernels.cu
+    sampling/softmax_kernels.cu
   DEPS
     glog::glog
     torch
