@@ -1,4 +1,5 @@
 #pragma once
+#include <curand_kernel.h>
 #include <torch/torch.h>
 
 namespace llm::kernel {
@@ -25,5 +26,14 @@ void apply_frequency_presence_penalty(torch::Tensor& logits,
 
 // calculate softmax in place
 void invoke_softmax(torch::Tensor& logits);
+
+void invoke_topk_sampling(torch::Tensor& output_ids,
+                          torch::Tensor& output_log_probs,
+                          torch::Tensor logits,
+                          torch::Tensor workspace,
+                          curandState_t* curandstate,
+                          int max_top_k,
+                          torch::Tensor top_ks,
+                          torch::Tensor top_ps);
 
 }  // namespace llm::kernel

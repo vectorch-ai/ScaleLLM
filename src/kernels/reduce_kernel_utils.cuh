@@ -1,9 +1,13 @@
 #pragma once
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+
 // This file contains utility functions for the CUDA kernels.
 // ported from https://github.com/NVIDIA/FasterTransformer
 
 namespace llm::kernel {
 constexpr unsigned FINAL_MASK = 0xffffffff;
+constexpr float HALF_FLT_MAX = 65504.0f;
 
 // performs a parallel reduction operation across the threads within a single
 // warp (32 threads).
@@ -85,6 +89,92 @@ __inline__ __device__ T block_reduce_max(T val) {
   val = (threadIdx.x < (blockDim.x / 32.f)) ? shared[lane] : -1e20f;
   val = warp_reduce_max<T>(val);
   return val;
+}
+
+// data struct for topk kernels
+// An heap is used to store the topk elements. the heap is using bubble sort to
+// maintain the order.
+template <typename T, int K>
+struct TopK {
+  // the index of the topk elements
+  int p[K];
+  // the value of the topk elements
+  T u[K];
+
+  // insert an element into the heap and maintain the order via bubble sort
+  __device__ __forceinline__ void insert(T elem, int elem_id) {
+    // replace the last element with the new element if the new element is
+    // larger than the last element.
+    if (elem > u[K - 1] || (p[K - 1] == -1) ||
+        ((elem == u[K - 1]) && (elem_id < p[K - 1]))) {
+      u[K - 1] = elem;
+      p[K - 1] = elem_id;
+    }
+
+    // bubble sort to maintain the order
+    for (int k = K - 2; k >= 0; --k) {
+      if ((u[k + 1] > u[k]) || (p[k] == -1) ||
+          ((u[k + 1] == u[k]) && (p[k + 1] < p[k]))) {
+        T u2 = u[k];
+        int p2 = p[k];
+        u[k] = u[k + 1];
+        p[k] = p[k + 1];
+        u[k + 1] = u2;
+        p[k + 1] = p2;
+      }
+    }
+  }
+
+  // initialize the heap with pointers to -1 and values to -FLT_MAX
+  __device__ __forceinline__ void init() {
+    const bool IS_FP16 = std::is_same<T, half>::value;
+    const T MAX_T_VAL = (IS_FP16) ? HALF_FLT_MAX : FLT_MAX;
+
+    for (int i = 0; i < K; i++) {
+      p[i] = -1;
+      u[i] = -MAX_T_VAL;
+    }
+  }
+};
+
+// operator for cub::BlockReduce to get topk across a thread block
+template <typename T, int K>
+__device__ __forceinline__ TopK<T, K> reduce_topk_op(
+    const TopK<T, K>& a,
+    const TopK<T, K>& b) {
+  TopK<T, K> res = a;
+  for (int i = 0; i < K; ++i) {
+    res.insert(b.u[i], b.p[i]);
+  }
+  return res;
+}
+
+// Similar to TopK, but only store the largest element
+template <typename T>
+struct TopK_2 {
+  // the index of the topk elements
+  int p = -1;
+  // the value of the topk elements
+  T u = -((std::is_same<T, half>::value) ? HALF_FLT_MAX : FLT_MAX);
+
+  __device__ __forceinline__ void insert(T elem, int elem_id) {
+    if (elem > u) {
+      u = elem;
+      p = elem_id;
+    }
+  }
+
+  __device__ __forceinline__ void init() {
+    p = -1;
+    u = -((std::is_same<T, half>::value) ? HALF_FLT_MAX : FLT_MAX);
+  }
+};
+
+// operator for cub::BlockReduce to get largest element across a thread block
+template <typename T>
+__device__ __forceinline__ TopK_2<T> reduce_topk_op_2(const TopK_2<T>& a,
+                                                      const TopK_2<T>& b) {
+  return a.u > b.u ? a : b;
 }
 
 }  // namespace llm::kernel

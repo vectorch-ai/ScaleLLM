@@ -17,9 +17,12 @@ cc_library(
     kv_cache_kernels.cu
     sampling/penalty_kernels.cu
     sampling/softmax_kernels.cu
+    sampling/topk_kernels.cu
   DEPS
     glog::glog
     torch
+  DEFINES
+    __CUDA_NO_HALF_OPERATORS__
   COPTS
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )

@@ -1,5 +1,4 @@
-// adapted from
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/kernels/sampling_penalty_kernels.cu
+// adapted from https://github.com/NVIDIA/FasterTransformer
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/torch.h>
 
@@ -62,34 +61,20 @@ __global__ void apply_repetition_penalty_kernel(
     const int* __restrict__ seq_lens,
     int max_seq_len,
     int vocab_size) {
-  // shared memory for each batch to hold penality_logits and penality_indices
-  // with size : max_seq_len * (sizeof(float) + sizeof(int)))
-  extern __shared__ float penality_logits[];
-  int* penality_indices = (int*)(penality_logits + max_seq_len);
-
   const int tid = threadIdx.x;
   // batch idx
   const int bid = blockIdx.x;
   const float penalty = penalities[bid];
-  const int seq_len = seq_lens ? seq_lens[bid] : max_seq_len;
+  const int seq_len = seq_lens[bid];
   // move the pointer to the start of the batch
   logits += bid * vocab_size;
 
-  // Phase 1. Find indices to penalize and keep the penalized values.
-  // A vocab id can appear multiple times but should be penalized once.
   for (int i = tid; i < seq_len; i += blockDim.x) {
     const int token_id = token_ids[bid * max_seq_len + i];
     const float logit = logits[token_id];
     assert(token_id < vocab_size);
-    penality_logits[i] = logit < 0.0f ? logit * penalty : logit / penalty;
-    penality_indices[i] = token_id;
-  }
-
-  __syncthreads();
-
-  // Phase 2. Apply the penalities to the logits.
-  for (int i = tid; i < seq_len; i += blockDim.x) {
-    logits[penality_indices[i]] = penality_logits[i];
+    // apply repetition penalty
+    logits[token_id] = logit < 0.0f ? logit * penalty : logit / penalty;
   }
 }
 
@@ -113,13 +98,12 @@ void apply_repetition_penalty(torch::Tensor& logits,
 
   DISPATCH_FLOATING_TYPES(
       logits.scalar_type(), "apply_repetition_penalty_kernel", [&] {
-        size_t smem_size = max_seq_len * (sizeof(float) + sizeof(int));
         apply_repetition_penalty_kernel<scalar_t>
-            <<<grid, block, smem_size, at::cuda::getCurrentCUDAStream()>>>(
+            <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
                 logits.data_ptr<scalar_t>(),
                 token_ids.data_ptr<int>(),
                 penalities.data_ptr<scalar_t>(),
-                seq_lens.defined() ? seq_lens.data_ptr<int>() : nullptr,
+                seq_lens.data_ptr<int>(),
                 max_seq_len,
                 vocab_size);
       });
