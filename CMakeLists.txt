@@ -1,10 +1,29 @@
 cmake_minimum_required(VERSION 3.18)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+if(POLICY CMP0135)
+  # CMP0135: ExternalProject ignores timestamps in archives by default for the URL download method.
+  cmake_policy(SET CMP0135 NEW)
+endif()
+
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
-set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.vcpkg/scripts/buildsystems/vcpkg.cmake"
-  CACHE STRING "Vcpkg toolchain file")
+if (DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      CACHE STRING "Vcpkg toolchain file")
+  message(STATUS "VCPKG_ROOT found, using vcpkg at $ENV{VCPKG_ROOT}")
+else()
+  include(FetchContent)
+  FetchContent_Declare(vcpkg
+    GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
+    GIT_TAG "2023.10.19"
+  )
+  FetchContent_MakeAvailable(vcpkg)
+
+  message(STATUS "VCPKG_ROOT not found, downloading and using vcpkg at ${vcpkg_SOURCE_DIR}")
+  set(CMAKE_TOOLCHAIN_FILE ${vcpkg_SOURCE_DIR}/scripts/buildsystems/vcpkg.cmake
+      CACHE STRING "Vcpkg toolchain file")
+endif()
 
 project(
   "ScaleLLM"
@@ -33,7 +52,7 @@ find_package(Threads REQUIRED)
 find_package(glog CONFIG REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
-find_package(protobuf CONFIG REQUIRED)
+find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(folly CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
@@ -56,8 +75,20 @@ endif()
 # Important Note: Always invoke find_package for other dependencies
 # before including libtorch, as doing so afterwards may lead to
 # unexpected linker errors.
-find_package(Torch REQUIRED 
-             HINTS ${CMAKE_CURRENT_SOURCE_DIR}/libtorch)
+if (DEFINED ENV{LIBTORCH_ROOT})
+  message(STATUS "LIBTORCH_ROOT found, using libtorch at $ENV{LIBTORCH_ROOT}")
+  find_package(Torch REQUIRED HINTS "$ENV{LIBTORCH_ROOT}")
+else()
+  include(FetchContent)
+  # download libtorch 2.1 with cuda 12.1 from pytorch.org
+  set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.0%2Bcu121.zip")
+  FetchContent_Declare(libtorch URL ${LIBTORCH_URL})
+  FetchContent_MakeAvailable(libtorch)
+  
+  message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch at ${libtorch_SOURCE_DIR}")
+  find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
+endif()
+
 # carry over torch flags to the rest of the project
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 

@@ -25,8 +25,8 @@ sudo apt-get install build-essential ninja-build cmake python3-dev zip pkg-confi
 Since this project depends on libtorch 2.0 (nightly), which is built with cuda 12.1. You can download the cuda toolkit from nvidia website <https://developer.nvidia.com/cuda-downloads>. You can leverage the script to install it as well.
 
 ``` bash
-wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
-sudo sh cuda_11.8.0_520.61.05_linux.run --no-drm --no-man-page --override --toolkit --silent
+wget https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run
+sudo sh cuda_12.1.0_530.30.02_linux.run --no-drm --no-man-page --override --toolkit --silent
 ```
 ### Install rust
 
@@ -43,22 +43,6 @@ You can enlist the project by running the following command.
 
 ``` bash
 git clone --recursive https://github.com/vectorch-ai/ScaleLLM.git
-```
-
-### Install libtorch 2.0.0
-
-You can download specific version of libtorch from pytorch website. Here is the link: <https://pytorch.org/get-started/locally/>. We are using libtorch 2.0.0 for this project and you can leverage the script to install it.
-
-``` bash
-./scripts/install-libtorch.sh
-```
-
-### Install vcpkg
-
-Vcpkg helps you manage C and C++ libraries on Windows, Linux and MacOS. This tool and ecosystem are constantly evolving; and we are using it for the development of this project. You can install it by running the following command.
-
-``` bash
-./scripts/install-vcpkg.sh
 ```
 
 ### Build
