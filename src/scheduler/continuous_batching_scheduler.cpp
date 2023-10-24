@@ -42,10 +42,32 @@ ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
   }
 
   // release all requests in the batch
-  for (Request* request : running_) {
+  for (Request* request : request_batch_) {
     std::unique_ptr<Request> request_ptr(request);
   }
-  running_.clear();
+  sequences_batch_.clear();
+  request_batch_.clear();
+}
+
+void ContinuousBatchingScheduler::on_request_finish(Request* request) {
+  // release all blocks for the finished request
+  block_manager_->release_slots_for_request(request);
+  // take over the ownership of the request
+  std::unique_ptr<Request> finished_request(request);
+  response_executor_.schedule([request = std::move(finished_request)]() {
+    // TODO: add finish handling logic
+    request->on_finish("", Status());
+  });
+}
+
+void ContinuousBatchingScheduler::on_sequence_stream(Sequence* seq) {
+  // TODO: move this into executor
+  auto detla = seq->decode_delta_text(*tokenizer_);
+  const auto finish_reason = seq->finish_reason();
+  response_executor_.schedule(
+      [seq, detla = std::move(detla), finish_reason = finish_reason]() {
+        seq->stream_delta(detla, finish_reason);
+      });
 }
 
 bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
@@ -59,7 +81,7 @@ bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
   return false;
 }
 
-std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
+void ContinuousBatchingScheduler::build_sequence_batch() {
   // propogate new requests to priority_queue_
   while (!request_queue_.isEmpty()) {
     Request* request = nullptr;
@@ -69,104 +91,90 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
     priority_queue_.push(request);
   }
 
-  std::vector<Request*> preemptable_candidates;
-  for (Request* request : running_) {
-    if (!request->is_finished()) {
-      // the request is still holding cache slots
-      preemptable_candidates.emplace_back(request);
-      // push the request back to the priority queue
-      priority_queue_.push(request);
+  // access in reverse order
+  for (auto it = request_batch_.rbegin(); it != request_batch_.rend(); ++it) {
+    Request* request = *it;
+    if (request->is_finished()) {
+      on_request_finish(request);
       continue;
     }
 
-    // release all blocks for the finished request
-    block_manager_->release_slots_for_request(request);
-    // take over the ownership of the request
-    std::unique_ptr<Request> finished_request(request);
-    response_executor_.schedule([request = std::move(finished_request)]() {
-      // TODO: add finish handling logic
-      request->on_finish("", Status());
-    });
+    // the request is still holding cache slots
+    preemptable_candidates_.push_front(request);
+    // push the request back to the priority queue
+    priority_queue_.push(request);
   }
 
+  // clear previous batch
+  sequences_batch_.clear();
+  request_batch_.clear();
+
   // schedule sequence by sequence but preempt whole request if necessary
-  std::vector<Sequence*> sequences_batch;
-  std::vector<Request*> request_batch;
-  size_t begin_idx = 0;
-  size_t end_idx = preemptable_candidates.size();
   while (!priority_queue_.empty()) {
     Request* candidate = priority_queue_.top();
     bool has_enough_slots = true;
     std::vector<Sequence*> sequence_candiadtes;
     sequence_candiadtes.reserve(candidate->sequences.size());
     for (Sequence& sequence : candidate->sequences) {
+      if (sequence.is_finished()) {
+        // skip finished sequence.
+        continue;
+      }
       if (block_manager_->allocate_slots_for_sequence(&sequence)) {
         sequence_candiadtes.push_back(&sequence);
+      } else {
+        has_enough_slots = false;
       }
     }
 
-    // all sequences in the request have enough slots
-    if (sequence_candiadtes.size() == candidate->sequences.size()) {
+    // all sequences in the request have enough slots to schedule
+    if (has_enough_slots) {
+      CHECK(!sequence_candiadtes.empty());
       // add request to new batch
       priority_queue_.pop();
-      request_batch.push_back(candidate);
-      sequences_batch.insert(sequences_batch.end(),
-                             sequence_candiadtes.begin(),
-                             sequence_candiadtes.end());
-      if (begin_idx < end_idx &&
-          candidate == preemptable_candidates[begin_idx]) {
+      request_batch_.push_back(candidate);
+      sequences_batch_.insert(sequences_batch_.end(),
+                              sequence_candiadtes.begin(),
+                              sequence_candiadtes.end());
+      if (!preemptable_candidates_.empty() &&
+          candidate == preemptable_candidates_.front()) {
         // the request has been scheduled and can't be preempted
-        ++begin_idx;
+        preemptable_candidates_.pop_front();
       }
       continue;
     }
 
     // try to preempt lowest priority request in current batch
-    if (begin_idx < end_idx) {
-      CHECK(end_idx > begin_idx);
-      Request* request_to_preempt = preemptable_candidates[--end_idx];
+    if (!preemptable_candidates_.empty()) {
+      Request* request_to_preempt = preemptable_candidates_.back();
+      preemptable_candidates_.pop_back();
       // avoid preempting the candidate request
       if (request_to_preempt != candidate) {
         block_manager_->release_slots_for_request(request_to_preempt);
-        CHECK(begin_idx == end_idx);
       }
       continue;
     }
 
-    // no requests left to preempt
-    CHECK(begin_idx == end_idx);
-
-    // partially schedule the request
+    // no requests left to preempt, partially schedule the request
     if (!sequence_candiadtes.empty()) {
       priority_queue_.pop();
-      request_batch.push_back(candidate);
-      sequences_batch.insert(sequences_batch.end(),
-                             sequence_candiadtes.begin(),
-                             sequence_candiadtes.end());
+      request_batch_.push_back(candidate);
+      sequences_batch_.insert(sequences_batch_.end(),
+                              sequence_candiadtes.begin(),
+                              sequence_candiadtes.end());
     }
     break;
   }
-  CHECK(begin_idx == end_idx);
 
-  if (sequences_batch.empty() && !priority_queue_.empty()) {
+  if (sequences_batch_.empty() && !priority_queue_.empty()) {
     // don't have enough memory to schedule one sequence
     LOG(ERROR) << "Not enough memory to schedule one sequence";
     Request* request = priority_queue_.top();
     priority_queue_.pop();
-    // TODO: optimize the logic to only release blocks for sequences one by one
-    // release all blocks for the request
-    block_manager_->release_slots_for_request(request);
-    // take over the ownership of the request
-    std::unique_ptr<Request> finished_request(request);
-    response_executor_.schedule([request = std::move(finished_request)]() {
-      // TODO: add finish handling logic
-      request->on_finish("", Status());
-    });
-  }
 
-  running_ = std::move(request_batch);
-  // DCHECK(running_.sorted())
-  return sequences_batch;
+    // TODO: optimize the logic to only release blocks for sequences one by one
+    on_request_finish(request);
+  }
 }
 
 // step the scheduler forward by one step
@@ -174,10 +182,9 @@ std::vector<Sequence*> ContinuousBatchingScheduler::create_sequence_batch() {
 void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   // get a new batch of requests
   const auto deadline = absl::Now() + timeout;
-  std::vector<Sequence*> seqs_batch;
   while (true) {
-    seqs_batch = std::move(create_sequence_batch());
-    if (!seqs_batch.empty()) {
+    build_sequence_batch();
+    if (!sequences_batch_.empty()) {
       // find one batch of requests to process
       break;
     }
@@ -192,17 +199,17 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
     absl::SleepFor(time_to_sleep);
   }
 
-  CHECK(!seqs_batch.empty());
-  auto output_parameters = engine_->execute_model(seqs_batch);
+  CHECK(!sequences_batch_.empty());
+  auto output_parameters = engine_->execute_model(sequences_batch_);
 
   const auto& next_tokens = output_parameters.next_tokens;
   const int64_t num_seqs = next_tokens.numel();
-  CHECK(num_seqs == seqs_batch.size());
+  CHECK(num_seqs == sequences_batch_.size());
 
   const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
   // process sequence in batch
   for (int64_t i = 0; i < num_seqs; ++i) {
-    Sequence* seq = seqs_batch[i];
+    Sequence* seq = sequences_batch_[i];
     // append new token id to the sequence
     seq->append_new_token_id(static_cast<int>(new_token_ids[i]));
 
@@ -211,13 +218,7 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
 
     // stream delta to client if streaming is enabled
     if (seq->is_streaming()) {
-      // TODO: move this into executor
-      auto detla = seq->decode_delta_text(*tokenizer_);
-      const auto finish_reason = seq->finish_reason();
-      response_executor_.schedule(
-          [seq, detla = std::move(detla), finish_reason = finish_reason]() {
-            seq->stream_delta(detla, finish_reason);
-          });
+      on_sequence_stream(seq);
     }
   }
 }

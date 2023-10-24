@@ -30,7 +30,11 @@ class ContinuousBatchingScheduler final : public Scheduler {
 
  private:
   // get a batch of requests from the priority queue
-  std::vector<Sequence*> create_sequence_batch();
+  void build_sequence_batch();
+
+  void on_request_finish(Request* request);
+
+  void on_sequence_stream(Sequence* seq);
 
   // the engine to run the batch
   Engine* engine_;
@@ -52,8 +56,15 @@ class ContinuousBatchingScheduler final : public Scheduler {
       std::priority_queue<Request*, std::vector<Request*>, RequestPtrGreater>;
   MinHeap priority_queue_;
 
-  // a batch of requests to be processed
-  std::vector<Request*> running_;
+  // a batch of requests to be processed, sorted by priority from high to low.
+  std::vector<Request*> request_batch_;
+
+  // a batch of sequence to be processed.
+  std::vector<Sequence*> sequences_batch_;
+
+  // preemptable requests that hold cache slots, sorted by priority from high to
+  // low.
+  std::deque<Request*> preemptable_candidates_;
 
   // the executor to handle responses
   Executor response_executor_;

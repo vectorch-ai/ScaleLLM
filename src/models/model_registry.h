@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "common/json_reader.h"
 #include "models/args.h"
@@ -37,46 +38,22 @@ class ModelRegistry {
   static ModelRegistry* get_instance();
 
   static void register_causallm_factory(const std::string& name,
-                                        CausalLMFactory factory) {
-    ModelRegistry* instance = get_instance();
-    CHECK(instance->model_registry_[name].causal_lm_factory == nullptr)
-        << "causal lm factor for " << name << " already registered";
-    instance->model_registry_[name].causal_lm_factory = factory;
-  }
+                                        CausalLMFactory factory);
 
   static void register_model_args_loader(const std::string& name,
-                                         ModelArgsLoader loader) {
-    ModelRegistry* instance = get_instance();
-    CHECK(instance->model_registry_[name].model_args_loader == nullptr)
-        << "model args loader for " << name << " already registered";
-    instance->model_registry_[name].model_args_loader = loader;
-  }
+                                         ModelArgsLoader loader);
 
   static void register_quant_args_loader(const std::string& name,
-                                         QuantizationArgsLoader loader) {
-    ModelRegistry* instance = get_instance();
-    CHECK(instance->model_registry_[name].quant_args_loader == nullptr)
-        << "quant args loader for " << name << " already registered";
-    instance->model_registry_[name].quant_args_loader = loader;
-  }
+                                         QuantizationArgsLoader loader);
 
-  static CausalLMFactory get_causallm_factory(const std::string& name) {
-    ModelRegistry* instance = get_instance();
-    return instance->model_registry_[name].causal_lm_factory;
-  }
+  static CausalLMFactory get_causallm_factory(const std::string& name);
 
-  static ModelArgsLoader get_model_args_loader(const std::string& name) {
-    ModelRegistry* instance = get_instance();
-    return instance->model_registry_[name].model_args_loader;
-  }
+  static ModelArgsLoader get_model_args_loader(const std::string& name);
 
-  static QuantizationArgsLoader get_quant_args_loader(const std::string& name) {
-    ModelRegistry* instance = get_instance();
-    return instance->model_registry_[name].quant_args_loader;
-  }
+  static QuantizationArgsLoader get_quant_args_loader(const std::string& name);
 
  private:
-  std::map<std::string, ModelMeta> model_registry_;
+  std::unordered_map<std::string, ModelMeta> model_registry_;
 };
 
 // Macro to register a model with the ModelRegistry

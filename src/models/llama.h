@@ -365,7 +365,7 @@ REGISTER_MODEL_ARGS(llama2, [&] {
   LOAD_ARG_OR(hidden_size, "dim", 4096);
   LOAD_ARG_OR(n_layers, "n_layers", 32);
   LOAD_ARG_OR(n_heads, "n_heads", 32);
-  LOAD_OPTIONAL_ARG(n_kv_heads, "num_key_value_heads");
+  LOAD_OPTIONAL_ARG(n_kv_heads, "n_kv_heads");
   LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 2048);
   LOAD_ARG_OR(rms_norm_eps, "norm_eps", 1e-5);
