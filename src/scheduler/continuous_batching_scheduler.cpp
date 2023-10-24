@@ -17,6 +17,10 @@ constexpr size_t kMaxBatchSize = 100;
 
 constexpr uint64_t kStepSleepTimeMs = 10;
 
+DEFINE_int32(streaming_token_buffer_size,
+             1,
+             "number of tokens to buffer before streaming to client");
+
 ContinuousBatchingScheduler::ContinuousBatchingScheduler(Engine* engine)
     : engine_(engine), request_queue_(kRequestQueueSize) {
   CHECK(engine_ != nullptr);
@@ -61,13 +65,20 @@ void ContinuousBatchingScheduler::on_request_finish(Request* request) {
 }
 
 void ContinuousBatchingScheduler::on_sequence_stream(Sequence* seq) {
-  // TODO: move this into executor
-  auto detla = seq->decode_delta_text(*tokenizer_);
-  const auto finish_reason = seq->finish_reason();
-  response_executor_.schedule(
-      [seq, detla = std::move(detla), finish_reason = finish_reason]() {
-        seq->stream_delta(detla, finish_reason);
-      });
+  // check if the sequence has enough tokens to output
+  const size_t num_tokens = seq->num_tokens();
+  const size_t output_offset = seq->output_offset();
+  const size_t num_tokens_to_output = num_tokens - output_offset;
+  if (seq->is_finished() ||
+      num_tokens_to_output >= FLAGS_streaming_token_buffer_size) {
+    // output the delta text til the end of the sequence to the client
+    response_executor_.schedule(
+        [seq, tokenizer = tokenizer_.get(), end = num_tokens]() {
+          const auto detla = seq->decode_delta_text(end, *tokenizer);
+          const auto finish_reason = seq->finish_reason();
+          seq->stream_delta(detla, finish_reason);
+        });
+  }
 }
 
 bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {

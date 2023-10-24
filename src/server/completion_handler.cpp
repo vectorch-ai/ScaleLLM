@@ -16,6 +16,7 @@
 constexpr int kStepTimeoutMs = 500;
 
 DEFINE_int32(num_converter_threads, 1, "number of converter threads");
+DEFINE_int64(max_position_embeddings, 256, "Maximum position embeddings.");
 
 namespace llm {
 
@@ -59,11 +60,19 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
-  sampling_param.frequency_penalty = grpc_request.frequency_penalty();
-  sampling_param.presence_penalty = grpc_request.presence_penalty();
+  if (grpc_request.has_frequency_penalty()) {
+    sampling_param.frequency_penalty = grpc_request.frequency_penalty();
+  }
+  if (grpc_request.has_presence_penalty()) {
+    sampling_param.presence_penalty = grpc_request.presence_penalty();
+  }
   // sampling_param.repetition_penalty = grpc_request.repetition_penalty();
-  sampling_param.temperature = grpc_request.temperature();
-  sampling_param.top_p = grpc_request.top_p();
+  if (grpc_request.has_temperature()) {
+    sampling_param.temperature = grpc_request.temperature();
+  }
+  if (grpc_request.has_top_p()) {
+    sampling_param.top_p = grpc_request.top_p();
+  }
   // sampling_param.top_k = grpc_request.top_k();
   // sampling_param.do_sample = grpc_request.do_sample();
   // sampling_param.seed = grpc_request.seed();
@@ -72,7 +81,7 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
   auto& stopping_criteria = request->stopping_criteria;
   // TODO: add better protection
   auto max_tokens = static_cast<uint32_t>(FLAGS_max_position_embeddings - token_ids.size());
-  if (grpc_request.max_tokens() != 0) {
+  if (grpc_request.has_max_tokens()) {
     max_tokens = std::min(max_tokens, grpc_request.max_tokens());
   }
   stopping_criteria.max_tokens = max_tokens;

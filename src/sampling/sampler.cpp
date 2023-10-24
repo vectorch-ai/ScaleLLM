@@ -35,11 +35,6 @@ Sampler::Sampler(const std::vector<bool>& do_sample,
       torch::optional<torch::Generator> generator;
       // use global generator when seed is 0
       // TODO: we should set seed for each request instead of for each token
-      // if (seeds[i] != 0) {
-      //   // create a generator for each sequence based on device type
-      //   generator = make_generator(device);
-      //   generator->set_current_seed(seeds[i]);
-      // }
 
       sample_funcs_.emplace_back(
           [generator = std::move(generator)](const torch::Tensor& logits) {

@@ -35,14 +35,7 @@ class Sequence final {
            std::vector<int32_t> token_ids,
            const SamplingParameter* sampling_param,
            const StoppingCriteria* stopping_criteria,
-           OnStream on_stream)
-      : id_(next_id_.fetch_add(1)),
-        prompt_(std::move(prompt)),
-        token_ids_(std::move(token_ids)),
-        num_prompt_tokens_(token_ids_.size()),
-        sampling_param_(sampling_param),
-        stopping_criteria_(stopping_criteria),
-        on_stream_(on_stream) {}
+           OnStream on_stream);
 
   // get the id of the sequence
   int64_t id() const { return id_; }
@@ -99,8 +92,8 @@ class Sequence final {
   // check stopping criterias
   bool check_stopping_creteria();
 
-  // decode the sequence to get delta text using the tokenizer
-  std::string decode_delta_text(const Tokenizer& tokenizer);
+  // decode the tokens till end to get delta text using the tokenizer
+  std::string decode_delta_text(size_t end, const Tokenizer& tokenizer);
 
   // check if streaming is enabled
   bool is_streaming() const { return on_stream_ != nullptr; }
@@ -112,13 +105,13 @@ class Sequence final {
     }
   }
 
+  // get the offset of output text
+  size_t output_offset() const { return output_offset_; }
+
  private:
   std::vector<int32_t> sub_token_ids(size_t start, size_t end) {
     return {token_ids_.begin() + static_cast<long>(start),
             token_ids_.begin() + static_cast<long>(end)};
-  }
-  std::vector<int32_t> sub_token_ids(size_t start) {
-    return {token_ids_.begin() + static_cast<long>(start), token_ids_.end()};
   }
 
   // global unique id for the sequence
@@ -152,9 +145,12 @@ class Sequence final {
   // the reason why the sequence is finished
   FinishReason finish_reason_ = FinishReason::VOID;
 
-  // variables to keep track of output text
+  // variables to keep track of output text, should be accessed by single thread
+  // prefix offset is used to defeat cleanup algorithms in the decode which
+  // decide to add a space or not based on surrounding tokens.
   size_t prefix_offset_ = 0;
-  size_t read_offset_ = 0;
+  // all tokens before output_offset_ have been streamed to the client
+  size_t output_offset_ = 0;
 
   // function to call when new tokens are generated. (only for streaming)
   OnStream on_stream_;

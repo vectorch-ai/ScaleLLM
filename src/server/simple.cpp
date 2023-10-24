@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
       sequence.append_new_token_id(next_token_scalar);
 
       // decode the output and print delta
-      std::cout << sequence.decode_delta_text(*tokenizer) << std::flush;
+      std::cout << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer) << std::flush;
 
       if (sequence.check_stopping_creteria()) {
         break;

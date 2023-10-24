@@ -16,7 +16,6 @@
 #include "tokenizer/hf_tokenizer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
 
-DEFINE_int64(max_position_embeddings, 0, "Maximum position embeddings.");
 DEFINE_string(model_type, "", "model type, e.g. llama2, llama, gpt_neox");
 DEFINE_string(quant_method, "", "quantization method, e.g. awq, gptq");
 

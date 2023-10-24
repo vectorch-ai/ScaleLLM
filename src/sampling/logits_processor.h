@@ -158,7 +158,7 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
         1.0f / (1e-6f + torch::tensor(temperatures,
                                       torch::dtype(dtype).device(device)));
     // unsqueeze it for broadcasting. [batch_size, 1]
-    inv_temperatures_.unsqueeze_(/*dim=*/1);
+    inv_temperatures_ = inv_temperatures_.unsqueeze_(/*dim=*/1);
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
