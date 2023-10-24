@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "completion.grpc.pb.h"
+#include "chat.grpc.pb.h"
 
 namespace llm {
 
@@ -15,7 +16,7 @@ class ICallData {
  public:
   virtual ~ICallData() = default;
 
-  virtual void proceed() = 0;
+  virtual void proceed(bool rpc_ok) = 0;
 };
 
 // Class encompasing the state and logic needed to serve a request.
@@ -66,7 +67,7 @@ class CallData : public ICallData {
 
   // proceed to the next state.
   // it is designed to be called by the grpc handler thread only
-  void proceed() override {
+  void proceed(bool rpc_ok) override {
     CHECK(ops_in_progress_.exchange(false));
 
     // it is notification from cq for new request

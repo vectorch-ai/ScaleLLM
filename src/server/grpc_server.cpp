@@ -50,21 +50,21 @@ bool GrpcServer::start(const Options& options) {
   }
 
   // Spawn a new CallData instance for chat request
-  {
-    auto on_register = [this](grpc::ServerContext* context,
-                              ChatRequest* request,
-                              grpc::ServerAsyncWriter<ChatResponse>* responder,
-                              grpc::ServerCompletionQueue* new_call_cq,
-                              grpc::ServerCompletionQueue* notification_cq,
-                              void* tag) {
-      service_.RequestChat(
-          context, request, responder, new_call_cq, notification_cq, tag);
-    };
-    auto on_request = [this](ChatCallData* call_data) {
-      completion_handler_->chat_async(call_data);
-    };
-    ChatCallData::create(cq_.get(), on_register, on_request);
-  }
+  // {
+  //   auto on_register = [this](grpc::ServerContext* context,
+  //                             ChatRequest* request,
+  //                             grpc::ServerAsyncWriter<ChatResponse>* responder,
+  //                             grpc::ServerCompletionQueue* new_call_cq,
+  //                             grpc::ServerCompletionQueue* notification_cq,
+  //                             void* tag) {
+  //     service_.RequestChat(
+  //         context, request, responder, new_call_cq, notification_cq, tag);
+  //   };
+  //   auto on_request = [this](ChatCallData* call_data) {
+  //     completion_handler_->chat_async(call_data);
+  //   };
+  //   ChatCallData::create(cq_.get(), on_register, on_request);
+  // }
 
   // Proceed to the server's main loop.
   handler_thread_ = std::make_unique<std::thread>([this]() { handle_rpcs(); });
@@ -95,10 +95,10 @@ void GrpcServer::handle_rpcs() {
   // Block waiting to read the next event from the completion queue.
   // returns false if there is any kind of event or cq_ is shutting down.
   while (cq_->Next(&tag, &ok)) {
-    // TODO: handle client connection error
-    GPR_ASSERT(ok);
-    static_cast<ICallData*>(tag)->proceed();
+    static_cast<ICallData*>(tag)->proceed(ok);
   }
+
+  LOG(WARNING) << "Completion queue is shutting down.";
 }
 
 }  // namespace llm

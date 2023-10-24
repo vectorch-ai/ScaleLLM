@@ -138,29 +138,29 @@ func SendCompleteRequest(ctx context.Context, marshaler gw.Marshaler, client sca
 
 }
 
-func SendChatRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_ChatClient, gw.ServerMetadata, error) {
-	var protoReq scalellm.ChatRequest
-	var metadata gw.ServerMetadata
+// func SendChatRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_ChatClient, gw.ServerMetadata, error) {
+// 	var protoReq scalellm.ChatRequest
+// 	var metadata gw.ServerMetadata
 
-	newReader, berr := utilities.IOReaderFactory(req.Body)
-	if berr != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", berr)
-	}
-	if err := marshaler.NewDecoder(newReader()).Decode(&protoReq); err != nil && err != io.EOF {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
+// 	newReader, berr := utilities.IOReaderFactory(req.Body)
+// 	if berr != nil {
+// 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", berr)
+// 	}
+// 	if err := marshaler.NewDecoder(newReader()).Decode(&protoReq); err != nil && err != io.EOF {
+// 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+// 	}
 
-	stream, err := client.Chat(ctx, &protoReq)
-	if err != nil {
-		return nil, metadata, err
-	}
-	header, err := stream.Header()
-	if err != nil {
-		return nil, metadata, err
-	}
-	metadata.HeaderMD = header
-	return stream, metadata, nil
-}
+// 	stream, err := client.Chat(ctx, &protoReq)
+// 	if err != nil {
+// 		return nil, metadata, err
+// 	}
+// 	header, err := stream.Header()
+// 	if err != nil {
+// 		return nil, metadata, err
+// 	}
+// 	metadata.HeaderMD = header
+// 	return stream, metadata, nil
+// }
 
 func RegisterCompletionHandlerClient(ctx context.Context, handler *HttpHandler, client scalellm.CompletionClient) error {
 
@@ -175,16 +175,16 @@ func RegisterCompletionHandlerClient(ctx context.Context, handler *HttpHandler, 
 		ForwardResponseStream(ctx, handler.marshaler, w, req, func() (proto.Message, error) { return resp.Recv() })
 	})
 
-	handler.Handle("POST", "/v1/chat/completions", func(w http.ResponseWriter, req *http.Request) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		resp, _, err := SendChatRequest(ctx, handler.marshaler, client, req)
-		if err != nil {
-			DefaultErrorHandler(ctx, handler.marshaler, w, req, err)
-			return
-		}
-		ForwardResponseStream(ctx, handler.marshaler, w, req, func() (proto.Message, error) { return resp.Recv() })
-	})
+	// handler.Handle("POST", "/v1/chat/completions", func(w http.ResponseWriter, req *http.Request) {
+	// 	ctx, cancel := context.WithCancel(req.Context())
+	// 	defer cancel()
+	// 	resp, _, err := SendChatRequest(ctx, handler.marshaler, client, req)
+	// 	if err != nil {
+	// 		DefaultErrorHandler(ctx, handler.marshaler, w, req, err)
+	// 		return
+	// 	}
+	// 	ForwardResponseStream(ctx, handler.marshaler, w, req, func() (proto.Message, error) { return resp.Recv() })
+	// })
 	return nil
 }
 

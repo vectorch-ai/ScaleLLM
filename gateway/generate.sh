@@ -15,4 +15,4 @@ protoc -I ../proto \
     --go_opt paths=source_relative \
   --go-grpc_out ./proto \
     --go-grpc_opt paths=source_relative \
-  ../proto/completion.proto
+  ../proto/*.proto

@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option go_package = "github.com/vectorch-ai/scalellm;scalellm";
+package llm;
+
+message Usage {
+  // the number of tokens in the prompt.
+  int32 prompt_tokens = 1;
+
+  // the number of tokens in the generated completion.
+  int32 completion_tokens = 2;
+
+  // the total number of tokens used in the request (prompt + completion).
+  int32 total_tokens = 3;  
+}
+
+enum Priority {
+  DEFAULT = 0;
+
+  HIGH = 1;
+
+  MEDIUM = 2;
+
+  LOW = 3;
+}

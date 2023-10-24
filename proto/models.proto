@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+option go_package = "github.com/vectorch-ai/scalellm;scalellm";
+package llm;
+
+message ModelCard {
+  // The model identifier, which can be referenced in the API endpoints.
+  string id = 1;
+
+  // The Unix timestamp (in seconds) when the model was created.
+  int64 created = 2;
+
+  // the object type, which is always "model".
+  string object = 3;  
+
+  // the organization that owns the model.
+  string owned_by = 4;
+}
+
+message ListRequest {
+  // The model identifier.
+  string model = 1;
+}
+
+message ListResponse {
+  // The list of models.
+  repeated ModelCard data = 1;
+}
+
+service Models {
+  // Lists the currently available models, and provides basic information
+  // about each one such as the owner and availability.
+  rpc List(ListRequest) returns (ListResponse) {}
+}
