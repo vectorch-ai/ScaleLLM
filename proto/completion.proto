@@ -17,26 +17,26 @@ message CompletionRequest {
 
   // number of tokens to generate
   // the prompt token count + max_tokens can't exceed the model's max context length.
-  uint32 max_tokens = 4;
+  optional uint32 max_tokens = 4;
 
   // temperature of the sampling, between [0, 2]. default = 1.0
   // higher value will make the ouput more random.
-  float temperature = 5;
+  optional float temperature = 5;
 
   // top_p sampling cutoff, between [0, 1.0]. default = 1.0
-  float top_p = 6;
+  optional float top_p = 6;
 
   // number of completions to return for each prompt. default = 1
-  uint32 n = 7;
+  optional uint32 n = 7;
 
-  // whether to stream partial completions back as they are generated
-  bool stream = 8;
+  // whether to stream partial completions back as they are generated. default = false
+  optional bool stream = 8;
 
   // include the log probabilities of the chosen tokens. the maximum value is 5.
-  uint32 logprobs = 9;
+  optional uint32 logprobs = 9;
 
-  // whether to include the original prompt in the completion response
-  bool echo = 10;
+  // whether to include the original prompt in the completion response. default = true
+  optional bool echo = 10;
 
   // TODO: stop string/array/null. default = null
   // up to 4 sequences where the API will stop generating further tokens.
@@ -44,18 +44,18 @@ message CompletionRequest {
   // presence penalty to reduce the likelihood of generating words already in the prompt.
   // values between [-2.0, 2.0]. Positive values penalize new tokens based on their existing
   // in the prompt. default = 0.0
-  float presence_penalty = 12;
+  optional float presence_penalty = 12;
 
   // frequency penalty to reduce the likelihood of generating the same word multiple times.
   // values between [0.0, 2.0]. 0.0 means no penalty. default = 0.0
   // Positive values penalize new tokens based on their existing frequency in the text.
-  float frequency_penalty = 13;
+  optional float frequency_penalty = 13;
 
   // Generates best_of completions server-side and returns the "best" (the one with the lowest log probability per token).
   // Results can't be streamed once set.
   // when used with n, best_of controls the number of candidate completions and n specifies how many to return
   // best_of must be >= n
-  uint32 best_of = 14;
+  optional uint32 best_of = 14;
 
   // TODO: logit_bias
   // modify the likelihood of specified tokens appearing in the completion.
@@ -65,7 +65,7 @@ message CompletionRequest {
   string user = 16;
 
   // request priority. default = DEFAULT
-  Priority priority = 17;
+  optional Priority priority = 17;
 }
 
 message Choice {

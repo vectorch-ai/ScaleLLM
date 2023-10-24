@@ -37,32 +37,32 @@ message ChatRequest {
   // temperature of the sampling, between [0, 2]. default = 1.0
   // higher value will make the ouput more random, while a lower value will make it more deterministic.
   // it is recommended altering this or top_p but not both.
-  float temperature = 5;
+  optional float temperature = 5;
 
   // top_p sampling cutoff, between [0, 1.0]. default = 1.0
-  float top_p = 6;
+  optional float top_p = 6;
 
   // number of chat completion choices to generate for each input message. default = 1
-  uint32 n = 7;
+  optional uint32 n = 7;
 
-  // whether to stream partial completions back as they are generated
-  bool stream = 8;
+  // whether to stream partial completions back as they are generated. default = false
+  optional bool stream = 8;
 
   // TODO: stop string/array/null. default = null
   // up to 4 sequences where the API will stop generating further tokens.
   
   // the maximum number of tokens to generate in the chat completion. default = infinity
-  int32 max_tokens = 10;
+  optional int32 max_tokens = 10;
 
   // values between [-2.0, 2.0]. default = 0.0
   // Positive values penalize new tokens based on their existing in the text so far, increasing 
   // the model's likelihood to talk about new topics.
-  float presence_penalty = 11;
+  optional float presence_penalty = 11;
 
   // values between [0.0, 2.0]. default = 0.0
   // Positive values penalize new tokens based on their existing frequency in the text so far,
   // decreasing the model's likelihood to repeat the same line verbatim.
-  float frequency_penalty = 12;
+  optional float frequency_penalty = 12;
 
   // TODO: logit_bias
   // modify the likelihood of specified tokens appearing in the completion.
@@ -72,7 +72,7 @@ message ChatRequest {
   string user = 14;
 
   // request priority. default = DEFAULT
-  Priority priority = 15;
+  optional Priority priority = 15;
 }
 
 message ChatChoice {
