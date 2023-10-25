@@ -17,8 +17,9 @@ __global__ void apply_temperature_penalty_kernel(
   const int tid = threadIdx.x;
   // calculate inverse temperatures for each batch
   if (tid < batch_size) {
-    // add a small epsilon to avoid division by zero
-    inv_temperatures[tid] = 1.0f / (temperatures[tid] + 1e-6f);
+    // Replace 0. with 1. to avoid division by 0
+    inv_temperatures[tid] =
+        temperatures[tid] == 0 ? 1.0f : 1.0f / temperatures[tid];
   }
   __syncthreads();
 

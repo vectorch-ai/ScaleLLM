@@ -150,25 +150,29 @@ class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
 class TemperatureLogitsProcessor : public LogitsProcessor {
  public:
   // Constructor
+  // Constructor
   TemperatureLogitsProcessor(const std::vector<float>& temperatures,
-                             torch::ScalarType dtype,
-                             const torch::Device& device) {
-    // add a small value to avoid division by zero
-    inv_temperatures_ =
-        1.0f / (1e-6f + torch::tensor(temperatures,
-                                      torch::dtype(dtype).device(device)));
-    // unsqueeze it for broadcasting. [batch_size, 1]
-    inv_temperatures_ = inv_temperatures_.unsqueeze_(/*dim=*/1);
+                             const torch::Dtype& dtype = torch::kFloat32,
+                             const torch::Device& device = torch::kCPU) {
+    // Convert temperature to a tensor and unsqueeze it for broadcasting
+    temperatures_ =
+        torch::tensor(temperatures,
+                      torch::TensorOptions().dtype(dtype).device(device))
+            .unsqueeze(1);
+
+    // Replace 0. with 1. to avoid division by 0
+    temperatures_ =
+        torch::where(temperatures_ == 0, torch::tensor(1.0), temperatures_);
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
                         const torch::Tensor& logits) const override {
-    logits.mul_(inv_temperatures_);
+    logits.div_(temperatures_);
     return logits;
   }
 
  private:
-  torch::Tensor inv_temperatures_;
+  torch::Tensor temperatures_;
 };
 
 class TopPLogitsProcessor : public LogitsProcessor {
