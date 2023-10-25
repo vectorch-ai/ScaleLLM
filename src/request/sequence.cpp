@@ -1,5 +1,7 @@
 #include "sequence.h"
 
+#include <absl/strings/match.h>
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -12,17 +14,17 @@ namespace llm {
 std::atomic<int64_t> Sequence::next_id_{1};
 
 Sequence::Sequence(std::string prompt,
-           std::vector<int32_t> token_ids,
-           const SamplingParameter* sampling_param,
-           const StoppingCriteria* stopping_criteria,
-           OnStream on_stream)
-      : id_(next_id_.fetch_add(1)),
-        prompt_(std::move(prompt)),
-        token_ids_(std::move(token_ids)),
-        num_prompt_tokens_(token_ids_.size()),
-        sampling_param_(sampling_param),
-        stopping_criteria_(stopping_criteria),
-        on_stream_(on_stream) {
+                   std::vector<int32_t> token_ids,
+                   const SamplingParameter* sampling_param,
+                   const StoppingCriteria* stopping_criteria,
+                   OnStream on_stream)
+    : id_(next_id_.fetch_add(1)),
+      prompt_(std::move(prompt)),
+      token_ids_(std::move(token_ids)),
+      num_prompt_tokens_(token_ids_.size()),
+      sampling_param_(sampling_param),
+      stopping_criteria_(stopping_criteria),
+      on_stream_(on_stream) {
   // reserve enough space for the token ids to avoid reallocation
   // so that the token ids are not invalidated
   const size_t max_tokens = stopping_criteria_->max_tokens;
@@ -52,11 +54,14 @@ bool Sequence::check_stopping_creteria() {
 }
 
 // decode the sequence to get delta text using the tokenizer
-std::string Sequence::decode_delta_text(size_t end, const Tokenizer& tokenizer) {
+std::string Sequence::decode_delta_text(size_t end,
+                                        const Tokenizer& tokenizer) {
   const auto prefix_text =
       tokenizer.decode(sub_token_ids(prefix_offset_, output_offset_));
   const auto new_text = tokenizer.decode(sub_token_ids(prefix_offset_, end));
-  if (new_text.size() > prefix_text.size()) {
+  // utf-8 char � at the end means it is a potential unfinished byte sequence
+  // from byte fallback tokenization.
+  if (new_text.size() > prefix_text.size() && !absl::EndsWith(new_text, "�")) {
     prefix_offset_ = output_offset_;
     output_offset_ = end;
     // only print the delta text

@@ -14,4 +14,5 @@ cc_library(
     sequence.cpp
   DEPS
     glog::glog
+    absl::strings
 )
