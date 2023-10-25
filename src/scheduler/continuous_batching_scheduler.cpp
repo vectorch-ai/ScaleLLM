@@ -71,12 +71,14 @@ void ContinuousBatchingScheduler::on_sequence_stream(Sequence* seq) {
   const size_t num_tokens_to_output = num_tokens - output_offset;
   if (seq->is_finished() ||
       num_tokens_to_output >= FLAGS_streaming_token_buffer_size) {
+    const auto finish_reason = seq->finish_reason();
     // output the delta text til the end of the sequence to the client
     response_executor_.schedule(
-        [seq, tokenizer = tokenizer_.get(), end = num_tokens]() {
+        [seq, tokenizer = tokenizer_.get(), end = num_tokens, finish_reason]() {
           const auto detla = seq->decode_delta_text(end, *tokenizer);
-          const auto finish_reason = seq->finish_reason();
-          seq->stream_delta(detla, finish_reason);
+          if (!detla.empty() || finish_reason != FinishReason::NONE) {
+            seq->stream_delta(detla, finish_reason);
+          };
         });
   }
 }

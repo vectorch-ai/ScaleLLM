@@ -10,8 +10,8 @@
 
 #include "call_data.h"
 #include "completion.grpc.pb.h"
-#include "request/request.h"
 #include "model_loader/model_loader.h"
+#include "request/request.h"
 
 constexpr int kStepTimeoutMs = 500;
 
@@ -80,7 +80,8 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
   // TODO: add better protection
-  auto max_tokens = static_cast<uint32_t>(FLAGS_max_position_embeddings - token_ids.size());
+  auto max_tokens =
+      static_cast<uint32_t>(FLAGS_max_position_embeddings - token_ids.size());
   if (grpc_request.has_max_tokens()) {
     max_tokens = std::min(max_tokens, grpc_request.max_tokens());
   }
@@ -89,8 +90,15 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
   // stopping_criteria.ignore_eos_token = grpc_request.ignore_eos_token();
   // stopping_criteria.eos_token_id = tokenizer->eos_id();
 
-  request->stream = grpc_request.stream();
-  request->priority = grpc_priority_to_priority(grpc_request.priority());
+  if (grpc_request.has_stream()) {
+    request->stream = grpc_request.stream();
+  }
+  if (grpc_request.has_echo()) {
+    request->echo = grpc_request.echo();
+  }
+  if (grpc_request.has_priority()) {
+    request->priority = grpc_priority_to_priority(grpc_request.priority());
+  }
   request->created_time = absl::ToUnixMicros(absl::Now());
 
   // TODO: handle best_of and n
@@ -155,7 +163,8 @@ CompletionHandler::~CompletionHandler() {
 
 void CompletionHandler::complete_async(CompletionCallData* call_data) {
   converter_executor_.schedule([this, call_data = call_data]() {
-    auto request = grpc_completion_request_to_request(call_data, tokenizer_.get());
+    auto request =
+        grpc_completion_request_to_request(call_data, tokenizer_.get());
     if (request == nullptr) {
       // TODO: finish with error
     }

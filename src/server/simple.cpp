@@ -108,7 +108,8 @@ int main(int argc, char* argv[]) {
                            std::move(tokens_ids),
                            &sampling_param,
                            &stopping_criteria,
-                           nullptr);
+                           nullptr,
+                           /*echo=*/true);
 
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;

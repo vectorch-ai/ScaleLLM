@@ -17,7 +17,8 @@ Sequence::Sequence(std::string prompt,
                    std::vector<int32_t> token_ids,
                    const SamplingParameter* sampling_param,
                    const StoppingCriteria* stopping_criteria,
-                   OnStream on_stream)
+                   OnStream on_stream,
+                   bool echo)
     : id_(next_id_.fetch_add(1)),
       prompt_(std::move(prompt)),
       token_ids_(std::move(token_ids)),
@@ -29,6 +30,8 @@ Sequence::Sequence(std::string prompt,
   // so that the token ids are not invalidated
   const size_t max_tokens = stopping_criteria_->max_tokens;
   token_ids_.reserve(max_tokens + token_ids_.size());
+  prefix_offset_ = echo ? 0 : token_ids_.size();
+  output_offset_ = echo ? 0 : token_ids_.size();
 }
 
 bool Sequence::check_stopping_creteria() {

@@ -59,7 +59,8 @@ struct Request {
                            std::move(token_ids),
                            &sampling_param,
                            &stopping_criteria,
-                           on_stream);
+                           on_stream,
+                           echo);
   }
   // The unique id of the request.
   std::string id;
@@ -75,6 +76,9 @@ struct Request {
 
   // Whether to stream back partial results as they are generated.
   bool stream = false;
+
+  // Whether to echo back the prompt in the output.
+  bool echo = true;
 
   // The status of the request.
   // ScheduleStatus status = ScheduleStatus::WAITING;

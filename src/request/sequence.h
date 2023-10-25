@@ -17,7 +17,7 @@ namespace llm {
 // "length" - the maximum number of tokens specified in the request was reached.
 // "function_call" - the model called a function.
 enum class FinishReason {
-  VOID = 0,
+  NONE = 0,
   STOP = 1,
   LENGTH,
   FUNCTION_CALL,
@@ -35,7 +35,8 @@ class Sequence final {
            std::vector<int32_t> token_ids,
            const SamplingParameter* sampling_param,
            const StoppingCriteria* stopping_criteria,
-           OnStream on_stream);
+           OnStream on_stream,
+           bool echo);
 
   // get the id of the sequence
   int64_t id() const { return id_; }
@@ -143,7 +144,7 @@ class Sequence final {
   bool is_finished_ = false;
 
   // the reason why the sequence is finished
-  FinishReason finish_reason_ = FinishReason::VOID;
+  FinishReason finish_reason_ = FinishReason::NONE;
 
   // variables to keep track of output text, should be accessed by single thread
   // prefix offset is used to defeat cleanup algorithms in the decode which
