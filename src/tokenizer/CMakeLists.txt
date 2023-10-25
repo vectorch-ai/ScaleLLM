@@ -28,7 +28,7 @@ cc_test(
     tokenizers
     GTest::gtest_main
   DATA 
-    data/test_model.model
+    data/tokenizer.model
     data/tokenizer.json.bin
 )
 
