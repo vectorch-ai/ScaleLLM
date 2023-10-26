@@ -28,7 +28,7 @@ DEFINE_string(priority, "DEFAULT", "priority of the request, DEFAULT, LOW, MEDIU
 DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
 DEFINE_double(top_p, 0.9, "Top p for sampling.");
-// DEFINE_int64(top_k, 0, "Top k for sampling.");
+DEFINE_int32(max_tokens, 256, "Maximum number of tokens to generate.");
 
 // DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
 
@@ -48,6 +48,7 @@ class ChatClient final {
     request.set_top_p(FLAGS_top_p);
     request.set_frequency_penalty(FLAGS_frequency_penalty);
     request.set_presence_penalty(FLAGS_presence_penalty);
+    request.set_max_tokens(FLAGS_max_tokens);
 
     llm::Priority priority{};
     CHECK(llm::Priority_Parse(FLAGS_priority, &priority));

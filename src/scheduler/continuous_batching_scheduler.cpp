@@ -142,7 +142,6 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
 
     // all sequences in the request have enough slots to schedule
     if (has_enough_slots) {
-      CHECK(!sequence_candiadtes.empty());
       // add request to new batch
       priority_queue_.pop();
       request_batch_.push_back(candidate);

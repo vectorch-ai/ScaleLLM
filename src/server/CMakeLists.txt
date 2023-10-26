@@ -12,6 +12,7 @@ cc_library(
     :common
     :tokenizer
     :scheduler
+    :request
     :model_loader
     absl::time
     glog::glog
@@ -28,6 +29,7 @@ cc_library(
     grpc_server.cpp
   DEPS
     :completion_handler
+    :request
     absl::strings
     glog::glog
     grpc_proto::completion

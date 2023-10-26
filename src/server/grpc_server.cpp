@@ -46,17 +46,18 @@ bool GrpcServer::start(const Options& options) {
     auto on_request = [this](CompletionCallData* call_data) {
       completion_handler_->complete_async(call_data);
     };
-    CompletionCallData::create(cq_.get(), on_register, on_request);
+    // Spawn new CallData instances to serve new clients
+    new CompletionCallData(cq_.get(), on_register, on_request);
   }
 
   // Spawn a new CallData instance for chat request
   // {
   //   auto on_register = [this](grpc::ServerContext* context,
   //                             ChatRequest* request,
-  //                             grpc::ServerAsyncWriter<ChatResponse>* responder,
-  //                             grpc::ServerCompletionQueue* new_call_cq,
-  //                             grpc::ServerCompletionQueue* notification_cq,
-  //                             void* tag) {
+  //                             grpc::ServerAsyncWriter<ChatResponse>*
+  //                             responder, grpc::ServerCompletionQueue*
+  //                             new_call_cq, grpc::ServerCompletionQueue*
+  //                             notification_cq, void* tag) {
   //     service_.RequestChat(
   //         context, request, responder, new_call_cq, notification_cq, tag);
   //   };
@@ -90,15 +91,19 @@ void GrpcServer::stop() {
 // This can be run in multiple threads if needed.
 void GrpcServer::handle_rpcs() {
   void* tag = nullptr;  // uniquely identifies a request.
-  bool ok = false;
+  bool rpc_ok = false;
 
   // Block waiting to read the next event from the completion queue.
   // returns false if there is any kind of event or cq_ is shutting down.
-  while (cq_->Next(&tag, &ok)) {
-    static_cast<ICallData*>(tag)->proceed(ok);
+  while (cq_->Next(&tag, &rpc_ok)) {
+    ICallData* call_data = static_cast<ICallData*>(tag);
+    if (!call_data->proceed(rpc_ok)) {
+      // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+      delete call_data;
+    }
   }
 
-  LOG(WARNING) << "Completion queue is shutting down.";
+  LOG(WARNING) << "Completion queue is shutting down";
 }
 
 }  // namespace llm

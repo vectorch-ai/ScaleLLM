@@ -12,6 +12,7 @@ cc_library(
     request.h
   SRCS 
     sequence.cpp
+    request.cpp
   DEPS
     glog::glog
     absl::strings

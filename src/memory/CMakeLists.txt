@@ -15,6 +15,7 @@ cc_library(
     block_manager.cpp
   DEPS
     :kernels
+    :request
     glog::glog
     torch
 )

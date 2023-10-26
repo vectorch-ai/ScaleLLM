@@ -24,7 +24,7 @@ enum class FinishReason {
 };
 
 using OnStream =
-    std::function<void(const std::string& delta, const FinishReason& reason)>;
+    std::function<bool(const std::string& delta, const FinishReason& reason)>;
 
 // The sequence encapsulates all the necessary
 // information for a sequence, including the prompt, the token ids, and the
@@ -85,7 +85,17 @@ class Sequence final {
   size_t num_blocks() const { return blocks_.size(); }
 
   // check if the sequence is finished
-  bool is_finished() const { return is_finished_; }
+  bool is_finished() const { return is_cancelled() || is_finished_; }
+
+  // check if the sequence is cancelled
+  bool is_cancelled() const {
+    return is_cancelled_.load(std::memory_order_relaxed);
+  }
+
+  // cancel the sequence
+  void set_cancelled() {
+    is_cancelled_.store(true, std::memory_order_relaxed);
+  }
 
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
@@ -102,7 +112,10 @@ class Sequence final {
   // stream the delta text to the client
   void stream_delta(const std::string& delta, const FinishReason& reason) {
     if (on_stream_) {
-      on_stream_(delta, reason);
+      if (!on_stream_(delta, reason)) {
+        // failed to stream the delta, cancel the sequence
+        set_cancelled();
+      }
     }
   }
 
@@ -142,6 +155,10 @@ class Sequence final {
 
   // has the sequence been finished
   bool is_finished_ = false;
+
+  // has the sequence been cancelled by client, e.g. timeout, rpc error, etc.
+  // use a atomic bool since it can be accessed by multiple threads.
+  std::atomic<bool> is_cancelled_{false};
 
   // the reason why the sequence is finished
   FinishReason finish_reason_ = FinishReason::NONE;

@@ -106,7 +106,7 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
       grpc_request.prompt(),
       std::move(token_ids),
       [call_data, request = request.get()](const std::string& delta,
-                                           const FinishReason& reason) {
+                                           const FinishReason& reason) -> bool {
         CompletionResponse response;
         response.set_object("text_completion");
         response.set_id(request->id);
@@ -117,15 +117,15 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
         // choice->set_logprobs(0);
         choice->set_index(0);
         // choice->set_finish_reason(static_cast<int>(reason));
-        call_data->write(response);
+        return call_data->write(response);
       });
 
   request->on_finish = [call_data, request = request.get()](
                            const std::string& output_text,
-                           const Status& status) {
+                           const Status& status) -> bool {
     // TODO: handle best_of and n
     // TODO: mapping status to grpc status
-    call_data->finish();
+    return call_data->finish();
   };
   return request;
 }

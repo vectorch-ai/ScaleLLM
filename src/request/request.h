@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <deque>
 
 #include "sampling_parameter.h"
 #include "sequence.h"
@@ -41,7 +42,7 @@ enum class ScheduleStatus {
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
 using OnFinish =
-    std::function<void(const std::string& output_text, const Status& status)>;
+    std::function<bool(const std::string& output_text, const Status& status)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
@@ -54,19 +55,16 @@ struct Request {
 
   void add_sequence(std::string prompt,
                     std::vector<int32_t> token_ids,
-                    OnStream on_stream) {
-    sequences.emplace_back(std::move(prompt),
-                           std::move(token_ids),
-                           &sampling_param,
-                           &stopping_criteria,
-                           on_stream,
-                           echo);
-  }
+                    OnStream on_stream);
+
+  bool is_finished() const;
+
   // The unique id of the request.
   std::string id;
 
   // list of sequences to generate completions for the prompt
-  std::vector<Sequence> sequences;
+  // use deque instead of vector to avoid no-copy move for Sequence
+  std::deque<Sequence> sequences;
 
   // sampling parameters
   SamplingParameter sampling_param;
@@ -91,15 +89,6 @@ struct Request {
 
   // function to call when the request is finished.
   OnFinish on_finish;
-
-  bool is_finished() const {
-    for (const auto& seq : sequences) {
-      if (!seq.is_finished()) {
-        return false;
-      }
-    }
-    return true;
-  }
 };
 
 // Compare two request contexts based on priority then scheduled time.

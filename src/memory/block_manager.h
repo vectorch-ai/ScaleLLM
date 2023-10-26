@@ -5,12 +5,10 @@
 #include <vector>
 
 #include "block_allocator.h"
+#include "request/request.h"
 
 namespace llm {
-class Request;
-class Sequence;
 
-// TODO: move this into scheduler
 class BlockManager final {
  public:
   BlockManager(uint32_t num_blocks, int32_t block_size);
