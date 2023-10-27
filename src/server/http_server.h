@@ -1,11 +1,12 @@
 #pragma once
-#include <CivetServer.h>
 #include <absl/strings/numbers.h>
+#include <evhtp/evhtp.h>
 
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 struct mg_connection;
@@ -16,13 +17,13 @@ namespace llm {
 class HttpServer {
  public:
   class Transport;
-  using Handler = std::function<bool(std::unique_ptr<Transport>)>;
+  using Handler = std::function<bool(Transport&)>;
 
   HttpServer() = default;
 
   bool RegisterURI(const std::string& uri, Handler handler);
 
-  void Start(uint16_t port, uint32_t num_threads = 2);
+  void Start(uint16_t port, int32_t num_threads = 2);
 
   void Stop();
 
@@ -33,16 +34,16 @@ class HttpServer {
    */
   class Transport {
    private:
-    mg_connection* conn_;
+    evhtp_request_t* req_;
 
    public:
-    explicit Transport(mg_connection* conn) : conn_(conn) {}
+    explicit Transport(evhtp_request_t* req) : req_(req) {}
 
     Transport(const Transport&) = delete;
     Transport& operator=(Transport&) = delete;
 
     // Get request
-    std::string GetMethod() const;
+    htp_method GetMethod() const;
 
     bool GetParam(const std::string& name, std::string* value) const;
 
@@ -61,10 +62,21 @@ class HttpServer {
   };
 
  private:
-  std::unique_ptr<CivetServer> server_;
+  // http request callback to dispatch to registered handlers
+  static void Dispatch(evhtp_request_t* req, void* arg);
+
+  // event callback to stop the event loop
+  static void StopCallback(evutil_socket_t fd, short what, void* arg);
 
   // hold the ownership of all request handlers
-  std::unordered_map<std::string, std::unique_ptr<CivetHandler>> endpoints_;
+  std::unordered_map<std::string, Handler> endpoints_;
+
+  evhtp_t* htp_;
+  event_base* evbase_;
+  evutil_socket_t fds_[2];
+  event* break_ev_;
+
+  std::thread thread_;
 };
 
 }  // namespace llm

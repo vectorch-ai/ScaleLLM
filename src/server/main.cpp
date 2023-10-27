@@ -32,28 +32,31 @@ int main(int argc, char** argv) {
   folly::Init init(&argc, &argv);
 
   HttpServer http_server;
+  http_server.RegisterURI("/gflags",
+                          [](HttpServer::Transport& transport) -> bool {
+                            auto gflags = nlohmann::json::array();
+                            std::vector<google::CommandLineFlagInfo> flags;
+                            google::GetAllFlags(&flags);
+                            for (const auto& flag : flags) {
+                              nlohmann::json gflag;
+                              gflag["name"] = flag.name;
+                              gflag["type"] = flag.type;
+                              gflag["description"] = flag.description;
+                              gflag["value"] = flag.current_value;
+                              gflag["default"] = flag.default_value;
+                              gflags.push_back(gflag);
+                            }
+                            return transport.SendString(
+                                gflags.dump(/*indent=*/2), "application/json");
+                          });
   http_server.RegisterURI(
-      "/gflags", [](std::unique_ptr<HttpServer::Transport> transport) -> bool {
-        nlohmann::json gflags;
-        std::vector<google::CommandLineFlagInfo> flags;
-        google::GetAllFlags(&flags);
-        for (const auto& flag : flags) {
-          gflags["name"] = flag.name;
-          gflags["type"] = flag.type;
-          gflags["description"] = flag.description;
-          gflags["value"] = flag.current_value;
-          gflags["default"] = flag.default_value;
-        }
-        return transport->SendString(gflags.dump(/*indent=*/4));
+      "/metrics", [](HttpServer::Transport& transport) -> bool {
+        return transport.SendString(Metrics::Instance().GetString());
       });
-  http_server.RegisterURI(
-      "/metrics", [](std::unique_ptr<HttpServer::Transport> transport) -> bool {
-        return transport->SendString(Metrics::Instance().GetString());
-      });
-  http_server.RegisterURI(
-      "/health", [](std::unique_ptr<HttpServer::Transport> transport) -> bool {
-        return transport->SendString("Ok");
-      });
+  http_server.RegisterURI("/health",
+                          [](HttpServer::Transport& transport) -> bool {
+                            return transport.SendString("Ok");
+                          });
 
   http_server.Start(FLAGS_http_port, /*num_threads=*/2);
   LOG(INFO) << "Started http server on port " << FLAGS_http_port;

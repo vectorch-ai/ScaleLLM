@@ -45,7 +45,7 @@ cc_library(
   DEPS
     absl::strings
     glog::glog
-    civetweb::civetweb-cpp
+    libevhtp::evhtp
 )
 
 cc_binary(
