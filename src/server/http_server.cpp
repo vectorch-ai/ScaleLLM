@@ -80,18 +80,17 @@ void HttpServer::Stop() {
 
 htp_method HttpServer::Transport::GetMethod() const { return req_->method; }
 
-bool HttpServer::Transport::GetParam(const std::string& name,
-                                     std::string* value) const {
+std::optional<std::string> HttpServer::Transport::GetParam(
+    const std::string& name) const {
   // return CivetServer::getParam(conn_, name.c_str(), *value);
   evhtp_uri_t* uri = req_->uri;
   evhtp_kv_t* kv = nullptr;
   TAILQ_FOREACH(kv, uri->query, next) {
     if (std::string(kv->key, kv->klen) == name) {
-      *value = std::string(kv->val, kv->vlen);
-      return true;
+      return std::string(kv->val, kv->vlen);
     }
   }
-  return false;
+  return std::nullopt;
 }
 
 bool HttpServer::Transport::SendString(const std::string& data,

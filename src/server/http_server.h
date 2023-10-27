@@ -2,9 +2,11 @@
 #include <absl/strings/numbers.h>
 #include <evhtp/evhtp.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -45,15 +47,19 @@ class HttpServer {
     // Get request
     htp_method GetMethod() const;
 
-    bool GetParam(const std::string& name, std::string* value) const;
+    std::optional<std::string> GetParam(const std::string& name) const;
 
     template <typename int_type>
-    bool GetIntParam(const std::string& name, int_type* value) const {
-      std::string str_val;
-      if (!GetParam(name, &str_val)) {
+    std::optional<int_type> GetIntParam(const std::string& name) const {
+      auto str_val = GetParam(name);
+      if (!str_val) {
         return false;
       }
-      return absl::SimpleAtoi(str_val, value);
+      int_type value;
+      if (absl::SimpleAtoi(str_val.value(), value)) {
+        return value;
+      }
+      return std::nullopt;
     }
 
     // Send response
