@@ -33,7 +33,7 @@ class ICallData {
 template <typename Request, typename Response>
 class CallData : public ICallData {
  public:
-  enum class Status { CREATE, PROCESS, FINISH, DESTROY };
+  enum class Status { CREATE, WRITE, PENDING, FINISH };
 
   // pack the response with state
   struct ResponseWithState {
@@ -80,6 +80,7 @@ class CallData : public ICallData {
     if (!rpc_ok_.load(std::memory_order_relaxed)) {
       return false;
     }
+
     // pack the response with state
     auto response_with_state =
         std::make_unique<ResponseWithState>(std::move(response));
@@ -87,7 +88,7 @@ class CallData : public ICallData {
     // response_queue take the ownership of the response
     response_queue_.blockingWrite(response_with_state.release());
     // notify the grpc handler thread
-    alarm_.Set(cq_, gpr_time_0(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
+    write_alarm_.Set(cq_, gpr_now(gpr_clock_type::GPR_CLOCK_REALTIME), this);
     return true;
   }
 
@@ -98,7 +99,7 @@ class CallData : public ICallData {
     // response_queue take the ownership of the response
     response_queue_.blockingWrite(response_with_state.release());
     // notify the grpc handler thread
-    alarm_.Set(cq_, gpr_time_0(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
+    finish_alarm_.Set(cq_, gpr_now(gpr_clock_type::GPR_CLOCK_REALTIME), this);
     return rpc_ok_.load(std::memory_order_relaxed);
   }
 
@@ -122,22 +123,27 @@ class CallData : public ICallData {
         return false;
       }
 
-      status_ = Status::PROCESS;
+      // set status to WRITE to process response
+      status_ = Status::WRITE;
       // The actual processing.
       on_new_request_(this);
-    } else if (status_ == Status::PROCESS) {
+    } else if (status_ == Status::WRITE) {
       // pull the next request from the queue and send it to client
       ResponseWithState* r = nullptr;
       if (response_queue_.read(r)) {
         std::unique_ptr<ResponseWithState> rs(r);
         if (rs->response.has_value()) {
-          // if rpc is ok, send the response to client
+          // if rpc is ok, send the response to client, otherwise, wait for
+          // finish alarm
           if (rpc_ok) {
+            // change the status to pending to wait for write op to finish
+            status_ = Status::PENDING;
             responder_.Write(rs->response.value(), this);
           }
         } else {
-          status_ = Status::FINISH;
           if (rpc_ok) {
+            // the rpc is ok, send the finish status to client
+            status_ = Status::FINISH;
             responder_.Finish(rs->grpc_status, this);
           } else {
             // the request has been finished, release the calldata
@@ -145,11 +151,11 @@ class CallData : public ICallData {
           }
         }
       }
+    } else if (status_ == Status::PENDING) {
+      // the write op has been finished, proceed to the next write op
+      status_ = Status::WRITE;
     } else if (status_ == Status::FINISH) {
-      status_ = Status::DESTROY;
-      return rpc_ok;
-    } else if (status_ == Status::DESTROY) {
-      // Once in the DESTROY state, deallocate CallData.
+      // Once in the FINISH state, deallocate CallData.
       return false;
     } else {
       LOG(WARNING) << "Unknown status: " << static_cast<int>(status_);
@@ -167,8 +173,11 @@ class CallData : public ICallData {
   // context for the request.
   grpc::ServerContext ctx_;
 
-  // alarm for notifying the grpc handler thread
-  grpc::Alarm alarm_;
+  // write alarm for notifying the grpc handler thread
+  grpc::Alarm write_alarm_;
+
+  // finish alarm for notifying the grpc handler thread
+  grpc::Alarm finish_alarm_;
 
   // request get from client
   Request request_;
