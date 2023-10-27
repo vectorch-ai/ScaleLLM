@@ -6,10 +6,13 @@
 
 #include <filesystem>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <thread>
 
+#include "common/metrics.h"
 #include "engine/engine.h"
 #include "grpc_server.h"
+#include "http_server.h"
 #include "model_loader/model_downloader.h"
 #include "scheduler/continuous_batching_scheduler.h"
 
@@ -21,9 +24,39 @@ DEFINE_string(model_name_or_path,
 
 DEFINE_string(device, "cuda:0", "Device to run the model on.");
 
+DEFINE_int32(http_port, 9999, "Port for http server.");
+DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
+
 int main(int argc, char** argv) {
   // glog and glfag will be initialized in folly::init
   folly::Init init(&argc, &argv);
+
+  HttpServer http_server;
+  http_server.RegisterURI(
+      "/gflags", [](std::unique_ptr<HttpServer::Transport> transport) -> bool {
+        nlohmann::json gflags;
+        std::vector<google::CommandLineFlagInfo> flags;
+        google::GetAllFlags(&flags);
+        for (const auto& flag : flags) {
+          gflags["name"] = flag.name;
+          gflags["type"] = flag.type;
+          gflags["description"] = flag.description;
+          gflags["value"] = flag.current_value;
+          gflags["default"] = flag.default_value;
+        }
+        return transport->SendString(gflags.dump(/*indent=*/4));
+      });
+  http_server.RegisterURI(
+      "/metrics", [](std::unique_ptr<HttpServer::Transport> transport) -> bool {
+        return transport->SendString(Metrics::Instance().GetString());
+      });
+  http_server.RegisterURI(
+      "/health", [](std::unique_ptr<HttpServer::Transport> transport) -> bool {
+        return transport->SendString("Ok");
+      });
+
+  http_server.Start(FLAGS_http_port, /*num_threads=*/2);
+  LOG(INFO) << "Started http server on port " << FLAGS_http_port;
 
   // split device into chunks
   const std::vector<std::string> device_strs =
@@ -62,12 +95,12 @@ int main(int argc, char** argv) {
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
   auto completion_handler =
       std::make_unique<CompletionHandler>(scheduler.get(), engine->tokenizer());
-  GrpcServer server(std::move(completion_handler));
+  GrpcServer grpc_server(std::move(completion_handler));
   GrpcServer::Options options;
   options.address = "localhost";
-  options.port = 8888;
+  options.port = FLAGS_grpc_port;
 
-  if (!server.start(options)) {
+  if (!grpc_server.start(options)) {
     LOG(ERROR) << "failed to start grpc server";
     return -1;
   }
@@ -77,6 +110,8 @@ int main(int argc, char** argv) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     // TODO: update server status
   }
-  server.stop();
+  grpc_server.stop();
+  http_server.Stop();
+
   return 0;
 }

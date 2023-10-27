@@ -45,6 +45,10 @@
       "name": "nlohmann-json",
       "version>=": "3.11.2",
       "default-features": false
+    },
+    {
+      "name": "civetweb",
+      "version>=": "1.15#2"
     }
   ],
   "builtin-baseline": "9edb1b8e590cc086563301d735cae4b6e732d2d2"

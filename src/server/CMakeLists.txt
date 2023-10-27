@@ -35,6 +35,19 @@ cc_library(
     grpc_proto::completion
 )
 
+cc_library(
+  NAME
+    http_server
+  HDRS
+    http_server.h
+  SRCS
+    http_server.cpp
+  DEPS
+    absl::strings
+    glog::glog
+    civetweb::civetweb-cpp
+)
+
 cc_binary(
   NAME 
     simple
@@ -57,12 +70,14 @@ cc_binary(
   DEPS
     :completion_handler
     :grpc_server
+    :http_server
     :engine
     :model_downloader
     absl::strings
     gflags::gflags
     glog::glog
     Folly::folly
+    nlohmann_json::nlohmann_json
 )
 
 cc_binary(

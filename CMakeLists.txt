@@ -59,6 +59,7 @@ find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(prometheus-cpp CONFIG REQUIRED)
+find_package(civetweb CONFIG REQUIRED)
 
 set(USE_STATIC_NCCL ON)
 find_package(NCCL REQUIRED)
