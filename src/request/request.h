@@ -1,10 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
-#include <deque>
 
 #include "sampling_parameter.h"
 #include "sequence.h"
@@ -51,7 +51,7 @@ using OnFinish =
 // request's handling.
 struct Request {
  public:
-  Request() = default;
+  Request();
 
   void add_sequence(std::string prompt,
                     std::vector<int32_t> token_ids,
@@ -60,7 +60,8 @@ struct Request {
   bool is_finished() const;
 
   // The unique id of the request.
-  std::string id;
+  // NOLINTNEXTLINE
+  const std::string id;
 
   // list of sequences to generate completions for the prompt
   // use deque instead of vector to avoid no-copy move for Sequence

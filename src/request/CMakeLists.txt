@@ -16,4 +16,5 @@ cc_library(
   DEPS
     glog::glog
     absl::strings
+    stduuid
 )

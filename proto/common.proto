@@ -5,13 +5,13 @@ package llm;
 
 message Usage {
   // the number of tokens in the prompt.
-  int32 prompt_tokens = 1;
+  optional int32 prompt_tokens = 1 [json_name="prompt_tokens"];
 
   // the number of tokens in the generated completion.
-  int32 completion_tokens = 2;
+  optional int32 completion_tokens = 2 [json_name="completion_tokens"];
 
   // the total number of tokens used in the request (prompt + completion).
-  int32 total_tokens = 3;  
+  optional int32 total_tokens = 3 [json_name="total_tokens"];;  
 }
 
 enum Priority {

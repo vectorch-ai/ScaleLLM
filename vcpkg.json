@@ -55,6 +55,11 @@
       "name": "libevhtp",
       "version>=": "1.2.18#5",
       "features": ["thread"]
+    },
+    {
+      "name": "stduuid",
+      "version>=": "1.2.3",
+      "features": ["system-gen"]
     }
   ],
   "builtin-baseline": "9edb1b8e590cc086563301d735cae4b6e732d2d2"

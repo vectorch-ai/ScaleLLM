@@ -70,16 +70,16 @@ message CompletionRequest {
 
 message Choice {
   // the generated completion
-  string text = 1;
+  optional string text = 1;
 
   // the log probability of the completion
-  float logprobs = 2;
+  optional float logprobs = 2;
 
   // the index of the generated completion
-  uint32 index = 3;
+  optional uint32 index = 3;
 
   // the finish reason of the completion.
-  string finish_reason = 4;
+  optional string finish_reason = 4 [json_name="finish_reason"];
 }
 
 message CompletionResponse {
@@ -90,7 +90,7 @@ message CompletionResponse {
   string object = 2;
 
   // the unix timestamp (in seconds) of when the completion was created.
-  int64 created = 3;
+  uint32 created = 3;
 
   // the model used for the completion
   string model = 4;

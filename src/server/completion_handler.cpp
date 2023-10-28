@@ -5,6 +5,7 @@
 #include <torch/torch.h>
 
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -31,6 +32,22 @@ RequestPriority grpc_priority_to_priority(Priority priority) {
       LOG(WARNING) << "Unknown priority: " << static_cast<int>(priority);
   }
   return RequestPriority::MEDIUM;
+}
+
+std::string finish_reason_to_string(FinishReason reason) {
+  switch (reason) {
+    case FinishReason::NONE:
+      return "";
+    case FinishReason::STOP:
+      return "stop";
+    case FinishReason::LENGTH:
+      return "length";
+    case FinishReason::FUNCTION_CALL:
+      return "function_call";
+    default:
+      LOG(WARNING) << "Unknown finish reason: " << static_cast<int>(reason);
+  }
+  return "";
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
@@ -114,7 +131,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
                                                  const ModelArgs& model_args) {
   const CompletionRequest& grpc_request = call_data->request();
   CHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
-  
+
   const int64_t max_context_len = model_args.max_position_embeddings();
 
   std::vector<int> token_ids;
@@ -128,8 +145,6 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   }
 
   auto request = std::make_unique<Request>();
-  // TODO: generate unique id
-  request->id = "unique id";
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -173,7 +188,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   if (grpc_request.has_priority()) {
     request->priority = grpc_priority_to_priority(grpc_request.priority());
   }
-  request->created_time = absl::ToUnixMicros(absl::Now());
+  request->created_time = absl::ToUnixSeconds(absl::Now());
 
   // add on_stream and on_finish callbacks
   if (request->stream) {
@@ -189,7 +204,9 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
       choice->set_text(delta);
       // choice->set_logprobs(0);
       choice->set_index(0);
-      // choice->set_finish_reason(static_cast<int>(reason));
+      if (reason != FinishReason::NONE) {
+        choice->set_finish_reason(finish_reason_to_string(reason));
+      }
       return call_data->write(response);
     };
 
