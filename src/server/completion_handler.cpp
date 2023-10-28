@@ -194,7 +194,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   if (request->stream) {
     auto on_stream = [call_data, request = request.get()](
                          const std::string& delta,
-                         const FinishReason& reason) -> bool {
+                         FinishReason reason) -> bool {
       CompletionResponse response;
       response.set_object("text_completion");
       response.set_id(request->id);
@@ -215,7 +215,11 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
     request->on_finish = [call_data, request = request.get()](
                              const std::string& output_text,
+                             FinishReason reason,
                              const Status& status) -> bool {
+      CHECK(output_text.empty());
+      CHECK(reason == FinishReason::NONE);
+
       // TODO: mapping status to grpc status
       return call_data->finish();
     };
@@ -223,9 +227,23 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     request->add_sequence(grpc_request.prompt(), std::move(token_ids), nullptr);
     request->on_finish = [call_data, request = request.get()](
                              const std::string& output_text,
+                             FinishReason reason,
                              const Status& status) -> bool {
+      CompletionResponse response;
+      response.set_object("text_completion");
+      response.set_id(request->id);
+      response.set_created(request->created_time);
+      // response.set_model(request->model);
+      auto* choice = response.add_choices();
+      choice->set_text(output_text);
+      // choice->set_logprobs(0);
+      choice->set_index(0);
+      if (reason != FinishReason::NONE) {
+        choice->set_finish_reason(finish_reason_to_string(reason));
+      }
+      // TODO: combine write and finish
+      call_data->write(response);
       // TODO: mapping status to grpc status
-      // TODO: construct response with full text
       return call_data->finish();
     };
   }

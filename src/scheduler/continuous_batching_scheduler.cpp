@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "request/request.h"
+#include "request/sequence.h"
 
 namespace llm {
 constexpr size_t kRequestQueueSize = 100000;
@@ -58,9 +59,18 @@ void ContinuousBatchingScheduler::on_request_finish(Request* request) {
   block_manager_->release_slots_for_request(request);
   // take over the ownership of the request
   std::unique_ptr<Request> finished_request(request);
-  response_executor_.schedule([request = std::move(finished_request)]() {
-    // TODO: add finish handling logic
-    request->on_finish("", Status());
+  response_executor_.schedule([tokenizer = tokenizer_.get(),
+                               request = std::move(finished_request)]() {
+    if (request->stream) {
+      // just finish the request
+      request->on_finish("", FinishReason::NONE, Status());
+    } else {
+      // generate the final output
+      CHECK(request->sequences.size() == 1);
+      Sequence& seq = request->sequences.front();
+      const auto output = seq.decode_delta_text(seq.num_tokens(), *tokenizer);
+      request->on_finish(output, seq.finish_reason(), Status());
+    }
   });
 }
 
@@ -229,7 +239,7 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
     seq->check_stopping_creteria();
 
     // stream delta to client if streaming is enabled
-    if (seq->is_streaming()) {
+    if (seq->isStreaming()) {
       on_sequence_stream(seq);
     }
   }

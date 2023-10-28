@@ -42,7 +42,9 @@ enum class ScheduleStatus {
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
 using OnFinish =
-    std::function<bool(const std::string& output_text, const Status& status)>;
+    std::function<bool(const std::string& output_text, 
+                       FinishReason finish_reason,
+                       const Status& status)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a

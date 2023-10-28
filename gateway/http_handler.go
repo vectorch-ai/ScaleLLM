@@ -113,28 +113,21 @@ func DefaultErrorHandler(ctx context.Context, marshaler gw.Marshaler, w http.Res
 	}
 }
 
-func SendCompleteRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_CompleteClient, gw.ServerMetadata, error) {
+func SendCompleteRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_CompleteClient, bool, error) {
 	var protoReq scalellm.CompletionRequest
-	var metadata gw.ServerMetadata
-
 	newReader, berr := utilities.IOReaderFactory(req.Body)
 	if berr != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", berr)
+		return nil, false, status.Errorf(codes.InvalidArgument, "%v", berr)
 	}
 	if err := marshaler.NewDecoder(newReader()).Decode(&protoReq); err != nil && err != io.EOF {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+		return nil, false, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 
 	stream, err := client.Complete(ctx, &protoReq)
 	if err != nil {
-		return nil, metadata, err
+		return nil, false, err
 	}
-	header, err := stream.Header()
-	if err != nil {
-		return nil, metadata, err
-	}
-	metadata.HeaderMD = header
-	return stream, metadata, nil
+	return stream, *protoReq.Stream, nil
 
 }
 
@@ -167,12 +160,12 @@ func RegisterCompletionHandlerClient(ctx context.Context, handler *HttpHandler, 
 	handler.Handle("POST", "/v1/completions", func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
-		resp, _, err := SendCompleteRequest(ctx, handler.marshaler, client, req)
+		resp, isStream, err := SendCompleteRequest(ctx, handler.marshaler, client, req)
 		if err != nil {
 			DefaultErrorHandler(ctx, handler.marshaler, w, req, err)
 			return
 		}
-		ForwardResponseStream(ctx, handler.marshaler, w, req, func() (proto.Message, error) { return resp.Recv() })
+		ForwardResponseStream(ctx, handler.marshaler, w, req, isStream, func() (proto.Message, error) { return resp.Recv() })
 	})
 
 	// handler.Handle("POST", "/v1/chat/completions", func(w http.ResponseWriter, req *http.Request) {

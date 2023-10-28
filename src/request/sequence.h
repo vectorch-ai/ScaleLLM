@@ -24,7 +24,7 @@ enum class FinishReason {
 };
 
 using OnStream =
-    std::function<bool(const std::string& delta, const FinishReason& reason)>;
+    std::function<bool(const std::string& delta, FinishReason reason)>;
 
 // The sequence encapsulates all the necessary
 // information for a sequence, including the prompt, the token ids, and the
@@ -93,9 +93,7 @@ class Sequence final {
   }
 
   // cancel the sequence
-  void set_cancelled() {
-    is_cancelled_.store(true, std::memory_order_relaxed);
-  }
+  void set_cancelled() { is_cancelled_.store(true, std::memory_order_relaxed); }
 
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
@@ -107,10 +105,10 @@ class Sequence final {
   std::string decode_delta_text(size_t end, const Tokenizer& tokenizer);
 
   // check if streaming is enabled
-  bool is_streaming() const { return on_stream_ != nullptr; }
+  bool isStreaming() const { return on_stream_ != nullptr; }
 
   // stream the delta text to the client
-  void stream_delta(const std::string& delta, const FinishReason& reason) {
+  void stream_delta(const std::string& delta, FinishReason reason) {
     if (on_stream_) {
       if (!on_stream_(delta, reason)) {
         // failed to stream the delta, cancel the sequence
