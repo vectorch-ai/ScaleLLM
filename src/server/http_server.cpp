@@ -40,7 +40,7 @@ void HttpServer::StopCallback(evutil_socket_t /*fd*/,
   event_base_loopbreak(static_cast<event_base*>(arg));
 }
 
-void HttpServer::Start(uint16_t port, int32_t num_threads) {
+bool HttpServer::Start(uint16_t port, int32_t num_threads) {
   evbase_ = event_base_new();
   htp_ = evhtp_new(evbase_, nullptr);
   evhtp_enable_flag(htp_, EVHTP_FLAG_ENABLE_NODELAY);
@@ -49,16 +49,19 @@ void HttpServer::Start(uint16_t port, int32_t num_threads) {
   // set thread number
   evhtp_use_threads_wexit(htp_, nullptr, nullptr, num_threads, nullptr);
   if (evhtp_bind_socket(htp_, "0.0.0.0", port, 1024) != 0) {
-    LOG(FATAL) << "Failed to bind to port " << port;
+    LOG(ERROR) << "Failed to bind to port " << port;
+    return false;
   }
 
   // set up a pipe to break the event loop
   if (evutil_socketpair(AF_UNIX, SOCK_STREAM, 0, fds_) == -1) {
-    LOG(FATAL) << "Failed to create socket pair";
+    LOG(ERROR) << "Failed to create socket pair";
+    return false;
   }
   break_ev_ = event_new(evbase_, fds_[0], EV_READ, StopCallback, evbase_);
   event_add(break_ev_, nullptr);
   thread_ = std::thread(event_base_loop, evbase_, 0);
+  return true;
 }
 
 void HttpServer::Stop() {

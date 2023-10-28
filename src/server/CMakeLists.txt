@@ -3,18 +3,19 @@ include(cc_library)
 
 cc_library(
   NAME 
-    completion_handler
+    handlers
   HDRS 
     completion_handler.h
+    # chat_handler.h
   SRCS 
     completion_handler.cpp
+    # chat_handler.cpp
   DEPS
     :common
-    :tokenizer
     :scheduler
     :request
-    :model_loader
-    absl::time
+    :engine
+    :models
     glog::glog
     grpc_proto::completion
 )
@@ -28,7 +29,7 @@ cc_library(
   SRCS 
     grpc_server.cpp
   DEPS
-    :completion_handler
+    :handlers
     :request
     absl::strings
     glog::glog
@@ -68,7 +69,6 @@ cc_binary(
   SRCS 
     main.cpp
   DEPS
-    :completion_handler
     :grpc_server
     :http_server
     :engine

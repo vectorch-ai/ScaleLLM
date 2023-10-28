@@ -94,7 +94,7 @@ void GrpcServer::handle_rpcs() {
   bool rpc_ok = false;
 
   // Block waiting to read the next event from the completion queue.
-  // returns false if there is any kind of event or cq_ is shutting down.
+  // returns if there is any kind of event or cq_ is shutting down.
   while (cq_->Next(&tag, &rpc_ok)) {
     ICallData* call_data = static_cast<ICallData*>(tag);
     if (!call_data->proceed(rpc_ok)) {

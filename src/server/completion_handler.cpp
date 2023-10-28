@@ -1,22 +1,17 @@
 #include "completion_handler.h"
 
-#include <absl/time/time.h>
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
 
+#include <cstdint>
 #include <string>
 #include <thread>
 
 #include "call_data.h"
 #include "completion.grpc.pb.h"
-#include "model_loader/model_loader.h"
+#include "models/args.h"
 #include "request/request.h"
-
-constexpr int kStepTimeoutMs = 500;
-
-DEFINE_int32(num_converter_threads, 1, "number of converter threads");
-DEFINE_int64(max_position_embeddings, 256, "Maximum position embeddings.");
 
 namespace llm {
 
@@ -38,21 +33,99 @@ RequestPriority grpc_priority_to_priority(Priority priority) {
   return RequestPriority::MEDIUM;
 }
 
-std::unique_ptr<Request> grpc_completion_request_to_request(
-    CompletionCallData* call_data,
-    const Tokenizer* tokenizer) {
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+bool verify_request_arguments(CompletionCallData* call_data) {
+  const auto& request = call_data->request();
+  // n and best_of are not implemented yet
+  if (request.has_n() && request.n() > 1) {
+    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
+                                 "n > 1 is not supported yet");
+    return false;
+  }
+  if (request.has_best_of() && request.best_of() > 1) {
+    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
+                                 "best_of > 1 is not supported yet");
+    return false;
+  }
+
+  // prompt is required
+  if (request.prompt().empty()) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "Missing prompt");
+    return false;
+  }
+  // temperature between [0.0, 2.0]
+  if (request.has_temperature()) {
+    if (request.temperature() < 0.0 || request.temperature() > 2.0) {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "temperature must be between 0.0 and 2.0");
+      return false;
+    }
+  }
+  // top_p between [0.0, 1.0]
+  if (request.has_top_p()) {
+    if (request.top_p() < 0.0 || request.top_p() > 1.0) {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "top_p must be between 0.0 and 1.0");
+      return false;
+    }
+  }
+
+  // logprobs <= 5
+  if (request.has_logprobs()) {
+    if (request.logprobs() > 5) {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "logprobs must be between 0 and 5");
+      return false;
+    }
+  }
+  // presence_penalty between [-2.0, 2.0]
+  if (request.has_presence_penalty()) {
+    if (request.presence_penalty() < -2.0 || request.presence_penalty() > 2.0) {
+      call_data->finish_with_error(
+          grpc::StatusCode::INVALID_ARGUMENT,
+          "presence_penalty must be between -2.0 and 2.0");
+      return false;
+    }
+  }
+  // frequency_penalty between [0.0, 2.0]
+  if (request.has_frequency_penalty()) {
+    if (request.frequency_penalty() < 0.0 ||
+        request.frequency_penalty() > 2.0) {
+      call_data->finish_with_error(
+          grpc::StatusCode::INVALID_ARGUMENT,
+          "frequency_penalty must be between 0.0 and 2.0");
+      return false;
+    }
+  }
+  // best_of >= n
+  if (request.has_best_of() && request.has_n()) {
+    if (request.best_of() < request.n()) {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "best_of must be greater or equal to n");
+      return false;
+    }
+  }
+  return true;
+}
+
+std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
+                                                 const Tokenizer& tokenizer,
+                                                 const ModelArgs& model_args) {
   const CompletionRequest& grpc_request = call_data->request();
+  CHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
+  
+  const int64_t max_context_len = model_args.max_position_embeddings();
+
   std::vector<int> token_ids;
-  // token_ids.reserve(max_context_len);
-  if (!tokenizer->encode(grpc_request.prompt(), &token_ids)) {
+  if (!tokenizer.encode(grpc_request.prompt(), &token_ids)) {
     LOG(ERROR) << "Failed to encode prompt: " << grpc_request.prompt();
     return nullptr;
   }
-
-  // std::string prompt,
-  // std::vector<int32_t> token_ids,
-  // const SamplingParameter* sampling_param,
-  // const StoppingCriteria* stopping_criteria
+  if (token_ids.size() > max_context_len) {
+    LOG(ERROR) << "Prompt is too long: " << token_ids.size();
+    return nullptr;
+  }
 
   auto request = std::make_unique<Request>();
   // TODO: generate unique id
@@ -66,29 +139,30 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
   if (grpc_request.has_presence_penalty()) {
     sampling_param.presence_penalty = grpc_request.presence_penalty();
   }
-  // sampling_param.repetition_penalty = grpc_request.repetition_penalty();
   if (grpc_request.has_temperature()) {
     sampling_param.temperature = grpc_request.temperature();
   }
   if (grpc_request.has_top_p()) {
     sampling_param.top_p = grpc_request.top_p();
   }
+  // TODO: add support for following extended parameters
+  // sampling_param.repetition_penalty = grpc_request.repetition_penalty();
   // sampling_param.top_k = grpc_request.top_k();
   // sampling_param.do_sample = grpc_request.do_sample();
   // sampling_param.seed = grpc_request.seed();
 
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
-  // TODO: add better protection
-  auto max_tokens =
-      static_cast<uint32_t>(FLAGS_max_position_embeddings - token_ids.size());
+  auto max_tokens = static_cast<uint32_t>(max_context_len - token_ids.size());
   if (grpc_request.has_max_tokens()) {
     max_tokens = std::min(max_tokens, grpc_request.max_tokens());
+  } else {
+    const uint32_t kDefaultMaxTokens = 128;
+    max_tokens = std::min(max_tokens, kDefaultMaxTokens);
   }
   stopping_criteria.max_tokens = max_tokens;
-
-  // stopping_criteria.ignore_eos_token = grpc_request.ignore_eos_token();
-  // stopping_criteria.eos_token_id = tokenizer->eos_id();
+  // stopping_criteria.ignore_eos_token = false;
+  stopping_criteria.eos_token_id = model_args.eos_token_id();
 
   if (grpc_request.has_stream()) {
     request->stream = grpc_request.stream();
@@ -101,96 +175,75 @@ std::unique_ptr<Request> grpc_completion_request_to_request(
   }
   request->created_time = absl::ToUnixMicros(absl::Now());
 
-  // TODO: handle best_of and n
-  request->add_sequence(
-      grpc_request.prompt(),
-      std::move(token_ids),
-      [call_data, request = request.get()](const std::string& delta,
-                                           const FinishReason& reason) -> bool {
-        CompletionResponse response;
-        response.set_object("text_completion");
-        response.set_id(request->id);
-        response.set_created(request->created_time);
-        // response.set_model(request->model);
-        auto* choice = response.add_choices();
-        choice->set_text(delta);
-        // choice->set_logprobs(0);
-        choice->set_index(0);
-        // choice->set_finish_reason(static_cast<int>(reason));
-        return call_data->write(response);
-      });
+  // add on_stream and on_finish callbacks
+  if (request->stream) {
+    auto on_stream = [call_data, request = request.get()](
+                         const std::string& delta,
+                         const FinishReason& reason) -> bool {
+      CompletionResponse response;
+      response.set_object("text_completion");
+      response.set_id(request->id);
+      response.set_created(request->created_time);
+      // response.set_model(request->model);
+      auto* choice = response.add_choices();
+      choice->set_text(delta);
+      // choice->set_logprobs(0);
+      choice->set_index(0);
+      // choice->set_finish_reason(static_cast<int>(reason));
+      return call_data->write(response);
+    };
 
-  request->on_finish = [call_data, request = request.get()](
-                           const std::string& output_text,
-                           const Status& status) -> bool {
-    // TODO: handle best_of and n
-    // TODO: mapping status to grpc status
-    return call_data->finish();
-  };
-  return request;
-}
+    request->add_sequence(
+        grpc_request.prompt(), std::move(token_ids), on_stream);
 
-std::unique_ptr<Request> grpc_chat_request_to_request(
-    ChatCallData* call_data,
-    const Tokenizer* tokenizer) {
-  auto request = std::make_unique<Request>();
+    request->on_finish = [call_data, request = request.get()](
+                             const std::string& output_text,
+                             const Status& status) -> bool {
+      // TODO: mapping status to grpc status
+      return call_data->finish();
+    };
+  } else {
+    request->add_sequence(grpc_request.prompt(), std::move(token_ids), nullptr);
+    request->on_finish = [call_data, request = request.get()](
+                             const std::string& output_text,
+                             const Status& status) -> bool {
+      // TODO: mapping status to grpc status
+      // TODO: construct response with full text
+      return call_data->finish();
+    };
+  }
   return request;
 }
 
 }  // namespace
 
-CompletionHandler::CompletionHandler(Scheduler* scheduler,
-                                     std::unique_ptr<Tokenizer> tokenizer)
-    : scheduler_(scheduler),
-      tokenizer_(std::move(tokenizer)),
-      converter_executor_(FLAGS_num_converter_threads) {
+CompletionHandler::CompletionHandler(Scheduler* scheduler, const Engine* engine)
+    : scheduler_(scheduler) {
   CHECK(scheduler_ != nullptr);
-  CHECK(tokenizer_ != nullptr);
-  // start the scheduler loop
-  scheduler_thread_ = std::thread([this]() {
-    torch::InferenceMode guard;
-    const auto timeout = absl::Milliseconds(kStepTimeoutMs);
-    while (true) {
-      scheduler_->step(timeout);
-    }
-  });
+  tokenizer_ = engine->tokenizer();
+  model_args_ = engine->model_args();
 }
 
-CompletionHandler::~CompletionHandler() {
-  // TODO: stop the scheduler loop
-  // scheduler_thread_.join();
-}
+CompletionHandler::~CompletionHandler() {}
 
 void CompletionHandler::complete_async(CompletionCallData* call_data) {
   converter_executor_.schedule([this, call_data = call_data]() {
-    auto request =
-        grpc_completion_request_to_request(call_data, tokenizer_.get());
+    if (!verify_request_arguments(call_data)) {
+      // request is not valid, finish with error
+      return;
+    }
+
+    auto request = grpc_request_to_request(call_data, *tokenizer_, model_args_);
     if (request == nullptr) {
-      // TODO: finish with error
+      call_data->finish_with_error(grpc::StatusCode::UNKNOWN,
+                                   "Unknown request processing error");
+      return;
     }
 
-    bool success = scheduler_->schedule(request);
-    if (!success) {
-      // TODO: finish with error: out of capacity
-      // call_data->finish();
-      // request->finish();
-    }
-  });
-}
-
-// caller needs to guarantee the lifetime of call_data.
-void CompletionHandler::chat_async(ChatCallData* call_data) {
-  converter_executor_.schedule([this, call_data = call_data]() {
-    auto request = grpc_chat_request_to_request(call_data, tokenizer_.get());
-    if (request == nullptr) {
-      // TODO: finish with error
-    }
-
-    bool success = scheduler_->schedule(request);
-    if (!success) {
-      // TODO: finish with error
-      // call_data->finish();
-      // request->finish();
+    // schedule the request
+    if (!scheduler_->schedule(request)) {
+      call_data->finish_with_error(grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                   "Out of capacity");
     }
   });
 }

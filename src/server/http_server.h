@@ -25,7 +25,7 @@ class HttpServer {
 
   bool RegisterURI(const std::string& uri, Handler handler);
 
-  void Start(uint16_t port, int32_t num_threads = 2);
+  bool Start(uint16_t port, int32_t num_threads);
 
   void Stop();
 

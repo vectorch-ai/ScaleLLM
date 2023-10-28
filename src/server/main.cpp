@@ -19,7 +19,7 @@
 using namespace llm;
 
 DEFINE_string(model_name_or_path,
-              "meta-llama/Llama-2-7b-hf",
+              "gpt2",
               "hf model name or path to the model file.");
 
 DEFINE_string(device, "cuda:0", "Device to run the model on.");
@@ -30,6 +30,8 @@ DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 int main(int argc, char** argv) {
   // glog and glfag will be initialized in folly::init
   folly::Init init(&argc, &argv);
+
+  FLAGS_logtostderr = true;
 
   HttpServer http_server;
   http_server.RegisterURI("/gflags",
@@ -58,8 +60,11 @@ int main(int argc, char** argv) {
                             return transport.SendString("Ok");
                           });
 
-  http_server.Start(FLAGS_http_port, /*num_threads=*/2);
-  LOG(INFO) << "Started http server on port " << FLAGS_http_port;
+  if (!http_server.Start(FLAGS_http_port, /*num_threads=*/2)) {
+    LOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
+    return -1;
+  }
+  LOG(INFO) << "Started http server on localhost:" << FLAGS_http_port;
 
   // split device into chunks
   const std::vector<std::string> device_strs =
@@ -92,12 +97,16 @@ int main(int argc, char** argv) {
     model_path = llm::hf::download_model(FLAGS_model_name_or_path);
   }
 
+  // create engine
   auto engine = std::make_unique<Engine>(dtype, devices);
   CHECK(engine->init(model_path));
 
+  // create scheduler and grpc handlers
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
   auto completion_handler =
-      std::make_unique<CompletionHandler>(scheduler.get(), engine->tokenizer());
+      std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
+
+  // start grpc server
   GrpcServer grpc_server(std::move(completion_handler));
   GrpcServer::Options options;
   options.address = "localhost";
@@ -109,10 +118,13 @@ int main(int argc, char** argv) {
   }
 
   // TODO: add graceful shutdown
+  const auto timeout = absl::Milliseconds(500);
   while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    // TODO: update server status
+    // move scheduler forward
+    scheduler->step(timeout);
   }
+
+  // stop grpc server and http server
   grpc_server.stop();
   http_server.Stop();
 

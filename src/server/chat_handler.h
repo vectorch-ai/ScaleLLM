@@ -5,24 +5,23 @@
 
 #include "call_data.h"
 #include "common/executor.h"
-#include "completion.grpc.pb.h"
 #include "engine/engine.h"
 #include "models/args.h"
 #include "scheduler/scheduler.h"
+#include "chat.grpc.pb.h"
 
 namespace llm {
-
-using CompletionCallData = CallData<CompletionRequest, CompletionResponse>;
+using ChatCallData = CallData<ChatRequest, ChatResponse>;
 
 // a class to handle completion requests
-class CompletionHandler final {
+class ChatHandler final {
  public:
-  CompletionHandler(Scheduler* scheduler, const Engine* engine);
+  ChatHandler(Scheduler* scheduler, const Engine* engine);
 
-  ~CompletionHandler();
+  ~ChatHandler();
 
   // caller needs to guarantee the lifetime of call_data.
-  void complete_async(CompletionCallData* call_data);
+  void chat_async(ChatCallData* call_data);
 
  private:
   // request scheduler

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <folly/MPMCQueue.h>
-#include <glog/logging.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/grpcpp.h>
 
@@ -9,10 +8,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
-
-#include "chat.grpc.pb.h"
-#include "completion.grpc.pb.h"
 
 namespace llm {
 
@@ -93,6 +88,12 @@ class CallData : public ICallData {
   }
 
   // returns false if the rpc channel has been closed/cancelled.
+  bool finish_with_error(const grpc::StatusCode& code,
+                         const std::string& error_message) {
+    return finish(grpc::Status(code, error_message));
+  }
+
+  // returns false if the rpc channel has been closed/cancelled.
   bool finish(const grpc::Status& grpc_status = grpc::Status::OK) {
     // pack status with grpc status
     auto response_with_state = std::make_unique<ResponseWithState>(grpc_status);
@@ -157,8 +158,6 @@ class CallData : public ICallData {
     } else if (status_ == Status::FINISH) {
       // Once in the FINISH state, deallocate CallData.
       return false;
-    } else {
-      LOG(WARNING) << "Unknown status: " << static_cast<int>(status_);
     }
     return true;
   }
@@ -198,8 +197,5 @@ class CallData : public ICallData {
   // the call data owns the responses and manages their lifetimes.
   folly::MPMCQueue<ResponseWithState*> response_queue_;
 };
-
-using CompletionCallData = CallData<CompletionRequest, CompletionResponse>;
-using ChatCallData = CallData<ChatRequest, ChatResponse>;
 
 }  // namespace llm
