@@ -28,9 +28,16 @@ func run() error {
 	handler := NewHttpHandler(&gw.JSONPb{})
 	// TODO: add TLS credentials
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	// register completion handler
 	err := RegisterCompletionHandlerFromEndpoint(ctx, handler, *grpcServerEndpoint, opts)
 	if err != nil {
-		glog.Error("Failed to register handler from endpoint ", err)
+		glog.Error("Failed to register completion handler from endpoint ", err)
+		return err
+	}
+	// register chat handler
+	err = RegisterChatHandlerFromEndpoint(ctx, handler, *grpcServerEndpoint, opts)
+	if err != nil {
+		glog.Error("Failed to register chat handler from endpoint ", err)
 		return err
 	}
 

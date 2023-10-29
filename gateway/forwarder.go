@@ -7,7 +7,6 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"google.golang.org/genproto/googleapis/api/httpbody"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -22,8 +21,6 @@ func ForwardResponseStream(ctx context.Context, marshaler runtime.Marshaler, w h
 		return
 	}
 
-	var delimiter = []byte("\n")
-
 	var wroteHeader bool
 	var buf []byte
 	for {
@@ -31,15 +28,15 @@ func ForwardResponseStream(ctx context.Context, marshaler runtime.Marshaler, w h
 		if err == io.EOF {
 			if isStream {
 				// write the trailer metadata to the response
-				if err := writeData(w, []byte("[DONE]\n"), isStream); err != nil {
-					glog.Errorf("Failed to send delimiter chunk: %v", err)
+				if err := writeData(w, []byte("[DONE]"), isStream); err != nil {
+					glog.Errorf("Failed to send finish chunk: %v", err)
 				}
 			}
 			return
 		}
 		if err != nil {
 			glog.Errorf("Failed to receive a response: %v", err)
-			handleForwardResponseStreamError(ctx, wroteHeader, marshaler, w, req, err, delimiter)
+			handleForwardResponseStreamError(ctx, wroteHeader, marshaler, w, req, err)
 			return
 		}
 
@@ -51,22 +48,17 @@ func ForwardResponseStream(ctx context.Context, marshaler runtime.Marshaler, w h
 			}
 			wroteHeader = true
 		}
-		httpBody, isHTTPBody := resp.(*httpbody.HttpBody)
-		switch {
-		case resp == nil:
+		if resp == nil {
 			buf, err = marshaler.Marshal(errorChunk(status.New(codes.Internal, "empty response")))
-		case isHTTPBody:
-			buf = httpBody.GetData()
-		default:
+		} else {
 			buf, err = marshaler.Marshal(resp)
 		}
 
 		if err != nil {
 			glog.Errorf("Failed to marshal response chunk: %v", err)
-			handleForwardResponseStreamError(ctx, wroteHeader, marshaler, w, req, err, delimiter)
+			handleForwardResponseStreamError(ctx, wroteHeader, marshaler, w, req, err)
 			return
 		}
-		buf = append(buf, delimiter...)
 		if err := writeData(w, buf, isStream); err != nil {
 			glog.Errorf("Failed to send response chunk: %v", err)
 			return
@@ -88,10 +80,15 @@ func writeData(w http.ResponseWriter, data []byte, isStream bool) error {
 		glog.Errorf("Failed to send response chunk: %v", err)
 		return err
 	}
+	// write delimiter
+	if _, err := w.Write([]byte("\n\n")); err != nil {
+		glog.Errorf("Failed to send delimiter chunk: %v", err)
+		return err
+	}
 	return nil
 }
 
-func handleForwardResponseStreamError(ctx context.Context, wroteHeader bool, marshaler runtime.Marshaler, w http.ResponseWriter, req *http.Request, err error, delimiter []byte) {
+func handleForwardResponseStreamError(ctx context.Context, wroteHeader bool, marshaler runtime.Marshaler, w http.ResponseWriter, req *http.Request, err error) {
 	st := status.Convert(err)
 	msg := errorChunk(st)
 
@@ -108,7 +105,8 @@ func handleForwardResponseStreamError(ctx context.Context, wroteHeader bool, mar
 		glog.Errorf("Failed to notify error to client: %v", err)
 		return
 	}
-	if _, err := w.Write(delimiter); err != nil {
+	// write delimiter
+	if _, err := w.Write([]byte("\n\n")); err != nil {
 		glog.Errorf("Failed to send delimiter chunk: %v", err)
 		return
 	}

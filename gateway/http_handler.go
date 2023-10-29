@@ -7,15 +7,9 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/utilities"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
-
-	// importing generated stubs
-	scalellm "gateway/proto"
 
 	gw "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
@@ -57,7 +51,7 @@ func (s *HttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path = strings.TrimSuffix(path, "/")
 
 	for _, h := range s.handlers[r.Method] {
-		if h.path == path {
+		if h.path == path && h.h != nil {
 			h.h(w, r)
 			return
 		}
@@ -85,12 +79,11 @@ func DefaultRoutingErrorHandler(ctx context.Context, marshaler gw.Marshaler, w h
 
 func DefaultErrorHandler(ctx context.Context, marshaler gw.Marshaler, w http.ResponseWriter, r *http.Request, err error) {
 	// return Internal when Marshal failed
-	const fallback = `{"code": 13, "message": "failed to marshal error message"}`
+	const fallback = `{"error": {"code": 13, "message": "failed to marshal error message"}}`
 	s := status.Convert(err)
-	pb := s.Proto()
+	pb := errorChunk(s)
 
-	contentType := marshaler.ContentType(pb)
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Type", "application/json")
 
 	if s.Code() == codes.Unauthenticated {
 		w.Header().Set("WWW-Authenticate", s.Message())
@@ -110,95 +103,10 @@ func DefaultErrorHandler(ctx context.Context, marshaler gw.Marshaler, w http.Res
 	w.WriteHeader(st)
 	if _, err := w.Write(buf); err != nil {
 		glog.Errorf("Failed to write response: %v", err)
+		return
 	}
-}
-
-func SendCompleteRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_CompleteClient, bool, error) {
-	var protoReq scalellm.CompletionRequest
-	newReader, berr := utilities.IOReaderFactory(req.Body)
-	if berr != nil {
-		return nil, false, status.Errorf(codes.InvalidArgument, "%v", berr)
+	// write delimiter
+	if _, err := w.Write([]byte("\n\n")); err != nil {
+		glog.Errorf("Failed to send delimiter chunk: %v", err)
 	}
-	if err := marshaler.NewDecoder(newReader()).Decode(&protoReq); err != nil && err != io.EOF {
-		return nil, false, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-
-	stream, err := client.Complete(ctx, &protoReq)
-	if err != nil {
-		return nil, false, err
-	}
-	return stream, *protoReq.Stream, nil
-
-}
-
-// func SendChatRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_ChatClient, gw.ServerMetadata, error) {
-// 	var protoReq scalellm.ChatRequest
-// 	var metadata gw.ServerMetadata
-
-// 	newReader, berr := utilities.IOReaderFactory(req.Body)
-// 	if berr != nil {
-// 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", berr)
-// 	}
-// 	if err := marshaler.NewDecoder(newReader()).Decode(&protoReq); err != nil && err != io.EOF {
-// 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-// 	}
-
-// 	stream, err := client.Chat(ctx, &protoReq)
-// 	if err != nil {
-// 		return nil, metadata, err
-// 	}
-// 	header, err := stream.Header()
-// 	if err != nil {
-// 		return nil, metadata, err
-// 	}
-// 	metadata.HeaderMD = header
-// 	return stream, metadata, nil
-// }
-
-func RegisterCompletionHandlerClient(ctx context.Context, handler *HttpHandler, client scalellm.CompletionClient) error {
-
-	handler.Handle("POST", "/v1/completions", func(w http.ResponseWriter, req *http.Request) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		resp, isStream, err := SendCompleteRequest(ctx, handler.marshaler, client, req)
-		if err != nil {
-			DefaultErrorHandler(ctx, handler.marshaler, w, req, err)
-			return
-		}
-		ForwardResponseStream(ctx, handler.marshaler, w, req, isStream, func() (proto.Message, error) { return resp.Recv() })
-	})
-
-	// handler.Handle("POST", "/v1/chat/completions", func(w http.ResponseWriter, req *http.Request) {
-	// 	ctx, cancel := context.WithCancel(req.Context())
-	// 	defer cancel()
-	// 	resp, _, err := SendChatRequest(ctx, handler.marshaler, client, req)
-	// 	if err != nil {
-	// 		DefaultErrorHandler(ctx, handler.marshaler, w, req, err)
-	// 		return
-	// 	}
-	// 	ForwardResponseStream(ctx, handler.marshaler, w, req, func() (proto.Message, error) { return resp.Recv() })
-	// })
-	return nil
-}
-
-func RegisterCompletionHandlerFromEndpoint(ctx context.Context, httpServer *HttpHandler, endpoint string, opts []grpc.DialOption) (err error) {
-	conn, err := grpc.DialContext(ctx, endpoint, opts...)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			if cerr := conn.Close(); cerr != nil {
-				glog.Errorf("Failed to close conn to %s: %v", endpoint, cerr)
-			}
-			return
-		}
-		go func() {
-			<-ctx.Done()
-			if cerr := conn.Close(); cerr != nil {
-				glog.Errorf("Failed to close conn to %s: %v", endpoint, cerr)
-			}
-		}()
-	}()
-	return RegisterCompletionHandlerClient(ctx, httpServer, scalellm.NewCompletionClient(conn))
 }
