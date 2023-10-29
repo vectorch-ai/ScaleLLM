@@ -23,7 +23,8 @@ bool GrpcServer::start(const Options& options) {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   // Register "service_" as the instance through which we'll communicate with
   // clients. In this case it corresponds to an *asynchronous* service.
-  builder.RegisterService(&service_);
+  builder.RegisterService(&completion_service_);
+  builder.RegisterService(&chat_service_);
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
   cq_ = builder.AddCompletionQueue();
@@ -40,7 +41,7 @@ bool GrpcServer::start(const Options& options) {
                grpc::ServerCompletionQueue* new_call_cq,
                grpc::ServerCompletionQueue* notification_cq,
                void* tag) {
-          service_.RequestComplete(
+          completion_service_.RequestComplete(
               context, request, responder, new_call_cq, notification_cq, tag);
         };
     auto on_request = [this](CompletionCallData* call_data) {
@@ -51,21 +52,21 @@ bool GrpcServer::start(const Options& options) {
   }
 
   // Spawn a new CallData instance for chat request
-  // {
-  //   auto on_register = [this](grpc::ServerContext* context,
-  //                             ChatRequest* request,
-  //                             grpc::ServerAsyncWriter<ChatResponse>*
-  //                             responder, grpc::ServerCompletionQueue*
-  //                             new_call_cq, grpc::ServerCompletionQueue*
-  //                             notification_cq, void* tag) {
-  //     service_.RequestChat(
-  //         context, request, responder, new_call_cq, notification_cq, tag);
-  //   };
-  //   auto on_request = [this](ChatCallData* call_data) {
-  //     completion_handler_->chat_async(call_data);
-  //   };
-  //   ChatCallData::create(cq_.get(), on_register, on_request);
-  // }
+  {
+    auto on_register = [this](grpc::ServerContext* context,
+                              ChatRequest* request,
+                              grpc::ServerAsyncWriter<ChatResponse>* responder,
+                              grpc::ServerCompletionQueue* new_call_cq,
+                              grpc::ServerCompletionQueue* notification_cq,
+                              void* tag) {
+      chat_service_.RequestComplete(
+          context, request, responder, new_call_cq, notification_cq, tag);
+    };
+    auto on_request = [this](ChatCallData* call_data) {
+      chat_handler_->chat_async(call_data);
+    };
+    new ChatCallData(cq_.get(), on_register, on_request);
+  }
 
   // Proceed to the server's main loop.
   handler_thread_ = std::make_unique<std::thread>([this]() { handle_rpcs(); });

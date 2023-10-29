@@ -3,25 +3,6 @@ include(cc_library)
 
 cc_library(
   NAME 
-    handlers
-  HDRS 
-    completion_handler.h
-    # chat_handler.h
-  SRCS 
-    completion_handler.cpp
-    # chat_handler.cpp
-  DEPS
-    :common
-    :scheduler
-    :request
-    :engine
-    :models
-    glog::glog
-    grpc_proto::completion
-)
-
-cc_library(
-  NAME 
     grpc_server
   HDRS 
     call_data.h
@@ -91,3 +72,5 @@ cc_binary(
     gflags::gflags
     grpc_proto::completion
 )
+
+add_subdirectory(handlers)

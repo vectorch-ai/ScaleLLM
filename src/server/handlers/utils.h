@@ -1,0 +1,13 @@
+#pragma once
+#include <string>
+
+#include "common.pb.h"
+#include "request/request.h"
+
+namespace llm {
+
+RequestPriority grpc_priority_to_priority(Priority priority);
+
+std::string finish_reason_to_string(FinishReason reason);
+
+}  // namespace llm

@@ -205,7 +205,10 @@ type Choice struct {
 	Logprobs *float32 `protobuf:"fixed32,2,opt,name=logprobs,proto3,oneof" json:"logprobs,omitempty"`
 	// the index of the generated completion
 	Index *uint32 `protobuf:"varint,3,opt,name=index,proto3,oneof" json:"index,omitempty"`
-	// the finish reason of the completion.
+	// the reason of the model stoped generating tokens.
+	// "stop" - the model hit a natural stop point or a provided stop sequence.
+	// "length" - the maximum number of tokens specified in the request was reached.
+	// "function_call" - the model called a function.
 	FinishReason *string `protobuf:"bytes,4,opt,name=finish_reason,proto3,oneof" json:"finish_reason,omitempty"`
 }
 

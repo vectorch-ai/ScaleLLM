@@ -12,6 +12,8 @@
 #include "common/metrics.h"
 #include "engine/engine.h"
 #include "grpc_server.h"
+#include "handlers/chat_handler.h"
+#include "handlers/completion_handler.h"
 #include "http_server.h"
 #include "model_loader/model_downloader.h"
 #include "scheduler/continuous_batching_scheduler.h"
@@ -105,9 +107,12 @@ int main(int argc, char** argv) {
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
   auto completion_handler =
       std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
+  auto chat_handler =
+      std::make_unique<ChatHandler>(scheduler.get(), engine.get());
 
   // start grpc server
-  GrpcServer grpc_server(std::move(completion_handler));
+  GrpcServer grpc_server(std::move(completion_handler),
+                         std::move(chat_handler));
   GrpcServer::Options options;
   options.address = "localhost";
   options.port = FLAGS_grpc_port;

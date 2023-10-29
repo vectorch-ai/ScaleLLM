@@ -41,10 +41,9 @@ enum class ScheduleStatus {
 // The higher the priority, the sooner the request is processed.
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
-using OnFinish =
-    std::function<bool(const std::string& output_text, 
-                       FinishReason finish_reason,
-                       const Status& status)>;
+using OnFinish = std::function<bool(const std::string& output_text,
+                                    FinishReason finish_reason,
+                                    const Status& status)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
@@ -53,7 +52,7 @@ using OnFinish =
 // request's handling.
 struct Request {
  public:
-  Request();
+  Request(std::string id) : id(std::move(id)){};
 
   void add_sequence(std::string prompt,
                     std::vector<int32_t> token_ids,

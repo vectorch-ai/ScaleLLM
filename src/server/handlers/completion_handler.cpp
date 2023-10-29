@@ -3,51 +3,25 @@
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
+#include <uuid.h>
 
 #include <cstdint>
 #include <sstream>
 #include <string>
 #include <thread>
 
-#include "call_data.h"
 #include "completion.grpc.pb.h"
 #include "models/args.h"
 #include "request/request.h"
+#include "server/call_data.h"
+#include "utils.h"
 
 namespace llm {
 
 namespace {
 
-RequestPriority grpc_priority_to_priority(Priority priority) {
-  switch (priority) {
-    case Priority::DEFAULT:
-      return RequestPriority::MEDIUM;
-    case Priority::LOW:
-      return RequestPriority::LOW;
-    case Priority::MEDIUM:
-      return RequestPriority::MEDIUM;
-    case Priority::HIGH:
-      return RequestPriority::HIGH;
-    default:
-      LOG(WARNING) << "Unknown priority: " << static_cast<int>(priority);
-  }
-  return RequestPriority::MEDIUM;
-}
-
-std::string finish_reason_to_string(FinishReason reason) {
-  switch (reason) {
-    case FinishReason::NONE:
-      return "";
-    case FinishReason::STOP:
-      return "stop";
-    case FinishReason::LENGTH:
-      return "length";
-    case FinishReason::FUNCTION_CALL:
-      return "function_call";
-    default:
-      LOG(WARNING) << "Unknown finish reason: " << static_cast<int>(reason);
-  }
-  return "";
+std::string generate_request_id() {
+  return "cmpl-" + uuids::to_string(uuids::uuid_system_generator{}());
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
@@ -144,7 +118,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     return nullptr;
   }
 
-  auto request = std::make_unique<Request>();
+  auto request = std::make_unique<Request>(generate_request_id());
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -258,8 +232,6 @@ CompletionHandler::CompletionHandler(Scheduler* scheduler, const Engine* engine)
   tokenizer_ = engine->tokenizer();
   model_args_ = engine->model_args();
 }
-
-CompletionHandler::~CompletionHandler() {}
 
 void CompletionHandler::complete_async(CompletionCallData* call_data) {
   converter_executor_.schedule([this, call_data = call_data]() {

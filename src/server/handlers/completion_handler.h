@@ -3,7 +3,7 @@
 #include <string>
 #include <thread>
 
-#include "call_data.h"
+#include "server/call_data.h"
 #include "common/executor.h"
 #include "completion.grpc.pb.h"
 #include "engine/engine.h"
@@ -18,8 +18,6 @@ using CompletionCallData = CallData<CompletionRequest, CompletionResponse>;
 class CompletionHandler final {
  public:
   CompletionHandler(Scheduler* scheduler, const Engine* engine);
-
-  ~CompletionHandler();
 
   // caller needs to guarantee the lifetime of call_data.
   void complete_async(CompletionCallData* call_data);

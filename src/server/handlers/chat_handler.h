@@ -3,12 +3,12 @@
 #include <string>
 #include <thread>
 
-#include "call_data.h"
+#include "server/call_data.h"
+#include "chat.grpc.pb.h"
 #include "common/executor.h"
 #include "engine/engine.h"
 #include "models/args.h"
 #include "scheduler/scheduler.h"
-#include "chat.grpc.pb.h"
 
 namespace llm {
 using ChatCallData = CallData<ChatRequest, ChatResponse>;
@@ -17,8 +17,6 @@ using ChatCallData = CallData<ChatRequest, ChatResponse>;
 class ChatHandler final {
  public:
   ChatHandler(Scheduler* scheduler, const Engine* engine);
-
-  ~ChatHandler();
 
   // caller needs to guarantee the lifetime of call_data.
   void chat_async(ChatCallData* call_data);

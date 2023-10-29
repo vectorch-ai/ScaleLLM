@@ -78,7 +78,10 @@ message Choice {
   // the index of the generated completion
   optional uint32 index = 3;
 
-  // the finish reason of the completion.
+  // the reason of the model stoped generating tokens.
+  // "stop" - the model hit a natural stop point or a provided stop sequence.
+  // "length" - the maximum number of tokens specified in the request was reached.
+  // "function_call" - the model called a function.
   optional string finish_reason = 4 [json_name="finish_reason"];
 }
 

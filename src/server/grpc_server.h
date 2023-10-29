@@ -6,8 +6,8 @@
 #include <string>
 #include <thread>
 
-#include "completion.grpc.pb.h"
-#include "completion_handler.h"
+#include "handlers/chat_handler.h"
+#include "handlers/completion_handler.h"
 
 namespace llm {
 
@@ -18,8 +18,10 @@ class GrpcServer final {
     int32_t port = 8888;
   };
 
-  GrpcServer(std::unique_ptr<CompletionHandler> completion_handler)
-      : completion_handler_(std::move(completion_handler)) {}
+  GrpcServer(std::unique_ptr<CompletionHandler> completion_handler,
+             std::unique_ptr<ChatHandler> chat_handler)
+      : completion_handler_(std::move(completion_handler)),
+        chat_handler_(std::move(chat_handler)) {}
 
   ~GrpcServer();
 
@@ -33,8 +35,13 @@ class GrpcServer final {
   // handler for completion requests
   std::unique_ptr<CompletionHandler> completion_handler_;
 
+  // handler for chat requests
+  std::unique_ptr<ChatHandler> chat_handler_;
+
   // registed service
-  Completion::AsyncService service_;
+  Completion::AsyncService completion_service_;
+  Chat::AsyncService chat_service_;
+
   // grpc server
   std::unique_ptr<grpc::Server> grpc_server_;
   // completion queue: the producer-consumer queue where for asynchronous server
