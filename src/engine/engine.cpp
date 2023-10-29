@@ -60,7 +60,7 @@ bool Engine::init_model(const std::string& model_weights_path) {
   GLOG(INFO) << "Initializing model from: " << model_weights_path;
 
   tokenizer_ = model_loader->tokenizer();
-  CHECK(tokenizer_ != nullptr);
+  GCHECK(tokenizer_ != nullptr);
 
   args_ = model_loader->model_args();
   const auto& quant_args = model_loader->quant_args();
@@ -173,7 +173,7 @@ bool Engine::init_kv_cache() {
     num_blocks = max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else {
-    CHECK(false) << "Only support CPU and CUDA device for now.";
+    GCHECK(false) << "Only support CPU and CUDA device for now.";
   }
 
   GLOG(INFO) << "Initializing kv cache with num blocks: " << num_blocks

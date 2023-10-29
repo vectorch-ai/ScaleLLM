@@ -25,7 +25,7 @@ class MPTMLPImpl : public torch::nn::Module {
              torch::ScalarType dtype,
              const torch::Device& device) {
     act_ = Activation::get_act_func("gelu", device);
-    CHECK(act_ != nullptr);
+    GCHECK(act_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
@@ -130,7 +130,7 @@ class MPTAttentionImpl : public torch::nn::Module {
                                           dtype,
                                           device));
 
-    CHECK(args.attn_alibi()) << "only support alibi attention";
+    GCHECK(args.attn_alibi()) << "only support alibi attention";
 
     // calculate alibi_slopes
     torch::Tensor alibi_slopes =
@@ -219,7 +219,7 @@ class MPTAttentionImpl : public torch::nn::Module {
 
   // reshape qkv tensor from [3, n_heads, ...] => [n_heads, 3, ...]
   torch::Tensor reshape_qkv_before_sharding(const torch::Tensor& tensor) {
-    CHECK(tensor.dim() == 2 || tensor.dim() == 1)
+    GCHECK(tensor.dim() == 2 || tensor.dim() == 1)
         << "unexpected tensor dim: " << tensor.dim();
     if (tensor.dim() == 2) {
       return tensor.view({3, -1, head_dim_, hidden_size_})
@@ -234,7 +234,7 @@ class MPTAttentionImpl : public torch::nn::Module {
     // N.B. Fused qkv weights in GPT-NeoX has the shape of [n_heads * 3 *
     // head_dim, hidden_size], while the desired shape is [3 * n_heads *
     // head_dim, hidden_size].
-    CHECK(tensor.dim() == 2 || tensor.dim() == 1)
+    GCHECK(tensor.dim() == 2 || tensor.dim() == 1)
         << "unexpected tensor dim: " << tensor.dim();
     if (tensor.dim() == 2) {
       return tensor.view({-1, 3, head_dim_, hidden_size_})

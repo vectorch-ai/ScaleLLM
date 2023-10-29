@@ -2,7 +2,6 @@
 
 #include <c10/core/Device.h>
 #include <c10/core/ScalarType.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <tuple>

@@ -2,11 +2,11 @@
 
 #include <c10/core/DeviceType.h>
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
 #include "../model_parallel.h"
+#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 
@@ -45,8 +45,8 @@ ColumnParallelQLinearExllamaImpl::ColumnParallelQLinearExllamaImpl(
                                 device) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(bits == 4) << "Only 4 bits are supported";
-  CHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(bits == 4) << "Only 4 bits are supported";
+  GCHECK(group_size > 0) << "group_size must be positive";
 
   // using torch::aarange to create g_idx
   std::vector<int32_t> g_idx_data;
@@ -102,8 +102,8 @@ RowParallelQLinearExllamaImpl::RowParallelQLinearExllamaImpl(
                              device) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(bits == 4) << "Only 4 bits are supported";
-  CHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(bits == 4) << "Only 4 bits are supported";
+  GCHECK(group_size > 0) << "group_size must be positive";
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);

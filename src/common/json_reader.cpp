@@ -1,11 +1,11 @@
 #include "json_reader.h"
 
-#include <glog/logging.h>
-
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <string>
+
+#include "common/logging.h"
 namespace llm {
 
 bool JsonReader::parse(const std::string& json_file_path) {
@@ -23,16 +23,16 @@ bool JsonReader::parse(const std::string& json_file_path) {
 }
 
 bool JsonReader::contains(const std::string_view& key) const {
-    // slipt the key by '.' then traverse the json object
-    std::vector<std::string> keys = absl::StrSplit(key, '.');
-    nlohmann::json data = data_;
-    for (const auto& k : keys) {
-      if (!data.contains(k)) {
-        return false;
-      } 
-      data = data[k];
+  // slipt the key by '.' then traverse the json object
+  std::vector<std::string> keys = absl::StrSplit(key, '.');
+  nlohmann::json data = data_;
+  for (const auto& k : keys) {
+    if (!data.contains(k)) {
+      return false;
     }
-    return true;
+    data = data[k];
   }
+  return true;
+}
 
 }  // namespace llm

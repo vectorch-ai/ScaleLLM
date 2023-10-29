@@ -1,9 +1,10 @@
 #include "model_downloader.h"
 
-#include <glog/logging.h>
 #include <pybind11/embed.h>
 
 #include <string>
+
+#include "common/logging.h"
 
 namespace llm::hf {
 std::string download_model(const std::string& model_name) {
@@ -13,8 +14,8 @@ std::string download_model(const std::string& model_name) {
   try {
     hub = py::module_::import("huggingface_hub");
   } catch (const std::exception& e) {
-    LOG(ERROR) << "Please install huggingface_hub by running: "
-               << "pip3 install huggingface_hub";
+    GLOG(ERROR) << "Please install huggingface_hub by running: "
+                << "pip3 install huggingface_hub";
     throw;
   }
 

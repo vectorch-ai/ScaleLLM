@@ -1,7 +1,6 @@
 #include "sentencepiece_tokenizer.h"
 
-#include <glog/logging.h>
-
+#include "common/logging.h"
 #include "sentencepiece/sentencepiece_processor.h"
 
 namespace llm {
@@ -11,8 +10,8 @@ SentencePieceTokenizer::SentencePieceTokenizer(
     : vocab_file_path_(vocab_file_path) {
   const auto status = sp_processor_.Load(vocab_file_path);
   if (!status.ok()) {
-    LOG(FATAL) << "Failed to load SentencePiece model from " << vocab_file_path
-               << ": " << status.ToString() << ", error " << status.ToString();
+    GLOG(FATAL) << "Failed to load SentencePiece model from " << vocab_file_path
+                << ": " << status.ToString() << ", error " << status.ToString();
   }
 }
 
@@ -24,8 +23,8 @@ bool SentencePieceTokenizer::encode(const std::string_view& text,
                                     std::vector<int32_t>* ids) const {
   const auto status = sp_processor_.Encode({text.data(), text.size()}, ids);
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to encode text: " << text << ", error "
-               << status.ToString();
+    GLOG(ERROR) << "Failed to encode text: " << text << ", error "
+                << status.ToString();
     return false;
   }
   // prepend bos token
@@ -38,7 +37,7 @@ std::string SentencePieceTokenizer::decode(
   std::string text;
   const auto status = sp_processor_.Decode(ids, &text);
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to decode ids: " << status.ToString();
+    GLOG(ERROR) << "Failed to decode ids: " << status.ToString();
   }
   return text;
 }

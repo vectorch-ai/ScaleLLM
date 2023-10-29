@@ -1,7 +1,6 @@
 #pragma once
 
 #include <c10/core/TensorImpl.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"

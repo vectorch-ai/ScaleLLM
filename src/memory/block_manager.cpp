@@ -1,12 +1,11 @@
 #include "block_manager.h"
 
-#include <glog/logging.h>
-
 #include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "block_allocator.h"
+#include "common/logging.h"
 #include "request/request.h"
 
 namespace llm {

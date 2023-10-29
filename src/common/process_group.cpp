@@ -68,19 +68,19 @@ ncclDataType_t to_nccl_data_type(const torch::Tensor& input) {
 }
 
 void check_input(torch::Tensor input) {
-  CHECK(input.is_cuda()) << "input should be cuda tensor";
-  CHECK(input.is_contiguous()) << "input should be contiguous";
-  CHECK(!input.is_sparse()) << "input have to be cuda dense tensor";
+  GCHECK(input.is_cuda()) << "input should be cuda tensor";
+  GCHECK(input.is_contiguous()) << "input should be contiguous";
+  GCHECK(!input.is_sparse()) << "input have to be cuda dense tensor";
 }
 
 }  // namespace
 
 std::vector<std::unique_ptr<ProcessGroup>> ProcessGroup::create_process_groups(
     const std::vector<torch::Device>& devices) {
-  CHECK(!devices.empty()) << "devices should not be empty";
+  GCHECK(!devices.empty()) << "devices should not be empty";
   // all devices should be cuda devices
   for (const auto& device : devices) {
-    CHECK(device.is_cuda()) << "device should be cuda device";
+    GCHECK(device.is_cuda()) << "device should be cuda device";
   }
 
   const int world_size = static_cast<int>(devices.size());
@@ -152,7 +152,7 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
 void ProcessGroupNCCL::allgather(torch::Tensor input,
                                  std::vector<torch::Tensor>& outputs) {
   check_input(input);
-  CHECK(outputs.size() == world_size())
+  GCHECK(outputs.size() == world_size())
       << "outputs should have the same size as world_size";
   DCHECK(input.device() == device())
       << "input should be on the same device as the process group";

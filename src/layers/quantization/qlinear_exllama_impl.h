@@ -1,7 +1,6 @@
 #pragma once
 
 #include <c10/core/TensorImpl.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"
@@ -14,13 +13,13 @@ namespace llm {
 class ColumnParallelQLinearExllamaImpl : public ColumnParallelQLinearImpl {
  public:
   ColumnParallelQLinearExllamaImpl(int64_t in_features,
-                                int64_t out_features,
-                                bool bias,
-                                const QuantizationArgs& quant_args,
-                                bool gather_output,
-                                const ParallelArgs& parallel_args,
-                                torch::ScalarType dtype,
-                                const torch::Device& device);
+                                   int64_t out_features,
+                                   bool bias,
+                                   const QuantizationArgs& quant_args,
+                                   bool gather_output,
+                                   const ParallelArgs& parallel_args,
+                                   torch::ScalarType dtype,
+                                   const torch::Device& device);
 
   ~ColumnParallelQLinearExllamaImpl() override;
 
@@ -41,13 +40,13 @@ class ColumnParallelQLinearExllamaImpl : public ColumnParallelQLinearImpl {
 class RowParallelQLinearExllamaImpl : public RowParallelQLinearImpl {
  public:
   RowParallelQLinearExllamaImpl(int64_t in_features,
-                             int64_t out_features,
-                             bool bias,
-                             const QuantizationArgs& quant_args,
-                             bool input_is_parallelized,
-                             const ParallelArgs& parallel_args,
-                             torch::ScalarType dtype,
-                             const torch::Device& device);
+                                int64_t out_features,
+                                bool bias,
+                                const QuantizationArgs& quant_args,
+                                bool input_is_parallelized,
+                                const ParallelArgs& parallel_args,
+                                torch::ScalarType dtype,
+                                const torch::Device& device);
 
   ~RowParallelQLinearExllamaImpl() override;
 

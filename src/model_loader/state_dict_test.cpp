@@ -64,14 +64,12 @@ TEST(StateDictTest, SharedTensor) {
                                                     /*dim=*/0,
                                                     /*rank=*/0,
                                                     /*world_size=*/2);
-  LOG(ERROR) << rank0_tensor;
   EXPECT_EQ(rank0_tensor.sizes(), torch::IntArrayRef({8, 2}));
   EXPECT_TRUE(rank0_tensor.equal(chunks[0]));
   auto rank1_tensor = state_dict.get_sharded_tensor("tensor",
                                                     /*dim=*/0,
                                                     /*rank=*/1,
                                                     /*world_size=*/2);
-  LOG(ERROR) << rank1_tensor;
   EXPECT_EQ(rank1_tensor.sizes(), torch::IntArrayRef({8, 2}));
   EXPECT_TRUE(rank1_tensor.equal(chunks[1]));
 }

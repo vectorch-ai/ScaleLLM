@@ -1,6 +1,5 @@
 #pragma once
 
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"

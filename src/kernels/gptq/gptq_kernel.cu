@@ -6,74 +6,9 @@
 #include <cuda_runtime.h>
 #include <torch/all.h>
 #include <torch/torch.h>
+#include "common/logging.h"
 
-// atomicAdd for double-precision floating-point numbers on hardware with
-// compute capability < 6.0 from:
-// https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#atomic-functions
-// #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
-// __device__ double atomicAdd(
-//     double* address,
-//     double val
-// ) {
-//   unsigned long long int* address_as_ull = (unsigned long long int*)address;
-//   unsigned long long int old = *address_as_ull, assumed;
-//
-//   do {
-//     assumed = old;
-//     old = atomicCAS(
-//       address_as_ull,
-//       assumed,
-//       __double_as_longlong(val + __longlong_as_double(assumed))
-//     );
-//
-//   // Note: uses integer comparison to avoid hang in case of NaN (since NaN !=
-//   NaN) } while (assumed != old);
-//
-//   return __longlong_as_double(old);
-// }
-// #endif
-
-#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 700) || defined(USE_ROCM)
-// adapted from
-// https://github.com/torch/cutorch/blob/master/lib/THC/THCAtomics.cuh
-__device__ __forceinline__ void atomicAdd(c10::Half* address, c10::Half val) {
-  unsigned int* address_as_ui =
-      reinterpret_cast<unsigned int*>(reinterpret_cast<char*>(address) -
-                                      (reinterpret_cast<size_t>(address) & 2));
-  unsigned int old = *address_as_ui;
-  unsigned int assumed;
-
-  do {
-    assumed = old;
-    unsigned short hsum =
-        reinterpret_cast<size_t>(address) & 2 ? (old >> 16) : (old & 0xffff);
-    hsum += val;
-    old = reinterpret_cast<size_t>(address) & 2 ? (old & 0xffff) | (hsum << 16)
-                                                : (old & 0xffff0000) | hsum;
-    old = atomicCAS(address_as_ui, assumed, old);
-
-    // Note: uses integer comparison to avoid hang in case of NaN (since NaN !=
-    // NaN)
-  } while (assumed != old);
-}
-__device__ __forceinline__ void atomicAdd(__half* address, c10::Half val) {
-  unsigned int* address_as_ui =
-      (unsigned int*)((char*)address - ((size_t)address & 2));
-  unsigned int old = *address_as_ui;
-  unsigned int assumed;
-
-  do {
-    assumed = old;
-    __half_raw hsum;
-    hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
-    half tmpres = __hadd(hsum, val);
-    hsum = __half_raw(tmpres);
-    old = (size_t)address & 2 ? (old & 0xffff) | (hsum.x << 16)
-                              : (old & 0xffff0000) | hsum.x;
-    old = atomicCAS(address_as_ui, assumed, old);
-  } while (assumed != old);
-}
-#endif
+namespace llm {
 
 __device__ inline unsigned int as_unsigned(int i) {
   return *reinterpret_cast<unsigned int*>(&i);
@@ -351,7 +286,7 @@ void vec_quant_matmul_64(torch::Tensor vec,
                                             /*BITS=*/8>(
           vec, mat, mul, scales, zeros, g_idx);
     default:
-      LOG(FATAL) << "Unsupported bits " << bits;
+      GLOG(FATAL) << "Unsupported bits " << bits;
   }
   __builtin_unreachable();
 }
@@ -384,7 +319,9 @@ void vec_quant_matmul_256(torch::Tensor vec,
                                             /*BITS=*/8>(
           vec, mat, mul, scales, zeros, g_idx);
     default:
-      LOG(FATAL) << "Unsupported bits " << bits;
+      GLOG(FATAL) << "Unsupported bits " << bits;
   }
   __builtin_unreachable();
 }
+
+}  // namespace llm

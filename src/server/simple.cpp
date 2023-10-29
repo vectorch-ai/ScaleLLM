@@ -2,12 +2,12 @@
 #include <c10/core/Device.h>
 #include <c10/core/ScalarType.h>
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 
 #include <filesystem>
 #include <iostream>
 #include <string>
 
+#include "common/logging.h"
 #include "engine/engine.h"
 #include "model_loader/model_downloader.h"
 #include "models/args.h"
@@ -51,8 +51,8 @@ int main(int argc, char* argv[]) {
     devices.emplace_back(device_str);
     device_types.insert(devices.back().type());
   }
-  CHECK(!devices.empty()) << "No devices specified.";
-  CHECK(device_types.size() == 1)
+  GCHECK(!devices.empty()) << "No devices specified.";
+  GCHECK(device_types.size() == 1)
       << "All devices must be of the same type. Got: " << FLAGS_device;
 
   // set the default dtype
@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
   if (devices[0].is_cpu()) {
     // always use float32 on CPU since float16 is not supported
     dtype = torch::kFloat;
-    LOG(INFO) << "Using float32 on CPU.";
+    GLOG(INFO) << "Using float32 on CPU.";
   } else {
     dtype = torch::kHalf;
   }
@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
   }
 
   llm::Engine engine(dtype, devices);
-  CHECK(engine.init(model_path));
+  GCHECK(engine.init(model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
 
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
       // allocate slots for the sequence
-      CHECK(block_manager->allocate_slots_for_sequence(&sequence));
+      GCHECK(block_manager->allocate_slots_for_sequence(&sequence));
 
       // run inference
       const auto output_params = engine.execute_model({&sequence});
@@ -128,7 +128,8 @@ int main(int argc, char* argv[]) {
       sequence.append_new_token_id(next_token_scalar);
 
       // decode the output and print delta
-      std::cout << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer) << std::flush;
+      std::cout << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer)
+                << std::flush;
 
       if (sequence.check_stopping_creteria()) {
         break;

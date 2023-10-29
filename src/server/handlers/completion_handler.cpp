@@ -104,7 +104,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
                                                  const Tokenizer& tokenizer,
                                                  const ModelArgs& model_args) {
   const CompletionRequest& grpc_request = call_data->request();
-  CHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
+  GCHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
 
   const int64_t max_context_len = model_args.max_position_embeddings();
 
@@ -191,8 +191,8 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
                              const std::string& output_text,
                              FinishReason reason,
                              const Status& status) -> bool {
-      CHECK(output_text.empty());
-      CHECK(reason == FinishReason::NONE);
+      GCHECK(output_text.empty());
+      GCHECK(reason == FinishReason::NONE);
 
       // TODO: mapping status to grpc status
       return call_data->finish();
@@ -228,7 +228,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
 CompletionHandler::CompletionHandler(Scheduler* scheduler, const Engine* engine)
     : scheduler_(scheduler) {
-  CHECK(scheduler_ != nullptr);
+  GCHECK(scheduler_ != nullptr);
   tokenizer_ = engine->tokenizer();
   model_args_ = engine->model_args();
 }

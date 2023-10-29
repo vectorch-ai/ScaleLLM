@@ -1,11 +1,12 @@
 #include "activation.h"
 
-#include <glog/logging.h>
 #include <kernels/activation_kernels.h>
 #include <torch/torch.h>
 
 #include <boost/algorithm/string.hpp>
 #include <cmath>
+
+#include "common/logging.h"
 
 namespace llm {
 namespace detail {
@@ -77,16 +78,16 @@ torch::Tensor silu_with_mul(torch::Tensor x) {
 
 ActFunc Activation::get_act_func(const std::string& name,
                                  const torch::Device& device) {
-  CHECK(!name.empty()) << "Activation function name cannot be empty";
+  GCHECK(!name.empty()) << "Activation function name cannot be empty";
   using namespace detail;
   if (boost::iequals(name, "gelu")) {
     return gelu;
   }
   if (boost::iequals(name, "gelu_fast")) {
-    return device.is_cuda()? kernel::gelu_fast : gelu_fast;
+    return device.is_cuda() ? kernel::gelu_fast : gelu_fast;
   }
   if (boost::iequals(name, "gelu_new")) {
-    return device.is_cuda()? kernel::gelu_new : gelu_new;
+    return device.is_cuda() ? kernel::gelu_new : gelu_new;
   }
   if (boost::iequals(name, "gelu_pytorch_tanh")) {
     return gelu_pytorch_tanh;
@@ -98,13 +99,13 @@ ActFunc Activation::get_act_func(const std::string& name,
     return device.is_cuda() ? kernel::silu : silu;
   }
 
-  LOG(ERROR) << "Unsupported activation function: " << name;
+  GLOG(ERROR) << "Unsupported activation function: " << name;
   return nullptr;
 }
 
 ActFunc Activation::get_act_with_mul_func(const std::string& name,
                                           const torch::Device& device) {
-  CHECK(!name.empty()) << "Activation function name cannot be empty";
+  GCHECK(!name.empty()) << "Activation function name cannot be empty";
   using namespace detail;
   if (boost::iequals(name, "gelu")) {
     return gelu_with_mul;
@@ -125,7 +126,7 @@ ActFunc Activation::get_act_with_mul_func(const std::string& name,
     return device.is_cuda() ? kernel::silu_with_mul : silu_with_mul;
   }
 
-  LOG(ERROR) << "Unsupported activation function: " << name;
+  GLOG(ERROR) << "Unsupported activation function: " << name;
   return nullptr;
 }
 

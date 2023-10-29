@@ -85,8 +85,8 @@ int main(int argc, char** argv) {
     devices.emplace_back(device_str);
     device_types.insert(devices.back().type());
   }
-  CHECK(!devices.empty()) << "No devices specified.";
-  CHECK(device_types.size() == 1)
+  GCHECK(!devices.empty()) << "No devices specified.";
+  GCHECK(device_types.size() == 1)
       << "All devices must be of the same type. Got: " << FLAGS_device;
 
   // set the default dtype
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
 
   // create engine
   auto engine = std::make_unique<Engine>(dtype, devices);
-  CHECK(engine->init(model_path));
+  GCHECK(engine->init(model_path));
 
   // create scheduler and grpc handlers
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());

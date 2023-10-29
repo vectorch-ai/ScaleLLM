@@ -1,7 +1,6 @@
 #pragma once
 
 #include <ATen/core/TensorBody.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "../linear_impl.h"
@@ -143,7 +142,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
       input = scatter_to_model_parallel_region(input, parallel_args_);
     }
 
-    auto output = quant_matmul(input, qweight_, qzeros_, scales_);    
+    auto output = quant_matmul(input, qweight_, qzeros_, scales_);
     if (parallel_args_.world_size() > 1) {
       output = reduce_from_model_parallel_region(output, parallel_args_);
     }

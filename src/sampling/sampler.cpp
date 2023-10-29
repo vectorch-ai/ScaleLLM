@@ -3,10 +3,11 @@
 #include <ATen/ATen.h>
 #include <ATen/CPUGeneratorImpl.h>
 #include <ATen/cuda/CUDAGeneratorImpl.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <functional>
+
+#include "common/logging.h"
 namespace llm {
 namespace {
 torch::Generator make_generator(const torch::Device& device) {

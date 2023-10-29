@@ -1,10 +1,10 @@
 #include "utils.h"
 
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <vector>
 
+#include "common/logging.h"
 #include "models/input_parameters.h"
 #include "request/request.h"
 
@@ -69,8 +69,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   std::vector<int32_t> slot_ids;
   for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
     const auto* sequence = batch[i];
-    CHECK(!sequence->is_finished());
-    CHECK(has_enough_cache_slots(*sequence, block_size));
+    GCHECK(!sequence->is_finished());
+    GCHECK(has_enough_cache_slots(*sequence, block_size));
 
     if (!sequence->is_prefill()) {
       continue;

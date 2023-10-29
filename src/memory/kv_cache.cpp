@@ -2,12 +2,12 @@
 
 #include <ATen/core/TensorBody.h>
 #include <c10/core/TensorImpl.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <cstdint>
 #include <vector>
 
+#include "common/logging.h"
 #include "kernels/kv_cache_kernels.h"
 
 namespace llm {

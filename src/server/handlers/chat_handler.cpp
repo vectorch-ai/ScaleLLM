@@ -160,8 +160,8 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
                              const std::string& output_text,
                              FinishReason reason,
                              const Status& status) -> bool {
-      CHECK(output_text.empty());
-      CHECK(reason == FinishReason::NONE);
+      GCHECK(output_text.empty());
+      GCHECK(reason == FinishReason::NONE);
 
       // TODO: mapping status to grpc status
       return call_data->finish();
@@ -196,7 +196,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
 ChatHandler::ChatHandler(Scheduler* scheduler, const Engine* engine)
     : scheduler_(scheduler) {
-  CHECK(scheduler_ != nullptr);
+  GCHECK(scheduler_ != nullptr);
   tokenizer_ = engine->tokenizer();
   model_args_ = engine->model_args();
 }

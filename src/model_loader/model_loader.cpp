@@ -1,7 +1,6 @@
 #include "model_loader.h"
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <boost/algorithm/string.hpp>
@@ -10,6 +9,7 @@
 #include <vector>
 
 #include "common/json_reader.h"
+#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 #include "models/model_registry.h"
@@ -34,10 +34,10 @@ StateDictIterator::StateDictIterator(
 
 const StateDict* StateDictIterator::get_state_dict() const {
   const size_t num_weight_files = model_weights_files_.size();
-  CHECK(index_ < num_weight_files);
+  GCHECK(index_ < num_weight_files);
   // lazy loading
   if (!state_dict_) {
-    LOG(INFO) << "Loading model weights from " << model_weights_files_[index_];
+    GLOG(INFO) << "Loading model weights from " << model_weights_files_[index_];
 
     const int shard_id = is_sharded_ ? static_cast<int>(index_) : 0;
     const int num_shards = is_sharded_ ? static_cast<int>(num_weight_files) : 1;
@@ -75,7 +75,7 @@ std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
       !FLAGS_tokenizer_path.empty() ? FLAGS_tokenizer_path
                                     : model_weights_path_ + "/tokenizer.model";
   if (!std::filesystem::exists(tokenizer_path)) {
-    LOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
+    GLOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
     return nullptr;
   }
   return std::make_unique<SentencePieceTokenizer>(tokenizer_path);
@@ -84,7 +84,7 @@ std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
 PTModelLoader::PTModelLoader(const std::string& model_weights_path)
     : model_weights_path_(model_weights_path) {
   const std::string args_file_path = model_weights_path + "/params.json";
-  CHECK(load_model_args(args_file_path))
+  GCHECK(load_model_args(args_file_path))
       << "Failed to load model args from " << args_file_path;
   for (const auto& entry :
        std::filesystem::directory_iterator(model_weights_path)) {
@@ -92,7 +92,7 @@ PTModelLoader::PTModelLoader(const std::string& model_weights_path)
       model_weights_files_.push_back(entry.path().string());
     }
   }
-  CHECK(!model_weights_files_.empty())
+  GCHECK(!model_weights_files_.empty())
       << "Failed to find model weights files in " << model_weights_path;
   // sort the model weights files by name
   std::sort(model_weights_files_.begin(), model_weights_files_.end());
@@ -101,15 +101,15 @@ PTModelLoader::PTModelLoader(const std::string& model_weights_path)
 bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   JsonReader reader;
   if (!reader.parse(args_file_path)) {
-    LOG(ERROR) << "Failed to parse model args file: " << args_file_path;
+    GLOG(ERROR) << "Failed to parse model args file: " << args_file_path;
     return false;
   }
   // hardcode the model type to llama2 for now.
   args_.model_type() = "llama2";
   auto args_loader = ModelRegistry::get_model_args_loader(args_.model_type());
   if (args_loader == nullptr) {
-    LOG(ERROR) << "Failed to find model args loader for model type "
-               << args_.model_type();
+    GLOG(ERROR) << "Failed to find model args loader for model type "
+                << args_.model_type();
     return false;
   }
   return args_loader(reader, &args_);
@@ -117,7 +117,7 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path)
     : model_weights_path_(model_weights_path) {
-  CHECK(load_model_args(model_weights_path));
+  GCHECK(load_model_args(model_weights_path));
   // try to load safetensors first
   for (const auto& entry :
        std::filesystem::directory_iterator(model_weights_path)) {
@@ -137,7 +137,7 @@ HFModelLoader::HFModelLoader(const std::string& model_weights_path)
     }
     is_pickle_ = true;
   }
-  CHECK(!model_weights_files_.empty())
+  GCHECK(!model_weights_files_.empty())
       << "Failed to find model weights files in " << model_weights_path;
   // sort the model weights files by name
   std::sort(model_weights_files_.begin(), model_weights_files_.end());
@@ -152,13 +152,13 @@ std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
 
   const std::string vocab_path = model_weights_path_ + "/tokenizer.model";
   if (std::filesystem::exists(vocab_path)) {
-    LOG(WARNING) << "Failed to find tokenizer.json, use tokenizer.model "
-                    "instead. Please consider to convert the tokenizer.model "
-                    "to tokenizer.json for better performance.";
+    GLOG(WARNING) << "Failed to find tokenizer.json, use tokenizer.model "
+                     "instead. Please consider to convert the tokenizer.model "
+                     "to tokenizer.json for better performance.";
     return std::make_unique<SentencePieceTokenizer>(vocab_path);
   }
 
-  LOG(ERROR)
+  GLOG(ERROR)
       << "Failed to find tokenizer file tokenizer.json or tokenizer.model from "
       << model_weights_path_;
   return nullptr;
@@ -168,21 +168,21 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   JsonReader reader;
   const std::string args_file_path = model_weights_path + "/config.json";
   if (!reader.parse(args_file_path)) {
-    LOG(ERROR) << "Failed to parse model args file: " << args_file_path;
+    GLOG(ERROR) << "Failed to parse model args file: " << args_file_path;
     return false;
   }
 
   if (auto data = reader.value<std::string>("model_type")) {
     args_.model_type() = data.value();
   } else {
-    LOG(ERROR) << "Failed to find model_type in " << args_file_path;
+    GLOG(ERROR) << "Failed to find model_type in " << args_file_path;
     return false;
   }
 
   auto args_loader = ModelRegistry::get_model_args_loader(args_.model_type());
   if (args_loader == nullptr) {
-    LOG(ERROR) << "Failed to find model args loader for model type "
-               << args_.model_type();
+    GLOG(ERROR) << "Failed to find model args loader for model type "
+                << args_.model_type();
     return false;
   }
   args_loader(reader, &args_);
@@ -249,7 +249,7 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
 
   if (!FLAGS_quant_method.empty() &&
       quant_args_.quant_method() != FLAGS_quant_method) {
-    LOG(WARNING) << "Overwriting quant_method to " << FLAGS_quant_method;
+    GLOG(WARNING) << "Overwriting quant_method to " << FLAGS_quant_method;
     quant_args_.quant_method() = FLAGS_quant_method;
   }
 

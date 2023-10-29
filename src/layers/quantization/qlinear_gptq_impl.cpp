@@ -2,13 +2,15 @@
 
 #include <c10/core/DeviceType.h>
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
 #include "../model_parallel.h"
+#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
+
+namespace llm {
 
 extern void vec_quant_matmul_64(torch::Tensor vec,
                                 torch::Tensor mat,
@@ -24,8 +26,6 @@ extern void vec_quant_matmul_256(torch::Tensor vec,
                                  torch::Tensor zeros,
                                  torch::Tensor g_idx,
                                  int64_t bits);
-
-namespace llm {
 
 ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     int64_t in_features,
@@ -48,9 +48,9 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
+  GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
-  CHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(group_size > 0) << "group_size must be positive";
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);
@@ -66,8 +66,8 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     vec_quant_matmul_func_ = vec_quant_matmul_64;
   }
   if (in_features % 64 != 0 || out_features % 64 != 0) {
-    LOG(FATAL) << "in_features and out_features size is not supported: ["
-               << in_features << ", " << out_features << "]";
+    GLOG(FATAL) << "in_features and out_features size is not supported: ["
+                << in_features << ", " << out_features << "]";
   }
 }
 
@@ -111,9 +111,9 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
+  GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
-  CHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(group_size > 0) << "group_size must be positive";
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);
@@ -129,8 +129,8 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     vec_quant_matmul_func_ = vec_quant_matmul_64;
   }
   if (in_features % 64 != 0 || out_features % 64 != 0) {
-    LOG(FATAL) << "in_features and out_features size is not supported: ["
-               << in_features << ", " << out_features << "]";
+    GLOG(FATAL) << "in_features and out_features size is not supported: ["
+                << in_features << ", " << out_features << "]";
   }
 }
 

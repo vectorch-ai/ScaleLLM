@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 
@@ -24,14 +25,14 @@ class ParallelLinearImpl : public torch::nn::Module {
   using TensorTransform = std::function<torch::Tensor(torch::Tensor)>;
   virtual void load_state_dict(const StateDict& /*state_dict*/,
                                TensorTransform /*transform_func*/) {
-    LOG(FATAL) << "not implemented";
+    GLOG(FATAL) << "not implemented";
   }
 
   // special load_state_dict for fused cases
   virtual void load_state_dict(
       const StateDict& /*state_dict*/,
       const std::vector<std::string_view>& /*prefixes*/) {
-    LOG(FATAL) << "not implemented";
+    GLOG(FATAL) << "not implemented";
   }
 };
 

@@ -105,7 +105,7 @@ class Sequence final {
   std::string decode_delta_text(size_t end, const Tokenizer& tokenizer);
 
   // check if streaming is enabled
-  bool isStreaming() const { return on_stream_ != nullptr; }
+  bool is_streaming() const { return on_stream_ != nullptr; }
 
   // stream the delta text to the client
   void stream_delta(const std::string& delta, FinishReason reason) {

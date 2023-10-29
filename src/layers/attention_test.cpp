@@ -4,7 +4,6 @@
 #include <c10/core/DeviceType.h>
 #include <c10/core/ScalarType.h>
 #include <c10/core/TensorImpl.h>
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
@@ -15,6 +14,8 @@
 #include <torch/csrc/distributed/c10d/FileStore.hpp>
 #include <torch/csrc/distributed/c10d/HashStore.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
+
+#include "common/logging.h"
 
 namespace llm {
 

@@ -1,11 +1,11 @@
 #include "qlinear_awq_impl.h"
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
 #include "../model_parallel.h"
+#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 
@@ -36,8 +36,8 @@ ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
                                 device) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(bits == 4) << "Only 4 bits are supported for AWQ";
-  CHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(bits == 4) << "Only 4 bits are supported for AWQ";
+  GCHECK(group_size > 0) << "group_size must be positive";
   pack_factor_ = 32 / bits;
 }
 
@@ -73,8 +73,8 @@ RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
                              device) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(bits == 4) << "Only 4 bits are supported for AWQ";
-  CHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(bits == 4) << "Only 4 bits are supported for AWQ";
+  GCHECK(group_size > 0) << "group_size must be positive";
   pack_factor_ = 32 / bits;
 }
 

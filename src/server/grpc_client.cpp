@@ -1,5 +1,4 @@
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <grpc/grpc.h>
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
@@ -11,6 +10,7 @@
 #include <memory>
 #include <string>
 
+#include "common/logging.h"
 #include "completion.grpc.pb.h"
 #include "completion.pb.h"
 
@@ -23,7 +23,9 @@ using llm::Completion;
 using llm::CompletionRequest;
 using llm::CompletionResponse;
 
-DEFINE_string(priority, "DEFAULT", "priority of the request, DEFAULT, LOW, MEDIUM, HIGH");
+DEFINE_string(priority,
+              "DEFAULT",
+              "priority of the request, DEFAULT, LOW, MEDIUM, HIGH");
 
 DEFINE_double(temperature, 0.6, "Temperature for sampling.");
 
@@ -51,7 +53,7 @@ class ChatClient final {
     request.set_max_tokens(FLAGS_max_tokens);
 
     llm::Priority priority{};
-    CHECK(llm::Priority_Parse(FLAGS_priority, &priority));
+    GCHECK(llm::Priority_Parse(FLAGS_priority, &priority));
     request.set_priority(priority);
 
     // Create a stream for receiving messages
@@ -71,9 +73,9 @@ class ChatClient final {
 
     Status status = reader->Finish();
     if (!status.ok()) {
-      LOG(ERROR) << "RPC failed, error code: " << status.error_code()
-                 << ", error message: " << status.error_message()
-                 << ", error details: " << status.error_details();
+      GLOG(ERROR) << "RPC failed, error code: " << status.error_code()
+                  << ", error message: " << status.error_message()
+                  << ", error details: " << status.error_details();
     }
   }
 

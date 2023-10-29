@@ -1,11 +1,12 @@
 #include "logits_processor.h"
 
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <algorithm>
 #include <memory>
 #include <string>
+
+#include "common/logging.h"
 
 namespace llm {
 std::unique_ptr<LogitsProcessor> LogitsProcessor::create(

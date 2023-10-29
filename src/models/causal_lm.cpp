@@ -1,6 +1,5 @@
 #include "causal_lm.h"
 
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <boost/algorithm/string.hpp>
@@ -8,6 +7,7 @@
 #include <vector>
 
 #include "args.h"
+#include "common/logging.h"
 #include "input_parameters.h"
 #include "memory/kv_cache.h"
 #include "model_loader/state_dict.h"
@@ -26,7 +26,7 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
     return factory(args, quant_args, parallel_args, dtype, device);
   }
 
-  LOG(ERROR) << "Unsupported model type: " << args.model_type();
+  GLOG(ERROR) << "Unsupported model type: " << args.model_type();
   return nullptr;
 }
 

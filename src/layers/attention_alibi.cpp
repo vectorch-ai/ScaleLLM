@@ -1,10 +1,10 @@
 #include "attention_alibi.h"
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "attention.h"
+#include "common/logging.h"
 
 namespace llm {
 
@@ -20,9 +20,9 @@ AttentionWithAlibiImpl::AttentionWithAlibiImpl(int64_t n_heads,
       head_dim_(head_dim),
       scale_(scale),
       alibi_slopes_(alibi_slopes.to(device)) {
-  CHECK(n_heads % n_kv_heads == 0)
+  GCHECK(n_heads % n_kv_heads == 0)
       << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
-  CHECK(alibi_slopes.dim() == 1 && alibi_slopes.size(0) == n_heads)
+  GCHECK(alibi_slopes.dim() == 1 && alibi_slopes.size(0) == n_heads)
       << "alibi_slopes should be a 1D tensor of size " << n_heads << " but got "
       << alibi_slopes_.sizes() << " instead.";
 

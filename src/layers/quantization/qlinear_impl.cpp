@@ -1,11 +1,11 @@
 #include "qlinear_impl.h"
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
 #include "../model_parallel.h"
+#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 
@@ -27,7 +27,8 @@ torch::Tensor construct_weights(
     const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
     const torch::Tensor& g_idx,     // [in_features] IntTensor
     int64_t bits) {
-  CHECK(bits == 2 || bits == 4 || bits == 8) << "Only 2,4,8 bits are supported";
+  GCHECK(bits == 2 || bits == 4 || bits == 8)
+      << "Only 2,4,8 bits are supported";
 
   std::vector<int32_t> bits_to_shift;
   for (int32_t i = 0; i < 32; i += bits) {
@@ -68,7 +69,8 @@ torch::Tensor construct_weights(
     const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
     const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
     int64_t bits) {
-  CHECK(bits == 2 || bits == 4 || bits == 8) << "Only 2,4,8 bits are supported";
+  GCHECK(bits == 2 || bits == 4 || bits == 8)
+      << "Only 2,4,8 bits are supported";
 
   std::vector<int32_t> bits_to_shift;
   for (int32_t i = 0; i < 32; i += bits) {
@@ -117,11 +119,11 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
       parallel_args_(parallel_args) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(group_size > 0) << "group_size must be positive";
-  CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
+  GCHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
   const int64_t world_size = parallel_args.world_size();
-  CHECK(out_features % world_size == 0)
+  GCHECK(out_features % world_size == 0)
       << "out_features " << out_features << " not divisible by world_size "
       << world_size;
   const int64_t out_features_per_partition = out_features / world_size;
@@ -182,7 +184,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                     parallel_args_.rank(),
                                     parallel_args_.world_size());
   if (qweight.defined()) {
-    CHECK(!qweight_is_loaded_) << "qweight already loaded";
+    GCHECK(!qweight_is_loaded_) << "qweight already loaded";
     CHECK_EQ(qweight_.sizes(), qweight.sizes())
         << "qweight size mismatch for " << name();
     qweight_.copy_(qweight);
@@ -194,7 +196,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                     parallel_args_.rank(),
                                     parallel_args_.world_size());
   if (qzeros.defined()) {
-    CHECK(qzeros_.defined()) << "qzeros is not defined for " << name();
+    GCHECK(qzeros_.defined()) << "qzeros is not defined for " << name();
     CHECK_EQ(qzeros_.sizes(), qzeros.sizes())
         << "qzeros size mismatch for " << name();
     qzeros_.copy_(qzeros);
@@ -206,7 +208,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                     parallel_args_.rank(),
                                     parallel_args_.world_size());
   if (scales.defined()) {
-    CHECK(!scales_is_loaded_) << "scales already loaded";
+    GCHECK(!scales_is_loaded_) << "scales already loaded";
     CHECK_EQ(scales_.sizes(), scales.sizes())
         << "scales size mismatch for " << name();
     scales_.copy_(scales);
@@ -220,7 +222,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
                                       parallel_args_.rank(),
                                       parallel_args_.world_size());
     if (bias.defined()) {
-      CHECK(!bias_is_loaded_) << "bias already loaded";
+      GCHECK(!bias_is_loaded_) << "bias already loaded";
       CHECK_EQ(bias_.sizes(), bias.sizes())
           << "bias size mismatch for " << name();
       bias_.copy_(bias);
@@ -247,8 +249,8 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                       parallel_args_.rank(),
                                       parallel_args_.world_size());
     if (qweight.defined()) {
-      CHECK(!qweight_is_loaded_) << "qweight already loaded";
-      CHECK(!qweight_list[i].defined()) << "qweight already loaded";
+      GCHECK(!qweight_is_loaded_) << "qweight already loaded";
+      GCHECK(!qweight_list[i].defined()) << "qweight already loaded";
       qweight_list[i] = qweight;
     }
     tensor_name = std::string(prefixes[i]) + "qzeros";
@@ -258,8 +260,8 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                       parallel_args_.rank(),
                                       parallel_args_.world_size());
     if (qzeros.defined()) {
-      CHECK(!qzeros_is_loaded_) << "qzeros already loaded";
-      CHECK(!qzeros_list[i].defined()) << "qzeros already loaded";
+      GCHECK(!qzeros_is_loaded_) << "qzeros already loaded";
+      GCHECK(!qzeros_list[i].defined()) << "qzeros already loaded";
       qzeros_list[i] = qzeros;
     }
     tensor_name = std::string(prefixes[i]) + "scales";
@@ -269,8 +271,8 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                       parallel_args_.rank(),
                                       parallel_args_.world_size());
     if (scales.defined()) {
-      CHECK(!scales_is_loaded_) << "scales already loaded";
-      CHECK(!scales_list[i].defined()) << "scales already loaded";
+      GCHECK(!scales_is_loaded_) << "scales already loaded";
+      GCHECK(!scales_list[i].defined()) << "scales already loaded";
       scales_list[i] = scales;
     }
     // load bias if defined
@@ -282,8 +284,8 @@ void ColumnParallelQLinearImpl::load_state_dict(
                                         parallel_args_.rank(),
                                         parallel_args_.world_size());
       if (bias.defined()) {
-        CHECK(!bias_is_loaded_) << "bias already loaded";
-        CHECK(!bias_list[i].defined()) << "bias already loaded";
+        GCHECK(!bias_is_loaded_) << "bias already loaded";
+        GCHECK(!bias_list[i].defined()) << "bias already loaded";
         bias_list[i] = bias;
       }
     }
@@ -326,11 +328,11 @@ void ColumnParallelQLinearImpl::load_state_dict(
 
 void ColumnParallelQLinearImpl::verify_loaded_weights(
     const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
+  GCHECK(qweight_is_loaded_)
       << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!bias_.defined() || bias_is_loaded_)
+  GCHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
+  GCHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
+  GCHECK(!bias_.defined() || bias_is_loaded_)
       << "bias is not loaded for " << prefix + "bias";
 }
 
@@ -349,11 +351,11 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
       parallel_args_(parallel_args) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
-  CHECK(group_size > 0) << "group_size must be positive";
-  CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
+  GCHECK(group_size > 0) << "group_size must be positive";
+  GCHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
   const int64_t world_size = parallel_args.world_size();
-  CHECK(in_features % world_size == 0)
+  GCHECK(in_features % world_size == 0)
       << "in_features " << in_features << " not divisible by world_size "
       << world_size;
   const int64_t in_features_per_partition = in_features / world_size;
@@ -456,11 +458,11 @@ void RowParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
 
 void RowParallelQLinearImpl::verify_loaded_weights(
     const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
+  GCHECK(qweight_is_loaded_)
       << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!bias_.defined() || bias_is_loaded_)
+  GCHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
+  GCHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
+  GCHECK(!bias_.defined() || bias_is_loaded_)
       << "bias is not loaded for " << prefix + "bias";
 }
 

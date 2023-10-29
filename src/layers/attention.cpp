@@ -1,8 +1,9 @@
 #include "attention.h"
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
+
+#include "common/logging.h"
 
 DEFINE_string(varlen_masked_self_attention,
               "",
@@ -60,7 +61,7 @@ AttentionImpl::AttentionImpl(int64_t n_heads,
       n_kv_heads_(n_kv_heads),
       head_dim_(head_dim),
       scale_(scale) {
-  CHECK(n_heads % n_kv_heads == 0)
+  GCHECK(n_heads % n_kv_heads == 0)
       << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
 
   kv_head_mapping_ = register_buffer(
@@ -240,7 +241,7 @@ void varlen_masked_self_attention_generic(
   const auto n_heads = query.size(1);
   const auto n_kv_heads = key.size(1);
   if (n_heads != n_kv_heads) {
-    CHECK(n_heads % n_kv_heads == 0);
+    GCHECK(n_heads % n_kv_heads == 0);
     const auto num_goups = n_heads / n_kv_heads;
     _key = _key.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
     _value = _value.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
@@ -260,7 +261,7 @@ void varlen_masked_self_attention_generic(
 
       if (alibi_slopes) {
         torch::Tensor slopes = alibi_slopes.value();
-        CHECK(slopes.size(0) == n_heads);
+        GCHECK(slopes.size(0) == n_heads);
 
         // calculate alibi attention mask
         auto bias = torch::arange(0, seq_len, query.options());
@@ -337,7 +338,7 @@ void single_query_masked_self_attention_generic(
     const auto n_heads = query.size(1);
     const auto n_kv_heads = k.size(1);
     if (n_heads != n_kv_heads) {
-      CHECK(n_heads % n_kv_heads == 0);
+      GCHECK(n_heads % n_kv_heads == 0);
       const auto n_goups = n_heads / n_kv_heads;
       k = k.repeat_interleave(/*repeats=*/n_goups, /*dim=*/1);
       v = v.repeat_interleave(/*repeats=*/n_goups, /*dim=*/1);

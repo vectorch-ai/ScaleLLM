@@ -1,10 +1,10 @@
 #include "attention_rope.h"
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "attention.h"
+#include "common/logging.h"
 
 namespace llm {
 
@@ -23,7 +23,7 @@ AttentionWithRoPEImpl::AttentionWithRoPEImpl(int64_t n_heads,
       n_kv_heads_(n_kv_heads),
       head_dim_(head_dim),
       scale_(scale) {
-  CHECK(n_heads % n_kv_heads == 0)
+  GCHECK(n_heads % n_kv_heads == 0)
       << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
   // register rotary positional embedding
   pos_emb_ = register_module("pos_emb",

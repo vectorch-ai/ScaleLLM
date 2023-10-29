@@ -27,7 +27,7 @@ class GPTJMLPImpl : public torch::nn::Module {
     const int64_t intermediate_size = args.intermediate_size();
 
     act_ = Activation::get_act_func(args.hidden_act(), device);
-    CHECK(act_ != nullptr);
+    GCHECK(act_ != nullptr);
 
     // register the weight parameter
     fc_in_ = register_module("fc_in",

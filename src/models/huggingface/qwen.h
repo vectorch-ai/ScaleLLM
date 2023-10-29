@@ -24,7 +24,7 @@ class QWenMLPImpl : public torch::nn::Module {
               torch::ScalarType dtype,
               const torch::Device& device) {
     act_ = Activation::get("silu", device);
-    CHECK(act_ != nullptr);
+    GCHECK(act_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();

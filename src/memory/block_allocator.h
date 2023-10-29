@@ -1,9 +1,9 @@
 #pragma once
 
-#include <glog/logging.h>
-
 #include <cstdint>
 #include <vector>
+
+#include "common/logging.h"
 
 namespace llm {
 
@@ -41,13 +41,13 @@ class BlockAllocator final {
 
   // allocate a block id
   int32_t allocate() {
-    CHECK(free_block_count_ > 0) << "No more CPU memory blocks available";
+    GCHECK(free_block_count_ > 0) << "No more CPU memory blocks available";
     return free_blocks_[--free_block_count_];
   }
 
   // caller should make sure the block_id is valid
   void free(int32_t block_id) {
-    CHECK(free_block_count_ < free_blocks_.size());
+    GCHECK(free_block_count_ < free_blocks_.size());
     free_blocks_[free_block_count_++] = block_id;
   }
 

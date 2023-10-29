@@ -3,6 +3,7 @@
 #include <torch/torch.h>
 
 #include "activation_kernels.h"
+#include "common/logging.h"
 #include "dispatch.h"
 
 namespace llm::kernel {
@@ -136,27 +137,27 @@ torch::Tensor silu(torch::Tensor input) {
 
 // calculate act(x) * y where x = input[0] and y = input[1]
 torch::Tensor gelu_new_with_mul(torch::Tensor input) {
-  CHECK(input.is_contiguous());
+  GCHECK(input.is_contiguous());
   std::vector<int64_t> sizes = input.sizes().vec();
-  CHECK(sizes.size() == 2);
+  GCHECK(sizes.size() == 2);
   sizes[1] /= 2;
   torch::Tensor out = torch::empty(sizes, input.options());
   launch_activation_and_mul<GeluNewActivation>(out, input);
   return out;
 }
 torch::Tensor gelu_fast_with_mul(torch::Tensor input) {
-  CHECK(input.is_contiguous());
+  GCHECK(input.is_contiguous());
   std::vector<int64_t> sizes = input.sizes().vec();
-  CHECK(sizes.size() == 2);
+  GCHECK(sizes.size() == 2);
   sizes[1] /= 2;
   torch::Tensor out = torch::empty(sizes, input.options());
   launch_activation_and_mul<GeluFastActivation>(out, input);
   return out;
 }
 torch::Tensor silu_with_mul(torch::Tensor input) {
-  CHECK(input.is_contiguous());
+  GCHECK(input.is_contiguous());
   std::vector<int64_t> sizes = input.sizes().vec();
-  CHECK(sizes.size() == 2);
+  GCHECK(sizes.size() == 2);
   sizes[1] /= 2;
   torch::Tensor out = torch::empty(sizes, input.options());
   launch_activation_and_mul<SiluActivation>(out, input);
