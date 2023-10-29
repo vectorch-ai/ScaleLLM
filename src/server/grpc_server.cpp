@@ -76,17 +76,21 @@ bool GrpcServer::start(const Options& options) {
 void GrpcServer::stop() {
   if (grpc_server_) {
     grpc_server_->Shutdown();
-    grpc_server_.reset();
   }
   // Always shutdown the completion queue after the server.
   if (cq_) {
     cq_->Shutdown();
-    cq_.reset();
   }
 
+  // wait for the handler thread to drain event queue
   if (handler_thread_ && handler_thread_->joinable()) {
     handler_thread_->join();
   }
+
+  // release resources
+  grpc_server_.reset();
+  cq_.reset();
+  handler_thread_.reset();
 }
 
 // This can be run in multiple threads if needed.

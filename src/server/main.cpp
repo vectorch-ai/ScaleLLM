@@ -4,6 +4,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <csignal>
 #include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -29,11 +30,17 @@ DEFINE_string(device, "cuda:0", "Device to run the model on.");
 DEFINE_int32(http_port, 9999, "Port for http server.");
 DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 
+// NOLINTNEXTLINE
+static std::atomic<bool> running{true};
+void shutdown_handler(int signal) {
+  LOG(WARNING) << "Received signal " << signal << ", stopping server...";
+  running.store(false, std::memory_order_relaxed);
+}
+
 int main(int argc, char** argv) {
   // glog and glfag will be initialized in folly::init
   folly::Init init(&argc, &argv);
-
-  FLAGS_logtostderr = true;
+  google::InstallFailureSignalHandler();
 
   HttpServer http_server;
   http_server.RegisterURI("/gflags",
@@ -59,7 +66,7 @@ int main(int argc, char** argv) {
       });
   http_server.RegisterURI("/health",
                           [](HttpServer::Transport& transport) -> bool {
-                            return transport.SendString("Ok");
+                            return transport.SendString("Ok\n");
                           });
 
   if (!http_server.Start(FLAGS_http_port, /*num_threads=*/2)) {
@@ -121,17 +128,23 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "failed to start grpc server";
     return -1;
   }
+  // install graceful shutdown handler
+  (void)signal(SIGINT, shutdown_handler);
+  (void)signal(SIGTERM, shutdown_handler);
 
-  // TODO: add graceful shutdown
   const auto timeout = absl::Milliseconds(500);
-  while (true) {
+  while (running.load(std::memory_order_relaxed)) {
     // move scheduler forward
     scheduler->step(timeout);
   }
 
   // stop grpc server and http server
+  LOG(INFO) << "stopping grpc server...";
   grpc_server.stop();
+  LOG(INFO) << "stopping http server...";
   http_server.Stop();
 
+  // explicitly flush all logs
+  google::FlushLogFiles(google::INFO);
   return 0;
 }

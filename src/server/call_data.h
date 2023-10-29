@@ -115,14 +115,14 @@ class CallData : public ICallData {
 
     // it is notification from cq for new request
     if (status_ == Status::CREATE) {
-      // Spawn a new CallData instance to serve new clients while we process
-      // the one for this CallData.
-      new CallData(cq_, on_register_, on_new_request_);
-
       // rpc error before acctually processing the request, release the calldata
       if (!rpc_ok) {
         return false;
       }
+
+      // Spawn a new CallData instance to serve new clients while we process
+      // the one for this CallData.
+      new CallData(cq_, on_register_, on_new_request_);
 
       // set status to WRITE to process response
       status_ = Status::WRITE;
