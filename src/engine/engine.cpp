@@ -1,9 +1,8 @@
 #include "engine.h"
 
-#include <glog/logging.h>
-
 #include <memory>
 
+#include "common/logging.h"
 #include "common/pretty_print.h"
 #include "memory/memory.h"
 #include "model_loader/model_loader.h"
@@ -45,12 +44,12 @@ Engine::Engine(torch::ScalarType dtype,
 
 bool Engine::init(const std::string& model_weights_path) {
   if (!init_model(model_weights_path)) {
-    LOG(ERROR) << "Failed to initialize model from: " << model_weights_path;
+    GLOG(ERROR) << "Failed to initialize model from: " << model_weights_path;
     return false;
   }
 
   if (!init_kv_cache()) {
-    LOG(ERROR) << "Failed to initialize kv cache";
+    GLOG(ERROR) << "Failed to initialize kv cache";
     return false;
   }
   return true;
@@ -58,14 +57,14 @@ bool Engine::init(const std::string& model_weights_path) {
 
 bool Engine::init_model(const std::string& model_weights_path) {
   auto model_loader = ModelLoader::create(model_weights_path);
-  LOG(INFO) << "Initializing model from: " << model_weights_path;
+  GLOG(INFO) << "Initializing model from: " << model_weights_path;
 
   tokenizer_ = model_loader->tokenizer();
   CHECK(tokenizer_ != nullptr);
 
   args_ = model_loader->model_args();
   const auto& quant_args = model_loader->quant_args();
-  LOG(INFO) << "Initializing model with " << args_ << ", " << quant_args;
+  GLOG(INFO) << "Initializing model with " << args_ << ", " << quant_args;
 
   if (workers_.size() == 1) {
     Worker* worker = workers_[0].get();
@@ -120,9 +119,9 @@ bool Engine::init_model(const std::string& model_weights_path) {
 }
 
 bool Engine::init_kv_cache() {
-  LOG(INFO) << "Initializing kv cache with block size: " << FLAGS_block_size
-            << ", max cache size: " << readable_size(FLAGS_max_cache_size)
-            << ", max memory utilization: " << FLAGS_max_memory_utilization;
+  GLOG(INFO) << "Initializing kv cache with block size: " << FLAGS_block_size
+             << ", max cache size: " << readable_size(FLAGS_max_cache_size)
+             << ", max memory utilization: " << FLAGS_max_memory_utilization;
 
   const int64_t block_size = FLAGS_block_size;
 
@@ -137,28 +136,28 @@ bool Engine::init_kv_cache() {
   const int64_t block_size_in_bytes = int64_t(2) * block_size *
                                       n_local_kv_heads * head_dim *
                                       args_.n_layers() * dtype_size;
-  LOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
-            << ", block_size: " << block_size << ", head_dim: " << head_dim
-            << ", n_local_kv_heads: " << n_local_kv_heads
-            << ", n_layers: " << args_.n_layers()
-            << ", dtype_size: " << dtype_size;
+  GLOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
+             << ", block_size: " << block_size << ", head_dim: " << head_dim
+             << ", n_local_kv_heads: " << n_local_kv_heads
+             << ", n_layers: " << args_.n_layers()
+             << ", dtype_size: " << dtype_size;
 
   int64_t num_blocks = 0;
   // use first device to profile memory usage
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
     // use max memory cache size for CPU
-    LOG(INFO) << "Initializing CPU cache with max cache size: "
-              << readable_size(FLAGS_max_cache_size);
+    GLOG(INFO) << "Initializing CPU cache with max cache size: "
+               << readable_size(FLAGS_max_cache_size);
     num_blocks = FLAGS_max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else if (device.is_cuda()) {
     torch::cuda::synchronize();
     const auto allocated_bytes = memory::max_memory_allocated(device);
     const auto total_memory = memory::total_memory(device);
-    LOG(INFO) << device
-              << ": allocated GPU memory: " << readable_size(allocated_bytes)
-              << ", total GPU memory: " << readable_size(total_memory);
+    GLOG(INFO) << device
+               << ": allocated GPU memory: " << readable_size(allocated_bytes)
+               << ", total GPU memory: " << readable_size(total_memory);
 
     int64_t max_cache_size =
         static_cast<int64_t>(static_cast<double>(total_memory) *
@@ -169,16 +168,16 @@ bool Engine::init_kv_cache() {
       max_cache_size = std::min(max_cache_size, FLAGS_max_cache_size);
     }
     CHECK_GT(max_cache_size, 0) << "Not enough memory for the cache";
-    LOG(INFO) << "Initializing CUDA cache with max cache size: "
-              << readable_size(max_cache_size);
+    GLOG(INFO) << "Initializing CUDA cache with max cache size: "
+               << readable_size(max_cache_size);
     num_blocks = max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else {
     CHECK(false) << "Only support CPU and CUDA device for now.";
   }
 
-  LOG(INFO) << "Initializing kv cache with num blocks: " << num_blocks
-            << ", block size: " << block_size;
+  GLOG(INFO) << "Initializing kv cache with num blocks: " << num_blocks
+             << ", block size: " << block_size;
 
   // init kv cache for each worker
   const int64_t x = 16 / dtype_size;
@@ -186,8 +185,8 @@ bool Engine::init_kv_cache() {
       num_blocks, n_local_kv_heads, head_dim / x, block_size, x};
   const std::vector<int64_t> value_cache_shape = {
       num_blocks, n_local_kv_heads, head_dim, block_size};
-  LOG(INFO) << "Initializing kv cache with key shape: [" << key_cache_shape
-            << "], value shape: [" << value_cache_shape << "]";
+  GLOG(INFO) << "Initializing kv cache with key shape: [" << key_cache_shape
+             << "], value shape: [" << value_cache_shape << "]";
 
   block_manager_ = std::make_unique<BlockManager>(num_blocks, block_size);
 

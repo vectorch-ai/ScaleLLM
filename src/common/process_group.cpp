@@ -1,33 +1,35 @@
 #include "process_group.h"
 
 #include <c10/core/Device.h>
-#include <torch/torch.h>
 #include <cuda_runtime.h>
+#include <torch/torch.h>
 
 #include <memory>
 #include <vector>
+
+#include "common/logging.h"
 
 namespace llm {
 namespace {
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define NCCLCHECK(cmd)                                                   \
-  do {                                                                   \
-    ncclResult_t r = cmd;                                                \
-    if (r != ncclSuccess) {                                              \
-      LOG(FATAL) << "Failed, NCCL error " << __FILE__ << ":" << __LINE__ \
-                 << " " << ncclGetErrorString(r);                        \
-    }                                                                    \
+#define NCCLCHECK(cmd)                                                    \
+  do {                                                                    \
+    ncclResult_t r = cmd;                                                 \
+    if (r != ncclSuccess) {                                               \
+      GLOG(FATAL) << "Failed, NCCL error " << __FILE__ << ":" << __LINE__ \
+                  << " " << ncclGetErrorString(r);                        \
+    }                                                                     \
   } while (0)
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define CUDACHECK(cmd)                                                   \
-  do {                                                                   \
-    cudaError_t err = cmd;                                               \
-    if (err != cudaSuccess) {                                            \
-      LOG(FATAL) << "Failed, Cuda error " << __FILE__ << ":" << __LINE__ \
-                 << " " << cudaGetErrorString(err);                      \
-    }                                                                    \
+#define CUDACHECK(cmd)                                                    \
+  do {                                                                    \
+    cudaError_t err = cmd;                                                \
+    if (err != cudaSuccess) {                                             \
+      GLOG(FATAL) << "Failed, Cuda error " << __FILE__ << ":" << __LINE__ \
+                  << " " << cudaGetErrorString(err);                      \
+    }                                                                     \
   } while (0)
 
 at::Tensor flatten_for_scatter_gather(std::vector<at::Tensor>& tensors) {

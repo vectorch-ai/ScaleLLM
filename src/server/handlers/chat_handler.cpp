@@ -1,15 +1,16 @@
 #include "chat_handler.h"
 
-#include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
+#include <uuid.h>
 
 #include <cstdint>
 #include <sstream>
 #include <string>
 #include <thread>
-#include <uuid.h>
+
 #include "chat.grpc.pb.h"
+#include "common/logging.h"
 #include "models/args.h"
 #include "request/request.h"
 #include "server/call_data.h"
@@ -83,11 +84,11 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
   std::vector<int> token_ids;
   if (!tokenizer.encode(prompt, &token_ids)) {
-    LOG(ERROR) << "Failed to encode prompt: " << prompt;
+    GLOG(ERROR) << "Failed to encode prompt: " << prompt;
     return nullptr;
   }
   if (token_ids.size() > max_context_len) {
-    LOG(ERROR) << "Prompt is too long: " << token_ids.size();
+    GLOG(ERROR) << "Prompt is too long: " << token_ids.size();
     return nullptr;
   }
 

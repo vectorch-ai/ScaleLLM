@@ -3,11 +3,11 @@
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
 #include <folly/MPMCQueue.h>
-#include <glog/logging.h>
 
 #include <cstdint>
 #include <memory>
 
+#include "common/logging.h"
 #include "request/request.h"
 #include "request/sequence.h"
 
@@ -190,7 +190,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
 
   if (sequences_batch_.empty() && !priority_queue_.empty()) {
     // don't have enough memory to schedule one sequence
-    LOG(ERROR) << "Not enough memory to schedule one sequence";
+    GLOG(ERROR) << "Not enough memory to schedule one sequence";
     Request* request = priority_queue_.top();
     priority_queue_.pop();
 

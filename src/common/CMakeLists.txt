@@ -5,6 +5,7 @@ cc_library(
   NAME 
     common
   HDRS
+    logging.h
     metrics.h
     slice.h
     concurrent_queue.h

@@ -2,12 +2,13 @@
 
 #include <event2/util.h>
 #include <evhtp/evhtp.h>
-#include <glog/logging.h>
 
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "common/logging.h"
 
 namespace llm {
 
@@ -49,13 +50,13 @@ bool HttpServer::Start(uint16_t port, int32_t num_threads) {
   // set thread number
   evhtp_use_threads_wexit(htp_, nullptr, nullptr, num_threads, nullptr);
   if (evhtp_bind_socket(htp_, "0.0.0.0", port, 1024) != 0) {
-    LOG(ERROR) << "Failed to bind to port " << port;
+    GLOG(ERROR) << "Failed to bind to port " << port;
     return false;
   }
 
   // set up a pipe to break the event loop
   if (evutil_socketpair(AF_UNIX, SOCK_STREAM, 0, fds_) == -1) {
-    LOG(ERROR) << "Failed to create socket pair";
+    GLOG(ERROR) << "Failed to create socket pair";
     return false;
   }
   break_ev_ = event_new(evbase_, fds_[0], EV_READ, StopCallback, evbase_);

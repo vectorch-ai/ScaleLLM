@@ -1,11 +1,11 @@
 #pragma once
 
-#include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 
 #include <string>
 #include <thread>
 
+#include "common/logging.h"
 #include "handlers/chat_handler.h"
 #include "handlers/completion_handler.h"
 

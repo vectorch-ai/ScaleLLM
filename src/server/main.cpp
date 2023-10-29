@@ -1,7 +1,6 @@
 #include <absl/strings/str_split.h>
 #include <folly/init/Init.h>
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <csignal>
@@ -10,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <thread>
 
+#include "common/logging.h"
 #include "common/metrics.h"
 #include "engine/engine.h"
 #include "grpc_server.h"
@@ -33,7 +33,7 @@ DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 // NOLINTNEXTLINE
 static std::atomic<bool> running{true};
 void shutdown_handler(int signal) {
-  LOG(WARNING) << "Received signal " << signal << ", stopping server...";
+  GLOG(WARNING) << "Received signal " << signal << ", stopping server...";
   running.store(false, std::memory_order_relaxed);
 }
 
@@ -70,10 +70,10 @@ int main(int argc, char** argv) {
                           });
 
   if (!http_server.Start(FLAGS_http_port, /*num_threads=*/2)) {
-    LOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
+    GLOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
     return -1;
   }
-  LOG(INFO) << "Started http server on localhost:" << FLAGS_http_port;
+  GLOG(INFO) << "Started http server on localhost:" << FLAGS_http_port;
 
   // split device into chunks
   const std::vector<std::string> device_strs =
@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
   if (devices[0].is_cpu()) {
     // always use float32 on CPU since float16 is not supported
     dtype = torch::kFloat;
-    LOG(INFO) << "Using float32 on CPU.";
+    GLOG(INFO) << "Using float32 on CPU.";
   } else {
     dtype = torch::kHalf;
   }
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
   options.port = FLAGS_grpc_port;
 
   if (!grpc_server.start(options)) {
-    LOG(ERROR) << "failed to start grpc server";
+    GLOG(ERROR) << "failed to start grpc server";
     return -1;
   }
   // install graceful shutdown handler
@@ -139,12 +139,8 @@ int main(int argc, char** argv) {
   }
 
   // stop grpc server and http server
-  LOG(INFO) << "stopping grpc server...";
   grpc_server.stop();
-  LOG(INFO) << "stopping http server...";
   http_server.Stop();
 
-  // explicitly flush all logs
-  google::FlushLogFiles(google::INFO);
   return 0;
 }
