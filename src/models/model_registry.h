@@ -4,9 +4,10 @@
 #include <string>
 #include <unordered_map>
 
+#include "args.h"
+#include "causal_lm.h"
 #include "common/json_reader.h"
-#include "models/args.h"
-#include "models/causal_lm.h"
+#include "dialog.h"
 
 namespace llm {
 
@@ -16,6 +17,9 @@ using CausalLMFactory =
                                             const ParallelArgs& parallel_args,
                                             torch::ScalarType dtype,
                                             const torch::Device& device)>;
+
+using DialogFactory = std::function<std::unique_ptr<Dialog>()>;
+
 using ModelArgsLoader =
     std::function<bool(const JsonReader& json, ModelArgs* args)>;
 
@@ -25,6 +29,7 @@ using QuantizationArgsLoader =
 // TODO: add default args loader.
 struct ModelMeta {
   CausalLMFactory causal_lm_factory;
+  DialogFactory dialog_factory;
   ModelArgsLoader model_args_loader;
   QuantizationArgsLoader quant_args_loader;
 };
@@ -44,11 +49,16 @@ class ModelRegistry {
   static void register_quant_args_loader(const std::string& name,
                                          QuantizationArgsLoader loader);
 
+  static void register_dialog_factory(const std::string& name,
+                                      DialogFactory factory);
+
   static CausalLMFactory get_causallm_factory(const std::string& name);
 
   static ModelArgsLoader get_model_args_loader(const std::string& name);
 
   static QuantizationArgsLoader get_quant_args_loader(const std::string& name);
+
+  static DialogFactory get_dialog_factory(const std::string& name);
 
  private:
   std::unordered_map<std::string, ModelMeta> model_registry_;
@@ -70,6 +80,13 @@ class ModelRegistry {
               std::move(model));                                            \
         });                                                                 \
     return true;                                                            \
+  }()
+
+#define REGISTER_DIALOG(ModelType, ModelClass)                        \
+  const bool ModelType##_dialog_registered = []() {                   \
+    ModelRegistry::register_dialog_factory(                           \
+        #ModelType, []() { return std::make_unique<ModelClass>(); }); \
+    return true;                                                      \
   }()
 
 // Macro to register a model args loader with the ModelRegistry

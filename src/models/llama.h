@@ -9,6 +9,7 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
+#include "models/dialog.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -360,6 +361,8 @@ TORCH_MODULE(LlamaForCausalLM);
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(llama2, LlamaForCausalLM);
+REGISTER_DIALOG(llama2, Llama2Dialog);
+
 REGISTER_MODEL_ARGS(llama2, [&] {
   LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
   LOAD_ARG_OR(hidden_size, "dim", 4096);

@@ -51,6 +51,16 @@ void ModelRegistry::register_quant_args_loader(const std::string& name,
   }
 }
 
+void ModelRegistry::register_dialog_factory(const std::string& name,
+                                            DialogFactory factory) {
+  ModelRegistry* instance = get_instance();
+  if (instance->model_registry_[name].dialog_factory != nullptr) {
+    GLOG(WARNING) << "dialog factory for " << name << "already registered.";
+  } else {
+    instance->model_registry_[name].dialog_factory = factory;
+  }
+}
+
 CausalLMFactory ModelRegistry::get_causallm_factory(const std::string& name) {
   ModelRegistry* instance = get_instance();
   return instance->model_registry_[name].causal_lm_factory;
@@ -65,6 +75,11 @@ QuantizationArgsLoader ModelRegistry::get_quant_args_loader(
     const std::string& name) {
   ModelRegistry* instance = get_instance();
   return instance->model_registry_[name].quant_args_loader;
+}
+
+DialogFactory ModelRegistry::get_dialog_factory(const std::string& name) {
+  ModelRegistry* instance = get_instance();
+  return instance->model_registry_[name].dialog_factory;
 }
 
 }  // namespace llm

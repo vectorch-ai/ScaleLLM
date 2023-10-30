@@ -4,6 +4,7 @@
 #include <torch/torch.h>
 #include <uuid.h>
 
+#include <boost/algorithm/string.hpp>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -12,6 +13,7 @@
 #include "chat.grpc.pb.h"
 #include "common/logging.h"
 #include "models/args.h"
+#include "models/model_registry.h"
 #include "request/request.h"
 #include "server/call_data.h"
 #include "utils.h"
@@ -27,6 +29,12 @@ std::string generate_request_id() {
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 bool verify_request_arguments(ChatCallData* call_data) {
   const auto& request = call_data->request();
+  if (request.messages().empty()) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "messages is empty");
+    return false;
+  }
+
   // n and best_of are not implemented yet
   if (request.has_n() && request.n() > 1) {
     call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
@@ -72,6 +80,7 @@ bool verify_request_arguments(ChatCallData* call_data) {
   return true;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
                                                  const Tokenizer& tokenizer,
                                                  const ModelArgs& model_args) {
@@ -79,12 +88,36 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
   const int64_t max_context_len = model_args.max_position_embeddings();
 
-  // TODO: construct prompt from messages
-  std::string prompt = "test";
+  // construct prompt from dialog messages
+  auto dialog_factory =
+      ModelRegistry::get_dialog_factory(model_args.model_type());
+  if (dialog_factory == nullptr) {
+    GLOG(ERROR) << "Failed to get dialog factory for model type: "
+                << model_args.model_type();
+    return nullptr;
+  }
+  auto dialog = dialog_factory();
+  for (const auto& message : grpc_request.messages()) {
+    if (boost::iequals(message.role(), "system")) {
+      dialog->add_message(Dialog::Role::System, message.content());
+    } else if (boost::iequals(message.role(), "user")) {
+      dialog->add_message(Dialog::Role::User, message.content());
+    } else if (boost::iequals(message.role(), "assistant")) {
+      dialog->add_message(Dialog::Role::Assistant, message.content());
+    } else {
+      GLOG(ERROR) << "Unknown message role: " << message.role();
+      return nullptr;
+    }
+  }
+  auto prompt = dialog->get_prompt();
+  if (!prompt.has_value()) {
+    GLOG(ERROR) << "Failed to construct prompt from messages";
+    return nullptr;
+  }
 
   std::vector<int> token_ids;
-  if (!tokenizer.encode(prompt, &token_ids)) {
-    GLOG(ERROR) << "Failed to encode prompt: " << prompt;
+  if (!tokenizer.encode(prompt.value(), &token_ids)) {
+    GLOG(ERROR) << "Failed to encode prompt: " << prompt.value();
     return nullptr;
   }
   if (token_ids.size() > max_context_len) {
@@ -134,6 +167,8 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     request->priority = grpc_priority_to_priority(grpc_request.priority());
   }
   request->created_time = absl::ToUnixSeconds(absl::Now());
+  // disable echo for chat completion
+  request->echo = false;
 
   // add on_stream and on_finish callbacks
   if (request->stream) {
@@ -146,7 +181,9 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
       response.set_created(request->created_time);
       // response.set_model(request->model);
       auto* choice = response.add_choices();
-      // TODO: add ChatMessage
+      auto* message = choice->mutable_delta();
+      message->set_role("assistant");
+      message->set_content(delta);
       choice->set_index(0);
       if (reason != FinishReason::NONE) {
         choice->set_finish_reason(finish_reason_to_string(reason));
@@ -154,7 +191,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
       return call_data->write(response);
     };
 
-    request->add_sequence(prompt, std::move(token_ids), on_stream);
+    request->add_sequence(prompt.value(), std::move(token_ids), on_stream);
 
     request->on_finish = [call_data, request = request.get()](
                              const std::string& output_text,
@@ -167,7 +204,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
       return call_data->finish();
     };
   } else {
-    request->add_sequence(prompt, std::move(token_ids), nullptr);
+    request->add_sequence(prompt.value(), std::move(token_ids), nullptr);
     request->on_finish = [call_data, request = request.get()](
                              const std::string& output_text,
                              FinishReason reason,
@@ -178,7 +215,10 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
       response.set_created(request->created_time);
       // response.set_model(request->model);
       auto* choice = response.add_choices();
-      // TODO: add ChatMessage
+      auto* message = choice->mutable_message();
+      message->set_role("assistant");
+      message->set_content(output_text);
+
       choice->set_index(0);
       if (reason != FinishReason::NONE) {
         choice->set_finish_reason(finish_reason_to_string(reason));

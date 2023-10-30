@@ -9,6 +9,7 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
+#include "models/dialog.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -364,6 +365,7 @@ TORCH_MODULE(LlamaForCausalLM);
 
 // register the causal model
 REGISTER_CAUSAL_MODEL(llama, LlamaForCausalLM);
+REGISTER_DIALOG(llama, Llama2Dialog);
 // register the model args
 // example config:
 // https://huggingface.co/meta-llama/Llama-2-7b-hf/blob/main/config.json set
