@@ -67,6 +67,31 @@ func ForwardResponseStream(ctx context.Context, marshaler runtime.Marshaler, w h
 	}
 }
 
+func ForwardResponseMessage(ctx context.Context, marshaler runtime.Marshaler, w http.ResponseWriter, req *http.Request, resp proto.Message) {
+	// TODO: support metadata and trailers
+	w.Header().Set("Content-Type", "application/json")
+
+	buf, err := marshaler.Marshal(resp)
+	if err != nil {
+		glog.Errorf("Failed to marshal response: %v", err)
+		DefaultErrorHandler(ctx, marshaler, w, req, err)
+		return
+	}
+
+	if _, err := w.Write(buf); err != nil {
+		glog.Errorf("Failed to write response: %v", err)
+		DefaultErrorHandler(ctx, marshaler, w, req, err)
+		return
+	}
+
+	// write delimiter
+	if _, err := w.Write([]byte("\n")); err != nil {
+		glog.Errorf("Failed to send delimiter chunk: %v", err)
+		DefaultErrorHandler(ctx, marshaler, w, req, err)
+		return
+	}
+}
+
 func writeData(w http.ResponseWriter, data []byte, isStream bool) error {
 	// write data
 	if isStream {

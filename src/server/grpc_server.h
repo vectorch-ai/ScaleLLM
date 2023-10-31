@@ -8,6 +8,7 @@
 #include "common/logging.h"
 #include "handlers/chat_handler.h"
 #include "handlers/completion_handler.h"
+#include "handlers/models_handler.h"
 
 namespace llm {
 
@@ -19,9 +20,11 @@ class GrpcServer final {
   };
 
   GrpcServer(std::unique_ptr<CompletionHandler> completion_handler,
-             std::unique_ptr<ChatHandler> chat_handler)
+             std::unique_ptr<ChatHandler> chat_handler,
+             std::unique_ptr<ModelsHandler> models_handler)
       : completion_handler_(std::move(completion_handler)),
-        chat_handler_(std::move(chat_handler)) {}
+        chat_handler_(std::move(chat_handler)),
+        models_handler_(std::move(models_handler)) {}
 
   ~GrpcServer();
 
@@ -37,6 +40,9 @@ class GrpcServer final {
 
   // handler for chat requests
   std::unique_ptr<ChatHandler> chat_handler_;
+
+  // handler for models requests
+  std::unique_ptr<ModelsHandler> models_handler_;
 
   // registed service
   Completion::AsyncService completion_service_;

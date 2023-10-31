@@ -15,6 +15,7 @@
 #include "grpc_server.h"
 #include "handlers/chat_handler.h"
 #include "handlers/completion_handler.h"
+#include "handlers/models_handler.h"
 #include "http_server.h"
 #include "model_loader/model_downloader.h"
 #include "scheduler/continuous_batching_scheduler.h"
@@ -100,10 +101,14 @@ int main(int argc, char** argv) {
   }
 
   // check if model path exists
+  std::string model_id = FLAGS_model_name_or_path;
   std::string model_path = FLAGS_model_name_or_path;
   if (!std::filesystem::exists(model_path)) {
     // not a model path, try to download the model from huggingface hub
     model_path = llm::hf::download_model(FLAGS_model_name_or_path);
+  } else {
+    // use last part of the path as model id
+    model_id = std::filesystem::path(FLAGS_model_name_or_path).filename();
   }
 
   // create engine
@@ -116,10 +121,12 @@ int main(int argc, char** argv) {
       std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
   auto chat_handler =
       std::make_unique<ChatHandler>(scheduler.get(), engine.get());
+  auto models_handler = std::make_unique<ModelsHandler>(model_id);
 
   // start grpc server
   GrpcServer grpc_server(std::move(completion_handler),
-                         std::move(chat_handler));
+                         std::move(chat_handler),
+                         std::move(models_handler));
   GrpcServer::Options options;
   options.address = "localhost";
   options.port = FLAGS_grpc_port;

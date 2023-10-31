@@ -7,10 +7,10 @@ import "common.proto";
 
 message ChatMessage {
   // the role of the messages author. One of "system", "user", "assistant".
-  string role = 1;
+  optional string role = 1;
 
   // the content of the message. null for assistant messages with function calls.
-  string content = 2;
+  optional string content = 2;
 
   // the name of the messages author. only used for function calls.
   // string name = 3;

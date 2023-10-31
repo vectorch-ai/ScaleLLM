@@ -5,21 +5,21 @@ package llm;
 
 message ModelCard {
   // The model identifier, which can be referenced in the API endpoints.
-  string id = 1;
+  optional string id = 1;
 
   // The Unix timestamp (in seconds) when the model was created.
-  int64 created = 2;
+  optional uint32 created = 2;
 
   // the object type, which is always "model".
-  string object = 3;  
+  optional string object = 3;  
 
   // the organization that owns the model.
-  string owned_by = 4;
+  optional string owned_by = 4 [json_name = "owned_by"];
 }
 
 message ListRequest {
   // The model identifier.
-  string model = 1;
+  // string model = 1;
 }
 
 message ListResponse {

@@ -25,6 +25,7 @@ bool GrpcServer::start(const Options& options) {
   // clients. In this case it corresponds to an *asynchronous* service.
   builder.RegisterService(&completion_service_);
   builder.RegisterService(&chat_service_);
+  builder.RegisterService(models_handler_.get());
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
   cq_ = builder.AddCompletionQueue();

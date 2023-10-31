@@ -7,10 +7,12 @@ cc_library(
     utils.h
     completion_handler.h
     chat_handler.h
+    models_handler.h
   SRCS 
     utils.cpp
     completion_handler.cpp
     chat_handler.cpp
+    models_handler.cpp
   DEPS
     :common
     :scheduler

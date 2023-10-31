@@ -40,6 +40,12 @@ func run() error {
 		glog.Error("Failed to register chat handler from endpoint ", err)
 		return err
 	}
+	// register models handler
+	err = RegisterModelsHandlerFromEndpoint(ctx, handler, *grpcServerEndpoint, opts)
+	if err != nil {
+		glog.Error("Failed to register models handler from endpoint ", err)
+		return err
+	}
 
 	// Start HTTP server (and proxy calls to gRPC server endpoint)
 	glog.Info("Starting HTTP server at port 8080")

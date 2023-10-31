@@ -172,9 +172,9 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
   // add on_stream and on_finish callbacks
   if (request->stream) {
-    auto on_stream = [call_data, request = request.get()](
+    auto on_stream = [call_data, request = request.get(), first_message = true](
                          const std::string& delta,
-                         FinishReason reason) -> bool {
+                         FinishReason reason) mutable -> bool {
       ChatResponse response;
       response.set_object("chat.completion.chunk");
       response.set_id(request->id);
@@ -182,7 +182,11 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
       // response.set_model(request->model);
       auto* choice = response.add_choices();
       auto* message = choice->mutable_delta();
-      message->set_role("assistant");
+      // only set role for first message
+      if (first_message) {
+        message->set_role("assistant");
+        first_message = false;
+      }
       message->set_content(delta);
       choice->set_index(0);
       if (reason != FinishReason::NONE) {
