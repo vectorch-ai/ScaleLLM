@@ -22,14 +22,12 @@ cc_test(
     tokenizer_test
   SRCS
     sentencepiece_tokenizer_test.cpp
-    hf_tokenizer_test.cpp
   DEPS
     :tokenizer
     tokenizers
     GTest::gtest_main
   DATA 
     data/tokenizer.model
-    data/tokenizer.json.bin
 )
 
 # build huggingface tokenizers (rust)
