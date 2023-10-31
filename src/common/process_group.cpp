@@ -58,10 +58,8 @@ ncclDataType_t to_nccl_data_type(const torch::Tensor& input) {
       return ncclDataType_t::ncclUint8;
     case at::kBool:
       return ncclDataType_t::ncclUint8;
-#if HAS_NCCL_BF16_DATATYPE
     case at::kBFloat16:
       return ncclDataType_t::ncclBfloat16;
-#endif
     default:
       TORCH_CHECK(false, "Unconvertible NCCL type ", type);
   }
