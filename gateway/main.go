@@ -15,7 +15,8 @@ import (
 var (
 	// command-line options:
 	// gRPC server endpoint
-	grpcServerEndpoint = flag.String("grpc-server-endpoint", "localhost:8888", "gRPC server endpoint")
+	grpcServerEndpoint = flag.String("grpc-server", "localhost:8888", "gRPC server endpoint")
+	httpServerEndpoint = flag.String("http-server", "localhost:8080", "HTTP server endpoint")
 )
 
 func run() error {
@@ -34,6 +35,7 @@ func run() error {
 		glog.Error("Failed to register completion handler from endpoint ", err)
 		return err
 	}
+	glog.Info("Register grpc server at ", *grpcServerEndpoint)
 	// register chat handler
 	err = RegisterChatHandlerFromEndpoint(ctx, handler, *grpcServerEndpoint, opts)
 	if err != nil {
@@ -48,8 +50,8 @@ func run() error {
 	}
 
 	// Start HTTP server (and proxy calls to gRPC server endpoint)
-	glog.Info("Starting HTTP server at port 8080")
-	return http.ListenAndServe(":8080", handler)
+	glog.Info("Starting HTTP server at ", *httpServerEndpoint, " ...")
+	return http.ListenAndServe(*httpServerEndpoint, handler)
 }
 
 func main() {
