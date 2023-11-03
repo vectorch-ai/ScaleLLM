@@ -51,6 +51,7 @@ class ChatClient final {
     request.set_frequency_penalty(FLAGS_frequency_penalty);
     request.set_presence_penalty(FLAGS_presence_penalty);
     request.set_max_tokens(FLAGS_max_tokens);
+    request.set_stream(true);
 
     llm::Priority priority{};
     GCHECK(llm::Priority_Parse(FLAGS_priority, &priority));

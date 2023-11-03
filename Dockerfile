@@ -50,13 +50,10 @@ COPY --from=build /app ./
 # install python dependencies
 RUN pip3 install -r ./requirements.txt
 
-# set environment variables
-RUN PATH=/app/bin:$PATH && LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
-
 # expose ports
 EXPOSE 8888 9999
 
 # start the server
-ENTRYPOINT [ "/app/entrypoint.sh" ]
+ENTRYPOINT [ "./entrypoint.sh" ]
 
 

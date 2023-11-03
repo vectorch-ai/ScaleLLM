@@ -1,29 +1,22 @@
 version: '2.2'
 
 services:
-  # scalellm:
-  #   image: vectorchai/scalellm:latest
-  #   hostname: scalellm
-  #   container_name: scalellm
-  #   ports:
-  #     - "8888:8888"
-  #     - "9999:9999"
-  #   environment:
-  #     - HF_MODEL_ID=meta-llama/Llama-2-7b-chat-hf
-  #     - HF_MODEL_ALLOW_PATTERN="*.json,*.safetensors,*.model"
-  #     - HF_MODEL_CACHE_DIR=/models
-  #     - HF_MODEL_REVISION=main
-  #   volumes:
-  #     - $HOME/.cache/huggingface_hub:/models
-  #   command: --grpc-port=8888 --http-port=9999 --logtostderr
-  #   # turn on GPU access
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: all
-  #             capabilities: [gpu]
+  scalellm:
+    image: vectorchai/scalellm:latest
+    hostname: scalellm
+    container_name: scalellm
+    network_mode: "host"
+    volumes:
+      - /home/michael/code/codellama:/models
+    command: --model_path=/models/CodeLlama-7b-Python --logtostderr
+    # turn on GPU access
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   scalellm-gateway:
     image: vectorchai/scalellm-gateway:latest
@@ -31,8 +24,8 @@ services:
     container_name: scalellm-gateway
     network_mode: "host"
     command: --grpc-server=localhost:8888 --logtostderr
-    # depends_on:
-    #   - scalellm
+    depends_on:
+      - scalellm
 
   chatbot-ui:
     image: vectorchai/chatbot-ui:latest
@@ -45,4 +38,4 @@ services:
       - DEFAULT_SYSTEM_PROMPT=You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content.
     depends_on:
       - scalellm-gateway
-      # - scalellm
+      - scalellm
