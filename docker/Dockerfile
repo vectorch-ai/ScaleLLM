@@ -32,26 +32,30 @@ RUN cmake --build build --target all --config Release -j$(nproc)
 
 # install
 RUN cmake --install build --prefix /app
-COPY ./entrypoint.sh /app/entrypoint.sh
-COPY ./requirements.txt /app/requirements.txt
+COPY ./docker/entrypoint.sh /app/entrypoint.sh
+COPY ./docker/requirements.txt /app/requirements.txt
 
 # ---- Production ----
 FROM nvcr.io/nvidia/cuda:12.1.0-base-ubuntu22.04 as runtime
 WORKDIR /app
+
+# copy artifacts from build
+COPY --from=build /app ./
+
 # install python and dependencies
 RUN apt-get update -q -y && \
     apt-get install -q -y \
     python3 \
     python3-pip
 
-# copy artifacts from build
-COPY --from=build /app ./
-
 # install python dependencies
 RUN pip3 install -r ./requirements.txt
 
-# expose ports
-EXPOSE 8888 9999
+# expose port for grpc
+EXPOSE 8888
+
+# expose port for http
+EXPOSE 9999
 
 # start the server
 ENTRYPOINT [ "./entrypoint.sh" ]

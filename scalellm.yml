@@ -7,7 +7,11 @@ services:
     container_name: scalellm
     network_mode: "host"
     environment:
-      - HF_MODEL_ID=TheBloke/Llama-2-7B-Chat-AWQ
+      - HF_MODEL_ID=${HF_MODEL_ID:-TheBloke/Llama-2-13B-chat-AWQ}
+      - HF_MODEL_REVISION=${HF_MODEL_REVISION}
+      - HF_MODEL_ALLOW_PATTERN=${HF_MODEL_ALLOW_PATTERN}
+      - HF_MODEL_CACHE_DIR=${HF_MODEL_CACHE_DIR}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
     volumes:
       - $HOME/.cache/huggingface/hub:/models
     command: --logtostderr
