@@ -109,8 +109,9 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
                                                         0,   // offset
                                                         -1,  // length
                                                         options);
-  // lock it to memory
-  mem_map->mlock(folly::MemoryMapping::LockMode::MUST_LOCK);
+  // lock it to memory caused segfault in docker.
+  // TODO: reenable it when we figure out the issue.
+  // mem_map->mlock(folly::MemoryMapping::LockMode::MUST_LOCK);
   const folly::ByteRange content = mem_map->range();
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   const uint8_t* data = reinterpret_cast<const uint8_t*>(content.data());
