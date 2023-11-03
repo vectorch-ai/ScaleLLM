@@ -6,9 +6,11 @@ services:
     hostname: scalellm
     container_name: scalellm
     network_mode: "host"
+    environment:
+      - HF_MODEL_ID=TheBloke/Llama-2-7B-Chat-AWQ
     volumes:
-      - /home/michael/code/codellama:/models
-    command: --model_path=/models/CodeLlama-7b-Python --logtostderr
+      - $HOME/.cache/huggingface/hub:/models
+    command: --logtostderr
     # turn on GPU access
     deploy:
       resources:
