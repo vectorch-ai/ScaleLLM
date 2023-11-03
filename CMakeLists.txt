@@ -30,8 +30,9 @@ project(
   LANGUAGES CXX CUDA
 )
 
-# CMake 3.18 adds integrated support for architecture selection, disable it for now.
-set(CMAKE_CUDA_ARCHITECTURES OFF)
+find_package(CUDA 12.1 REQUIRED)
+set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
+message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
 
 # setup CMake module path, defines path for include() and find_package()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)

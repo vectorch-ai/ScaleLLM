@@ -53,13 +53,34 @@ cc_binary(
     :grpc_server
     :http_server
     :engine
-    :model_downloader
     absl::strings
     gflags::gflags
     glog::glog
     Folly::folly
     nlohmann_json::nlohmann_json
 )
+
+# install scalellm binary
+install(TARGETS scalellm RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# Install all dependencies for scalellm
+install(CODE [[
+    file(GET_RUNTIME_DEPENDENCIES
+            RESOLVED_DEPENDENCIES_VAR DEPENDENCIES
+            UNRESOLVED_DEPENDENCIES_VAR UNRESOLVED_DEPENDENCIES
+            EXECUTABLES $<TARGET_FILE:scalellm>)
+
+    file(INSTALL
+            DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"
+            FILES ${DEPENDENCIES}
+            FOLLOW_SYMLINK_CHAIN)
+
+    # This should not be possible, but error out when a dependency cannot
+    # be resolved.
+    list(LENGTH UNRESOLVED_DEPENDENCIES UNRESOLVED_LENGTH)
+    if(${UNRESOLVED_LENGTH} GREATER 0)
+        message(FATAL_ERROR "Unresolved dependencies: ${UNRESOLVED_DEPENDENCIES}")
+    endif()
+]])
 
 cc_binary(
   NAME 

@@ -17,14 +17,13 @@
 #include "handlers/completion_handler.h"
 #include "handlers/models_handler.h"
 #include "http_server.h"
-#include "model_loader/model_downloader.h"
 #include "scheduler/continuous_batching_scheduler.h"
 
 using namespace llm;
 
-DEFINE_string(model_name_or_path,
-              "gpt2",
-              "hf model name or path to the model file.");
+DEFINE_string(model_id, "", "hf model name.");
+
+DEFINE_string(model_path, "", "hf model path to the model file.");
 
 DEFINE_string(device, "cuda:0", "Device to run the model on.");
 
@@ -42,6 +41,16 @@ int main(int argc, char** argv) {
   // glog and glfag will be initialized in folly::init
   folly::Init init(&argc, &argv);
   google::InstallFailureSignalHandler();
+
+  // check if model path exists
+  if (!std::filesystem::exists(FLAGS_model_path)) {
+    LOG(FATAL) << "Model path " << FLAGS_model_path << " does not exist.";
+  }
+
+  if (FLAGS_model_id.empty()) {
+    // use last part of the path as model id
+    FLAGS_model_id = std::filesystem::path(FLAGS_model_path).filename();
+  }
 
   HttpServer http_server;
   http_server.RegisterURI("/gflags",
@@ -100,20 +109,9 @@ int main(int argc, char** argv) {
     dtype = torch::kHalf;
   }
 
-  // check if model path exists
-  std::string model_id = FLAGS_model_name_or_path;
-  std::string model_path = FLAGS_model_name_or_path;
-  if (!std::filesystem::exists(model_path)) {
-    // not a model path, try to download the model from huggingface hub
-    model_path = llm::hf::download_model(FLAGS_model_name_or_path);
-  } else {
-    // use last part of the path as model id
-    model_id = std::filesystem::path(FLAGS_model_name_or_path).filename();
-  }
-
   // create engine
   auto engine = std::make_unique<Engine>(dtype, devices);
-  GCHECK(engine->init(model_path));
+  GCHECK(engine->init(FLAGS_model_path));
 
   // create scheduler and grpc handlers
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
@@ -121,7 +119,7 @@ int main(int argc, char** argv) {
       std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
   auto chat_handler =
       std::make_unique<ChatHandler>(scheduler.get(), engine.get());
-  auto models_handler = std::make_unique<ModelsHandler>(model_id);
+  auto models_handler = std::make_unique<ModelsHandler>(FLAGS_model_id);
 
   // start grpc server
   GrpcServer grpc_server(std::move(completion_handler),

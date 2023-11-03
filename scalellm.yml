@@ -9,11 +9,12 @@ services:
   #     - "8888:8888"
   #     - "9999:9999"
   #   environment:
-  #     - MODEL_ID=scalellm
-  #     - MODEL_REVISION_ID=1
-  #     - MODEL_PATH=/models
+  #     - HF_MODEL_ID=meta-llama/Llama-2-7b-chat-hf
+  #     - HF_MODEL_ALLOW_PATTERN="*.json,*.safetensors,*.model"
+  #     - HF_MODEL_CACHE_DIR=/models
+  #     - HF_MODEL_REVISION=main
   #   volumes:
-  #     - .:/models
+  #     - $HOME/.cache/huggingface_hub:/models
   #   command: --grpc-port=8888 --http-port=9999 --logtostderr
   #   # turn on GPU access
   #   deploy:
