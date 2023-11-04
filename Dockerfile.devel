@@ -1,0 +1,35 @@
+# ---- Build ----
+FROM nvcr.io/nvidia/cuda:12.1.0-devel-ubuntu22.04 as build
+
+ARG UID=1000
+ARG GID=1000
+
+LABEL maintainer="mi@vectorch.com"
+
+# install build tools
+RUN apt-get update -q -y && \
+    apt-get install -q -y \
+    build-essential \
+    ninja-build \
+    cmake \
+    python3-dev \
+    zip \
+    pkg-config \
+    libssl-dev \
+    curl \
+    git 
+
+# install rust
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+# change owner so that non-root user can install rust packages
+RUN chown -R $UID:$GID /usr/local/rustup
+RUN chown -R $UID:$GID /usr/local/cargo
+
+# TODO: install golang
+
+CMD ["/bin/bash"]
+
+

@@ -6,6 +6,19 @@ if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
 
+# if defined, create and use the default binary cache for vcpkg
+if (DEFINED ENV{VCPKG_DEFAULT_BINARY_CACHE})
+  set(VCPKG_DEFAULT_BINARY_CACHE "$ENV{VCPKG_DEFAULT_BINARY_CACHE}")
+  file(MAKE_DIRECTORY ${VCPKG_DEFAULT_BINARY_CACHE})
+  message(STATUS "Using VCPKG_DEFAULT_BINARY_CACHE: ${VCPKG_DEFAULT_BINARY_CACHE}")
+endif()
+
+
+# set architecture for CUDA
+set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
+set(TORCH_CUDA_ARCH_LIST "8.0 8.6 8.9 9.0")
+message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
 if (DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
@@ -29,10 +42,7 @@ project(
   "ScaleLLM"
   LANGUAGES CXX CUDA
 )
-
 find_package(CUDA 12.1 REQUIRED)
-set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
-message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
 
 # setup CMake module path, defines path for include() and find_package()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)

@@ -1,8 +1,9 @@
 # ---- Build ----
 FROM nvcr.io/nvidia/cuda:12.1.0-devel-ubuntu22.04 as build
-WORKDIR /build
 
 ARG VERSION=main
+
+LABEL maintainer="mi@vectorch.com"
 
 # install build tools
 RUN apt-get update -q -y && \
@@ -21,10 +22,10 @@ RUN apt-get update -q -y && \
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV source "$HOME/.cargo/env"
 
-# enlist code
-RUN git clone --recursive  --branch=${VERSION} https://github.com/vectorch-ai/ScaleLLM.git
+WORKDIR /ScaleLLM
 
-WORKDIR /build/ScaleLLM
+# copy code from host to container
+COPY ./ ./
 
 # build
 RUN cmake -G Ninja -S . -B build
@@ -32,8 +33,8 @@ RUN cmake --build build --target all --config Release -j$(nproc)
 
 # install
 RUN cmake --install build --prefix /app
-COPY ./docker/entrypoint.sh /app/entrypoint.sh
-COPY ./docker/requirements.txt /app/requirements.txt
+RUN cp ./entrypoint.sh /app/entrypoint.sh
+RUN cp ./requirements.txt /app/requirements.txt
 
 # ---- Production ----
 FROM nvcr.io/nvidia/cuda:12.1.0-base-ubuntu22.04 as runtime

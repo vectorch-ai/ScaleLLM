@@ -1,0 +1,38 @@
+name: Build and publish docker image to Docker Hub
+# Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
+# Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
+on:
+  push:
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+*
+
+jobs:
+  publish_docker_image:
+    runs-on: [self-hosted, linux, x64, 1gpu]
+    steps:
+      - uses: olegtarasov/get-tag@v2.1
+        id: tagName
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build and push
+        id: docker_build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            vectorchai/scalellm:latest
+            vectorchai/scalellm:${{ steps.tagName.outputs.tag }}
+  
+      - name: Image digest
+        run: echo ${{ steps.docker_build.outputs.digest }}

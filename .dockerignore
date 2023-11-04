@@ -1,0 +1,20 @@
+# Visual Studio Code
+/.vscode*
+
+# vcpkg
+/.vcpkg*
+
+# clangd cache
+/.cache*
+
+# github workflows
+/.github*
+
+# CMake build outputs
+/build*
+
+# tests
+/docs*
+
+# gateway
+/gateway*

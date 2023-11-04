@@ -1,0 +1,72 @@
+name: build and test
+
+on:
+  push:
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "tools/**"
+      - "gateway/**"
+      - "scripts/**"
+      - "**/*.md"
+    branches: 
+      - main
+
+  pull_request:
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "tools/**"
+      - "gateway/**"
+      - "scripts/**"
+      - "**/*.md"
+    branches:
+      - main
+
+jobs:
+  linux-gcc:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
+        # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+        build_type: [Release]
+    
+    runs-on: [self-hosted, linux, x64, 1gpu]
+    
+    env:
+        BUILD_TYPE: ${{ matrix.build_type }}
+        # Tells vcpkg where binary packages are stored.
+        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg_bincache
+
+    steps:
+    - name: Install toolkits
+      run: |
+        sudo apt-get install -y build-essential ninja-build bison gcc-12 libunwind-dev python3-dev
+  
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    # Restore both vcpkg and its artifacts from the GitHub cache service.
+    - name: Restore vcpkg and its artifacts.
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: |
+         scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}-${{ hashFiles( 'vcpkg.json' ) }}
+
+    - name: CMake Build in the 'build' subdirectory
+      run: |
+        cmake -G Ninja -S . -B build
+        cmake --build build --config ${{env.BUILD_TYPE}} --target all
+
+    # - name: benchmark
+    #   if: ${{ env.BUILD_TYPE == 'Release' }}
+    #   run: ./build/src/benchmark/micro_benchmark
+
+    # - name: Test
+    #   working-directory: ${{github.workspace}}/build
+    #   # Execute tests defined by the CMake configuration.
+    #   run: ctest --output-on-failure -C ${{env.BUILD_TYPE}}
+
