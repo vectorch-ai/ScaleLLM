@@ -36,7 +36,7 @@ jobs:
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg_bincache
+        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg/bincache
 
     steps:
     - name: Install toolkits
@@ -58,15 +58,15 @@ jobs:
 
     - name: CMake Build in the 'build' subdirectory
       run: |
-        cmake -G Ninja -S . -B build
+        cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80 -DTORCH_CUDA_ARCH_LIST=8.0
         cmake --build build --config ${{env.BUILD_TYPE}} --target all
 
     # - name: benchmark
     #   if: ${{ env.BUILD_TYPE == 'Release' }}
     #   run: ./build/src/benchmark/micro_benchmark
 
-    # - name: Test
-    #   working-directory: ${{github.workspace}}/build
-    #   # Execute tests defined by the CMake configuration.
-    #   run: ctest --output-on-failure -C ${{env.BUILD_TYPE}}
+    - name: Run unit tests
+      working-directory: ${{github.workspace}}/build
+      # Execute tests defined by the CMake configuration.
+      run: ctest --output-on-failure -C ${{env.BUILD_TYPE}}
 

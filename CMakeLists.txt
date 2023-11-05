@@ -15,9 +15,13 @@ endif()
 
 
 # set architecture for CUDA
-set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
-set(TORCH_CUDA_ARCH_LIST "8.0 8.6 8.9 9.0")
-message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
+  set(TORCH_CUDA_ARCH_LIST "8.0 8.6 8.9 9.0")
+  message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+else()
+  message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+endif()
 
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.

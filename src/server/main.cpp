@@ -1,4 +1,5 @@
 #include <absl/strings/str_split.h>
+#include <c10/core/Device.h>
 #include <folly/init/Init.h>
 #include <gflags/gflags.h>
 #include <torch/torch.h>
@@ -25,7 +26,10 @@ DEFINE_string(model_id, "", "hf model name.");
 
 DEFINE_string(model_path, "", "hf model path to the model file.");
 
-DEFINE_string(device, "cuda:0", "Device to run the model on.");
+DEFINE_string(device,
+              "auto",
+              "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
+              "auto to use all available gpus.");
 
 DEFINE_int32(http_port, 9999, "Port for http server.");
 DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
@@ -35,6 +39,37 @@ static std::atomic<bool> running{true};
 void shutdown_handler(int signal) {
   GLOG(WARNING) << "Received signal " << signal << ", stopping server...";
   running.store(false, std::memory_order_relaxed);
+}
+
+std::vector<torch::Device> parse_devices(const std::string& device_str) {
+  std::vector<torch::Device> devices;
+  if (device_str == "auto") {
+    // use all available gpus if any
+    const auto num_gpus = torch::cuda::device_count();
+    if (num_gpus == 0) {
+      GLOG(INFO) << "no gpus found, using cpu.";
+      return {torch::kCPU};
+    }
+    devices.reserve(num_gpus);
+    for (int i = 0; i < num_gpus; ++i) {
+      devices.emplace_back(torch::kCUDA, i);
+    }
+    GLOG(INFO) << "using " << num_gpus << " gpus.";
+    return devices;
+  }
+
+  // parse device string
+  const std::vector<std::string> device_strs = absl::StrSplit(device_str, ',');
+  std::set<torch::DeviceType> device_types;
+  devices.reserve(device_strs.size());
+  for (const auto& device_str : device_strs) {
+    devices.emplace_back(device_str);
+    device_types.insert(devices.back().type());
+  }
+  GCHECK(!devices.empty()) << "No devices specified.";
+  GCHECK(device_types.size() == 1)
+      << "All devices must be of the same type. Got: " << FLAGS_device;
+  return devices;
 }
 
 int main(int argc, char** argv) {
@@ -85,19 +120,8 @@ int main(int argc, char** argv) {
   }
   GLOG(INFO) << "Started http server on localhost:" << FLAGS_http_port;
 
-  // split device into chunks
-  const std::vector<std::string> device_strs =
-      absl::StrSplit(FLAGS_device, ',');
-  std::vector<torch::Device> devices;
-  devices.reserve(device_strs.size());
-  std::set<torch::DeviceType> device_types;
-  for (const auto& device_str : device_strs) {
-    devices.emplace_back(device_str);
-    device_types.insert(devices.back().type());
-  }
-  GCHECK(!devices.empty()) << "No devices specified.";
-  GCHECK(device_types.size() == 1)
-      << "All devices must be of the same type. Got: " << FLAGS_device;
+  // parse devices
+  const auto devices = parse_devices(FLAGS_device);
 
   // set the default dtype
   torch::ScalarType dtype{};

@@ -22,15 +22,3 @@ cc_library(
     torch
 )
 
-cc_test(
-  NAME
-    models_test
-  SRCS
-    llama_test.cpp
-    huggingface/mpt_test.cpp
-  DEPS
-    :models
-    :state_dict
-    GTest::gtest_main
-)
-

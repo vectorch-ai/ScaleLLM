@@ -60,7 +60,7 @@ RUN_OPTS+=(--rm -it --network=host)
 # output data that might be used by other scripts/binaries
 RUN_OPTS+=("-v $(pwd):$(pwd)")
 RUN_OPTS+=("-v /tmp:/tmp")
-CMD="bash -c 'cd $(pwd); VCPKG_DEFAULT_BINARY_CACHE=$(pwd)/.vcpkg_bincache $@'"
+CMD="bash -c 'cd $(pwd); VCPKG_DEFAULT_BINARY_CACHE=$(pwd)/.vcpkg/bincache $@'"
 
 [[ "${CMD}" = "" ]] && usage
 [[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
