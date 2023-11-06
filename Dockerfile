@@ -20,7 +20,7 @@ RUN apt-get update -q -y && \
 
 # install rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV source "$HOME/.cargo/env"
+ENV PATH=$HOME/.cargo/bin:$PATH
 
 WORKDIR /ScaleLLM
 

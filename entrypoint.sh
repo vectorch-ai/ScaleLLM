@@ -1,5 +1,5 @@
 #!/bin/bash
-
+DEVICE=${DEVICE:-"auto"}
 # Set default values for HF_MODEL_REVISION and HF_MODEL_ALLOW_PATTERN
 HF_MODEL_REVISION=${HF_MODEL_REVISION:-main}
 # Define allowed file patterns for config, tokenizer, and model weights
@@ -25,6 +25,8 @@ elif [ -n "$HF_MODEL_PATH" ]; then
 
     ARGS+=" --model_path "$HF_MODEL_PATH""
 fi
+
+ARGS+=" --device "$DEVICE""
 
 # Run the 'scalellm' command with the specified arguments
 LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH /app/bin/scalellm $ARGS "$@"

@@ -118,7 +118,6 @@ int main(int argc, char** argv) {
     GLOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
     return -1;
   }
-  GLOG(INFO) << "Started http server on localhost:" << FLAGS_http_port;
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
@@ -150,11 +149,11 @@ int main(int argc, char** argv) {
                          std::move(chat_handler),
                          std::move(models_handler));
   GrpcServer::Options options;
-  options.address = "localhost";
+  options.address = "0.0.0.0";
   options.port = FLAGS_grpc_port;
 
   if (!grpc_server.start(options)) {
-    GLOG(ERROR) << "failed to start grpc server";
+    GLOG(ERROR) << "failed to start grpc server on port " << FLAGS_grpc_port;
     return -1;
   }
   // install graceful shutdown handler

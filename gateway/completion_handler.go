@@ -19,7 +19,7 @@ import (
 	gw "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
-func SendChateRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_CompleteClient, bool, error) {
+func SendCompleteRequest(ctx context.Context, marshaler gw.Marshaler, client scalellm.CompletionClient, req *http.Request) (scalellm.Completion_CompleteClient, bool, error) {
 	var protoReq scalellm.CompletionRequest
 	newReader, berr := utilities.IOReaderFactory(req.Body)
 	if berr != nil {
@@ -33,7 +33,8 @@ func SendChateRequest(ctx context.Context, marshaler gw.Marshaler, client scalel
 	if err != nil {
 		return nil, false, err
 	}
-	return stream, *protoReq.Stream, nil
+	isStream := protoReq.Stream != nil && *protoReq.Stream
+	return stream, isStream, nil
 
 }
 
@@ -42,7 +43,7 @@ func RegisterCompletionHandlerClient(ctx context.Context, handler *HttpHandler, 
 	handler.Handle("POST", "/v1/completions", func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
-		resp, isStream, err := SendChateRequest(ctx, handler.marshaler, client, req)
+		resp, isStream, err := SendCompleteRequest(ctx, handler.marshaler, client, req)
 		if err != nil {
 			DefaultErrorHandler(ctx, handler.marshaler, w, req, err)
 			return

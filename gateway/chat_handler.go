@@ -33,7 +33,8 @@ func SendChatRequest(ctx context.Context, marshaler gw.Marshaler, client scalell
 	if err != nil {
 		return nil, false, err
 	}
-	return stream, *protoReq.Stream, nil
+	isStream := protoReq.Stream != nil && *protoReq.Stream
+	return stream, isStream, nil
 
 }
 

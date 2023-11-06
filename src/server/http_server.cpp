@@ -62,6 +62,7 @@ bool HttpServer::Start(uint16_t port, int32_t num_threads) {
   break_ev_ = event_new(evbase_, fds_[0], EV_READ, StopCallback, evbase_);
   event_add(break_ev_, nullptr);
   thread_ = std::thread(event_base_loop, evbase_, 0);
+  GLOG(INFO) << "Started http server on 0.0.0.0:" << port;
   return true;
 }
 
