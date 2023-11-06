@@ -1,4 +1,5 @@
 # ScaleLLM: An efficient LLM Inference solution
+[![build and test](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) | 
 
 > **WARNING**: ScaleLLM is currently in the active development stage and may not yet provide the optimal level of inference efficiency. We are fully dedicated to continuously enhancing its efficiency while also adding more features.
 
