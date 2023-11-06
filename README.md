@@ -1,5 +1,8 @@
 # ScaleLLM: An efficient LLM Inference solution
-[![build and test](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) | 
+[![build and test](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) [![GitHub Repo stars](https://img.shields.io/github/stars/vectorch-ai/ScaleLLM?style=social)](https://github.com/vectorch-ai/ScaleLLM/stargazers)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+[![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn)](https://discord.gg/PKe5gvBZfn)
 
 > **WARNING**: ScaleLLM is currently in the active development stage and may not yet provide the optimal level of inference efficiency. We are fully dedicated to continuously enhancing its efficiency while also adding more features.
 
@@ -21,6 +24,8 @@ In the coming weeks, we have exciting plans to focus on [**_speculative decoding
 - [Quatization](#quatization)
 - [Limitations](#limitations)
 - [Contributing](#Contributing)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
 
 ## Overview
@@ -225,7 +230,7 @@ for chunk in completion:
 
 If your model is not included in the supported list, we are more than willing to assist you. Please feel free to create a request for adding a new model on [GitHub Issues](https://github.com/vectorch-ai/ScaleLLM/issues).
 
-## Quatization
+## Quantization
 Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization (**APTQ**) and Activation-aware Weight Quantization (**AWQ**), with seamless integration into the following libraries: autogptq, exllama, exllamav2, and awq. 
 
 >By default, **exllamav2** is employed for GPTQ 4-bit quantization. However, you have the flexibility to choose a specific implementation by configuring the **"--qlinear_gptq_impl"** option, which allows you to select from exllama, exllamav2, or the automatic option.
@@ -238,4 +243,22 @@ There are several known limitations we are looking to address in the coming mont
 
 ## Contributing
 
-If you have any questions or want to contribute, please don't hesitate to ask in our ["Discussions" forum](https://github.com/vectorch-ai/ScaleLLM/discussions) or join our ["Discord" chat room](https://discord.gg/PKe5gvBZfn). We welcome your input and contributions to make ScaleLLM even better.
+If you have any questions or want to contribute, please don't hesitate to ask in our ["Discussions" forum](https://github.com/vectorch-ai/ScaleLLM/discussions) or join our ["Discord" chat room](https://discord.gg/PKe5gvBZfn). We welcome your input and contributions to make ScaleLLM even better. Please follow the [Contributing.md](https://github.com/vectorch-ai/ScaleLLM/blob/main/CONTRIBUTING.md) to get started.
+
+## Acknowledgements
+The following open-source projects have been used in this project, either in their original form or modified to meet our needs:
+* [Pytorch]()
+* [FasterTransformer]()
+* [vllm]()
+* [auto-gptq]()
+* [llm-awq]()
+* [flash-attn]()
+* [exllama]()
+* [tokenizers]()
+* [safetensors]()
+* [sentencepiece]()
+* [grpc-gateway]()
+* [Chatbot UI]()
+
+## License
+This project is released under the [Apache 2.0 license](https://github.com/vectorch-ai/ScaleLLM/blob/main/LICENSE).
