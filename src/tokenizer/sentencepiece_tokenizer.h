@@ -8,7 +8,7 @@ namespace llm {
 // a tokenizer that uses google/SentencePiece
 class SentencePieceTokenizer : public Tokenizer {
  public:
-  explicit SentencePieceTokenizer(const std::string& vocab_file_path);
+  explicit SentencePieceTokenizer(const std::string& vocab_file_path, bool prepend_bos);
 
   bool encode(const std::string_view& text,
               std::vector<int32_t>* ids) const override;
@@ -23,6 +23,8 @@ class SentencePieceTokenizer : public Tokenizer {
   std::string vocab_file_path_;
 
   sentencepiece::SentencePieceProcessor sp_processor_;
+
+  bool prepend_bos_ = false;
 };
 
 }  // namespace llm

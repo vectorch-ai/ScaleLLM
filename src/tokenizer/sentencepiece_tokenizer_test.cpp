@@ -5,7 +5,7 @@
 namespace llm {
 
 TEST(SentencePieceTokenizerTest, EncodeDecodeTest) {
-  SentencePieceTokenizer tokenizer("data/tokenizer.model");
+  SentencePieceTokenizer tokenizer("data/tokenizer.model", /*prepend_bos=*/true);
   std::vector<int> ids;
   ASSERT_TRUE(tokenizer.encode("Hello, world!", &ids));
   const std::vector<int> desired_ids = {1, 15043, 29892, 3186, 29991};
@@ -16,7 +16,7 @@ TEST(SentencePieceTokenizerTest, EncodeDecodeTest) {
 }
 
 TEST(SentencePieceTokenizerTest, CJKTest) {
-  SentencePieceTokenizer tokenizer("data/tokenizer.model");
+  SentencePieceTokenizer tokenizer("data/tokenizer.model", /*prepend_bos=*/true);
   const std::string test_text = "你好，世界！";
   std::vector<int> ids;
   ASSERT_TRUE(tokenizer.encode(test_text, &ids));

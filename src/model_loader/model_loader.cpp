@@ -78,7 +78,7 @@ std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
     GLOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
     return nullptr;
   }
-  return std::make_unique<SentencePieceTokenizer>(tokenizer_path);
+  return std::make_unique<SentencePieceTokenizer>(tokenizer_path, /*prepend_bos=*/true);
 }
 
 PTModelLoader::PTModelLoader(const std::string& model_weights_path)
@@ -150,12 +150,13 @@ std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
     return HFTokenizer::from_file(tokenizer_path);
   }
 
+  // fallback to tokenizer.model if tokenizer.json does not exist
   const std::string vocab_path = model_weights_path_ + "/tokenizer.model";
   if (std::filesystem::exists(vocab_path)) {
     GLOG(WARNING) << "Failed to find tokenizer.json, use tokenizer.model "
                      "instead. Please consider to convert the tokenizer.model "
                      "to tokenizer.json for better performance.";
-    return std::make_unique<SentencePieceTokenizer>(vocab_path);
+    return std::make_unique<SentencePieceTokenizer>(vocab_path, /*prepend_bos=*/false);
   }
 
   GLOG(ERROR)

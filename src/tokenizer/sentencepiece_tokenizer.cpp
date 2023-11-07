@@ -6,8 +6,9 @@
 namespace llm {
 
 SentencePieceTokenizer::SentencePieceTokenizer(
-    const std::string& vocab_file_path)
-    : vocab_file_path_(vocab_file_path) {
+    const std::string& vocab_file_path,
+    bool prepend_bos)
+    : vocab_file_path_(vocab_file_path), prepend_bos_(prepend_bos) {
   const auto status = sp_processor_.Load(vocab_file_path);
   if (!status.ok()) {
     GLOG(FATAL) << "Failed to load SentencePiece model from " << vocab_file_path
@@ -16,7 +17,8 @@ SentencePieceTokenizer::SentencePieceTokenizer(
 }
 
 std::unique_ptr<Tokenizer> SentencePieceTokenizer::clone() const {
-  return std::make_unique<SentencePieceTokenizer>(this->vocab_file_path_);
+  return std::make_unique<SentencePieceTokenizer>(this->vocab_file_path_,
+                                                  this->prepend_bos_);
 }
 
 bool SentencePieceTokenizer::encode(const std::string_view& text,
@@ -28,7 +30,9 @@ bool SentencePieceTokenizer::encode(const std::string_view& text,
     return false;
   }
   // prepend bos token
-  ids->insert(ids->begin(), sp_processor_.bos_id());
+  if (prepend_bos_) {
+    ids->insert(ids->begin(), sp_processor_.bos_id());
+  }
   return true;
 }
 
