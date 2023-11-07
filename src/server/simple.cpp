@@ -55,16 +55,6 @@ int main(int argc, char* argv[]) {
   GCHECK(device_types.size() == 1)
       << "All devices must be of the same type. Got: " << FLAGS_device;
 
-  // set the default dtype
-  torch::ScalarType dtype{};
-  if (devices[0].is_cpu()) {
-    // always use float32 on CPU since float16 is not supported
-    dtype = torch::kFloat;
-    GLOG(INFO) << "Using float32 on CPU.";
-  } else {
-    dtype = torch::kHalf;
-  }
-
   // check if model path exists
   std::string model_path = FLAGS_model_name_or_path;
   if (!std::filesystem::exists(model_path)) {
@@ -72,7 +62,7 @@ int main(int argc, char* argv[]) {
     model_path = llm::hf::download_model(FLAGS_model_name_or_path);
   }
 
-  llm::Engine engine(dtype, devices);
+  llm::Engine engine(devices);
   GCHECK(engine.init(model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();

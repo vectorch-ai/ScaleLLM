@@ -32,14 +32,14 @@ struct OutputParameters {
 
 class Worker final {
  public:
-  Worker(const ParallelArgs& parallel_args,
-         torch::ScalarType dtype,
-         const torch::Device& device);
+  Worker(const ParallelArgs& parallel_args, const torch::Device& device);
 
   ~Worker() = default;
 
   // initialize model, cache manager. blocking call
-  bool init_model(const ModelArgs& args, const QuantizationArgs& quant_args);
+  bool init_model(torch::ScalarType dtype,
+                  const ModelArgs& args,
+                  const QuantizationArgs& quant_args);
 
   // Load the model weights from state_dict. blocking call
   // can be called multiple times to reload the model with different parameters
@@ -59,7 +59,8 @@ class Worker final {
                                  const SamplingParameters& sampling_params);
 
   // initialize model, cache manager. async call
-  folly::SemiFuture<bool> init_model_async(const ModelArgs& args,
+  folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
+                                           const ModelArgs& args,
                                            const QuantizationArgs& quant_args);
 
   // Load the model weights from state_dict. async call

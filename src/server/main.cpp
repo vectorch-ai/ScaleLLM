@@ -121,19 +121,8 @@ int main(int argc, char** argv) {
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
-
-  // set the default dtype
-  torch::ScalarType dtype{};
-  if (devices[0].is_cpu()) {
-    // always use float32 on CPU since float16 is not supported
-    dtype = torch::kFloat;
-    GLOG(INFO) << "Using float32 on CPU.";
-  } else {
-    dtype = torch::kHalf;
-  }
-
   // create engine
-  auto engine = std::make_unique<Engine>(dtype, devices);
+  auto engine = std::make_unique<Engine>(devices);
   GCHECK(engine->init(FLAGS_model_path));
 
   // create scheduler and grpc handlers

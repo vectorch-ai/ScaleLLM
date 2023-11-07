@@ -1,5 +1,6 @@
 #pragma once
 
+#include <c10/core/ScalarType.h>
 #include <torch/torch.h>
 
 #include "layers/activation.h"
@@ -364,6 +365,7 @@ REGISTER_CAUSAL_MODEL(llama2, LlamaForCausalLM);
 REGISTER_DIALOG(llama2, Llama2Dialog);
 
 REGISTER_MODEL_ARGS(llama2, [&] {
+  LOAD_ARG_OR(dtype, "torch_dtype", torch::toString(torch::kBFloat16));
   LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
   LOAD_ARG_OR(hidden_size, "dim", 4096);
   LOAD_ARG_OR(n_layers, "n_layers", 32);

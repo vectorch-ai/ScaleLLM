@@ -76,7 +76,7 @@ This command starts the Docker container with GPU support and various configurat
 - `HUGGING_FACE_HUB_TOKEN` specifies the token from [huggingface](https://huggingface.co/settings/tokens) for gated models.
 
 > **Note**<br />
-> Although ScaleLLM supports both **CPU** and **GPU**, we recommend using GPU for better performance. CPU support is mainly for debugging and testing purposes, so the performance might be sub-optimal. If you want to use CPU, please set `DEVICE=cpu` in the command.
+> Although ScaleLLM supports both `CPU` and `GPU`, we recommend using GPU for better performance. CPU support is mainly for debugging and testing purposes, so the performance might be sub-optimal. If you want to use CPU, please set `DEVICE=cpu` in the command.
 
 ### Ports and Endpoints
 
@@ -91,8 +91,9 @@ After running the Docker container, two ports are exposed:
    The simple HTTP server for instrument will be served on 0.0.0.0:9999 by default. This server provides various endpoints for managing and monitoring the service:
 
    - Use `curl localhost:9999/health` to check the health status of the service.
-   - Use `curl localhost:9999/metrics` to export metrics.
+   - Use `curl localhost:9999/metrics` to export Prometheus metrics.
    - Use `curl localhost:9999/gflags` to list all available gflags for configuration.
+   - add more to come...
 
 ### Rest API Server
 
@@ -103,11 +104,11 @@ docker run -it --net=host \
   docker.io/vectorchai/scalellm-gateway:latest --logtostderr
 ```
 
-The exposed port is 8080. You can use REST API requests to interact with the system. Check out the [Usage Examples](#usage-examples) section for more details.
+The REST API Server is available on `localhost:8080`. You can use REST API requests to interact with the system. Check out the [Usage Examples](#usage-examples) section for more details.
 
 ### Local Chatbot UI
 
-A local chat Chatbot UI is also available. You can start it with the following command:
+A local Chatbot UI is also available on [localhost:3000](localhost:3000). You can start it with the following command:
 
 ```bash
 docker run -it --net=host \
@@ -118,12 +119,18 @@ docker run -it --net=host \
 
 ## Docker Compose
 
-You can run all the above services together using Docker Compose. Use the following command:
+Using Docker Compose is the easiest way to run ScaleLLM with all the services together. If you don't have Docker Compose installed, please follow the [installation doc](https://docs.docker.com/compose/install/) for your platform.
 
 ```bash
 curl https://raw.githubusercontent.com/vectorch-ai/ScaleLLM/main/scalellm.yml -sSf > scalellm_compose.yml
 HF_MODEL_ID=TheBloke/Llama-2-7B-chat-AWQ DEVICE=cuda docker compose -f ./scalellm_compose.yml up
 ```
+
+you will get following running services:
+* Chatbot UI on port 3000: [localhost:3000](localhost:3000)
+* ScaleLLM gRPC server on port 8888: `localhost:8888`
+* ScaleLLM HTTP server for monitoring on port 9999: `localhost:9999`
+* ScaleLLM REST API server on port 8080: `localhost:8080`
 
 ## Usage Examples
 ### Chat Completions
@@ -241,7 +248,7 @@ If your model is not included in the supported list, we are more than willing to
 ## Quantization
 Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization ([APTQ](https://arxiv.org/abs/2210.17323)) and Activation-aware Weight Quantization ([AWQ](https://arxiv.org/abs/2306.00978)), with seamless integration into the following libraries: autogptq, exllama, exllamav2, and awq. 
 
->By default, **exllamav2** is employed for GPTQ 4-bit quantization. However, you have the flexibility to choose a specific implementation by configuring the **"--qlinear_gptq_impl"** option, which allows you to select from exllama, exllamav2, or the automatic option.
+>By default, **exllamav2** is employed for GPTQ 4-bit quantization. However, you have the flexibility to choose a specific implementation by configuring the **"--qlinear_gptq_impl"** option, which allows you to select from exllama, exllamav2, or auto option.
 
 ## Limitations
 

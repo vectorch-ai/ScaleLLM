@@ -1,5 +1,6 @@
 #pragma once
 
+#include <c10/core/ScalarType.h>
 #include <torch/torch.h>
 
 #include "layers/activation.h"
@@ -372,6 +373,7 @@ REGISTER_DIALOG(llama, Llama2Dialog);
 // default values for args explicitly with values from:
 // https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/configuration_llama.py#L112
 REGISTER_MODEL_ARGS(llama, [&] {
+  LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
