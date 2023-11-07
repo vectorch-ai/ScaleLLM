@@ -12,6 +12,7 @@
 #include "huggingface/llama.h"
 #include "huggingface/mistral.h"
 #include "huggingface/mpt.h"
+#include "huggingface/yi.h"
 #include "llama.h"
 
 namespace llm {
