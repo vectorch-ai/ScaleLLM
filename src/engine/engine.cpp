@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include <boost/algorithm/string.hpp>
 #include <memory>
 
 #include "common/logging.h"
@@ -21,10 +22,33 @@ DEFINE_double(max_memory_utilization,
               "maximum memory utilization allowed, default 0.9");
 
 namespace llm {
+namespace {
+torch::ScalarType parse_dtype(const std::string& dtype_str,
+                              const torch::Device& device) {
+  if (boost::iequals(dtype_str, "half") ||
+      boost::iequals(dtype_str, "float16")) {
+    return torch::kHalf;
+  }
+  if (boost::iequals(dtype_str, "bfloat16")) {
+    return torch::kBFloat16;
+  }
+  if ((boost::iequals(dtype_str, "float") ||
+       boost::iequals(dtype_str, "float32"))) {
+    return torch::kFloat32;
+  }
 
-Engine::Engine(torch::ScalarType dtype,
-               const std::vector<torch::Device>& devices)
-    : dtype_(dtype), devices_(devices) {
+  if (dtype_str.empty() || boost::iequals(dtype_str, "auto")) {
+    if (device.is_cuda()) {
+      return torch::kFloat16;
+    }
+    return torch::kFloat32;
+  }
+  GCHECK(false) << "Unsupported dtype: " << dtype_str << " on device "
+                << device;
+}
+}  // namespace
+
+Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   const int32_t world_size = static_cast<int32_t>(devices.size());
@@ -37,8 +61,7 @@ Engine::Engine(torch::ScalarType dtype,
     const int32_t rank = static_cast<int32_t>(i);
     ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
     ParallelArgs parallel_args(rank, world_size, pg);
-    workers_.emplace_back(
-        std::make_unique<Worker>(parallel_args, dtype, devices[i]));
+    workers_.emplace_back(std::make_unique<Worker>(parallel_args, devices[i]));
   }
 }
 
@@ -63,13 +86,22 @@ bool Engine::init_model(const std::string& model_weights_path) {
   GCHECK(tokenizer_ != nullptr);
 
   args_ = model_loader->model_args();
+  dtype_ = parse_dtype(args_.dtype(), devices_[0]);
+  GLOG(INFO) << "Initializing model with dtype: " << dtype_;
+
+  if (tokenizer_->vocab_size() != args_.vocab_size()) {
+    GLOG(WARNING) << "Vocab size mismatch: tokenizer: "
+                  << tokenizer_->vocab_size()
+                  << ", model: " << args_.vocab_size();
+  }
+
   const auto& quant_args = model_loader->quant_args();
   GLOG(INFO) << "Initializing model with " << args_ << ", " << quant_args;
 
   if (workers_.size() == 1) {
     Worker* worker = workers_[0].get();
     // only one worker, call init_model in current thread
-    if (!worker->init_model(args_, quant_args)) {
+    if (!worker->init_model(dtype_, args_, quant_args)) {
       return false;
     }
     // load the weights from the checkpoint
@@ -85,7 +117,7 @@ bool Engine::init_model(const std::string& model_weights_path) {
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->init_model_async(args_, quant_args));
+    futures.push_back(worker->init_model_async(dtype_, args_, quant_args));
   }
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();

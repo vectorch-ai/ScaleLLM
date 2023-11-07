@@ -456,6 +456,7 @@ TORCH_MODULE(MPTForCausalLM);
 
 REGISTER_CAUSAL_MODEL(mpt, MPTForCausalLM);
 REGISTER_MODEL_ARGS(mpt, [&] {
+  LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 50368);
   LOAD_ARG_OR(hidden_size, "d_model", 2048);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);

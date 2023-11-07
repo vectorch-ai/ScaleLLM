@@ -10,6 +10,8 @@ namespace llm {
 struct ModelArgs {
   DEFINE_ARG(std::string, model_type);
 
+  DEFINE_ARG(std::string, dtype);
+
   // dimension of the encoder layer.
   DEFINE_ARG(int64_t, hidden_size) = 0;
 
@@ -84,6 +86,7 @@ struct ModelArgs {
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << "ModelArgs: [model_type: " << args.model_type();
+  os << ", dtype: " << args.dtype();
   os << ", hidden_size: " << args.hidden_size();
   os << ", hidden_act: " << args.hidden_act();
   os << ", intermediate_size: " << args.intermediate_size();
@@ -106,6 +109,7 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", attn_alibi: " << args.attn_alibi();
   os << ", alibi_bias_max: " << args.alibi_bias_max();
   os << ", no_bias: " << args.no_bias();
+  os << ", residual_post_layernorm: " << args.residual_post_layernorm();
   os << "]";
   return os;
 }

@@ -365,6 +365,7 @@ REGISTER_CAUSAL_MODEL(Yi, YiForCausalLM);
 // example config:
 // https://huggingface.co/01-ai/Yi-6B/blob/main/config.json
 REGISTER_MODEL_ARGS(Yi, [&] {
+  LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 64000);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);

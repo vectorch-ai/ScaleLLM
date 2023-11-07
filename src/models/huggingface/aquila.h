@@ -369,6 +369,7 @@ REGISTER_MODEL_ARGS(aquila, [&] {
   // https://huggingface.co/BAAI/Aquila-7B/blob/main/config.json.
   // set default values for args explicitly with values from:
   // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/configuration_mistral.py#L104
+  LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 100008);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);

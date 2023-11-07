@@ -353,6 +353,7 @@ TORCH_MODULE(InternlmForCausalLM);
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(internlm, InternlmForCausalLM);
 REGISTER_MODEL_ARGS(internlm, [&] {
+  LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 103168);
   LOAD_ARG_OR(hidden_size, "hidden_size", 5120);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 60);

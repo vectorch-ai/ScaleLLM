@@ -365,6 +365,7 @@ TORCH_MODULE(GPT2ForCausalLM);
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gpt2, GPT2ForCausalLM);
 REGISTER_MODEL_ARGS(gpt2, [&] {
+  LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 50257);
   LOAD_ARG_OR(hidden_size, "n_embd", 768);
   LOAD_ARG_OR(n_layers, "n_layer", 12);
