@@ -37,7 +37,6 @@ ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
   GCHECK(bits == 4) << "Only 4 bits are supported for AWQ";
-  GCHECK(group_size > 0) << "group_size must be positive";
   pack_factor_ = 32 / bits;
 }
 
@@ -72,9 +71,7 @@ RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
                              dtype,
                              device) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
   GCHECK(bits == 4) << "Only 4 bits are supported for AWQ";
-  GCHECK(group_size > 0) << "group_size must be positive";
   pack_factor_ = 32 / bits;
 }
 

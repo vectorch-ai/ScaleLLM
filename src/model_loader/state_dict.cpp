@@ -215,6 +215,11 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
   }
   // chunk tensor along the dim
   const int64_t dim_size = tensor.size(dim);
+  if (dim_size <= num_ranks_per_shard) {
+    // too small to shard, return the whole tensor instead
+    return tensor;
+  }
+
   GCHECK(dim_size % num_ranks_per_shard == 0)
       << "can't devide tensor evenly on " << dim << " with dim: " << dim_size
       << " ranks_per_shard: " << num_ranks_per_shard;

@@ -74,9 +74,10 @@ ColumnParallelQLinearExllamav2Impl::ColumnParallelQLinearExllamav2Impl(
                                 dtype,
                                 device) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
   GCHECK(bits == 4) << "Only 4 bits are supported";
-  GCHECK(group_size > 0) << "group_size must be positive";
+
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   if (quant_args.desc_act()) {
     std::vector<int32_t> g_idx_data;
@@ -162,10 +163,11 @@ RowParallelQLinearExllamav2Impl::RowParallelQLinearExllamav2Impl(
                              dtype,
                              device) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
   GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
-  GCHECK(group_size > 0) << "group_size must be positive";
+
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   if (quant_args.desc_act()) {
     std::vector<int32_t> g_idx_data;

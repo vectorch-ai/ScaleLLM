@@ -44,9 +44,9 @@ ColumnParallelQLinearExllamaImpl::ColumnParallelQLinearExllamaImpl(
                                 dtype,
                                 device) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
   GCHECK(bits == 4) << "Only 4 bits are supported";
-  GCHECK(group_size > 0) << "group_size must be positive";
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   // using torch::aarange to create g_idx
   std::vector<int32_t> g_idx_data;
@@ -101,9 +101,9 @@ RowParallelQLinearExllamaImpl::RowParallelQLinearExllamaImpl(
                              dtype,
                              device) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
   GCHECK(bits == 4) << "Only 4 bits are supported";
-  GCHECK(group_size > 0) << "group_size must be positive";
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);

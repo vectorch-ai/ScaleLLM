@@ -47,10 +47,11 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
                                 device),
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
   GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
-  GCHECK(group_size > 0) << "group_size must be positive";
+
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);
@@ -110,10 +111,12 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
                              device),
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
   GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
-  GCHECK(group_size > 0) << "group_size must be positive";
+
+  const auto group_size = quant_args.group_size() > 0
+                              ? quant_args.group_size()
+                              : in_features;
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);

@@ -118,8 +118,8 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
       gather_output_(gather_output),
       parallel_args_(parallel_args) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
-  GCHECK(group_size > 0) << "group_size must be positive";
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
   GCHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
   const int64_t world_size = parallel_args.world_size();
@@ -350,8 +350,6 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
       input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
   const auto bits = quant_args.bits();
-  const auto group_size = quant_args.group_size();
-  GCHECK(group_size > 0) << "group_size must be positive";
   GCHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
   const int64_t world_size = parallel_args.world_size();
@@ -360,6 +358,8 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
       << world_size;
   const int64_t in_features_per_partition = in_features / world_size;
   const int64_t pack_factor = 32 / bits;
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   if (qweight_pack_dim == 0) {
     qweight_ = register_parameter(
