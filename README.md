@@ -4,13 +4,16 @@
 
 [![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn)](https://discord.gg/PKe5gvBZfn)
 
-> **WARNING**: ScaleLLM is currently in the active development stage and may not yet provide the optimal level of inference efficiency. We are fully dedicated to continuously enhancing its efficiency while also adding more features.
+
+> **Warning**<br />
+> ScaleLLM is currently in the active development stage and may not yet provide the optimal level of inference efficiency. We are fully dedicated to continuously enhancing its efficiency while also adding more features.
+
 
 In the coming weeks, we have exciting plans to focus on [**_speculative decoding_**](https://github.com/orgs/vectorch-ai/projects/1) and [**_stateful conversation_**](https://github.com/orgs/vectorch-ai/projects/2), alongside further kernel optimizations. We appreciate your understanding and look forward to delivering an even better solution.
 
 
 ## Latest News:
-* [11/2023] - First official release with support for popular open-source models.
+* [11/2023] - First [official release](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1) with support for popular open-source models.
 
 
 ## Table of contents
@@ -30,16 +33,16 @@ In the coming weeks, we have exciting plans to focus on [**_speculative decoding
 
 ## Overview
 
-ScaleLLM is a high-performance inference system for large language models, designed for production environments. It supports most popular open-source models, including Llama2, Bloom, GPT-NeoX, and more.
+ScaleLLM is a cutting-edge inference system engineered for large language models (LLMs), meticulously designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including Llama2, Bloom, GPT-NeoX, and more. 
 
 ## Key Features
 
-- **High Performance**: ScaleLLM is optimized for high-performance LLM inference.
-- **Tensor Parallelism**: Utilizes tensor parallelism for efficient model execution.
-- **OpenAI-compatible API** Efficient golang rest api server that compatible with OpenAI.
-- **Huggingface models Integration** Seamless integration with most popular HF models.
-- **Customizable**: Offers flexibility for customization to meet your specific needs.
-- **Production Ready**: Designed to be deployed in production environments.
+- [High Efficiency](): Excels in high-performance LLM inference, leveraging state-of-the-art techniques and technologies like [Flash Attention](https://github.com/Dao-AILab/flash-attention), [Paged Attention](https://github.com/vllm-project/vllm), [Continuous batching](https://www.anyscale.com/blog/continuous-batching-llm-inference), and more.
+- [Tensor Parallelism](): Utilizes tensor parallelism for efficient model execution.
+- [OpenAI-compatible API](): An efficient [golang](https://en.wikipedia.org/wiki/Go_(programming_language)) rest api server that compatible with OpenAI.
+- [Huggingface models](): Seamless integration with most popular [HF models](#supported-models), supporting safetensors.
+- [Customizable](): Offers flexibility for customization to meet your specific needs, and provides an easy way to add new models.
+- [Production Ready](): Engineered with production environments in mind, ScaleLLM is equipped with robust system monitoring and management features to ensure a seamless deployment experience.
 
 ## Getting Started
 
@@ -48,6 +51,9 @@ The easiest way to get started with our project is by using the official Docker 
 ### Docker Installation
 
 You can download and install Docker from the official website: [Docker Installation](https://docs.docker.com/get-docker/).
+
+> **Note**<br />
+> To use GPUs, you also need to install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 ### Docker Container
 
@@ -59,8 +65,7 @@ docker run -it --gpus=all --net=host \
   -e HF_MODEL_ID=TheBloke/Llama-2-7B-chat-AWQ \
   -e DEVICE=cuda:0 \
   docker.io/vectorchai/scalellm:latest --logtostderr
-```
-Note: To use GPUs, you need to install the NVIDIA Container Toolkit. 
+``` 
 
 This command starts the Docker container with GPU support and various configuration options.
 
@@ -69,6 +74,9 @@ This command starts the Docker container with GPU support and various configurat
 - `HF_MODEL_ALLOW_PATTERN` specifies which types of files are allowed to be downloaded. by default, it is set to `"*.json,*.safetensors,*.model"`.
 - `DEVICE` specifies the device on which this model should run. by default, it is set to `"auto"`.
 - `HUGGING_FACE_HUB_TOKEN` specifies the token from [huggingface](https://huggingface.co/settings/tokens) for gated models.
+
+> **Note**<br />
+> Although ScaleLLM supports both **CPU** and **GPU**, we recommend using GPU for better performance. CPU support is mainly for debugging and testing purposes, so the performance might be sub-optimal. If you want to use CPU, please set `DEVICE=cpu` in the command.
 
 ### Ports and Endpoints
 
@@ -95,7 +103,7 @@ docker run -it --net=host \
   docker.io/vectorchai/scalellm-gateway:latest --logtostderr
 ```
 
-The exposed port is 8080. You can use REST API requests to interact with the system.
+The exposed port is 8080. You can use REST API requests to interact with the system. Check out the [Usage Examples](#usage-examples) section for more details.
 
 ### Local Chatbot UI
 
@@ -231,7 +239,7 @@ for chunk in completion:
 If your model is not included in the supported list, we are more than willing to assist you. Please feel free to create a request for adding a new model on [GitHub Issues](https://github.com/vectorch-ai/ScaleLLM/issues).
 
 ## Quantization
-Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization (**APTQ**) and Activation-aware Weight Quantization (**AWQ**), with seamless integration into the following libraries: autogptq, exllama, exllamav2, and awq. 
+Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization ([APTQ](https://arxiv.org/abs/2210.17323)) and Activation-aware Weight Quantization ([AWQ](https://arxiv.org/abs/2306.00978)), with seamless integration into the following libraries: autogptq, exllama, exllamav2, and awq. 
 
 >By default, **exllamav2** is employed for GPTQ 4-bit quantization. However, you have the flexibility to choose a specific implementation by configuring the **"--qlinear_gptq_impl"** option, which allows you to select from exllama, exllamav2, or the automatic option.
 
@@ -239,7 +247,7 @@ Quantization is a crucial process for reducing the memory footprint of models. S
 
 There are several known limitations we are looking to address in the coming months, including:
 
-- Only supports fast tokenizers with Hugging Face models.
+- Only supports Hugging Face models with [fast tokenizers](https://github.com/huggingface/tokenizers).
 
 ## Contributing
 
@@ -247,18 +255,18 @@ If you have any questions or want to contribute, please don't hesitate to ask in
 
 ## Acknowledgements
 The following open-source projects have been used in this project, either in their original form or modified to meet our needs:
-* [Pytorch]()
-* [FasterTransformer]()
-* [vllm]()
-* [auto-gptq]()
-* [llm-awq]()
-* [flash-attn]()
-* [exllama]()
-* [tokenizers]()
-* [safetensors]()
-* [sentencepiece]()
-* [grpc-gateway]()
-* [Chatbot UI]()
+* [pytorch](https://github.com/pytorch/pytorch)
+* [FasterTransformer](https://github.com/NVIDIA/FasterTransformer)
+* [vllm](https://github.com/vllm-project/vllm)
+* [AutoGPTQ](https://github.com/PanQiWei/AutoGPTQ)
+* [llm-awq](https://github.com/mit-han-lab/llm-awq)
+* [flash-attn](https://github.com/Dao-AILab/flash-attention)
+* [exllama](https://github.com/turboderp/exllamav2)
+* [tokenizers](https://github.com/huggingface/tokenizers)
+* [safetensors](https://github.com/huggingface/safetensors/)
+* [sentencepiece](https://github.com/google/sentencepiece)
+* [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway)
+* [chatbot-ui](https://github.com/mckaywrigley/chatbot-ui)
 
 ## License
 This project is released under the [Apache 2.0 license](https://github.com/vectorch-ai/ScaleLLM/blob/main/LICENSE).
