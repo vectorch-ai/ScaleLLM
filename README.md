@@ -233,6 +233,7 @@ for chunk in completion:
 
 |   Models   | Tensor Parallel | Quantization | HF models examples |
 | :--------: | :-------------: | :----------: | :---------------------------:|
+|    Yi      |       Yes       |     Yes      | [01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B), [01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K), [casperhansen/yi-6b-awq](https://huggingface.co/casperhansen/yi-6b-awq), [TheBloke/Yi-34B-GPTQ](https://huggingface.co/TheBloke/Yi-34B-GPTQ) |
 |   Llama2   |       Yes       |     Yes      | [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
 |   Aquila   |       Yes       |     Yes      | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
 |   Bloom    |       Yes       |     Yes      | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
