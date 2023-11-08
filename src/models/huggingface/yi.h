@@ -332,8 +332,6 @@ class YiForCausalLMImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    // LOG(ERROR) << tokens;
-    // LOG(ERROR) << positions;
     auto h = model_(tokens, positions, kv_caches, input_params);
     // select last token for each sequence
     h = h.index_select(/*dim=*/0, input_params.last_token_indicies);

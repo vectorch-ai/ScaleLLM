@@ -175,6 +175,7 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
   torch::Tensor temperatures_;
 };
 
+// TODO: move topk and topp into sampler
 class TopPLogitsProcessor : public LogitsProcessor {
  public:
   TopPLogitsProcessor(
@@ -182,7 +183,7 @@ class TopPLogitsProcessor : public LogitsProcessor {
       torch::ScalarType dtype,
       const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
-      int min_tokens_to_keep = 1)
+      int64_t min_tokens_to_keep = 1)
       : filter_value(filter_value), min_tokens_to_keep(min_tokens_to_keep) {
     top_p_opposite =
         1.0 -
@@ -221,7 +222,7 @@ class TopPLogitsProcessor : public LogitsProcessor {
   // are filtered
   float filter_value;
   // the minimum number of tokens to keep
-  int min_tokens_to_keep;
+  int64_t min_tokens_to_keep;
 };
 
 class TopKLogitsProcessor : public LogitsProcessor {
@@ -229,7 +230,7 @@ class TopKLogitsProcessor : public LogitsProcessor {
   // top_k: input is 1-based, 0 means no filtering or disable filtering
   TopKLogitsProcessor(
       const std::vector<int64_t>& top_k,
-      torch::ScalarType dtype,
+      torch::ScalarType /*dtype*/,
       const torch::Device& device,
       float filter_value = -std::numeric_limits<float>::infinity(),
       int64_t min_tokens_to_keep = 1)
@@ -249,7 +250,8 @@ class TopKLogitsProcessor : public LogitsProcessor {
       disabled.push_back(val == 0 ? 1 : 0);
     }
 
-    top_k_ = torch::tensor(adjusted_top_k, torch::dtype(dtype).device(device))
+    top_k_ = torch::tensor(adjusted_top_k,
+                           torch::dtype(torch::kInt64).device(device))
                  .unsqueeze(1);
 
     if (std::any_of(
