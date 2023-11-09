@@ -16,14 +16,6 @@ Shang and Dang, Xingyu and Han, Song}, journal={arXiv}, year={2023}
 
 #include "dequantize.cuh"
 
-// Pack two half values.
-static inline __device__ __host__ unsigned __pack_half2(const half x,
-                                                        const half y) {
-  unsigned v0 = *((unsigned short*)&x);
-  unsigned v1 = *((unsigned short*)&y);
-  return (v1 << 16) | v0;
-}
-
 __global__ void __launch_bounds__(64)
     gemm_forward_4bit_cuda_m16n128k32(int G,
                                       int split_k_iters,
@@ -40,11 +32,7 @@ __global__ void __launch_bounds__(64)
   __shared__ half A_shared[16 * (32 + 8)];
   __shared__ half B_shared[32 * (128 + 8)];
 
-  __shared__ half scaling_factors_shared[128];
-  __shared__ half zeros_shared[128];
-
   int j_factors1 = ((OC + 128 - 1) / 128);
-  int blockIdx_x = 0;
   int blockIdx_y = blockIdx.x % ((M + 16 - 1) / 16 * j_factors1);
   int blockIdx_z = blockIdx.x / ((M + 16 - 1) / 16 * j_factors1);
 
@@ -58,7 +46,6 @@ __global__ void __launch_bounds__(64)
 
   static constexpr int row_stride_warp = 32 * 8 / 32;
   static constexpr int row_stride = 2 * 32 * 8 / 128;
-  bool ld_zero_flag = (threadIdx.y * 32 + threadIdx.x) * 8 < 128;
   // TODO: Haotian: blockIdx_y / j_factors1 in A loading to support bsz > 16
   bool ld_A_flag =
       (blockIdx_y / j_factors1 * 16 + threadIdx.y * row_stride_warp +
@@ -95,7 +82,7 @@ __global__ void __launch_bounds__(64)
                               (((int)blockIdx_y) % j_factors1) * (128) +
                               (((int)threadIdx.x) % (128 / 8)) * 8;
 
-  half* C_ptr = C + blockIdx_z * M * OC  // blockIdz.x -> split_k dim
+  half* C_ptr = C + (long long)blockIdx_z * M * OC  // blockIdz.x -> split_k dim
                 + (((int)blockIdx_y) % j_factors1) * 128 +
                 ((int)threadIdx.y) * 64 + (((int)threadIdx.x) % 4) * 2;
 
@@ -304,12 +291,8 @@ __global__ void __launch_bounds__(64)
   __shared__ half A_shared[16 * (32 + 8)];
   __shared__ half B_shared[32 * (64 + 8)];
 
-  __shared__ half scaling_factors_shared[64];
-  __shared__ half zeros_shared[64];
-
   int j_factors1 = ((OC + 64 - 1) / 64);
 
-  int blockIdx_x = 0;
   int blockIdx_y = blockIdx.x % ((M + 16 - 1) / 16 * j_factors1);
   int blockIdx_z = blockIdx.x / ((M + 16 - 1) / 16 * j_factors1);
 
@@ -323,7 +306,6 @@ __global__ void __launch_bounds__(64)
 
   static constexpr int row_stride_warp = 32 * 8 / 32;
   static constexpr int row_stride = 2 * 32 * 8 / 64;
-  bool ld_zero_flag = (threadIdx.y * 32 + threadIdx.x) * 8 < 64;
   // TODO: Haotian: blockIdx_y / j_factors1 in A loading to support bsz > 16
   bool ld_A_flag =
       (blockIdx_y / j_factors1 * 16 + threadIdx.y * row_stride_warp +
@@ -360,7 +342,7 @@ __global__ void __launch_bounds__(64)
                               (((int)blockIdx_y) % j_factors1) * (64) +
                               (((int)threadIdx.x) % (64 / 8)) * 8;
 
-  half* C_ptr = C + blockIdx_z * M * OC  // blockIdz.x -> split_k dim
+  half* C_ptr = C + (long long)blockIdx_z * M * OC  // blockIdz.x -> split_k dim
                 + (((int)blockIdx_y) % j_factors1) * 64 +
                 ((int)threadIdx.y) * 32 + (((int)threadIdx.x) % 4) * 2;
 
