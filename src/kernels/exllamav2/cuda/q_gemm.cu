@@ -3,6 +3,8 @@
 #include "matrix_view.cuh"
 #include "../config.h"
 
+#include <c10/cuda/CUDAStream.h>
+
 #include "quant/qdq_2.cuh"
 #include "quant/qdq_3.cuh"
 #include "quant/qdq_4.cuh"
@@ -59,6 +61,7 @@ void gemm_half_q_half_cuda_part
     bool clear
 )
 {
+    const auto stream = at::cuda::getCurrentCUDAStream();
     if (!b->is_gptq)
     {
         dim3 blockDim, gridDim;
@@ -71,7 +74,7 @@ void gemm_half_q_half_cuda_part
 
         fp_gemm_half_q_half_kernel kernel = pick_gemm_half_q_half_kernel(true, m_count);
 
-        kernel<<<gridDim, blockDim>>>
+        kernel<<<gridDim, blockDim, 0, stream>>>
         (
             a,
             b->cuda_q_weight,
@@ -109,7 +112,7 @@ void gemm_half_q_half_cuda_part
 //         DBGI(b->rows_4);
 //         DBGI(b->height);
 
-        kernel<<<gridDim, blockDim>>>
+        kernel<<<gridDim, blockDim, 0, stream>>>
         (
             a,
             b->cuda_q_weight,

@@ -1,11 +1,13 @@
 // adapted from
 // https://github.com/PanQiWei/AutoGPTQ/blob/main/autogptq_extension/cuda_64/autogptq_cuda_kernel_64.cu
 
+#include <c10/cuda/CUDAStream.h>
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <torch/all.h>
 #include <torch/torch.h>
+
 #include "common/logging.h"
 
 namespace llm {
@@ -93,17 +95,18 @@ void vec_quant_matmul_launch_kernel(torch::Tensor vec,
   AT_DISPATCH_FLOATING_TYPES(
       vec.scalar_type(), "vec_quant_matmul_kernel", ([&] {
         vec_quant_matmul_kernel<scalar_t, BLOCK_HEIGHT, BLOCK_WIDTH, BITS>
-            <<<blocks, threads>>>(vec.data_ptr<scalar_t>(),
-                                  mat.data_ptr<int>(),
-                                  mul.data_ptr<scalar_t>(),
-                                  scales.data_ptr<scalar_t>(),
-                                  zeros.data_ptr<int>(),
-                                  g_idx.data_ptr<int>(),
-                                  batch,
-                                  vec_height,
-                                  height,
-                                  width,
-                                  zero_width);
+            <<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
+                vec.data_ptr<scalar_t>(),
+                mat.data_ptr<int>(),
+                mul.data_ptr<scalar_t>(),
+                scales.data_ptr<scalar_t>(),
+                zeros.data_ptr<int>(),
+                g_idx.data_ptr<int>(),
+                batch,
+                vec_height,
+                height,
+                width,
+                zero_width);
       }));
 }
 
@@ -244,17 +247,18 @@ void vec_quant3_matmul_launch_kernel(torch::Tensor vec,
   AT_DISPATCH_FLOATING_TYPES(
       vec.scalar_type(), "vec_quant3_matmul_kernel", ([&] {
         vec_quant3_matmul_kernel<scalar_t, BLOCK_HEIGHT, BLOCK_WIDTH>
-            <<<blocks, threads>>>(vec.data_ptr<scalar_t>(),
-                                  mat.data_ptr<int>(),
-                                  mul.data_ptr<scalar_t>(),
-                                  scales.data_ptr<scalar_t>(),
-                                  zeros.data_ptr<int>(),
-                                  g_idx.data_ptr<int>(),
-                                  batch,
-                                  vec_height,
-                                  height,
-                                  width,
-                                  zero_width);
+            <<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
+                vec.data_ptr<scalar_t>(),
+                mat.data_ptr<int>(),
+                mul.data_ptr<scalar_t>(),
+                scales.data_ptr<scalar_t>(),
+                zeros.data_ptr<int>(),
+                g_idx.data_ptr<int>(),
+                batch,
+                vec_height,
+                height,
+                width,
+                zero_width);
       }));
 }
 

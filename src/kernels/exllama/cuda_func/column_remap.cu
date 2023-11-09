@@ -2,6 +2,7 @@
 
 #include "column_remap.cuh"
 #include "../util.cuh"
+#include <c10/cuda/CUDAStream.h>
 
 const int SHUF_BLOCKSIZE_X = 256;
 const int SHUF_BLOCKSIZE_Y = 16;
@@ -59,5 +60,5 @@ void column_remap_cuda
         1
     );
 
-    column_remap_kernel<<<blocks, threads>>>(x, x_new, x_width, x_height, x_map);
+    column_remap_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(x, x_new, x_width, x_height, x_map);
 }

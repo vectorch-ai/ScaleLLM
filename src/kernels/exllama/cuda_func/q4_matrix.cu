@@ -4,6 +4,7 @@
 #include <vector>
 #include "../util.cuh"
 #include "../matrix.cuh"
+#include <c10/cuda/CUDAStream.h>
 
 using namespace std;
 
@@ -153,7 +154,7 @@ void Q4Matrix::make_sequential(const uint32_t* cpu_g_idx)
         1
     );
 
-    make_sequential_kernel<<<blocks, threads>>>(cuda_qweight, cuda_new_qweight, cuda_x_map, height / 8, width);
+    make_sequential_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(cuda_qweight, cuda_new_qweight, cuda_x_map, height / 8, width);
 
     // Replace qweights
 
@@ -221,5 +222,5 @@ void Q4Matrix::reconstruct(half* out)
         1
     );
 
-    reconstruct_kernel<<<blocks, threads>>>(cuda_qweight, out, cuda_scales, cuda_qzeros, height / 8, width, groupsize);
+    reconstruct_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(cuda_qweight, out, cuda_scales, cuda_qzeros, height / 8, width, groupsize);
 }
