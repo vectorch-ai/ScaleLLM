@@ -231,18 +231,18 @@ for chunk in completion:
 
 ## Supported Models
 
-|   Models   | Tensor Parallel | Quantization | HF models examples |
-| :--------: | :-------------: | :----------: | :---------------------------:|
-|    Yi      |       Yes       |     Yes      | [01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B), [01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K), [casperhansen/yi-6b-awq](https://huggingface.co/casperhansen/yi-6b-awq), [TheBloke/Yi-34B-GPTQ](https://huggingface.co/TheBloke/Yi-34B-GPTQ) |
-|   Llama2   |       Yes       |     Yes      | [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
-|   Aquila   |       Yes       |     Yes      | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
-|   Bloom    |       Yes       |     Yes      | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
-|   GPT_j    |       Yes       |     Yes      | [EleutherAI/gpt-j-6b](https://huggingface.co/EleutherAI/gpt-j-6b) |
-|  GPT_NeoX  |       Yes       |     --      | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
-|    GPT2    |       Yes       |     --       | [gpt2](https://huggingface.co/gpt2)|
-| InternLM   |       Yes       |     Yes      | [internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b) |
-|  Mistral   |       Yes       |     Yes      | [mistralai/Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) |
-|    MPT     |       Yes       |     Yes      | [mosaicml/mpt-30b](https://huggingface.co/mosaicml/mpt-30b) |
+|   Models   | Tensor Parallel | Quantization | Chat API | HF models examples |
+| :--------: | :-------------: | :----------: | :------: | :---------------------------:|
+|    Yi      |       Yes       |     Yes      |    No    |[01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B), [01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K), [casperhansen/yi-6b-awq](https://huggingface.co/casperhansen/yi-6b-awq), [TheBloke/Yi-34B-GPTQ](https://huggingface.co/TheBloke/Yi-34B-GPTQ) |
+|   Llama2   |       Yes       |     Yes      |    Yes   | [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
+|   Aquila   |       Yes       |     Yes      |    Yes   | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
+|   Bloom    |       Yes       |     Yes      |    No    | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
+|   GPT_j    |       Yes       |     Yes      |    No    | [EleutherAI/gpt-j-6b](https://huggingface.co/EleutherAI/gpt-j-6b) |
+|  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
+|    GPT2    |       Yes       |     Yes      |    No    | [gpt2](https://huggingface.co/gpt2)|
+| InternLM   |       Yes       |     Yes      |    Yes   | [internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b) |
+|  Mistral   |       Yes       |     Yes      |    Yes   | [mistralai/Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) |
+|    MPT     |       Yes       |     Yes      |    No    | [mosaicml/mpt-30b](https://huggingface.co/mosaicml/mpt-30b) |
 
 If your model is not included in the supported list, we are more than willing to assist you. Please feel free to create a request for adding a new model on [GitHub Issues](https://github.com/vectorch-ai/ScaleLLM/issues).
 

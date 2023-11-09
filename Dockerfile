@@ -29,7 +29,7 @@ COPY ./ ./
 
 # build
 RUN cmake -G Ninja -S . -B build
-RUN cmake --build build --target all --config Release -j$(nproc)
+RUN cmake --build build --target scalellm --config Release -j$(nproc)
 
 # install
 RUN cmake --install build --prefix /app
