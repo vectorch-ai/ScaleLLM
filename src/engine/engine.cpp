@@ -25,6 +25,10 @@ namespace llm {
 namespace {
 torch::ScalarType parse_dtype(const std::string& dtype_str,
                               const torch::Device& device) {
+  if (device.is_cpu()) {
+    return torch::kFloat32;
+  }
+
   if (boost::iequals(dtype_str, "half") ||
       boost::iequals(dtype_str, "float16")) {
     return torch::kHalf;
@@ -38,10 +42,7 @@ torch::ScalarType parse_dtype(const std::string& dtype_str,
   }
 
   if (dtype_str.empty() || boost::iequals(dtype_str, "auto")) {
-    if (device.is_cuda()) {
-      return torch::kFloat16;
-    }
-    return torch::kFloat32;
+    return torch::kFloat16;
   }
   GCHECK(false) << "Unsupported dtype: " << dtype_str << " on device "
                 << device;
