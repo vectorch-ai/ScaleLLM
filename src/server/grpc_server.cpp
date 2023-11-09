@@ -31,7 +31,7 @@ bool GrpcServer::start(const Options& options) {
   cq_ = builder.AddCompletionQueue();
   // Finally assemble the server.
   grpc_server_ = builder.BuildAndStart();
-  GLOG(INFO) << "Server listening on " << server_address;
+  GLOG(INFO) << "Started grpc server on " << server_address;
 
   // Spawn a new CallData instance for complete request
   {

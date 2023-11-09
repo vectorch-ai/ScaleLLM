@@ -54,7 +54,6 @@ std::vector<torch::Device> parse_devices(const std::string& device_str) {
     for (int i = 0; i < num_gpus; ++i) {
       devices.emplace_back(torch::kCUDA, i);
     }
-    GLOG(INFO) << "using " << num_gpus << " gpus.";
     return devices;
   }
 
@@ -70,6 +69,19 @@ std::vector<torch::Device> parse_devices(const std::string& device_str) {
   GCHECK(device_types.size() == 1)
       << "All devices must be of the same type. Got: " << FLAGS_device;
   return devices;
+}
+
+std::string to_string(const std::vector<torch::Device>& devices) {
+  std::stringstream ss;
+  for (size_t i = 0; i < devices.size(); ++i) {
+    const auto& device = devices[i];
+    if (i == 0) {
+      ss << device;
+    } else {
+      ss << "," << device;
+    }
+  }
+  return ss.str();
 }
 
 int main(int argc, char** argv) {
@@ -111,16 +123,17 @@ int main(int argc, char** argv) {
       });
   http_server.RegisterURI("/health",
                           [](HttpServer::Transport& transport) -> bool {
-                            return transport.SendString("Ok\n");
+                            if (running.load(std::memory_order_relaxed)) {
+                              return transport.SendString("Ok\n");
+                            }
+                            // 503 Service Unavailable
+                            return transport.SendStatus(503);
                           });
-
-  if (!http_server.Start(FLAGS_http_port, /*num_threads=*/2)) {
-    GLOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
-    return -1;
-  }
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
+  GLOG(INFO) << "Using devices: " << to_string(devices);
+
   // create engine
   auto engine = std::make_unique<Engine>(devices);
   GCHECK(engine->init(FLAGS_model_path));
@@ -145,6 +158,12 @@ int main(int argc, char** argv) {
     GLOG(ERROR) << "failed to start grpc server on port " << FLAGS_grpc_port;
     return -1;
   }
+
+  if (!http_server.Start(FLAGS_http_port, /*num_threads=*/2)) {
+    GLOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
+    return -1;
+  }
+
   // install graceful shutdown handler
   (void)signal(SIGINT, shutdown_handler);
   (void)signal(SIGTERM, shutdown_handler);

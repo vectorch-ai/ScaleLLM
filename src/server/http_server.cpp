@@ -111,4 +111,9 @@ bool HttpServer::Transport::SendString(const std::string& data,
   return true;
 }
 
+bool HttpServer::Transport::SendStatus(int status_code) {
+  evhtp_send_reply(req_, status_code);
+  return true;
+}
+
 }  // namespace llm

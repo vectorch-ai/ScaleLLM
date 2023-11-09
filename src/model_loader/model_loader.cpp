@@ -155,8 +155,8 @@ std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
   const std::string vocab_path = model_weights_path_ + "/tokenizer.model";
   if (std::filesystem::exists(vocab_path)) {
     GLOG(WARNING) << "Failed to find tokenizer.json, use tokenizer.model "
-                     "instead. Please consider to convert the tokenizer.model "
-                     "to tokenizer.json for better performance.";
+                     "instead. Please consider using fast tokenizer for "
+                     "better performance.";
     return std::make_unique<SentencePieceTokenizer>(vocab_path,
                                                     /*prepend_bos=*/false);
   }

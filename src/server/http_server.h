@@ -65,6 +65,9 @@ class HttpServer {
     // Send response
     bool SendString(const std::string& data,
                     const std::string& mime_type = "text/plain; charset=utf-8");
+
+    // Send status code: 200 OK, 503 Service Unavailable, etc.
+    bool SendStatus(int status_code);    
   };
 
  private:
