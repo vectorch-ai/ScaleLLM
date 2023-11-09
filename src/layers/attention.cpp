@@ -1,6 +1,7 @@
 #include "attention.h"
 
 #include <gflags/gflags.h>
+#include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
 
 #include "common/logging.h"
@@ -15,6 +16,11 @@ DEFINE_string(
     "",
     "type of attention to use for single_query_masked_self_attention, slow, "
     "cuda, or empty for auto");
+
+DEFINE_bool(
+    force_use_page_attention_v2,
+    false,
+    "force to use paged attention v2 for single_query_masked_self_attention");
 
 // ref to flash_attn in third_party/flash_attn
 extern std::vector<at::Tensor> mha_varlen_fwd(
@@ -36,9 +42,25 @@ extern std::vector<at::Tensor> mha_varlen_fwd(
     bool return_softmax,
     torch::optional<at::Generator> gen_);
 
-// ref to single_query_cached_kv_attention in third_party/vllm
-extern void single_query_cached_kv_attention(
+// ref to paged_attention_v1 in third_party/vllm
+extern void paged_attention_v1(
     torch::Tensor& out,
+    torch::Tensor& query,
+    torch::Tensor& key_cache,
+    torch::Tensor& value_cache,
+    torch::Tensor& head_mapping,
+    float scale,
+    torch::Tensor& block_tables,
+    torch::Tensor& context_lens,
+    int block_size,
+    int max_context_len,
+    const c10::optional<torch::Tensor>& alibi_slopes);
+
+extern void paged_attention_v2(
+    torch::Tensor& out,
+    torch::Tensor& exp_sums,
+    torch::Tensor& max_logits,
+    torch::Tensor& tmp_out,
     torch::Tensor& query,
     torch::Tensor& key_cache,
     torch::Tensor& value_cache,
@@ -372,6 +394,10 @@ void single_query_masked_self_attention_cuda(
     float scale,                                  // scale for softmax
     torch::Tensor& output) {
   auto [key_cache, value_cache] = kv_cache.get_kv_cache();
+  static constexpr int32_t kPartitionSize = 512;
+  const auto n_seq = query.size(0);
+  const auto n_heads = query.size(1);
+  const auto head_dim = query.size(2);
   const auto block_size = key_cache.size(3);
 
   // make a 'copy' of variable since the api is using non-const reference
@@ -379,17 +405,50 @@ void single_query_masked_self_attention_cuda(
   torch::Tensor _block_tables = block_tables;
   torch::Tensor _context_lens = context_lens;
   torch::Tensor _kv_head_mapping = kv_head_mapping;
-  single_query_cached_kv_attention(output,
-                                   _query,
-                                   key_cache,
-                                   value_cache,
-                                   _kv_head_mapping,
-                                   scale,
-                                   _block_tables,
-                                   _context_lens,
-                                   block_size,
-                                   max_context_len,
-                                   alibi_slopes);
+
+  // Adapted from:
+  // https://github.com/vllm-project/vllm/blob/f8a1e39fae05ca610be8d5a78be9d40f5274e5fc/vllm/model_executor/layers/attention.py#L159
+  // round up partition number
+  const auto num_partitions =
+      (max_context_len + kPartitionSize - 1) / kPartitionSize;
+  const bool use_v1 = num_partitions == 1 || (n_seq * n_heads) > kPartitionSize;
+  // Use the same simple heuristic as vllm to decide whether to use v1.
+  if (!FLAGS_force_use_page_attention_v2 && use_v1) {
+    paged_attention_v1(output,
+                       _query,
+                       key_cache,
+                       value_cache,
+                       _kv_head_mapping,
+                       scale,
+                       _block_tables,
+                       _context_lens,
+                       block_size,
+                       max_context_len,
+                       alibi_slopes);
+  } else {
+    GCHECK(kPartitionSize % block_size == 0);
+    auto tmp_out = torch::empty({n_seq, n_heads, num_partitions, head_dim},
+                                output.options());
+    auto exp_sums =
+        torch::empty({n_seq, n_heads, num_partitions},
+                     torch::dtype(torch::kFloat32).device(output.device()));
+    auto max_logits = torch::empty_like(exp_sums);
+
+    paged_attention_v2(output,
+                       exp_sums,
+                       max_logits,
+                       tmp_out,
+                       _query,
+                       key_cache,
+                       value_cache,
+                       _kv_head_mapping,
+                       scale,
+                       _block_tables,
+                       _context_lens,
+                       block_size,
+                       max_context_len,
+                       alibi_slopes);
+  }
 }
 
 }  // namespace detail

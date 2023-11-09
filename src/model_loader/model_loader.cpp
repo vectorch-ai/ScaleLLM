@@ -78,7 +78,8 @@ std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
     GLOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
     return nullptr;
   }
-  return std::make_unique<SentencePieceTokenizer>(tokenizer_path, /*prepend_bos=*/true);
+  return std::make_unique<SentencePieceTokenizer>(tokenizer_path,
+                                                  /*prepend_bos=*/true);
 }
 
 PTModelLoader::PTModelLoader(const std::string& model_weights_path)
@@ -156,7 +157,8 @@ std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
     GLOG(WARNING) << "Failed to find tokenizer.json, use tokenizer.model "
                      "instead. Please consider to convert the tokenizer.model "
                      "to tokenizer.json for better performance.";
-    return std::make_unique<SentencePieceTokenizer>(vocab_path, /*prepend_bos=*/false);
+    return std::make_unique<SentencePieceTokenizer>(vocab_path,
+                                                    /*prepend_bos=*/false);
   }
 
   GLOG(ERROR)
@@ -252,6 +254,13 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
       quant_args_.quant_method() != FLAGS_quant_method) {
     GLOG(WARNING) << "Overwriting quant_method to " << FLAGS_quant_method;
     quant_args_.quant_method() = FLAGS_quant_method;
+  }
+
+  // always use float16 for quantization
+  if (!quant_args_.quant_method().empty() && args_.dtype() != "float16") {
+    LOG(WARNING) << "Overwriting dtype from " << args_.dtype() << " to float16 "
+                 << "for quantization";
+    args_.dtype() = "float16";
   }
 
   return true;
