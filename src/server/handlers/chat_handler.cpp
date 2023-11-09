@@ -92,6 +92,8 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   auto dialog_factory =
       ModelRegistry::get_dialog_factory(model_args.model_type());
   if (dialog_factory == nullptr) {
+    // TODO: return meaningful error message to client
+    // Error: Chat template has not configured, please use /completion API
     GLOG(ERROR) << "Failed to get dialog factory for model type: "
                 << model_args.model_type();
     return nullptr;

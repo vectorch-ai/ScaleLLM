@@ -361,8 +361,43 @@ class MistralForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(MistralForCausalLM);
 
+class MistralDialog final : public Dialog {
+ public:
+  // generate prompt from dialogs
+  // Prompt template:
+  // <s>[INST] Instruction [/INST] Model answer</s>[INST] Follow-up instruction [/INST]
+  std::optional<std::string> get_prompt() const override {
+    // at least one user message
+  if (messages_.size() % 2 == 0) {
+    return std::nullopt;
+  }
+
+  std::stringstream ss;
+  // start with system message
+  // N.B. tokenizer would add <s> to the beginning of the prompt
+  if (!system_message_.empty()) {
+    ss << system_message_;
+  }
+
+  // then user and assistant message pairs (u/a/u/a/u...)
+  for (size_t i = 0; i < messages_.size(); ++i) {
+    if (i % 2 == 0) {
+      // user message
+      ss << "[INST] " << messages_[i] << " ";
+    } else {
+      // assistant message
+      ss << "[/INST] " << messages_[i] << "</s>";
+    }
+  }
+  // end with assistant message
+  ss << "[/INST]";
+  return ss.str();
+  }
+};
+
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(mistral, MistralForCausalLM);
+REGISTER_DIALOG(mistral, MistralDialog);
 REGISTER_MODEL_ARGS(mistral, [&] {
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 32000);

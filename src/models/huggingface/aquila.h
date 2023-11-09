@@ -9,6 +9,7 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
+#include "models/dialog.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -362,8 +363,39 @@ class AquilaForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(AquilaForCausalLM);
 
+class AquilaDialog final : public Dialog {
+ public:
+  // generate prompt from dialogs
+  // Prompt template for Aquila:
+  // System: A chat between a curious ...
+  // Human: {prompt}
+  // Assistant:
+  std::optional<std::string> get_prompt() const override {
+    // at least one user message
+    if (messages_.size() % 2 == 0) {
+      return std::nullopt;
+    }
+
+    std::stringstream ss;
+    // start with system message
+    if (!system_message_.empty()) {
+      ss << "System: " << system_message_ << "\n";
+    }
+
+    // then user and assistant message pairs (u/a/u/a/u...)
+    for (size_t i = 0; i < messages_.size(); ++i) {
+      const char* role = (i % 2) == 0 ? "Human: " : "Assistant: ";
+      ss << role << messages_[i] << "\n";
+    }
+    // end with assistant message
+    ss << "Assistant:";
+    return ss.str();
+  }
+};
+
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(aquila, AquilaForCausalLM);
+REGISTER_DIALOG(aquila, AquilaDialog);
 REGISTER_MODEL_ARGS(aquila, [&] {
   // example config:
   // https://huggingface.co/BAAI/Aquila-7B/blob/main/config.json.

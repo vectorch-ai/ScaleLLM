@@ -18,7 +18,7 @@ DEFINE_string(
     "cuda, or empty for auto");
 
 DEFINE_bool(
-    force_use_page_attention_v2,
+    force_use_paged_attention_v2,
     false,
     "force to use paged attention v2 for single_query_masked_self_attention");
 
@@ -413,7 +413,7 @@ void single_query_masked_self_attention_cuda(
       (max_context_len + kPartitionSize - 1) / kPartitionSize;
   const bool use_v1 = num_partitions == 1 || (n_seq * n_heads) > kPartitionSize;
   // Use the same simple heuristic as vllm to decide whether to use v1.
-  if (!FLAGS_force_use_page_attention_v2 && use_v1) {
+  if (!FLAGS_force_use_paged_attention_v2 && use_v1) {
     paged_attention_v1(output,
                        _query,
                        key_cache,

@@ -36,7 +36,7 @@ class Dialog {
 };
 
 // dialog conversation for llama2 model
-class Llama2Dialog : public Dialog {
+class Llama2Dialog final : public Dialog {
  public:
   // generate prompt from dialogs
   std::optional<std::string> get_prompt() const override;
