@@ -16,7 +16,17 @@ RUN apt-get update -q -y && \
     pkg-config \
     libssl-dev \
     curl \
-    git 
+    git \
+    wget
+
+# install jemalloc (optional)
+RUN cd /tmp && \
+    wget -nc --no-check-certificate https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2 && \
+    tar -xvf jemalloc-5.3.0.tar.bz2 && \
+    (cd jemalloc-5.3.0 && \
+        ./configure --enable-prof --disable-initial-exec-tls && \
+        make -j$(nproc) && make install && \
+        ldconfig)
 
 # install rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -37,17 +47,19 @@ RUN cp ./entrypoint.sh /app/entrypoint.sh
 RUN cp ./requirements.txt /app/requirements.txt
 
 # ---- Production ----
-FROM nvcr.io/nvidia/cuda:12.1.0-base-ubuntu22.04 as runtime
+FROM ubuntu:22.04 as runtime
 WORKDIR /app
 
 # copy artifacts from build
 COPY --from=build /app ./
 
-# install python and dependencies
+# install python3 and pip3
 RUN apt-get update -q -y && \
     apt-get install -q -y \
     python3 \
-    python3-pip
+    python3-pip && \
+    apt-get -y autoremove && \
+    apt-get clean
 
 # install python dependencies
 RUN pip3 install -r ./requirements.txt

@@ -65,14 +65,15 @@ install(TARGETS scalellm RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # Install all dependencies for scalellm
 install(CODE [[
     file(GET_RUNTIME_DEPENDENCIES
-            RESOLVED_DEPENDENCIES_VAR DEPENDENCIES
-            UNRESOLVED_DEPENDENCIES_VAR UNRESOLVED_DEPENDENCIES
-            EXECUTABLES $<TARGET_FILE:scalellm>)
+          RESOLVED_DEPENDENCIES_VAR DEPENDENCIES
+          UNRESOLVED_DEPENDENCIES_VAR UNRESOLVED_DEPENDENCIES
+          EXECUTABLES $<TARGET_FILE:scalellm>
+          POST_EXCLUDE_REGEXES "^/lib(64)?/.*")
 
     file(INSTALL
-            DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"
-            FILES ${DEPENDENCIES}
-            FOLLOW_SYMLINK_CHAIN)
+          DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"
+          FILES ${DEPENDENCIES}
+          FOLLOW_SYMLINK_CHAIN)
 
     # This should not be possible, but error out when a dependency cannot
     # be resolved.

@@ -1,4 +1,4 @@
-name: Build and publish docker image to Docker Hub
+name: Publish docker image
 # Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
 # Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
 on:
@@ -7,7 +7,7 @@ on:
       - v[0-9]+.[0-9]+.[0-9]+*
 
 jobs:
-  publish_docker_image:
+  publish_scalellm:
     runs-on: [self-hosted, linux, x64, 1gpu]
     steps:
       - uses: olegtarasov/get-tag@v2.1
@@ -30,9 +30,8 @@ jobs:
         with:
           context: .
           push: true
+          no-cache: true
           tags: |
-            vectorchai/scalellm:latest
             vectorchai/scalellm:${{ steps.tagName.outputs.tag }}
-  
-      - name: Image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+            vectorchai/scalellm:latest
+

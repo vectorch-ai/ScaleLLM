@@ -9,6 +9,11 @@ on:
       - "gateway/**"
       - "scripts/**"
       - "**/*.md"
+      - "**/*.txt"
+      - "**/*.yml"
+      - "**/*.sh"
+      - "Dockerfile"
+      - "Dockerfile.*"
     branches: 
       - main
 
@@ -20,6 +25,11 @@ on:
       - "gateway/**"
       - "scripts/**"
       - "**/*.md"
+      - "**/*.txt"
+      - "**/*.yml"
+      - "**/*.sh"
+      - "Dockerfile"
+      - "Dockerfile.*"
     branches:
       - main
 
