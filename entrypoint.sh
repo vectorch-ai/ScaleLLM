@@ -20,10 +20,6 @@ if [ -n "$HF_MODEL_ID" ]; then
         exit 1
     fi
     ARGS+=" --model_path "$MODEL_PATH" --model_id "$HF_MODEL_ID""
-elif [ -n "$HF_MODEL_PATH" ]; then
-    echo "Using model from the specified path "$HF_MODEL_PATH""
-
-    ARGS+=" --model_path "$HF_MODEL_PATH""
 fi
 
 ARGS+=" --device "$DEVICE""

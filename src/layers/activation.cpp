@@ -8,6 +8,8 @@
 
 #include "common/logging.h"
 
+DECLARE_bool(disable_custom_kernels);
+
 namespace llm {
 namespace detail {
 torch::Tensor gelu(torch::Tensor x) {
@@ -84,10 +86,12 @@ ActFunc Activation::get_act_func(const std::string& name,
     return gelu;
   }
   if (boost::iequals(name, "gelu_fast")) {
-    return device.is_cuda() ? kernel::gelu_fast : gelu_fast;
+    return device.is_cuda() && !FLAGS_disable_custom_kernels ? kernel::gelu_fast
+                                                             : gelu_fast;
   }
   if (boost::iequals(name, "gelu_new")) {
-    return device.is_cuda() ? kernel::gelu_new : gelu_new;
+    return device.is_cuda() && !FLAGS_disable_custom_kernels ? kernel::gelu_new
+                                                             : gelu_new;
   }
   if (boost::iequals(name, "gelu_pytorch_tanh")) {
     return gelu_pytorch_tanh;
@@ -96,7 +100,8 @@ ActFunc Activation::get_act_func(const std::string& name,
     return relu;
   }
   if (boost::iequals(name, "silu")) {
-    return device.is_cuda() ? kernel::silu : silu;
+    return device.is_cuda() && !FLAGS_disable_custom_kernels ? kernel::silu
+                                                             : silu;
   }
 
   GLOG(ERROR) << "Unsupported activation function: " << name;
@@ -111,10 +116,14 @@ ActFunc Activation::get_act_with_mul_func(const std::string& name,
     return gelu_with_mul;
   }
   if (boost::iequals(name, "gelu_fast")) {
-    return device.is_cuda() ? kernel::gelu_fast_with_mul : gelu_fast_with_mul;
+    return device.is_cuda() && !FLAGS_disable_custom_kernels
+               ? kernel::gelu_fast_with_mul
+               : gelu_fast_with_mul;
   }
   if (boost::iequals(name, "gelu_new")) {
-    return device.is_cuda() ? kernel::gelu_new_with_mul : gelu_new_with_mul;
+    return device.is_cuda() && !FLAGS_disable_custom_kernels
+               ? kernel::gelu_new_with_mul
+               : gelu_new_with_mul;
   }
   if (boost::iequals(name, "gelu_pytorch_tanh")) {
     return gelu_pytorch_tanh_with_mul;
@@ -123,7 +132,9 @@ ActFunc Activation::get_act_with_mul_func(const std::string& name,
     return relu_with_mul;
   }
   if (boost::iequals(name, "silu")) {
-    return device.is_cuda() ? kernel::silu_with_mul : silu_with_mul;
+    return device.is_cuda() && !FLAGS_disable_custom_kernels
+               ? kernel::silu_with_mul
+               : silu_with_mul;
   }
 
   GLOG(ERROR) << "Unsupported activation function: " << name;

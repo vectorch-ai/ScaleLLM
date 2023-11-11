@@ -13,23 +13,21 @@ namespace llm {
 namespace {
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define NCCLCHECK(cmd)                                                    \
-  do {                                                                    \
-    ncclResult_t r = cmd;                                                 \
-    if (r != ncclSuccess) {                                               \
-      GLOG(FATAL) << "Failed, NCCL error " << __FILE__ << ":" << __LINE__ \
-                  << " " << ncclGetErrorString(r);                        \
-    }                                                                     \
+#define NCCLCHECK(cmd)                                                \
+  do {                                                                \
+    ncclResult_t r = cmd;                                             \
+    if (r != ncclSuccess) {                                           \
+      GLOG(FATAL) << "Failed, NCCL error :" << ncclGetErrorString(r); \
+    }                                                                 \
   } while (0)
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define CUDACHECK(cmd)                                                    \
-  do {                                                                    \
-    cudaError_t err = cmd;                                                \
-    if (err != cudaSuccess) {                                             \
-      GLOG(FATAL) << "Failed, Cuda error " << __FILE__ << ":" << __LINE__ \
-                  << " " << cudaGetErrorString(err);                      \
-    }                                                                     \
+#define CUDACHECK(cmd)                                                  \
+  do {                                                                  \
+    cudaError_t err = cmd;                                              \
+    if (err != cudaSuccess) {                                           \
+      GLOG(FATAL) << "Failed, Cuda error :" << cudaGetErrorString(err); \
+    }                                                                   \
   } while (0)
 
 at::Tensor flatten_for_scatter_gather(std::vector<at::Tensor>& tensors) {
@@ -81,15 +79,14 @@ std::vector<std::unique_ptr<ProcessGroup>> ProcessGroup::create_process_groups(
     GCHECK(device.is_cuda()) << "device should be cuda device";
   }
 
-  const int world_size = static_cast<int>(devices.size());
-
-  std::vector<ncclComm_t> comms;
-  comms.reserve(devices.size());
   std::vector<int> device_idxs;
   device_idxs.reserve(devices.size());
   for (const auto& device : devices) {
     device_idxs.push_back(device.index());
   }
+
+  std::vector<ncclComm_t> comms(devices.size());
+  const int world_size = static_cast<int>(devices.size());
   NCCLCHECK(ncclCommInitAll(comms.data(), world_size, device_idxs.data()));
 
   std::vector<std::unique_ptr<ProcessGroup>> process_groups;
@@ -102,16 +99,6 @@ std::vector<std::unique_ptr<ProcessGroup>> ProcessGroup::create_process_groups(
 }
 
 // Constructor.
-ProcessGroupNCCL::ProcessGroupNCCL(int rank,
-                                   int world_size,
-                                   const torch::Device& device,
-                                   const ncclUniqueId& comm_id)
-    : ProcessGroup(rank, world_size, device) {
-  torch::DeviceGuard device_guard(device);
-  NCCLCHECK(ncclCommInitRank(&comm_, world_size, comm_id, rank));
-  CUDACHECK(cudaStreamCreate(&stream_));
-}
-
 ProcessGroupNCCL::ProcessGroupNCCL(int rank,
                                    int world_size,
                                    const torch::Device& device,

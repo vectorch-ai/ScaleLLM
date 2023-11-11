@@ -59,11 +59,6 @@ class ProcessGroupNCCL : public ProcessGroup {
   ProcessGroupNCCL(int rank,
                    int world_size,
                    const torch::Device& device,
-                   const ncclUniqueId& id);
-
-  ProcessGroupNCCL(int rank,
-                   int world_size,
-                   const torch::Device& device,
                    ncclComm_t comm);
 
   // Destructor.

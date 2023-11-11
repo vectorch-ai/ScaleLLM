@@ -258,8 +258,8 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
 
   // always use float16 for quantization
   if (!quant_args_.quant_method().empty() && args_.dtype() != "float16") {
-    LOG(WARNING) << "Overwriting dtype from " << args_.dtype() << " to float16 "
-                 << "for quantization";
+    GLOG(WARNING) << "Overwriting dtype from " << args_.dtype()
+                  << " to float16 for quantization";
     args_.dtype() = "float16";
   }
 

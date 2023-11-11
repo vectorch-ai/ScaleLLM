@@ -6,16 +6,7 @@
 
 #include "common/logging.h"
 
-DEFINE_string(varlen_masked_self_attention,
-              "",
-              "type of attention to use for varlen_masked_self_attention, "
-              "slow, cuda, or empty for auto");
-
-DEFINE_string(
-    single_query_masked_self_attention,
-    "",
-    "type of attention to use for single_query_masked_self_attention, slow, "
-    "cuda, or empty for auto");
+DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
 
 DEFINE_bool(
     force_use_paged_attention_v2,
@@ -188,19 +179,16 @@ void varlen_masked_self_attention(
     int32_t max_seq_len,                          // maximum sequence length
     float scale,                                  // scale for softmax
     torch::Tensor& output) {
-  if (query.is_cuda()) {
+  if (query.is_cuda() && !FLAGS_disable_custom_kernels) {
     // use cuda kernel
-    if (FLAGS_varlen_masked_self_attention.empty() ||
-        FLAGS_varlen_masked_self_attention == "cuda") {
-      return varlen_masked_self_attention_cuda(query,
-                                               key,
-                                               value,
-                                               cu_seq_lens,
-                                               alibi_slopes,
-                                               max_seq_len,
-                                               scale,
-                                               output);
-    }
+    return varlen_masked_self_attention_cuda(query,
+                                             key,
+                                             value,
+                                             cu_seq_lens,
+                                             alibi_slopes,
+                                             max_seq_len,
+                                             scale,
+                                             output);
   }
   return varlen_masked_self_attention_generic(
       query, key, value, cu_seq_lens, alibi_slopes, scale, output);
@@ -216,20 +204,17 @@ void single_query_masked_self_attention(
     int32_t max_context_len,                      // maximum context length
     float scale,                                  // scale for softmax
     torch::Tensor& output) {
-  if (query.is_cuda()) {
+  if (query.is_cuda() && !FLAGS_disable_custom_kernels) {
     // use cuda kernel
-    if (FLAGS_single_query_masked_self_attention.empty() ||
-        FLAGS_single_query_masked_self_attention == "cuda") {
-      return single_query_masked_self_attention_cuda(kv_cache,
-                                                     kv_head_mapping,
-                                                     query,
-                                                     block_tables,
-                                                     context_lens,
-                                                     alibi_slopes,
-                                                     max_context_len,
-                                                     scale,
-                                                     output);
-    }
+    return single_query_masked_self_attention_cuda(kv_cache,
+                                                   kv_head_mapping,
+                                                   query,
+                                                   block_tables,
+                                                   context_lens,
+                                                   alibi_slopes,
+                                                   max_context_len,
+                                                   scale,
+                                                   output);
   }
   return single_query_masked_self_attention_generic(kv_cache,
                                                     query,

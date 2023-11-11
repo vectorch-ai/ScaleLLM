@@ -17,6 +17,7 @@ services:
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
     volumes:
       - $HOME/.cache/huggingface/hub:/models
+    shm_size: 1g
     command: --logtostderr
     # turn on GPU access
     deploy:

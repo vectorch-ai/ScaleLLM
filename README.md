@@ -69,12 +69,12 @@ docker run -it --gpus=all --net=host --shm-size=1g \
 
 This command starts the Docker container with GPU support and various configuration options.
 > **Warning**<br />
-> NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the command. If you have NVLink or PCI available, you can remove this option.
+> NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the docker run command.
 
 - `HF_MODEL_ID` specifies which Hugging Face model you want to run.
-- `HF_MODEL_REVISION` specifies which Hugging Face model revision you want to run. by default, it is set to `"main"`.
-- `HF_MODEL_ALLOW_PATTERN` specifies which types of files are allowed to be downloaded. by default, it is set to `"*.json,*.safetensors,*.model"`.
-- `DEVICE` specifies the device on which this model should run. by default, it is set to `"auto"`.
+- `HF_MODEL_REVISION` specifies which Hugging Face model revision you want to run. By default, it is set to `"main"`.
+- `HF_MODEL_ALLOW_PATTERN` specifies which types of files are allowed to be downloaded. By default, it is set to `"*.json,*.safetensors,*.model"`.
+- `DEVICE` specifies the device on which this model should run. By default, it is set to `"auto"`.
 - `HUGGING_FACE_HUB_TOKEN` specifies the token from [huggingface](https://huggingface.co/settings/tokens) for gated models.
 
 > **Note**<br />

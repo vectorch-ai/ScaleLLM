@@ -8,6 +8,7 @@
 #include "common/logging.h"
 #include "kernels/pos_embedding_kernels.h"
 
+DECLARE_bool(disable_custom_kernels);
 namespace llm {
 
 namespace {
@@ -57,7 +58,8 @@ std::shared_ptr<RotaryEmbeddingImpl> create(int64_t rotary_dim,
                                             bool interleaved,
                                             torch::ScalarType dtype,
                                             const torch::Device& device) {
-  if (device.is_cuda()) {
+  if (device.is_cuda() && !FLAGS_disable_custom_kernels) {
+    // use custom kernels
     return std::make_shared<RotaryEmbeddingKernel>(rotary_dim,
                                                    max_position_embeddings,
                                                    scaling_factor,
@@ -146,7 +148,7 @@ RotaryEmbeddingGeneric::RotaryEmbeddingGeneric(int64_t rotary_dim,
 
   const auto cos_sin = torch::cat({emd.cos(), emd.sin()}, /*dim=*/-1);
   const auto options = torch::dtype(dtype).device(device);
-  cos_sin_cache_ = register_buffer("cos_sin_cached", cos_sin);
+  cos_sin_cache_ = register_buffer("cos_sin_cache", cos_sin.to(options));
 }
 
 // inplace rotary positional embedding
@@ -181,8 +183,8 @@ RotaryEmbeddingKernel::RotaryEmbeddingKernel(int64_t rotary_dim,
     : rotary_dim_(rotary_dim), interleaved_(interleaved) {
   const auto freqs = detail::compute_freqs(
       max_position_embeddings, rotary_dim, scaling_factor, theta);
-  const auto cos_sin = torch::cat({freqs.cos(), freqs.sin()}, /*dim=*/-1);
 
+  const auto cos_sin = torch::cat({freqs.cos(), freqs.sin()}, /*dim=*/-1);
   const auto options = torch::dtype(dtype).device(device);
   cos_sin_cache_ = register_buffer("cos_sin_cache", cos_sin.to(options));
 }

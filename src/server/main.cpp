@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
 
   // check if model path exists
   if (!std::filesystem::exists(FLAGS_model_path)) {
-    LOG(FATAL) << "Model path " << FLAGS_model_path << " does not exist.";
+    GLOG(FATAL) << "Model path " << FLAGS_model_path << " does not exist.";
   }
 
   if (FLAGS_model_id.empty()) {

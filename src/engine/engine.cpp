@@ -1,4 +1,5 @@
 #include "engine.h"
+#include <gflags/gflags_declare.h>
 
 #include <boost/algorithm/string.hpp>
 #include <memory>
@@ -20,6 +21,8 @@ DEFINE_int64(max_cache_size, 5 * GB, "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
               0.9,
               "maximum memory utilization allowed, default 0.9");
+
+DECLARE_bool(disable_custom_kernels);
 
 namespace llm {
 namespace {
@@ -63,6 +66,10 @@ Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
     ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
     ParallelArgs parallel_args(rank, world_size, pg);
     workers_.emplace_back(std::make_unique<Worker>(parallel_args, devices[i]));
+  }
+
+  if (FLAGS_disable_custom_kernels) {
+    GLOG(WARNING) << "Custom kernels are disabled, using generic kernels.";
   }
 }
 

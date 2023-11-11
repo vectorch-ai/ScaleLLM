@@ -7,8 +7,7 @@
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 
-DECLARE_string(varlen_masked_self_attention);
-DECLARE_string(single_query_masked_self_attention);
+DECLARE_bool(disable_custom_kernels);
 
 namespace llm {
 

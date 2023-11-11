@@ -7,6 +7,7 @@
 #include "kernels/layernorm_kernels.h"
 #include "model_loader/state_dict.h"
 
+DECLARE_bool(disable_custom_kernels);
 namespace llm {
 namespace detail {
 inline torch::Tensor rms_norm(torch::Tensor input,
@@ -58,7 +59,7 @@ class LayerNormImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor input) {
-    if (input.is_cuda()) {
+    if (input.is_cuda() && !FLAGS_disable_custom_kernels) {
       auto output = torch::empty_like(input);
       kernel::layer_norm(output, input, weight_, bias_, eps_);
       return output;
@@ -131,7 +132,7 @@ class RMSNormImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor input) {
-    if (input.is_cuda()) {
+    if (input.is_cuda() && !FLAGS_disable_custom_kernels) {
       auto output = torch::empty_like(input);
       kernel::rms_norm(output, input, weight_, eps_);
       return output;
