@@ -60,7 +60,7 @@ You can download and install Docker from the official website: [Docker Installat
 Once you have Docker installed, you can run our project's Docker container using the following command:
 
 ```bash
-docker run -it --gpus=all --net=host \
+docker run -it --gpus=all --net=host --shm-size=1g \
   -v $HOME/.cache/huggingface/hub:/models \
   -e HF_MODEL_ID=TheBloke/Llama-2-7B-chat-AWQ \
   -e DEVICE=cuda:0 \
@@ -68,6 +68,8 @@ docker run -it --gpus=all --net=host \
 ``` 
 
 This command starts the Docker container with GPU support and various configuration options.
+> **Warning**<br />
+> NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the command. If you have NVLink or PCI available, you can remove this option.
 
 - `HF_MODEL_ID` specifies which Hugging Face model you want to run.
 - `HF_MODEL_REVISION` specifies which Hugging Face model revision you want to run. by default, it is set to `"main"`.
