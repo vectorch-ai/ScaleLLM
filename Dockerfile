@@ -15,6 +15,7 @@ RUN apt-get update -q -y && \
     zip \
     pkg-config \
     libssl-dev \
+    libboost-all-dev \
     curl \
     git \
     wget

@@ -51,7 +51,7 @@ jobs:
     steps:
     - name: Install toolkits
       run: |
-        sudo apt-get install -y build-essential ninja-build bison gcc-12 libunwind-dev python3-dev
+        sudo apt-get install -y build-essential ninja-build bison gcc-12 libunwind-dev python3-dev libboost-all-dev
   
     - name: Checkout
       uses: actions/checkout@v3

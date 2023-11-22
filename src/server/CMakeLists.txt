@@ -25,7 +25,6 @@ cc_library(
   SRCS
     http_server.cpp
   DEPS
-    absl::strings
     glog::glog
 )
 
