@@ -9,6 +9,7 @@ cc_library(
   SRCS 
     logits_processor.cpp
   DEPS
+    :kernels
     glog::glog
     torch
 )

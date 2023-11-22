@@ -5,7 +5,7 @@
 namespace llm::kernel {
 
 void apply_temperature_penalty(torch::Tensor& logits,
-                               torch::Tensor temperatures);
+                               const torch::Tensor& temperatures);
 
 // token_ids are unique token ids for each sequence.
 // the order of token ids does not matter.

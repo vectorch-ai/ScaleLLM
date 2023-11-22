@@ -31,7 +31,7 @@ __global__ void apply_temperature_penalty_kernel(
 }
 
 void apply_temperature_penalty(torch::Tensor& logits,
-                               torch::Tensor temperatures) {
+                               const torch::Tensor& temperatures) {
   DCHECK(logits.is_contiguous()) << "logits tensor must be contiguous";
   DCHECK(temperatures.is_contiguous())
       << "temperatures tensor must be contiguous";

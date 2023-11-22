@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "models/input_parameters.h"
+#include "kernels/sampling/sampling_kernels.h"
 
 namespace llm {
 
@@ -167,6 +168,11 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
                         const torch::Tensor& logits) const override {
+    if (logits.is_cuda()) {
+      auto logits_ = logits;
+      kernel::apply_temperature_penalty(logits_, temperatures_);
+      return logits_;
+    }
     logits.div_(temperatures_);
     return logits;
   }
