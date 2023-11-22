@@ -1,19 +1,16 @@
 #pragma once
-#include <absl/strings/numbers.h>
-#include <evhtp/evhtp.h>
 
+#include <boost/beast.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
 
-struct mg_connection;
 namespace llm {
-
+using tcp = boost::asio::ip::tcp;
 // a simple http server based on civetweb for serving model metrics and health
 // check endpoints
 class HttpServer {
@@ -23,11 +20,11 @@ class HttpServer {
 
   HttpServer() = default;
 
-  bool RegisterURI(const std::string& uri, Handler handler);
+  bool register_uri(const std::string& uri, Handler handler);
 
-  bool Start(uint16_t port, int32_t num_threads);
+  bool start(uint16_t port, int32_t num_threads);
 
-  void Stop();
+  void stop();
 
   /**
    * A helper class that request handler can use to query transport related
@@ -36,55 +33,34 @@ class HttpServer {
    */
   class Transport {
    private:
-    evhtp_request_t* req_;
+    boost::beast::http::response<boost::beast::http::string_body>* res_;
 
    public:
-    explicit Transport(evhtp_request_t* req) : req_(req) {}
+    explicit Transport(
+        boost::beast::http::response<boost::beast::http::string_body>* res)
+        : res_(res) {}
 
     Transport(const Transport&) = delete;
     Transport& operator=(Transport&) = delete;
 
-    // Get request
-    htp_method GetMethod() const;
-
-    std::optional<std::string> GetParam(const std::string& name) const;
-
-    template <typename int_type>
-    std::optional<int_type> GetIntParam(const std::string& name) const {
-      auto str_val = GetParam(name);
-      if (!str_val) {
-        return false;
-      }
-      int_type value;
-      if (absl::SimpleAtoi(str_val.value(), value)) {
-        return value;
-      }
-      return std::nullopt;
-    }
-
     // Send response
-    bool SendString(const std::string& data,
-                    const std::string& mime_type = "text/plain; charset=utf-8");
+    bool send_string(
+        const std::string& data,
+        const std::string& mime_type = "text/plain; charset=utf-8");
 
     // Send status code: 200 OK, 503 Service Unavailable, etc.
-    bool SendStatus(int status_code);    
+    bool send_status(int status_code);
   };
 
  private:
-  // http request callback to dispatch to registered handlers
-  static void Dispatch(evhtp_request_t* req, void* arg);
-
-  // event callback to stop the event loop
-  static void StopCallback(evutil_socket_t fd, short what, void* arg);
+  void async_accept(tcp::acceptor& acceptor);
+  void handle_request(tcp::socket& socket);
 
   // hold the ownership of all request handlers
   std::unordered_map<std::string, Handler> endpoints_;
 
-  evhtp_t* htp_;
-  event_base* evbase_;
-  evutil_socket_t fds_[2];
-  event* break_ev_;
-
+  // io_context and thread for running the server
+  std::unique_ptr<boost::asio::io_context> io_context_;
   std::thread thread_;
 };
 

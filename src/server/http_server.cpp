@@ -1,8 +1,7 @@
 #include "http_server.h"
 
-#include <event2/util.h>
-#include <evhtp/evhtp.h>
-
+#include <boost/asio.hpp>
+#include <boost/beast.hpp>
 #include <memory>
 #include <string>
 #include <utility>
@@ -12,8 +11,8 @@
 
 namespace llm {
 
-bool HttpServer::RegisterURI(const std::string& uri,
-                             HttpServer::Handler handler) {
+bool HttpServer::register_uri(const std::string& uri,
+                              HttpServer::Handler handler) {
   if (endpoints_.count(uri) != 0) {
     return false;
   }
@@ -21,98 +20,80 @@ bool HttpServer::RegisterURI(const std::string& uri,
   return true;
 }
 
-void HttpServer::Dispatch(evhtp_request_t* req, void* arg) {
-  HttpServer* self = static_cast<HttpServer*>(arg);
-  const std::string uri = req->uri->path->full;
-  auto it = self->endpoints_.find(uri);
-  if (it == self->endpoints_.end()) {
-    evhtp_send_reply(req, EVHTP_RES_NOTFOUND);
-    return;
-  }
-  Transport transport(req);
-  if (!it->second(transport)) {
-    evhtp_send_reply(req, EVHTP_RES_SERVERR);
-  }
+void HttpServer::async_accept(tcp::acceptor& acceptor) {
+  // create a new socket
+  const auto socket = std::make_shared<tcp::socket>(*io_context_);
+  acceptor.async_accept(
+      *socket, [this, &acceptor, socket](boost::system::error_code ec) {
+        // loop to accept new incoming connections
+        async_accept(acceptor);
+        if (!ec) {
+          handle_request(*socket);
+        }
+      });
 }
 
-void HttpServer::StopCallback(evutil_socket_t /*fd*/,
-                              short /*what*/,
-                              void* arg) {
-  event_base_loopbreak(static_cast<event_base*>(arg));
+void HttpServer::handle_request(tcp::socket& socket) {
+  // process the request
+  boost::beast::flat_buffer buffer;
+  boost::beast::http::request<boost::beast::http::string_body> req;
+  boost::beast::http::read(socket, buffer, req);
+  boost::beast::http::response<boost::beast::http::string_body> res;
+  res.version(req.version());
+  res.keep_alive(req.keep_alive());
+  auto it = endpoints_.find(req.target().to_string());
+  if (it == endpoints_.end()) {
+    res.result(boost::beast::http::status::not_found);
+    res.body() =
+        "The resource '" + req.target().to_string() + "' was not found.";
+    res.set(boost::beast::http::field::content_type, "text/plain");
+  } else {
+    auto& handler = it->second;
+    Transport transport(&res);
+    if (!handler(transport)) {
+      res.result(boost::beast::http::status::internal_server_error);
+      res.body() = "An error occurred processing the request.";
+      res.set(boost::beast::http::field::content_type, "text/plain");
+    }
+  }
+  boost::beast::http::write(socket, res);
+  socket.shutdown(tcp::socket::shutdown_send);
 }
 
-bool HttpServer::Start(uint16_t port, int32_t num_threads) {
-  evbase_ = event_base_new();
-  htp_ = evhtp_new(evbase_, nullptr);
-  evhtp_enable_flag(htp_, EVHTP_FLAG_ENABLE_NODELAY);
-  // set request handler callback
-  evhtp_set_gencb(htp_, Dispatch, this);
-  // set thread number
-  evhtp_use_threads_wexit(htp_, nullptr, nullptr, num_threads, nullptr);
-  if (evhtp_bind_socket(htp_, "0.0.0.0", port, 1024) != 0) {
-    GLOG(ERROR) << "Failed to bind to port " << port;
-    return false;
-  }
+bool HttpServer::start(uint16_t port, int32_t num_threads) {
+  io_context_ = std::make_unique<boost::asio::io_context>(num_threads);
 
-  // set up a pipe to break the event loop
-  if (evutil_socketpair(AF_UNIX, SOCK_STREAM, 0, fds_) == -1) {
-    GLOG(ERROR) << "Failed to create socket pair";
-    return false;
-  }
-  break_ev_ = event_new(evbase_, fds_[0], EV_READ, StopCallback, evbase_);
-  event_add(break_ev_, nullptr);
-  thread_ = std::thread(event_base_loop, evbase_, 0);
+  thread_ = std::thread([this, port] {
+    tcp::acceptor acceptor{*io_context_, tcp::endpoint{tcp::v4(), port}};
+    async_accept(acceptor);
+    io_context_->run();
+  });
   GLOG(INFO) << "Started http server on 0.0.0.0:" << port;
   return true;
 }
 
-void HttpServer::Stop() {
+void HttpServer::stop() {
+  // notifiy io_context to stop
+  if (io_context_) {
+    io_context_->stop();
+  }
+  // wait for thread to finish
   if (thread_.joinable()) {
-    // notify the event loop to stop
-    send(fds_[1], &evbase_, sizeof(event_base*), 0);
-    // wait for the event loop to stop
     thread_.join();
-
-    event_free(break_ev_);
-    evutil_closesocket(fds_[0]);
-    evutil_closesocket(fds_[1]);
-    evhtp_unbind_socket(htp_);
-    evhtp_free(htp_);
-    event_base_free(evbase_);
   }
   endpoints_.clear();
 }
 
-htp_method HttpServer::Transport::GetMethod() const { return req_->method; }
-
-std::optional<std::string> HttpServer::Transport::GetParam(
-    const std::string& name) const {
-  // return CivetServer::getParam(conn_, name.c_str(), *value);
-  evhtp_uri_t* uri = req_->uri;
-  evhtp_kv_t* kv = nullptr;
-  TAILQ_FOREACH(kv, uri->query, next) {
-    if (std::string(kv->key, kv->klen) == name) {
-      return std::string(kv->val, kv->vlen);
-    }
-  }
-  return std::nullopt;
-}
-
-bool HttpServer::Transport::SendString(const std::string& data,
-                                       const std::string& mime_type) {
-  // Send HTTP message header
-  evhtp_headers_add_header(
-      req_->headers_out,
-      evhtp_header_new("Content-Type", mime_type.c_str(), 1, 1));
-  // Send HTTP message content
-  evbuffer_add(req_->buffer_out, data.data(), data.size());
-  // Send HTTP message status
-  evhtp_send_reply(req_, EVHTP_RES_OK);
+bool HttpServer::Transport::send_string(const std::string& data,
+                                        const std::string& mime_type) {
+  res_->set(boost::beast::http::field::content_type, mime_type);
+  res_->body() = data;
+  res_->result(boost::beast::http::status::ok);
   return true;
 }
 
-bool HttpServer::Transport::SendStatus(int status_code) {
-  evhtp_send_reply(req_, status_code);
+bool HttpServer::Transport::send_status(int status_code) {
+  res_->result(status_code);
   return true;
 }
 

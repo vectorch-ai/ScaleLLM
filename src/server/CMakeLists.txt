@@ -27,7 +27,6 @@ cc_library(
   DEPS
     absl::strings
     glog::glog
-    libevhtp::evhtp
 )
 
 cc_binary(

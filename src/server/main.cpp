@@ -100,35 +100,35 @@ int main(int argc, char** argv) {
   }
 
   HttpServer http_server;
-  http_server.RegisterURI("/gflags",
-                          [](HttpServer::Transport& transport) -> bool {
-                            auto gflags = nlohmann::json::array();
-                            std::vector<google::CommandLineFlagInfo> flags;
-                            google::GetAllFlags(&flags);
-                            for (const auto& flag : flags) {
-                              nlohmann::json gflag;
-                              gflag["name"] = flag.name;
-                              gflag["type"] = flag.type;
-                              gflag["description"] = flag.description;
-                              gflag["value"] = flag.current_value;
-                              gflag["default"] = flag.default_value;
-                              gflags.push_back(gflag);
-                            }
-                            return transport.SendString(
-                                gflags.dump(/*indent=*/2), "application/json");
-                          });
-  http_server.RegisterURI(
+  http_server.register_uri("/gflags",
+                           [](HttpServer::Transport& transport) -> bool {
+                             auto gflags = nlohmann::json::array();
+                             std::vector<google::CommandLineFlagInfo> flags;
+                             google::GetAllFlags(&flags);
+                             for (const auto& flag : flags) {
+                               nlohmann::json gflag;
+                               gflag["name"] = flag.name;
+                               gflag["type"] = flag.type;
+                               gflag["description"] = flag.description;
+                               gflag["value"] = flag.current_value;
+                               gflag["default"] = flag.default_value;
+                               gflags.push_back(gflag);
+                             }
+                             return transport.send_string(
+                                 gflags.dump(/*indent=*/2), "application/json");
+                           });
+  http_server.register_uri(
       "/metrics", [](HttpServer::Transport& transport) -> bool {
-        return transport.SendString(Metrics::Instance().GetString());
+        return transport.send_string(Metrics::Instance().GetString());
       });
-  http_server.RegisterURI("/health",
-                          [](HttpServer::Transport& transport) -> bool {
-                            if (running.load(std::memory_order_relaxed)) {
-                              return transport.SendString("Ok\n");
-                            }
-                            // 503 Service Unavailable
-                            return transport.SendStatus(503);
-                          });
+  http_server.register_uri("/health",
+                           [](HttpServer::Transport& transport) -> bool {
+                             if (running.load(std::memory_order_relaxed)) {
+                               return transport.send_string("Ok\n");
+                             }
+                             // 503 Service Unavailable
+                             return transport.send_status(503);
+                           });
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  if (!http_server.Start(FLAGS_http_port, /*num_threads=*/2)) {
+  if (!http_server.start(FLAGS_http_port, /*num_threads=*/2)) {
     GLOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
     return -1;
   }
@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
 
   // stop grpc server and http server
   grpc_server.stop();
-  http_server.Stop();
+  http_server.stop();
 
   return 0;
 }

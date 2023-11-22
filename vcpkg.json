@@ -45,16 +45,6 @@
       "name": "nlohmann-json",
       "version>=": "3.11.2",
       "default-features": false
-    }, 
-    {
-      "name": "libevent",
-      "version>=": "2.1.12+20230128",
-      "features": ["thread"]
-    },
-    {
-      "name": "libevhtp",
-      "version>=": "1.2.18#5",
-      "features": ["thread"]
     },
     {
       "name": "stduuid",
