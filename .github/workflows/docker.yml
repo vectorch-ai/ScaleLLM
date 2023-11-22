@@ -30,8 +30,7 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USER }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Build and push
-        id: docker_build
+      - name: Build and push scalellm
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -40,4 +39,14 @@ jobs:
           tags: |
             vectorchai/scalellm:${{ steps.tagName.outputs.tag }}
             vectorchai/scalellm:latest
+
+      - name: Build and push gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway
+          push: true
+          no-cache: true
+          tags: |
+            vectorchai/scalellm-gateway:${{ steps.tagName.outputs.tag }}
+            vectorchai/scalellm-gateway:latest
 
