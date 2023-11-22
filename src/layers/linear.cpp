@@ -65,7 +65,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
     int64_t out_features,
     bool bias,
     bool gather_output,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device) {
@@ -97,7 +97,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear_by_impl(
     int64_t out_features,
     bool bias,
     bool input_is_parallelized,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device) {
@@ -129,7 +129,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
     int64_t out_features,
     bool bias,
     bool gather_output,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device) {
@@ -164,7 +164,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
     int64_t out_features,
     bool bias,
     bool input_is_parallelized,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device) {
@@ -201,7 +201,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
     int64_t out_features,
     bool bias,
     bool gather_output,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device) {
@@ -223,7 +223,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
     int64_t out_features,
     bool bias,
     bool input_is_parallelized,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
     const torch::Device& device) {
@@ -247,7 +247,7 @@ ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                            int64_t out_features,
                                            bool bias,
                                            bool gather_output,
-                                           const QuantizationArgs& quant_args,
+                                           const QuantArgs& quant_args,
                                            const ParallelArgs& parallel_args,
                                            torch::ScalarType dtype,
                                            const torch::Device& device)
@@ -282,7 +282,7 @@ RowParallelLinear::RowParallelLinear(int64_t in_features,
                                      int64_t out_features,
                                      bool bias,
                                      bool input_is_parallelized,
-                                     const QuantizationArgs& quant_args,
+                                     const QuantArgs& quant_args,
                                      const ParallelArgs& parallel_args,
                                      torch::ScalarType dtype,
                                      const torch::Device& device)

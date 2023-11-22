@@ -18,7 +18,7 @@ namespace llm::hf {
 class MistralMLPImpl : public torch::nn::Module {
  public:
   MistralMLPImpl(const ModelArgs& args,
-                 const QuantizationArgs& quant_args,
+                 const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
                  torch::ScalarType dtype,
                  const torch::Device& device) {
@@ -79,7 +79,7 @@ TORCH_MODULE(MistralMLP);
 class MistralAttentionImpl : public torch::nn::Module {
  public:
   MistralAttentionImpl(const ModelArgs& args,
-                       const QuantizationArgs& quant_args,
+                       const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
                        const torch::Device& device) {
@@ -179,7 +179,7 @@ TORCH_MODULE(MistralAttention);
 class MistralDecoderLayerImpl : public torch::nn::Module {
  public:
   MistralDecoderLayerImpl(const ModelArgs& args,
-                          const QuantizationArgs& quant_args,
+                          const QuantArgs& quant_args,
                           const ParallelArgs& parallel_args,
                           torch::ScalarType dtype,
                           const torch::Device& device) {
@@ -239,7 +239,7 @@ TORCH_MODULE(MistralDecoderLayer);
 class MistralModelImpl : public torch::nn::Module {
  public:
   MistralModelImpl(const ModelArgs& args,
-                   const QuantizationArgs& quant_args,
+                   const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
                    const torch::Device& device) {
@@ -312,7 +312,7 @@ TORCH_MODULE(MistralModel);
 class MistralForCausalLMImpl : public torch::nn::Module {
  public:
   MistralForCausalLMImpl(const ModelArgs& args,
-                         const QuantizationArgs& quant_args,
+                         const QuantArgs& quant_args,
                          const ParallelArgs& parallel_args,
                          torch::ScalarType dtype,
                          const torch::Device& device) {
@@ -365,33 +365,34 @@ class MistralDialog final : public Dialog {
  public:
   // generate prompt from dialogs
   // Prompt template:
-  // <s>[INST] Instruction [/INST] Model answer</s>[INST] Follow-up instruction [/INST]
+  // <s>[INST] Instruction [/INST] Model answer</s>[INST] Follow-up instruction
+  // [/INST]
   std::optional<std::string> get_prompt() const override {
     // at least one user message
-  if (messages_.size() % 2 == 0) {
-    return std::nullopt;
-  }
-
-  std::stringstream ss;
-  // start with system message
-  // N.B. tokenizer would add <s> to the beginning of the prompt
-  if (!system_message_.empty()) {
-    ss << system_message_;
-  }
-
-  // then user and assistant message pairs (u/a/u/a/u...)
-  for (size_t i = 0; i < messages_.size(); ++i) {
-    if (i % 2 == 0) {
-      // user message
-      ss << "[INST] " << messages_[i] << " ";
-    } else {
-      // assistant message
-      ss << "[/INST] " << messages_[i] << "</s>";
+    if (messages_.size() % 2 == 0) {
+      return std::nullopt;
     }
-  }
-  // end with assistant message
-  ss << "[/INST]";
-  return ss.str();
+
+    std::stringstream ss;
+    // start with system message
+    // N.B. tokenizer would add <s> to the beginning of the prompt
+    if (!system_message_.empty()) {
+      ss << system_message_;
+    }
+
+    // then user and assistant message pairs (u/a/u/a/u...)
+    for (size_t i = 0; i < messages_.size(); ++i) {
+      if (i % 2 == 0) {
+        // user message
+        ss << "[INST] " << messages_[i] << " ";
+      } else {
+        // assistant message
+        ss << "[/INST] " << messages_[i] << "</s>";
+      }
+    }
+    // end with assistant message
+    ss << "[/INST]";
+    return ss.str();
   }
 };
 

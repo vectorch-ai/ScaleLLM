@@ -31,7 +31,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     bool gather_output,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
@@ -95,7 +95,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
-    const QuantizationArgs& quant_args,
+    const QuantArgs& quant_args,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
     torch::ScalarType dtype,
@@ -114,9 +114,8 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
   GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
 
-  const auto group_size = quant_args.group_size() > 0
-                              ? quant_args.group_size()
-                              : in_features;
+  const auto group_size =
+      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   std::vector<int32_t> g_idx_data;
   g_idx_data.reserve(in_features);

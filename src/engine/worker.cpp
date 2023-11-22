@@ -24,7 +24,7 @@ Worker::Worker(const ParallelArgs& parallel_args, const torch::Device& device)
 
 bool Worker::init_model(torch::ScalarType dtype,
                         const ModelArgs& args,
-                        const QuantizationArgs& quant_args) {
+                        const QuantArgs& quant_args) {
   // initialize model
   args_ = args;
   dtype_ = dtype;
@@ -113,10 +113,9 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
 }
 
 // initialize model, cache manager. async call
-folly::SemiFuture<bool> Worker::init_model_async(
-    torch::ScalarType dtype,
-    const ModelArgs& args,
-    const QuantizationArgs& quant_args) {
+folly::SemiFuture<bool> Worker::init_model_async(torch::ScalarType dtype,
+                                                 const ModelArgs& args,
+                                                 const QuantArgs& quant_args) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule([this,

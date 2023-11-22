@@ -20,7 +20,7 @@ namespace llm::hf {
 class MPTMLPImpl : public torch::nn::Module {
  public:
   MPTMLPImpl(const ModelArgs& args,
-             const QuantizationArgs& quant_args,
+             const QuantArgs& quant_args,
              const ParallelArgs& parallel_args,
              torch::ScalarType dtype,
              const torch::Device& device) {
@@ -80,7 +80,7 @@ TORCH_MODULE(MPTMLP);
 class MPTAttentionImpl : public torch::nn::Module {
  public:
   MPTAttentionImpl(const ModelArgs& args,
-                   const QuantizationArgs& quant_args,
+                   const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
                    const torch::Device& device)
@@ -268,7 +268,7 @@ TORCH_MODULE(MPTAttention);
 class MPTBlockImpl : public torch::nn::Module {
  public:
   MPTBlockImpl(const ModelArgs& args,
-               const QuantizationArgs& quant_args,
+               const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
                const torch::Device& device) {
@@ -329,7 +329,7 @@ TORCH_MODULE(MPTBlock);
 class MPTModelImpl : public torch::nn::Module {
  public:
   MPTModelImpl(const ModelArgs& args,
-               const QuantizationArgs& quant_args,
+               const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
                const torch::Device& device) {
@@ -403,7 +403,7 @@ TORCH_MODULE(MPTModel);
 class MPTForCausalLMImpl : public torch::nn::Module {
  public:
   MPTForCausalLMImpl(const ModelArgs& args,
-                     const QuantizationArgs& quant_args,
+                     const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
                      const torch::Device& device) {

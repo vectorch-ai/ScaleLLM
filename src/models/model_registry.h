@@ -13,7 +13,7 @@ namespace llm {
 
 using CausalLMFactory =
     std::function<std::unique_ptr<CausalLM>(const ModelArgs& args,
-                                            const QuantizationArgs& quant_args,
+                                            const QuantArgs& quant_args,
                                             const ParallelArgs& parallel_args,
                                             torch::ScalarType dtype,
                                             const torch::Device& device)>;
@@ -23,15 +23,15 @@ using DialogFactory = std::function<std::unique_ptr<Dialog>()>;
 using ModelArgsLoader =
     std::function<bool(const JsonReader& json, ModelArgs* args)>;
 
-using QuantizationArgsLoader =
-    std::function<bool(const JsonReader& json, QuantizationArgs* args)>;
+using QuantArgsLoader =
+    std::function<bool(const JsonReader& json, QuantArgs* args)>;
 
 // TODO: add default args loader.
 struct ModelMeta {
   CausalLMFactory causal_lm_factory;
   DialogFactory dialog_factory;
   ModelArgsLoader model_args_loader;
-  QuantizationArgsLoader quant_args_loader;
+  QuantArgsLoader quant_args_loader;
 };
 
 // Model registry is a singleton class that registers all models with the
@@ -47,7 +47,7 @@ class ModelRegistry {
                                          ModelArgsLoader loader);
 
   static void register_quant_args_loader(const std::string& name,
-                                         QuantizationArgsLoader loader);
+                                         QuantArgsLoader loader);
 
   static void register_dialog_factory(const std::string& name,
                                       DialogFactory factory);
@@ -56,7 +56,7 @@ class ModelRegistry {
 
   static ModelArgsLoader get_model_args_loader(const std::string& name);
 
-  static QuantizationArgsLoader get_quant_args_loader(const std::string& name);
+  static QuantArgsLoader get_quant_args_loader(const std::string& name);
 
   static DialogFactory get_dialog_factory(const std::string& name);
 
@@ -70,7 +70,7 @@ class ModelRegistry {
     ModelRegistry::register_causallm_factory(                               \
         #ModelType,                                                         \
         [](const ModelArgs& args,                                           \
-           const QuantizationArgs& quant_args,                              \
+           const QuantArgs& quant_args,                                     \
            const ParallelArgs& parallel_args,                               \
            torch::ScalarType dtype,                                         \
            const torch::Device& device) {                                   \

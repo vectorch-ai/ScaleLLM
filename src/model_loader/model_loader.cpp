@@ -8,6 +8,7 @@
 #include <fstream>
 #include <vector>
 
+#include "args_overrider.h"
 #include "common/json_reader.h"
 #include "common/logging.h"
 #include "model_loader/state_dict.h"
@@ -15,9 +16,6 @@
 #include "models/model_registry.h"
 #include "tokenizer/hf_tokenizer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
-
-DEFINE_string(model_type, "", "model type, e.g. llama2, llama, gpt_neox");
-DEFINE_string(quant_method, "", "quantization method, e.g. awq, gptq");
 
 DEFINE_string(tokenizer_path, "", "Path to the tokenizer file.");
 
@@ -113,7 +111,14 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
                 << args_.model_type();
     return false;
   }
-  return args_loader(reader, &args_);
+  if (!args_loader(reader, &args_)) {
+    GLOG(ERROR) << "Failed to load model args from " << args_file_path;
+    return false;
+  }
+
+  // apply args override from gflag if exists
+  override_args_from_gflag(args_, quant_args_);
+  return true;
 }
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path)
@@ -250,19 +255,16 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     }
   }
 
-  if (!FLAGS_quant_method.empty() &&
-      quant_args_.quant_method() != FLAGS_quant_method) {
-    GLOG(WARNING) << "Overwriting quant_method to " << FLAGS_quant_method;
-    quant_args_.quant_method() = FLAGS_quant_method;
-  }
+  // apply args override from gflag if exists
+  override_args_from_gflag(args_, quant_args_);
 
   // always use float16 for quantization
+  // TODO: support quantization for other data types
   if (!quant_args_.quant_method().empty() && args_.dtype() != "float16") {
     GLOG(WARNING) << "Overwriting dtype from " << args_.dtype()
                   << " to float16 for quantization";
     args_.dtype() = "float16";
   }
-
   return true;
 }
 

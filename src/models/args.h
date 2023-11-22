@@ -65,7 +65,8 @@ struct ModelArgs {
   DEFINE_ARG(bool, use_parallel_residual) = false;
 
   // configs for MPT attention
-  // the clip value for qkv which limits the range of qkv values within [-qkv_clip, qkv_clip]
+  // the clip value for qkv which limits the range of qkv values within
+  // [-qkv_clip, qkv_clip]
   DEFINE_ARG(std::optional<float>, attn_qkv_clip);
 
   // whether to use layer norm for qk
@@ -114,7 +115,7 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   return os;
 }
 
-struct QuantizationArgs {
+struct QuantArgs {
   DEFINE_ARG(std::string, quant_method) = "";
 
   // quantization bits
@@ -129,9 +130,8 @@ struct QuantizationArgs {
   DEFINE_ARG(bool, true_sequential) = false;
 };
 
-inline std::ostream& operator<<(std::ostream& os,
-                                const QuantizationArgs& args) {
-  os << "QuantizationArgs: [";
+inline std::ostream& operator<<(std::ostream& os, const QuantArgs& args) {
+  os << "QuantArgs: [";
   os << "quant_method: " << args.quant_method();
   os << ", bits: " << args.bits();
   os << ", group_size: " << args.group_size();

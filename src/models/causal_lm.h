@@ -30,7 +30,7 @@ class CausalLM : public torch::nn::Module {
 
   // factory method to create a causal language model
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
-                                          const QuantizationArgs& quant_args,
+                                          const QuantArgs& quant_args,
                                           const ParallelArgs& parallel_args,
                                           torch::ScalarType dtype,
                                           const torch::Device& device);

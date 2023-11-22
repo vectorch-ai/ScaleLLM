@@ -43,7 +43,7 @@ void ModelRegistry::register_model_args_loader(const std::string& name,
 }
 
 void ModelRegistry::register_quant_args_loader(const std::string& name,
-                                               QuantizationArgsLoader loader) {
+                                               QuantArgsLoader loader) {
   ModelRegistry* instance = get_instance();
   if (instance->model_registry_[name].quant_args_loader != nullptr) {
     GLOG(WARNING) << "quant args loader for " << name << "already registered.";
@@ -72,8 +72,7 @@ ModelArgsLoader ModelRegistry::get_model_args_loader(const std::string& name) {
   return instance->model_registry_[name].model_args_loader;
 }
 
-QuantizationArgsLoader ModelRegistry::get_quant_args_loader(
-    const std::string& name) {
+QuantArgsLoader ModelRegistry::get_quant_args_loader(const std::string& name) {
   ModelRegistry* instance = get_instance();
   return instance->model_registry_[name].quant_args_loader;
 }

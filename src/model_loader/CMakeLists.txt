@@ -33,8 +33,10 @@ cc_library(
     model_loader
   HDRS 
     model_loader.h
+    args_overrider.h
   SRCS 
     model_loader.cpp
+    args_overrider.cpp
   DEPS
     :common
     :models

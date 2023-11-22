@@ -20,7 +20,7 @@ namespace llm::hf {
 class LlamaMLPImpl : public torch::nn::Module {
  public:
   LlamaMLPImpl(const ModelArgs& args,
-               const QuantizationArgs& quant_args,
+               const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
                const torch::Device& device) {
@@ -82,7 +82,7 @@ TORCH_MODULE(LlamaMLP);
 class LlamaAttentionImpl : public torch::nn::Module {
  public:
   LlamaAttentionImpl(const ModelArgs& args,
-                     const QuantizationArgs& quant_args,
+                     const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
                      const torch::Device& device) {
@@ -182,7 +182,7 @@ TORCH_MODULE(LlamaAttention);
 class LlamaDecoderLayerImpl : public torch::nn::Module {
  public:
   LlamaDecoderLayerImpl(const ModelArgs& args,
-                        const QuantizationArgs& quant_args,
+                        const QuantArgs& quant_args,
                         const ParallelArgs& parallel_args,
                         torch::ScalarType dtype,
                         const torch::Device& device) {
@@ -242,7 +242,7 @@ TORCH_MODULE(LlamaDecoderLayer);
 class LlamaModelImpl : public torch::nn::Module {
  public:
   LlamaModelImpl(const ModelArgs& args,
-                 const QuantizationArgs& quant_args,
+                 const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
                  torch::ScalarType dtype,
                  const torch::Device& device) {
@@ -315,7 +315,7 @@ TORCH_MODULE(LlamaModel);
 class LlamaForCausalLMImpl : public torch::nn::Module {
  public:
   LlamaForCausalLMImpl(const ModelArgs& args,
-                       const QuantizationArgs& quant_args,
+                       const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
                        const torch::Device& device) {

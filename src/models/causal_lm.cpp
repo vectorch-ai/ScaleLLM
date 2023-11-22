@@ -14,7 +14,7 @@
 namespace llm {
 
 std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
-                                           const QuantizationArgs& quant_args,
+                                           const QuantArgs& quant_args,
                                            const ParallelArgs& parallel_args,
                                            torch::ScalarType dtype,
                                            const torch::Device& device) {

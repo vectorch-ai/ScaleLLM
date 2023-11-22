@@ -19,7 +19,7 @@ namespace llm::hf {
 class YiMLPImpl : public torch::nn::Module {
  public:
   YiMLPImpl(const ModelArgs& args,
-            const QuantizationArgs& quant_args,
+            const QuantArgs& quant_args,
             const ParallelArgs& parallel_args,
             torch::ScalarType dtype,
             const torch::Device& device) {
@@ -81,7 +81,7 @@ TORCH_MODULE(YiMLP);
 class YiAttentionImpl : public torch::nn::Module {
  public:
   YiAttentionImpl(const ModelArgs& args,
-                  const QuantizationArgs& quant_args,
+                  const QuantArgs& quant_args,
                   const ParallelArgs& parallel_args,
                   torch::ScalarType dtype,
                   const torch::Device& device) {
@@ -180,7 +180,7 @@ TORCH_MODULE(YiAttention);
 class YiDecoderLayerImpl : public torch::nn::Module {
  public:
   YiDecoderLayerImpl(const ModelArgs& args,
-                     const QuantizationArgs& quant_args,
+                     const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
                      const torch::Device& device) {
@@ -235,7 +235,7 @@ TORCH_MODULE(YiDecoderLayer);
 class YiModelImpl : public torch::nn::Module {
  public:
   YiModelImpl(const ModelArgs& args,
-              const QuantizationArgs& quant_args,
+              const QuantArgs& quant_args,
               const ParallelArgs& parallel_args,
               torch::ScalarType dtype,
               const torch::Device& device) {
@@ -308,7 +308,7 @@ TORCH_MODULE(YiModel);
 class YiForCausalLMImpl : public torch::nn::Module {
  public:
   YiForCausalLMImpl(const ModelArgs& args,
-                    const QuantizationArgs& quant_args,
+                    const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     torch::ScalarType dtype,
                     const torch::Device& device) {

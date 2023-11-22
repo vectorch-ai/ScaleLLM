@@ -19,7 +19,7 @@ namespace llm::hf {
 class GPTJMLPImpl : public torch::nn::Module {
  public:
   GPTJMLPImpl(const ModelArgs& args,
-              const QuantizationArgs& quant_args,
+              const QuantArgs& quant_args,
               const ParallelArgs& parallel_args,
               torch::ScalarType dtype,
               const torch::Device& device) {
@@ -76,7 +76,7 @@ TORCH_MODULE(GPTJMLP);
 class GPTJAttentionImpl : public torch::nn::Module {
  public:
   GPTJAttentionImpl(const ModelArgs& args,
-                    const QuantizationArgs& quant_args,
+                    const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     torch::ScalarType dtype,
                     const torch::Device& device) {
@@ -162,7 +162,7 @@ TORCH_MODULE(GPTJAttention);
 class GPTJBlockImpl : public torch::nn::Module {
  public:
   GPTJBlockImpl(const ModelArgs& args,
-                const QuantizationArgs& quant_args,
+                const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
                 const torch::Device& device) {
@@ -217,7 +217,7 @@ TORCH_MODULE(GPTJBlock);
 class GPTJModelImpl : public torch::nn::Module {
  public:
   GPTJModelImpl(const ModelArgs& args,
-                const QuantizationArgs& quant_args,
+                const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
                 const torch::Device& device) {
@@ -293,7 +293,7 @@ TORCH_MODULE(GPTJModel);
 class GPTJForCausalLMImpl : public torch::nn::Module {
  public:
   GPTJForCausalLMImpl(const ModelArgs& args,
-                      const QuantizationArgs& quant_args,
+                      const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
                       torch::ScalarType dtype,
                       const torch::Device& device) {

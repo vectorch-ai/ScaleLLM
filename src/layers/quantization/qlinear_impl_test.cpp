@@ -12,21 +12,21 @@ TEST(QlinearTest, Basic) {
   auto state_dict = StateDict::load_safetensors(
       "data/gptq_small.safetensors", /*shard_id=*/0, /*num_shards=*/1);
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
-                                            state_dict->get_tensor("qzeros"),
-                                            state_dict->get_tensor("scales"),
-                                            /*bits=*/4);
+                                           state_dict->get_tensor("qzeros"),
+                                           state_dict->get_tensor("scales"),
+                                           /*bits=*/4);
   auto weights_2 = detail::construct_weights(state_dict->get_tensor("qweight"),
-                                              state_dict->get_tensor("qzeros"),
-                                              state_dict->get_tensor("scales"),
-                                              state_dict->get_tensor("g_idx"),
-                                              /*bits=*/4);
+                                             state_dict->get_tensor("qzeros"),
+                                             state_dict->get_tensor("scales"),
+                                             state_dict->get_tensor("g_idx"),
+                                             /*bits=*/4);
   EXPECT_TRUE(torch::allclose(weights, weights_2));
 }
 
 TEST(QlinearTest, ColumnParallelQuantLinear) {
   const int64_t in_features = 4096;
   const int64_t out_features = 4096;
-  QuantizationArgs quant_args;
+  QuantArgs quant_args;
   quant_args.bits(4);
   quant_args.group_size(128);
   ColumnParallelQLinearGPTQImpl qlinear(in_features,
@@ -40,9 +40,9 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
   auto state_dict = StateDict::load_safetensors(
       "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
-                                            state_dict->get_tensor("qzeros"),
-                                            state_dict->get_tensor("scales"),
-                                            /*bits=*/4);
+                                           state_dict->get_tensor("qzeros"),
+                                           state_dict->get_tensor("scales"),
+                                           /*bits=*/4);
   weights = weights.to(torch::kCUDA);
 
   qlinear.load_state_dict(*state_dict);
@@ -61,7 +61,7 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
 TEST(QlinearTest, RowParallelQuantLinear) {
   const int64_t in_features = 4096;
   const int64_t out_features = 4096;
-  QuantizationArgs quant_args;
+  QuantArgs quant_args;
   quant_args.bits(4);
   quant_args.group_size(128);
   RowParallelQLinearGPTQImpl qlinear(in_features,
@@ -75,9 +75,9 @@ TEST(QlinearTest, RowParallelQuantLinear) {
   auto state_dict = StateDict::load_safetensors(
       "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
-                                            state_dict->get_tensor("qzeros"),
-                                            state_dict->get_tensor("scales"),
-                                            /*bits=*/4);
+                                           state_dict->get_tensor("qzeros"),
+                                           state_dict->get_tensor("scales"),
+                                           /*bits=*/4);
   weights = weights.to(torch::kCUDA);
 
   qlinear.load_state_dict(*state_dict);

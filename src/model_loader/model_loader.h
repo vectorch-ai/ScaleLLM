@@ -9,9 +9,6 @@
 #include "models/args.h"
 #include "tokenizer/tokenizer.h"
 
-DECLARE_int64(max_position_embeddings);
-DECLARE_string(model_type);
-
 namespace llm {
 
 // Iterator for StateDict, load the model weights file one by one to save
@@ -69,7 +66,7 @@ class ModelLoader {
   virtual ~ModelLoader() = default;
 
   virtual const ModelArgs& model_args() const = 0;
-  virtual const QuantizationArgs& quant_args() const = 0;
+  virtual const QuantArgs& quant_args() const = 0;
 
   virtual std::unique_ptr<Tokenizer> tokenizer() const = 0;
 
@@ -89,7 +86,7 @@ class PTModelLoader : public ModelLoader {
 
   const ModelArgs& model_args() const override { return args_; }
 
-  const QuantizationArgs& quant_args() const override { return quant_args_; }
+  const QuantArgs& quant_args() const override { return quant_args_; }
 
   std::unique_ptr<Tokenizer> tokenizer() const override;
 
@@ -114,7 +111,7 @@ class PTModelLoader : public ModelLoader {
   ModelArgs args_;
 
   // quantization args
-  QuantizationArgs quant_args_;
+  QuantArgs quant_args_;
 
   // sorted model weights files
   std::vector<std::string> model_weights_files_;
@@ -127,7 +124,7 @@ class HFModelLoader : public ModelLoader {
 
   const ModelArgs& model_args() const override { return args_; }
 
-  const QuantizationArgs& quant_args() const override { return quant_args_; }
+  const QuantArgs& quant_args() const override { return quant_args_; }
 
   std::unique_ptr<Tokenizer> tokenizer() const override;
 
@@ -152,7 +149,7 @@ class HFModelLoader : public ModelLoader {
   ModelArgs args_;
 
   // quantization args
-  QuantizationArgs quant_args_;
+  QuantArgs quant_args_;
 
   // sorted model weights files
   std::vector<std::string> model_weights_files_;

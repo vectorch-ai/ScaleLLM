@@ -21,7 +21,7 @@ namespace llm::hf {
 class BloomMLPImpl : public torch::nn::Module {
  public:
   BloomMLPImpl(const ModelArgs& args,
-               const QuantizationArgs& quant_args,
+               const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
                torch::ScalarType dtype,
                const torch::Device& device) {
@@ -82,7 +82,7 @@ TORCH_MODULE(BloomMLP);
 class BloomAttentionImpl : public torch::nn::Module {
  public:
   BloomAttentionImpl(const ModelArgs& args,
-                     const QuantizationArgs& quant_args,
+                     const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
                      const torch::Device& device) {
@@ -212,7 +212,7 @@ TORCH_MODULE(BloomAttention);
 class BloomBlockImpl : public torch::nn::Module {
  public:
   BloomBlockImpl(const ModelArgs& args,
-                 const QuantizationArgs& quant_args,
+                 const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
                  torch::ScalarType dtype,
                  const torch::Device& device)
@@ -286,7 +286,7 @@ TORCH_MODULE(BloomBlock);
 class BloomModelImpl : public torch::nn::Module {
  public:
   BloomModelImpl(const ModelArgs& args,
-                 const QuantizationArgs& quant_args,
+                 const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
                  torch::ScalarType dtype,
                  const torch::Device& device) {
@@ -374,7 +374,7 @@ TORCH_MODULE(BloomModel);
 class BloomForCausalLMImpl : public torch::nn::Module {
  public:
   BloomForCausalLMImpl(const ModelArgs& args,
-                       const QuantizationArgs& quant_args,
+                       const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
                        const torch::Device& device) {

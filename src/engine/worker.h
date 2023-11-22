@@ -39,7 +39,7 @@ class Worker final {
   // initialize model, cache manager. blocking call
   bool init_model(torch::ScalarType dtype,
                   const ModelArgs& args,
-                  const QuantizationArgs& quant_args);
+                  const QuantArgs& quant_args);
 
   // Load the model weights from state_dict. blocking call
   // can be called multiple times to reload the model with different parameters
@@ -61,7 +61,7 @@ class Worker final {
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
                                            const ModelArgs& args,
-                                           const QuantizationArgs& quant_args);
+                                           const QuantArgs& quant_args);
 
   // Load the model weights from state_dict. async call
   // the future returns a successfull status with no meaningful value

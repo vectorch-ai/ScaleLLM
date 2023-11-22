@@ -19,7 +19,7 @@ namespace llm::hf {
 class GPT2MLPImpl : public torch::nn::Module {
  public:
   GPT2MLPImpl(const ModelArgs& args,
-              const QuantizationArgs& quant_args,
+              const QuantArgs& quant_args,
               const ParallelArgs& parallel_args,
               torch::ScalarType dtype,
               const torch::Device& device) {
@@ -80,7 +80,7 @@ TORCH_MODULE(GPT2MLP);
 class GPT2AttentionImpl : public torch::nn::Module {
  public:
   GPT2AttentionImpl(const ModelArgs& args,
-                    const QuantizationArgs& quant_args,
+                    const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     torch::ScalarType dtype,
                     const torch::Device& device) {
@@ -165,7 +165,7 @@ TORCH_MODULE(GPT2Attention);
 class GPT2BlockImpl : public torch::nn::Module {
  public:
   GPT2BlockImpl(const ModelArgs& args,
-                const QuantizationArgs& quant_args,
+                const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
                 const torch::Device& device) {
@@ -228,7 +228,7 @@ TORCH_MODULE(GPT2Block);
 class GPT2ModelImpl : public torch::nn::Module {
  public:
   GPT2ModelImpl(const ModelArgs& args,
-                const QuantizationArgs& quant_args,
+                const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
                 const torch::Device& device) {
@@ -312,7 +312,7 @@ TORCH_MODULE(GPT2Model);
 class GPT2ForCausalLMImpl : public torch::nn::Module {
  public:
   GPT2ForCausalLMImpl(const ModelArgs& args,
-                      const QuantizationArgs& quant_args,
+                      const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
                       torch::ScalarType dtype,
                       const torch::Device& device) {

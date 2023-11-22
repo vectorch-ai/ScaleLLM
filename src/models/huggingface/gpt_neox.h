@@ -20,7 +20,7 @@ namespace llm::hf {
 class GPTNeoXMLPImpl : public torch::nn::Module {
  public:
   GPTNeoXMLPImpl(const ModelArgs& args,
-                 const QuantizationArgs& quant_args,
+                 const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
                  torch::ScalarType dtype,
                  const torch::Device& device) {
@@ -81,7 +81,7 @@ TORCH_MODULE(GPTNeoXMLP);
 class GPTNeoXAttentionImpl : public torch::nn::Module {
  public:
   GPTNeoXAttentionImpl(const ModelArgs& args,
-                       const QuantizationArgs& quant_args,
+                       const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
                        const torch::Device& device) {
@@ -192,7 +192,7 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
  public:
   GPTNeoXLayerImpl(uint32_t layer_id,
                    const ModelArgs& args,
-                   const QuantizationArgs& quant_args,
+                   const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
                    const torch::Device& device)
@@ -270,7 +270,7 @@ TORCH_MODULE(GPTNeoXLayer);
 class GPTNeoXModelImpl : public torch::nn::Module {
  public:
   GPTNeoXModelImpl(const ModelArgs& args,
-                   const QuantizationArgs& quant_args,
+                   const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
                    const torch::Device& device) {
@@ -346,7 +346,7 @@ TORCH_MODULE(GPTNeoXModel);
 class GPTNeoXForCausalLMImpl : public torch::nn::Module {
  public:
   GPTNeoXForCausalLMImpl(const ModelArgs& args,
-                         const QuantizationArgs& quant_args,
+                         const QuantArgs& quant_args,
                          const ParallelArgs& parallel_args,
                          torch::ScalarType dtype,
                          const torch::Device& device) {

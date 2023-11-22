@@ -19,7 +19,7 @@ namespace llm::hf {
 class AquilaMLPImpl : public torch::nn::Module {
  public:
   AquilaMLPImpl(const ModelArgs& args,
-                const QuantizationArgs& quant_args,
+                const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
                 const torch::Device& device) {
@@ -81,7 +81,7 @@ TORCH_MODULE(AquilaMLP);
 class AquilaAttentionImpl : public torch::nn::Module {
  public:
   AquilaAttentionImpl(const ModelArgs& args,
-                      const QuantizationArgs& quant_args,
+                      const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
                       torch::ScalarType dtype,
                       const torch::Device& device) {
@@ -181,7 +181,7 @@ TORCH_MODULE(AquilaAttention);
 class AquilaDecoderLayerImpl : public torch::nn::Module {
  public:
   AquilaDecoderLayerImpl(const ModelArgs& args,
-                         const QuantizationArgs& quant_args,
+                         const QuantArgs& quant_args,
                          const ParallelArgs& parallel_args,
                          torch::ScalarType dtype,
                          const torch::Device& device) {
@@ -241,7 +241,7 @@ TORCH_MODULE(AquilaDecoderLayer);
 class AquilaModelImpl : public torch::nn::Module {
  public:
   AquilaModelImpl(const ModelArgs& args,
-                  const QuantizationArgs& quant_args,
+                  const QuantArgs& quant_args,
                   const ParallelArgs& parallel_args,
                   torch::ScalarType dtype,
                   const torch::Device& device) {
@@ -314,7 +314,7 @@ TORCH_MODULE(AquilaModel);
 class AquilaForCausalLMImpl : public torch::nn::Module {
  public:
   AquilaForCausalLMImpl(const ModelArgs& args,
-                        const QuantizationArgs& quant_args,
+                        const QuantArgs& quant_args,
                         const ParallelArgs& parallel_args,
                         torch::ScalarType dtype,
                         const torch::Device& device) {

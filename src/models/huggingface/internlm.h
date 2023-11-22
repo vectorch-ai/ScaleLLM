@@ -18,7 +18,7 @@ namespace llm::hf {
 class InternlmMLPImpl : public torch::nn::Module {
  public:
   InternlmMLPImpl(const ModelArgs& args,
-                  const QuantizationArgs& quant_args,
+                  const QuantArgs& quant_args,
                   const ParallelArgs& parallel_args,
                   torch::ScalarType dtype,
                   const torch::Device& device) {
@@ -80,7 +80,7 @@ TORCH_MODULE(InternlmMLP);
 class InternlmAttentionImpl : public torch::nn::Module {
  public:
   InternlmAttentionImpl(const ModelArgs& args,
-                        const QuantizationArgs& quant_args,
+                        const QuantArgs& quant_args,
                         const ParallelArgs& parallel_args,
                         torch::ScalarType dtype,
                         const torch::Device& device) {
@@ -168,7 +168,7 @@ TORCH_MODULE(InternlmAttention);
 class InternlmDecoderLayerImpl : public torch::nn::Module {
  public:
   InternlmDecoderLayerImpl(const ModelArgs& args,
-                           const QuantizationArgs& quant_args,
+                           const QuantArgs& quant_args,
                            const ParallelArgs& parallel_args,
                            torch::ScalarType dtype,
                            const torch::Device& device) {
@@ -228,7 +228,7 @@ TORCH_MODULE(InternlmDecoderLayer);
 class InternlmModelImpl : public torch::nn::Module {
  public:
   InternlmModelImpl(const ModelArgs& args,
-                    const QuantizationArgs& quant_args,
+                    const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     torch::ScalarType dtype,
                     const torch::Device& device) {
@@ -301,7 +301,7 @@ TORCH_MODULE(InternlmModel);
 class InternlmForCausalLMImpl : public torch::nn::Module {
  public:
   InternlmForCausalLMImpl(const ModelArgs& args,
-                          const QuantizationArgs& quant_args,
+                          const QuantArgs& quant_args,
                           const ParallelArgs& parallel_args,
                           torch::ScalarType dtype,
                           const torch::Device& device) {
