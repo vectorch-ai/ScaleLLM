@@ -180,17 +180,22 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     return false;
   }
 
+  std::string model_type;
   if (auto data = reader.value<std::string>("model_type")) {
-    args_.model_type() = data.value();
+    model_type = data.value();
   } else {
     GLOG(ERROR) << "Failed to find model_type in " << args_file_path;
     return false;
   }
 
-  auto args_loader = ModelRegistry::get_model_args_loader(args_.model_type());
+  // override model type from gflag if exists
+  if (!FLAGS_model_type.empty()) {
+    model_type = FLAGS_model_type;
+  }
+  auto args_loader = ModelRegistry::get_model_args_loader(model_type);
   if (args_loader == nullptr) {
     GLOG(ERROR) << "Failed to find model args loader for model type "
-                << args_.model_type();
+                << model_type;
     return false;
   }
   args_loader(reader, &args_);

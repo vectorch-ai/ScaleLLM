@@ -2,6 +2,8 @@
 
 #include <torch/torch.h>
 
+#include <unordered_set>
+
 #include "layers/activation.h"
 #include "layers/attention_rope.h"
 #include "layers/embedding.h"
@@ -190,18 +192,21 @@ class YiDecoderLayerImpl : public torch::nn::Module {
         YiAttention(args, quant_args, parallel_args, dtype, device));
     mlp_ = register_module(
         "mlp", YiMLP(args, quant_args, parallel_args, dtype, device));
-    ln1_ = register_module(
-        "ln1", RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
-    ln2_ = register_module(
-        "ln2", RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+    input_layernorm_ = register_module(
+        "input_layernorm",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+    post_attention_layernorm_ = register_module(
+        "post_attention_layernorm",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
   }
 
   torch::Tensor forward(torch::Tensor x,
                         torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    auto h = x + self_attn_(ln1_(x), positions, kv_cache, input_params);
-    return h + mlp_(ln2_(h));
+    auto h =
+        x + self_attn_(input_layernorm_(x), positions, kv_cache, input_params);
+    return h + mlp_(post_attention_layernorm_(h));
   }
 
   // load the weight from the checkpoint
@@ -209,15 +214,17 @@ class YiDecoderLayerImpl : public torch::nn::Module {
     // call each submodule's load_state_dict function
     self_attn_->load_state_dict(state_dict.select("self_attn."));
     mlp_->load_state_dict(state_dict.select("mlp."));
-    ln1_->load_state_dict(state_dict.select("ln1."));
-    ln2_->load_state_dict(state_dict.select("ln2."));
+    input_layernorm_->load_state_dict(state_dict.select("input_layernorm."));
+    post_attention_layernorm_->load_state_dict(
+        state_dict.select("post_attention_layernorm."));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
     self_attn_->verify_loaded_weights(prefix + "self_attn.");
     mlp_->verify_loaded_weights(prefix + "mlp.");
-    ln1_->verify_loaded_weights(prefix + "ln1.");
-    ln2_->verify_loaded_weights(prefix + "ln2.");
+    input_layernorm_->verify_loaded_weights(prefix + "input_layernorm.");
+    post_attention_layernorm_->verify_loaded_weights(
+        prefix + "post_attention_layernorm.");
   }
 
  private:
@@ -226,9 +233,9 @@ class YiDecoderLayerImpl : public torch::nn::Module {
 
   YiMLP mlp_{nullptr};
 
-  RMSNorm ln1_{nullptr};
+  RMSNorm input_layernorm_{nullptr};
 
-  RMSNorm ln2_{nullptr};
+  RMSNorm post_attention_layernorm_{nullptr};
 };
 TORCH_MODULE(YiDecoderLayer);
 
@@ -357,8 +364,36 @@ class YiForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(YiForCausalLM);
 
+class YiDialog final : public Dialog {
+ public:
+  // generate prompt from dialogs
+  // https://huggingface.co/01-ai/Yi-34B-Chat/blob/main/tokenizer_config.json#L60
+  // Prompt template:
+  // <|im_start|>user\n {message} <|im_end|>\n
+  // <|im_start|>assistant\n
+  std::optional<std::string> get_prompt() const override {
+    // at least one user message
+    if (messages_.size() % 2 == 0) {
+      return std::nullopt;
+    }
+
+    std::stringstream ss;
+    // Sounds Yi model doesn't support system message?
+
+    // then user and assistant message pairs (u/a/u/a/u...)
+    for (size_t i = 0; i < messages_.size(); ++i) {
+      const char* role = (i % 2) == 0 ? "user" : "assistant";
+      ss << "<|im_start|>" << role << "\n" << messages_[i] << "<|im_end|>\n";
+    }
+    // end with assistant message
+    ss << "<|im_start|>assistant\n";
+    return ss.str();
+  }
+};
+
 // register the causal model
 REGISTER_CAUSAL_MODEL(Yi, YiForCausalLM);
+REGISTER_DIALOG(Yi, YiDialog);
 // register the model args
 // example config:
 // https://huggingface.co/01-ai/Yi-6B/blob/main/config.json
@@ -377,6 +412,9 @@ REGISTER_MODEL_ARGS(Yi, [&] {
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(rope_theta, "rope_theta", 5000000.0f);
   LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+  
+  // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>", "<|im_sep|>"
+  LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({2, 6, 7, 8}));
 });
 
 }  // namespace llm::hf

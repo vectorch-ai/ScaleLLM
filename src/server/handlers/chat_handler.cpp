@@ -161,6 +161,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   stopping_criteria.max_tokens = max_tokens;
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
+  stopping_criteria.stop_token_ids = model_args.stop_token_ids();
 
   if (grpc_request.has_stream()) {
     request->stream = grpc_request.stream();

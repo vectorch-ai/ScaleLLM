@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <unordered_set>
 
 #include "common/arg.h"
 #include "common/process_group.h"
@@ -83,6 +84,9 @@ struct ModelArgs {
 
   // whether to apply residual connection post layernorm
   DEFINE_ARG(bool, residual_post_layernorm) = false;
+
+  // Stop token ids
+  DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {

@@ -15,7 +15,7 @@ TEST(LogitsProcessorTest, Temperature) {
   TemperatureLogitsProcessor processor(temperatures, dtype, device);
 
   int64_t batch_size = 2;
-  int64_t vocab_size = 5;
+  int64_t vocab_size = 32000;
   auto logits = torch::randn({batch_size, vocab_size},
                              torch::dtype(dtype).device(device));
   auto token_ids = torch::randint(/*high=*/vocab_size,

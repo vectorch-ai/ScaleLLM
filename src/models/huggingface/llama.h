@@ -141,7 +141,6 @@ class LlamaAttentionImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);

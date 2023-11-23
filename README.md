@@ -19,12 +19,14 @@ In the coming weeks, we have exciting plans to focus on [**_speculative decoding
 ## Table of contents
 
 - [Overview](#overview)
+- [Supported Models](#supported-models)
 - [Get Started](#get-started)
-  - [Docker Container](#docker-container)
+  - [ScaleLLM server](#scalellm-server)
+  - [Rest API Server](#rest-api-server)
+  - [Chatbot UI](#chatbot-ui)
   - [Docker Compose](#docker-compose)
 - [Usage Examples](#usage-examples)
-- [Supported Models](#supported-models)
-- [Quatization](#quatization)
+- [Quantization](#quantization)
 - [Limitations](#limitations)
 - [Contributing](#Contributing)
 - [Acknowledgements](#acknowledgements)
@@ -44,6 +46,33 @@ ScaleLLM is a cutting-edge inference system engineered for large language models
 - [Customizable](): Offers flexibility for customization to meet your specific needs, and provides an easy way to add new models.
 - [Production Ready](): Engineered with production environments in mind, ScaleLLM is equipped with robust system monitoring and management features to ensure a seamless deployment experience.
 
+
+## Supported Models
+
+Please note that in order to use Yi models, you need to add `--model_type=Yi` to the command line. For example:
+```bash
+docker run -it --gpus=all --net=host --shm-size=1g \
+  -v $HOME/.cache/huggingface/hub:/models \
+  -e HF_MODEL_ID=01-ai/Yi-34B-Chat-4bits \
+  -e DEVICE=auto \
+  docker.io/vectorchai/scalellm:latest --logtostderr --model_type=Yi
+```
+
+|   Models   | Tensor Parallel | Quantization | Chat API | HF models examples |
+| :--------: | :-------------: | :----------: | :------: | :---------------------------:|
+|    Yi      |       Yes       |     Yes      |    Yes    |[01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B), [01-ai/Yi-34B-Chat-4bits](https://huggingface.co/01-ai/Yi-34B-Chat-4bits), [01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K), [casperhansen/yi-6b-awq](https://huggingface.co/casperhansen/yi-6b-awq), [TheBloke/Yi-34B-GPTQ](https://huggingface.co/TheBloke/Yi-34B-GPTQ) |
+|   Llama2   |       Yes       |     Yes      |    Yes   | [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
+|   Aquila   |       Yes       |     Yes      |    Yes   | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
+|   Bloom    |       Yes       |     Yes      |    No    | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
+|   GPT_j    |       Yes       |     Yes      |    No    | [EleutherAI/gpt-j-6b](https://huggingface.co/EleutherAI/gpt-j-6b) |
+|  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
+|    GPT2    |       Yes       |     Yes      |    No    | [gpt2](https://huggingface.co/gpt2)|
+| InternLM   |       Yes       |     Yes      |    Yes   | [internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b) |
+|  Mistral   |       Yes       |     Yes      |    Yes   | [mistralai/Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) |
+|    MPT     |       Yes       |     Yes      |    No    | [mosaicml/mpt-30b](https://huggingface.co/mosaicml/mpt-30b) |
+
+If your model is not included in the supported list, we are more than willing to assist you. Please feel free to create a request for adding a new model on [GitHub Issues](https://github.com/vectorch-ai/ScaleLLM/issues).
+
 ## Getting Started
 
 The easiest way to get started with our project is by using the official Docker images. If you don't have Docker installed, please follow the installation instructions for your platform.
@@ -55,9 +84,9 @@ You can download and install Docker from the official website: [Docker Installat
 > **Note**<br />
 > To use GPUs, you also need to install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
-### Docker Container
+### ScaleLLM server
 
-Once you have Docker installed, you can run our project's Docker container using the following command:
+Once you have Docker installed, you can run ScaleLLM Docker container using the following command:
 
 ```bash
 docker run -it --gpus=all --net=host --shm-size=1g \
@@ -80,7 +109,7 @@ This command starts the Docker container with GPU support and various configurat
 > **Note**<br />
 > Although ScaleLLM supports both `CPU` and `GPU`, we recommend using GPU for better performance. CPU support is mainly for debugging and testing purposes, so the performance might be sub-optimal. If you want to use CPU, please set `DEVICE=cpu` in the command.
 
-### Ports and Endpoints
+#### Ports and Endpoints
 
 After running the Docker container, two ports are exposed:
 
@@ -108,7 +137,7 @@ docker run -it --net=host \
 
 The REST API Server is available on `localhost:8080`. You can use REST API requests to interact with the system. Check out the [Usage Examples](#usage-examples) section for more details.
 
-### Local Chatbot UI
+### Chatbot UI
 
 A local Chatbot UI is also available on [localhost:3000](localhost:3000). You can start it with the following command:
 
@@ -119,7 +148,7 @@ docker run -it --net=host \
   docker.io/vectorchai/chatbot-ui:latest
 ```
 
-## Docker Compose
+### Docker Compose
 
 Using Docker Compose is the easiest way to run ScaleLLM with all the services together. If you don't have Docker Compose installed, please follow the [installation doc](https://docs.docker.com/compose/install/) for your platform.
 
@@ -231,23 +260,6 @@ for chunk in completion:
         print(content, end="")
 ```
 
-## Supported Models
-
-|   Models   | Tensor Parallel | Quantization | Chat API | HF models examples |
-| :--------: | :-------------: | :----------: | :------: | :---------------------------:|
-|    Yi      |       Yes       |     Yes      |    No    |[01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B), [01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K), [casperhansen/yi-6b-awq](https://huggingface.co/casperhansen/yi-6b-awq), [TheBloke/Yi-34B-GPTQ](https://huggingface.co/TheBloke/Yi-34B-GPTQ) |
-|   Llama2   |       Yes       |     Yes      |    Yes   | [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
-|   Aquila   |       Yes       |     Yes      |    Yes   | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
-|   Bloom    |       Yes       |     Yes      |    No    | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
-|   GPT_j    |       Yes       |     Yes      |    No    | [EleutherAI/gpt-j-6b](https://huggingface.co/EleutherAI/gpt-j-6b) |
-|  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
-|    GPT2    |       Yes       |     Yes      |    No    | [gpt2](https://huggingface.co/gpt2)|
-| InternLM   |       Yes       |     Yes      |    Yes   | [internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b) |
-|  Mistral   |       Yes       |     Yes      |    Yes   | [mistralai/Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) |
-|    MPT     |       Yes       |     Yes      |    No    | [mosaicml/mpt-30b](https://huggingface.co/mosaicml/mpt-30b) |
-
-If your model is not included in the supported list, we are more than willing to assist you. Please feel free to create a request for adding a new model on [GitHub Issues](https://github.com/vectorch-ai/ScaleLLM/issues).
-
 ## Quantization
 Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization ([APTQ](https://arxiv.org/abs/2210.17323)) and Activation-aware Weight Quantization ([AWQ](https://arxiv.org/abs/2306.00978)), with seamless integration into the following libraries: autogptq, exllama, exllamav2, and awq. 
 
@@ -258,6 +270,7 @@ Quantization is a crucial process for reducing the memory footprint of models. S
 There are several known limitations we are looking to address in the coming months, including:
 
 - Only supports Hugging Face models with [fast tokenizers](https://github.com/huggingface/tokenizers).
+- Only supports GPUs that newer than Turing architecture.
 
 ## Contributing
 

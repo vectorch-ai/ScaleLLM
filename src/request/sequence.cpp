@@ -46,12 +46,17 @@ bool Sequence::check_stopping_creteria() {
     return is_finished_ = true;
   }
 
+  const auto last_token_id = token_ids_.back();
   if (!stopping_criteria_->ignore_eos_token &&
-      token_ids_.back() == stopping_criteria_->eos_token_id) {
+      last_token_id == stopping_criteria_->eos_token_id) {
     finish_reason_ = FinishReason::STOP;
     return is_finished_ = true;
   }
-  // TODO: Add other stopping criterias
+  // check against stop tokens ids
+  if (stopping_criteria_->stop_token_ids.count(last_token_id) > 0) {
+    finish_reason_ = FinishReason::STOP;
+    return is_finished_ = true;
+  }
 
   return false;
 }
