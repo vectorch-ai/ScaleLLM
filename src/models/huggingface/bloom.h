@@ -430,6 +430,7 @@ REGISTER_CAUSAL_MODEL(bloom, BloomForCausalLM);
 REGISTER_MODEL_ARGS(bloom, [&] {
   // example config:
   // https://huggingface.co/bigscience/bloom/blob/main/config.json
+  LOAD_ARG_OR(model_type, "model_type", "bloom");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 250880);
   LOAD_ARG_OR(hidden_size, "n_embed", 14336);

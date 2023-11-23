@@ -454,8 +454,41 @@ class MPTForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(MPTForCausalLM);
 
+
+class MPTConversation final : public Conversation {
+ public:
+  // Prompt template:
+  // <|im_start|>system\n {system_message} <|im_end|>\n
+  // <|im_start|>user\n {message} <|im_end|>\n
+  // <|im_start|>assistant\n
+  std::optional<std::string> get_prompt() const override {
+    // at least one user message
+    if (messages_.size() % 2 == 0) {
+      return std::nullopt;
+    }
+
+    std::stringstream ss;
+    if (!system_message_.empty()) {
+      ss << "<|im_start|>system\n" << system_message_ << "<|im_end|>\n";
+    }
+
+    // then user and assistant message pairs (u/a/u/a/u...)
+    for (size_t i = 0; i < messages_.size(); ++i) {
+      const char* role = (i % 2) == 0 ? "user" : "assistant";
+      ss << "<|im_start|>" << role << "\n" << messages_[i] << "<|im_end|>\n";
+    }
+    // end with assistant message
+    ss << "<|im_start|>assistant\n";
+    return ss.str();
+  }
+};
+
+// register the causal model
 REGISTER_CAUSAL_MODEL(mpt, MPTForCausalLM);
+REGISTER_CONVERSATION_TEMPLATE(mpt, MPTConversation);
+
 REGISTER_MODEL_ARGS(mpt, [&] {
+  LOAD_ARG_OR(model_type, "model_type", "mpt");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 50368);
   LOAD_ARG_OR(hidden_size, "d_model", 2048);
@@ -476,6 +509,9 @@ REGISTER_MODEL_ARGS(mpt, [&] {
         json.value_or<int64_t>("expansion_ratio", 4);
     return expansion_ratio * args->hidden_size();
   });
+
+  // stop token ids: [0, 50278]
+  LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({0, 50278}));
 });
 
 }  // namespace llm::hf

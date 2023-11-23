@@ -7,12 +7,12 @@
 
 namespace llm {
 
-// dialog only supports 'system', 'user' and 'assistant' roles.
+// Conversation only supports 'system', 'user' and 'assistant' roles.
 // start with system message, then user and assistant message. (u/a/u/a/u...)
-class Dialog {
+class Conversation {
  public:
-  Dialog() = default;
-  virtual ~Dialog() = default;
+  Conversation() = default;
+  virtual ~Conversation() = default;
 
   enum class Role : int8_t {
     User = 0,
@@ -36,7 +36,7 @@ class Dialog {
 };
 
 // dialog conversation for llama2 model
-class Llama2Dialog final : public Dialog {
+class Llama2Conversation final : public Conversation {
  public:
   // generate prompt from dialogs
   std::optional<std::string> get_prompt() const override;

@@ -90,7 +90,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
   // construct prompt from dialog messages
   auto dialog_factory =
-      ModelRegistry::get_dialog_factory(model_args.model_type());
+      ModelRegistry::get_conversation_template(model_args.model_type());
   if (dialog_factory == nullptr) {
     // TODO: return meaningful error message to client
     // Error: Chat template has not configured, please use /completion API
@@ -101,11 +101,11 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   auto dialog = dialog_factory();
   for (const auto& message : grpc_request.messages()) {
     if (boost::iequals(message.role(), "system")) {
-      dialog->add_message(Dialog::Role::System, message.content());
+      dialog->add_message(Conversation::Role::System, message.content());
     } else if (boost::iequals(message.role(), "user")) {
-      dialog->add_message(Dialog::Role::User, message.content());
+      dialog->add_message(Conversation::Role::User, message.content());
     } else if (boost::iequals(message.role(), "assistant")) {
-      dialog->add_message(Dialog::Role::Assistant, message.content());
+      dialog->add_message(Conversation::Role::Assistant, message.content());
     } else {
       GLOG(ERROR) << "Unknown message role: " << message.role();
       return nullptr;

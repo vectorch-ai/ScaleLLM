@@ -351,6 +351,7 @@ REGISTER_MODEL_ARGS(gptj, [&] {
   // https://huggingface.co/EleutherAI/gpt-j-6b/blob/main/config.json set
   // default values for args explicitly with values from:
   // https://github.com/huggingface/transformers/blob/main/src/transformers/models/gptj/configuration_gptj.py#L98
+  LOAD_ARG_OR(model_type, "model_type", "gptj");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 50400);
   LOAD_ARG_OR(hidden_size, "n_embd", 4096);

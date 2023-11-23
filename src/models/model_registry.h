@@ -7,7 +7,7 @@
 #include "args.h"
 #include "causal_lm.h"
 #include "common/json_reader.h"
-#include "dialog.h"
+#include "conversation.h"
 
 namespace llm {
 
@@ -18,7 +18,7 @@ using CausalLMFactory =
                                             torch::ScalarType dtype,
                                             const torch::Device& device)>;
 
-using DialogFactory = std::function<std::unique_ptr<Dialog>()>;
+using ConversationTemplate = std::function<std::unique_ptr<Conversation>()>;
 
 using ModelArgsLoader =
     std::function<bool(const JsonReader& json, ModelArgs* args)>;
@@ -29,7 +29,7 @@ using QuantArgsLoader =
 // TODO: add default args loader.
 struct ModelMeta {
   CausalLMFactory causal_lm_factory;
-  DialogFactory dialog_factory;
+  ConversationTemplate conversation_template;
   ModelArgsLoader model_args_loader;
   QuantArgsLoader quant_args_loader;
 };
@@ -49,8 +49,8 @@ class ModelRegistry {
   static void register_quant_args_loader(const std::string& name,
                                          QuantArgsLoader loader);
 
-  static void register_dialog_factory(const std::string& name,
-                                      DialogFactory factory);
+  static void register_conversation_template(const std::string& name,
+                                             ConversationTemplate factory);
 
   static CausalLMFactory get_causallm_factory(const std::string& name);
 
@@ -58,7 +58,8 @@ class ModelRegistry {
 
   static QuantArgsLoader get_quant_args_loader(const std::string& name);
 
-  static DialogFactory get_dialog_factory(const std::string& name);
+  static ConversationTemplate get_conversation_template(
+      const std::string& name);
 
  private:
   std::unordered_map<std::string, ModelMeta> model_registry_;
@@ -82,9 +83,9 @@ class ModelRegistry {
     return true;                                                            \
   }()
 
-#define REGISTER_DIALOG(ModelType, ModelClass)                        \
+#define REGISTER_CONVERSATION_TEMPLATE(ModelType, ModelClass)         \
   const bool ModelType##_dialog_registered = []() {                   \
-    ModelRegistry::register_dialog_factory(                           \
+    ModelRegistry::register_conversation_template(                    \
         #ModelType, []() { return std::make_unique<ModelClass>(); }); \
     return true;                                                      \
   }()

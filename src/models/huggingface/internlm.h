@@ -350,7 +350,7 @@ class InternlmForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(InternlmForCausalLM);
 
-class InternlmDialog final : public Dialog {
+class InternlmDialog final : public Conversation {
  public:
   // generate prompt from dialogs
   // Prompt template:
@@ -384,8 +384,9 @@ class InternlmDialog final : public Dialog {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(internlm, InternlmForCausalLM);
-REGISTER_DIALOG(internlm, InternlmDialog);
+REGISTER_CONVERSATION_TEMPLATE(internlm, InternlmDialog);
 REGISTER_MODEL_ARGS(internlm, [&] {
+  LOAD_ARG_OR(model_type, "model_type", "internlm");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 103168);
   LOAD_ARG_OR(hidden_size, "hidden_size", 5120);
@@ -399,6 +400,9 @@ REGISTER_MODEL_ARGS(internlm, [&] {
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
+
+  // stop token ids: [1, 103028]
+  LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({1, 103028}));
 });
 
 }  // namespace llm::hf

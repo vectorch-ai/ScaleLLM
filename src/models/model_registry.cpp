@@ -52,13 +52,15 @@ void ModelRegistry::register_quant_args_loader(const std::string& name,
   }
 }
 
-void ModelRegistry::register_dialog_factory(const std::string& name,
-                                            DialogFactory factory) {
+void ModelRegistry::register_conversation_template(
+    const std::string& name,
+    ConversationTemplate factory) {
   ModelRegistry* instance = get_instance();
-  if (instance->model_registry_[name].dialog_factory != nullptr) {
-    GLOG(WARNING) << "dialog factory for " << name << "already registered.";
+  if (instance->model_registry_[name].conversation_template != nullptr) {
+    GLOG(WARNING) << "conversation template for " << name
+                  << "already registered.";
   } else {
-    instance->model_registry_[name].dialog_factory = factory;
+    instance->model_registry_[name].conversation_template = factory;
   }
 }
 
@@ -77,9 +79,10 @@ QuantArgsLoader ModelRegistry::get_quant_args_loader(const std::string& name) {
   return instance->model_registry_[name].quant_args_loader;
 }
 
-DialogFactory ModelRegistry::get_dialog_factory(const std::string& name) {
+ConversationTemplate ModelRegistry::get_conversation_template(
+    const std::string& name) {
   ModelRegistry* instance = get_instance();
-  return instance->model_registry_[name].dialog_factory;
+  return instance->model_registry_[name].conversation_template;
 }
 
 }  // namespace llm

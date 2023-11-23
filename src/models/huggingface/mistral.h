@@ -361,7 +361,7 @@ class MistralForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(MistralForCausalLM);
 
-class MistralDialog final : public Dialog {
+class MistralConversation final : public Conversation {
  public:
   // generate prompt from dialogs
   // Prompt template:
@@ -398,8 +398,9 @@ class MistralDialog final : public Dialog {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(mistral, MistralForCausalLM);
-REGISTER_DIALOG(mistral, MistralDialog);
+REGISTER_CONVERSATION_TEMPLATE(mistral, MistralConversation);
 REGISTER_MODEL_ARGS(mistral, [&] {
+  LOAD_ARG_OR(model_type, "model_type", "mistral");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);

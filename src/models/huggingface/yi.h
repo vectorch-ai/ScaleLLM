@@ -11,7 +11,7 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
-#include "models/dialog.h"
+#include "models/conversation.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -364,7 +364,7 @@ class YiForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(YiForCausalLM);
 
-class YiDialog final : public Dialog {
+class YiConversation final : public Conversation {
  public:
   // generate prompt from dialogs
   // https://huggingface.co/01-ai/Yi-34B-Chat/blob/main/tokenizer_config.json#L60
@@ -378,7 +378,9 @@ class YiDialog final : public Dialog {
     }
 
     std::stringstream ss;
-    // Sounds Yi model doesn't support system message?
+    if (!system_message_.empty()) {
+      ss << "<|im_start|>system\n" << system_message_ << "<|im_end|>\n";
+    }
 
     // then user and assistant message pairs (u/a/u/a/u...)
     for (size_t i = 0; i < messages_.size(); ++i) {
@@ -393,11 +395,12 @@ class YiDialog final : public Dialog {
 
 // register the causal model
 REGISTER_CAUSAL_MODEL(Yi, YiForCausalLM);
-REGISTER_DIALOG(Yi, YiDialog);
+REGISTER_CONVERSATION_TEMPLATE(Yi, YiConversation);
 // register the model args
 // example config:
 // https://huggingface.co/01-ai/Yi-6B/blob/main/config.json
 REGISTER_MODEL_ARGS(Yi, [&] {
+  LOAD_ARG_OR(model_type, "model_type", "Yi");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 64000);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
@@ -412,7 +415,7 @@ REGISTER_MODEL_ARGS(Yi, [&] {
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(rope_theta, "rope_theta", 5000000.0f);
   LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
-  
+
   // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>", "<|im_sep|>"
   LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({2, 6, 7, 8}));
 });

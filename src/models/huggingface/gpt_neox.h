@@ -403,6 +403,7 @@ REGISTER_MODEL_ARGS(gpt_neox, [&] {
   // https://huggingface.co/EleutherAI/gpt-neox-20b/blob/main/config.json set
   // set default values for args explicitly with values from:
   // https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt_neox/configuration_gpt_neox.py#L106
+  LOAD_ARG_OR(model_type, "model_type", "gpt_neox");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 50432);
   LOAD_ARG_OR(hidden_size, "hidden_size", 6144);

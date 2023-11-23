@@ -10,7 +10,7 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
-#include "models/dialog.h"
+#include "models/conversation.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -362,7 +362,7 @@ TORCH_MODULE(LlamaForCausalLM);
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(llama2, LlamaForCausalLM);
-REGISTER_DIALOG(llama2, Llama2Dialog);
+REGISTER_CONVERSATION_TEMPLATE(llama2, Llama2Conversation);
 
 REGISTER_MODEL_ARGS(llama2, [&] {
   LOAD_ARG_OR(dtype, "torch_dtype", torch::toString(torch::kBFloat16));

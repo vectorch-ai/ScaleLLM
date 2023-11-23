@@ -1,4 +1,4 @@
-#include "dialog.h"
+#include "conversation.h"
 
 #include <cstdint>
 #include <optional>
@@ -9,7 +9,7 @@
 namespace llm {
 
 // add all messages to the conversation one by one
-void Dialog::add_message(Role role, const std::string_view& message) {
+void Conversation::add_message(Role role, const std::string_view& message) {
   switch (role) {
     case Role::User:
       if (last_message_role_ == Role::User) {
@@ -42,8 +42,8 @@ void Dialog::add_message(Role role, const std::string_view& message) {
   }
 }
 
-// generate prompt from dialogs
-std::optional<std::string> Llama2Dialog::get_prompt() const {
+// generate prompt from Conversation
+std::optional<std::string> Llama2Conversation::get_prompt() const {
   // at least one user message
   if (messages_.size() % 2 == 0) {
     return std::nullopt;

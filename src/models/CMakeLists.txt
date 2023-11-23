@@ -9,11 +9,11 @@ cc_library(
     input_parameters.h
     model_registry.h
     causal_lm.h
-    dialog.h
+    conversation.h
   SRCS
     model_registry.cpp
     causal_lm.cpp
-    dialog.cpp
+    conversation.cpp
   DEPS
     :common
     :layers

@@ -9,7 +9,7 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
-#include "models/dialog.h"
+#include "models/conversation.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -363,7 +363,7 @@ class AquilaForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(AquilaForCausalLM);
 
-class AquilaDialog final : public Dialog {
+class AquilaConversation final : public Conversation {
  public:
   // generate prompt from dialogs
   // Prompt template for Aquila:
@@ -395,12 +395,13 @@ class AquilaDialog final : public Dialog {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(aquila, AquilaForCausalLM);
-REGISTER_DIALOG(aquila, AquilaDialog);
+REGISTER_CONVERSATION_TEMPLATE(aquila, AquilaConversation);
 REGISTER_MODEL_ARGS(aquila, [&] {
   // example config:
   // https://huggingface.co/BAAI/Aquila-7B/blob/main/config.json.
   // set default values for args explicitly with values from:
   // https://github.com/huggingface/transformers/blob/main/src/transformers/models/mistral/configuration_mistral.py#L104
+  LOAD_ARG_OR(model_type, "model_type", "aquila");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 100008);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
