@@ -27,8 +27,16 @@ void HttpServer::async_accept(tcp::acceptor& acceptor) {
       *socket, [this, &acceptor, socket](boost::system::error_code ec) {
         // loop to accept new incoming connections
         async_accept(acceptor);
+        
         if (!ec) {
-          handle_request(*socket);
+          try {
+            // handle the request
+            handle_request(*socket);
+          } catch (const std::exception& e) {
+            GLOG(ERROR) << "Exception in processing request: " << e.what();
+          }
+        } else {
+          GLOG(ERROR) << "Error in accepting connection: " << ec.message();
         }
       });
 }

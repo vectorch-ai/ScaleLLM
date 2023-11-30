@@ -86,7 +86,7 @@ You can download and install Docker from the official website: [Docker Installat
 
 ### ScaleLLM server
 
-Once you have Docker installed, you can run ScaleLLM Docker container using the following command:
+Once you have Docker installed, you can run ScaleLLM Docker container with [latest image](https://hub.docker.com/r/vectorchai/scalellm/tags) using the following command:
 
 ```bash
 docker run -it --gpus=all --net=host --shm-size=1g \
@@ -96,9 +96,11 @@ docker run -it --gpus=all --net=host --shm-size=1g \
   docker.io/vectorchai/scalellm:latest --logtostderr
 ``` 
 
-This command starts the Docker container with GPU support and various configuration options.
 > **Warning**<br />
-> NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the docker run command.
+> * The docker image with tag '[latest](https://hub.docker.com/r/vectorchai/scalellm/tags)' could be changed to a new version upon new release. I don't have an efficient method to automatically repull the latest image upon new release. You'll need to manually manage the image version. All the available images can be found [here](https://hub.docker.com/r/vectorchai/scalellm/tags?page=1&ordering=last_updated).
+> * NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the docker run command.
+
+This command starts the Docker container with GPU support and various configuration options.
 
 - `HF_MODEL_ID` specifies which Hugging Face model you want to run.
 - `HF_MODEL_REVISION` specifies which Hugging Face model revision you want to run. By default, it is set to `"main"`.
@@ -128,7 +130,7 @@ After running the Docker container, two ports are exposed:
 
 ### Rest API Server
 
-You can also start a REST API gateway using the following command:
+You can also start a REST API gateway with [latest image](https://hub.docker.com/r/vectorchai/scalellm-gateway/tags) using the following command:
 
 ```bash
 docker run -it --net=host \
@@ -139,7 +141,7 @@ The REST API Server is available on `localhost:8080`. You can use REST API reque
 
 ### Chatbot UI
 
-A local Chatbot UI is also available on [localhost:3000](localhost:3000). You can start it with the following command:
+A local Chatbot UI is also available on [localhost:3000](localhost:3000). You can start it with [latest image](https://hub.docker.com/r/vectorchai/chatbot-ui/tags) using the following command:
 
 ```bash
 docker run -it --net=host \
