@@ -30,16 +30,6 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USER }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Build and push scalellm
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          no-cache: true
-          tags: |
-            vectorchai/scalellm:${{ steps.tagName.outputs.tag }}
-            vectorchai/scalellm:latest
-
       - name: Build and push gateway
         uses: docker/build-push-action@v5
         with:
@@ -49,4 +39,26 @@ jobs:
           tags: |
             vectorchai/scalellm-gateway:${{ steps.tagName.outputs.tag }}
             vectorchai/scalellm-gateway:latest
+
+      - name: Build and push scalellm for cuda 12.1
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          no-cache: true
+          tags: |
+            vectorchai/scalellm:${{ steps.tagName.outputs.tag }}
+            vectorchai/scalellm:latest
+
+      - name: Build and push scalellm for cuda 11.8
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          no-cache: true
+          build-args: |
+            BASE_IMAGE=nvcr.io/nvidia/cuda:11.8.0-devel-ubuntu22.04
+          tags: |
+            vectorchai/scalellm_cu118:${{ steps.tagName.outputs.tag }}
+            vectorchai/scalellm_cu118:latest
 

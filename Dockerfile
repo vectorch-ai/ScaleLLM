@@ -1,7 +1,8 @@
-# ---- Build ----
-FROM nvcr.io/nvidia/cuda:12.1.0-devel-ubuntu22.04 as build
+# set base image using nvidia cuda 12.1 for ubuntu 22.04
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda:12.1.0-devel-ubuntu22.04
 
-ARG VERSION=main
+# ---- Build ----
+FROM $BASE_IMAGE as build
 
 LABEL maintainer="mi@vectorch.com"
 

@@ -46,7 +46,7 @@ project(
   "ScaleLLM"
   LANGUAGES CXX CUDA
 )
-find_package(CUDA 12.1 REQUIRED)
+find_package(CUDA REQUIRED)
 
 # setup CMake module path, defines path for include() and find_package()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -97,12 +97,22 @@ if (DEFINED ENV{LIBTORCH_ROOT})
   find_package(Torch REQUIRED HINTS "$ENV{LIBTORCH_ROOT}")
 else()
   include(FetchContent)
-  # download libtorch 2.1 with cuda 12.1 from pytorch.org
-  set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.0%2Bcu121.zip")
+  if (CUDA_VERSION VERSION_GREATER_EQUAL 12.1)
+    # download libtorch 2.1 with cuda 12.1 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.0%2Bcu121.zip")
+    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1 for cuda ${CUDA_VERSION}")
+  elseif(CUDA_VERSION VERSION_GREATER_EQUAL 11.8)
+    # download libtorch 2.1 with cuda 11.8 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.1.0%2Bcu118.zip")
+    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1 for cuda ${CUDA_VERSION}")
+  else()
+    # error out if cuda version is not supported
+    message(FATAL_ERROR "Unsupported CUDA version: ${CUDA_VERSION}")
+  endif()
+
   FetchContent_Declare(libtorch URL ${LIBTORCH_URL})
   FetchContent_MakeAvailable(libtorch)
   
-  message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch at ${libtorch_SOURCE_DIR}")
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
 endif()
 

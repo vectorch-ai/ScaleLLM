@@ -98,6 +98,7 @@ docker run -it --gpus=all --net=host --shm-size=1g \
 
 > **Warning**<br />
 > * The docker image with tag '[latest](https://hub.docker.com/r/vectorchai/scalellm/tags)' could be changed to a new version upon new release. I don't have an efficient method to automatically repull the latest image upon new release. You'll need to manually manage the image version. All the available images can be found [here](https://hub.docker.com/r/vectorchai/scalellm/tags?page=1&ordering=last_updated).
+> * The docker image with tag '[latest](https://hub.docker.com/r/vectorchai/scalellm/tags)' is built with [CUDA 12.1](https://developer.nvidia.com/cuda-12-1-0-download-archive). If you want to use [CUDA 11.8](https://developer.nvidia.com/cuda-11-8-0-download-archive), please use the image '[docker.io/vectorchai/scalellm_cu118:latest](https://hub.docker.com/r/vectorchai/scalellm_cu118)' instead.
 > * NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the docker run command.
 
 This command starts the Docker container with GPU support and various configuration options.
