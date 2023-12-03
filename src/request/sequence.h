@@ -59,12 +59,9 @@ class Sequence final {
   // whether the sequence is in prefill stage, no kv cache has been generated
   bool is_prefill() const { return cache_pos_ == 0; }
 
-  // add a new token id to the sequence
-  void append_new_token_id(int token_id) {
-    // all tokens before pos should be processed and cached.
-    cache_pos_ = token_ids_.size();
-    token_ids_.push_back(token_id);
-  }
+  // add a new token id to the sequence and check if the sequence is finished.
+  // returns false if the sequence is finished.
+  bool append_new_token_id(int32_t next_token_id);
 
   // add new cache blocks
   void append_blocks(const std::vector<int32_t>& new_blocks) {
@@ -97,9 +94,6 @@ class Sequence final {
 
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
-
-  // check stopping criterias
-  bool check_stopping_creteria();
 
   // decode the tokens till end to get delta text using the tokenizer
   std::string decode_delta_text(size_t end, const Tokenizer& tokenizer);

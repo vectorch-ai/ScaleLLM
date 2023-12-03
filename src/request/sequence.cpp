@@ -34,31 +34,40 @@ Sequence::Sequence(std::string prompt,
   output_offset_ = echo ? 0 : token_ids_.size();
 }
 
-bool Sequence::check_stopping_creteria() {
+bool Sequence::append_new_token_id(int32_t next_token_id) {
   if (is_finished_) {
-    return true;
+    return false;
   }
   // check against stopping criterias
   const size_t generated_tokens = token_ids_.size() - num_prompt_tokens_;
   const size_t max_new_tokens = stopping_criteria_->max_tokens;
-  if (max_new_tokens > 0 && generated_tokens >= max_new_tokens) {
+  if (max_new_tokens > 0 && (generated_tokens + 1) >= max_new_tokens) {
+    // add the last token then mark the sequence as finished
+    cache_pos_ = token_ids_.size();
+    token_ids_.push_back(next_token_id);
+
     finish_reason_ = FinishReason::LENGTH;
-    return is_finished_ = true;
+    is_finished_ = true;
+    return false;
   }
 
-  const auto last_token_id = token_ids_.back();
   if (!stopping_criteria_->ignore_eos_token &&
-      last_token_id == stopping_criteria_->eos_token_id) {
+      next_token_id == stopping_criteria_->eos_token_id) {
     finish_reason_ = FinishReason::STOP;
-    return is_finished_ = true;
+    is_finished_ = true;
+    return false;
   }
   // check against stop tokens ids
-  if (stopping_criteria_->stop_token_ids.count(last_token_id) > 0) {
+  if (stopping_criteria_->stop_token_ids.count(next_token_id) > 0) {
     finish_reason_ = FinishReason::STOP;
-    return is_finished_ = true;
+    is_finished_ = true;
+    return false;
   }
 
-  return false;
+  // all tokens before pos should be processed and cached.
+  cache_pos_ = token_ids_.size();
+  token_ids_.push_back(next_token_id);
+  return true;
 }
 
 // decode the sequence to get delta text using the tokenizer

@@ -232,11 +232,9 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   // process sequence in batch
   for (int64_t i = 0; i < num_seqs; ++i) {
     Sequence* seq = sequences_batch_[i];
-    // append new token id to the sequence
-    seq->append_new_token_id(static_cast<int>(new_token_ids[i]));
-
-    // check if the sequence is finished and update its status
-    seq->check_stopping_creteria();
+    const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
+    // add the next token to sequence and check if the sequence is finished
+    seq->append_new_token_id(next_token_id);
 
     // stream delta to client if streaming is enabled
     if (seq->is_streaming()) {

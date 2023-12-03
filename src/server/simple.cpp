@@ -114,16 +114,15 @@ int main(int argc, char* argv[]) {
       const auto flat_tensor = next_token.view({-1});
 
       // add the next token to the list of tokens
-      const auto next_token_scalar = static_cast<int>(flat_tensor.item<int>());
-      sequence.append_new_token_id(next_token_scalar);
+      const auto next_token_id = static_cast<int>(flat_tensor.item<int>());
+      if (!sequence.append_new_token_id(next_token_id)) {
+        // sequence is finished
+        break;
+      }
 
       // decode the output and print delta
       std::cout << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer)
                 << std::flush;
-
-      if (sequence.check_stopping_creteria()) {
-        break;
-      }
     }
 
     // release the slots for the sequence
