@@ -79,10 +79,15 @@ The easiest way to get started with our project is by using the official Docker 
 
 ### Docker Installation
 
-You can download and install Docker from the official website: [Docker Installation](https://docs.docker.com/get-docker/).
+You can download and install Docker from the official website: [Docker Installation](https://docs.docker.com/get-docker/). To use GPUs in docker, you also need to install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
-> **Note**<br />
-> To use GPUs, you also need to install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+Here are all available docker images:
+|   Docker Image   | cuda 12.1 | cuda 11.8 |
+| :--------------: | :-------: | :-------: |
+| [scalellm](https://hub.docker.com/r/vectorchai/scalellm/tags) |     Yes   | No |
+| [scalellm_cu118](https://hub.docker.com/r/vectorchai/scalellm_cu118/tags) |     No   | Yes |
+| [scalellm-gateway](https://hub.docker.com/r/vectorchai/scalellm-gateway/tags) |     -   | - |
+| [chatbot-ui](https://hub.docker.com/r/vectorchai/chatbot-ui/tags) |     -   | - |
 
 ### ScaleLLM server
 
@@ -96,21 +101,19 @@ docker run -it --gpus=all --net=host --shm-size=1g \
   docker.io/vectorchai/scalellm:latest --logtostderr
 ``` 
 
-> **Warning**<br />
-> * The docker image with tag '[latest](https://hub.docker.com/r/vectorchai/scalellm/tags)' could be changed to a new version upon new release. I don't have an efficient method to automatically repull the latest image upon new release. You'll need to manually manage the image version. All the available images can be found [here](https://hub.docker.com/r/vectorchai/scalellm/tags?page=1&ordering=last_updated).
-> * The docker image with tag '[latest](https://hub.docker.com/r/vectorchai/scalellm/tags)' is built with [CUDA 12.1](https://developer.nvidia.com/cuda-12-1-0-download-archive). If you want to use [CUDA 11.8](https://developer.nvidia.com/cuda-11-8-0-download-archive), please use the image '[docker.io/vectorchai/scalellm_cu118:latest](https://hub.docker.com/r/vectorchai/scalellm_cu118)' instead.
-> * NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the docker run command.
-
 This command starts the Docker container with GPU support and various configuration options.
 
 - `HF_MODEL_ID` specifies which Hugging Face model you want to run.
 - `HF_MODEL_REVISION` specifies which Hugging Face model revision you want to run. By default, it is set to `"main"`.
-- `HF_MODEL_ALLOW_PATTERN` specifies which types of files are allowed to be downloaded. By default, it is set to `"*.json,*.safetensors,*.model"`.
-- `DEVICE` specifies the device on which this model should run. By default, it is set to `"auto"`.
+- `DEVICE` specifies the device on which this model should run. By default, it is set to `"auto"`, using all available GPUs. You can also specify a specific GPU by using `"cuda:0"`, or use CPU by using `"cpu"`.
+- `HF_MODEL_ALLOW_PATTERN` specifies which types of files are allowed to be downloaded. By default, it will be configured automatically based on tensor type. Only use this option if the default configuration is not working for you.
 - `HUGGING_FACE_HUB_TOKEN` specifies the token from [huggingface](https://huggingface.co/settings/tokens) for gated models.
 
-> **Note**<br />
-> Although ScaleLLM supports both `CPU` and `GPU`, we recommend using GPU for better performance. CPU support is mainly for debugging and testing purposes, so the performance might be sub-optimal. If you want to use CPU, please set `DEVICE=cpu` in the command.
+> **Warning**<br />
+> * The docker image with tag '[latest](https://hub.docker.com/r/vectorchai/scalellm/tags)' could be changed to a new version upon new release. In order to use latest image, you may need to repull the image with specific tag.
+> * Two version of docker images are provided for cuda 12.1 and cuda 11.8. Please choose the right image for your environment.
+> * NCCL might fall back to using the host memory if NVLink or PCI is not available. To allow NCCL to use the host memory, we added '--shm-size=1g' to the docker run command.
+> * Although ScaleLLM supports both `CPU` and `GPU`, we recommend using GPU for better performance. CPU support is mainly for debugging and testing purposes, so the performance might be sub-optimal. 
 
 #### Ports and Endpoints
 

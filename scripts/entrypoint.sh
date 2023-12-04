@@ -1,9 +1,11 @@
 #!/bin/bash
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
 DEVICE=${DEVICE:-"auto"}
 # Set default values for HF_MODEL_REVISION and HF_MODEL_ALLOW_PATTERN
 HF_MODEL_REVISION=${HF_MODEL_REVISION:-main}
-# Define allowed file patterns for config, tokenizer, and model weights
-HF_MODEL_ALLOW_PATTERN=${HF_MODEL_ALLOW_PATTERN:-"*.json,*.safetensors,*.model"}
+HF_MODEL_CACHE_DIR=${HF_MODEL_CACHE_DIR:-/models}
 
 ARGS=""
 
@@ -11,7 +13,7 @@ ARGS=""
 if [ -n "$HF_MODEL_ID" ]; then
     echo "Downloading model from the Hugging Face hub for model id: "$HF_MODEL_ID" and revision: "$HF_MODEL_REVISION""
 
-    MODEL_PATH=$(python3 -c 'from huggingface_hub import snapshot_download; path = snapshot_download("'"$HF_MODEL_ID"'", revision="'"$HF_MODEL_REVISION"'", allow_patterns="'"$HF_MODEL_ALLOW_PATTERN"'".split(",")); print(path)')
+    MODEL_PATH=$(python3 ${SCRIPT_DIR}/download_hf_models.py --repo_id "$HF_MODEL_ID" --revision "$HF_MODEL_REVISION" --cache_dir "$HF_MODEL_CACHE_DIR" --allow_patterns "$HF_MODEL_ALLOW_PATTERN")
     # return if error
     if [ $? -ne 0 ]; then
         echo "Error downloading model from the Hugging Face hub for model id: "$HF_MODEL_ID" and revision: "$HF_MODEL_REVISION""
@@ -23,4 +25,4 @@ fi
 ARGS+=" --device "$DEVICE""
 
 # Run the 'scalellm' command with the specified arguments
-$HOME/code/ScaleLLM/build/src/server/scalellm $ARGS "$@"
+LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH /app/bin/scalellm $ARGS "$@"

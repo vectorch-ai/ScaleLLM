@@ -45,7 +45,8 @@ RUN cmake --build build --target scalellm --config Release -j$(nproc)
 
 # install
 RUN cmake --install build --prefix /app
-RUN cp ./entrypoint.sh /app/entrypoint.sh
+RUN cp ./scripts/download_hf_models.py /app/download_hf_models.py
+RUN cp ./scripts/entrypoint.sh /app/entrypoint.sh
 RUN cp ./requirements.txt /app/requirements.txt
 
 # ---- Production ----
@@ -73,6 +74,6 @@ EXPOSE 8888
 EXPOSE 9999
 
 # start the server
-ENTRYPOINT [ "./entrypoint.sh" ]
+ENTRYPOINT [ "/app/entrypoint.sh" ]
 
 

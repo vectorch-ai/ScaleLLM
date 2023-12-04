@@ -38,19 +38,8 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   if (is_finished_) {
     return false;
   }
-  // check against stopping criterias
-  const size_t generated_tokens = token_ids_.size() - num_prompt_tokens_;
-  const size_t max_new_tokens = stopping_criteria_->max_tokens;
-  if (max_new_tokens > 0 && (generated_tokens + 1) >= max_new_tokens) {
-    // add the last token then mark the sequence as finished
-    cache_pos_ = token_ids_.size();
-    token_ids_.push_back(next_token_id);
 
-    finish_reason_ = FinishReason::LENGTH;
-    is_finished_ = true;
-    return false;
-  }
-
+  // check eos and stop tokens ids first
   if (!stopping_criteria_->ignore_eos_token &&
       next_token_id == stopping_criteria_->eos_token_id) {
     finish_reason_ = FinishReason::STOP;
@@ -67,6 +56,17 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   // all tokens before pos should be processed and cached.
   cache_pos_ = token_ids_.size();
   token_ids_.push_back(next_token_id);
+
+  // check against max tokens
+  const size_t generated_tokens = token_ids_.size() - num_prompt_tokens_;
+  const size_t max_new_tokens = stopping_criteria_->max_tokens;
+  if (max_new_tokens > 0 && generated_tokens >= max_new_tokens) {
+    finish_reason_ = FinishReason::LENGTH;
+    is_finished_ = true;
+    return false;
+  }
+
+  // return true if the sequence is not finished
   return true;
 }
 
