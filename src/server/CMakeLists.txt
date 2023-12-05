@@ -35,11 +35,11 @@ cc_binary(
     simple.cpp
   DEPS
     :engine
-    :model_downloader
     torch
     absl::strings
     gflags::gflags
     glog::glog
+    Python::Python
 )
 
 cc_binary(

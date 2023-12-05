@@ -44,16 +44,4 @@ cc_library(
     torch
 )
 
-cc_library(
-  NAME 
-    model_downloader
-  HDRS 
-    model_downloader.h
-  SRCS 
-    model_downloader.cpp
-  DEPS
-    torch
-    Python::Python
-)
-
 add_subdirectory(safetensors)
