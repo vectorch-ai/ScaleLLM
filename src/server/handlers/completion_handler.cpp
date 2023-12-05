@@ -110,10 +110,14 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
   std::vector<int> token_ids;
   if (!tokenizer.encode(grpc_request.prompt(), &token_ids)) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "Failed to encode prompt");
     GLOG(ERROR) << "Failed to encode prompt: " << grpc_request.prompt();
     return nullptr;
   }
   if (token_ids.size() > max_context_len) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "Prompt is too long");
     GLOG(ERROR) << "Prompt is too long: " << token_ids.size();
     return nullptr;
   }
@@ -242,8 +246,6 @@ void CompletionHandler::complete_async(CompletionCallData* call_data) {
 
     auto request = grpc_request_to_request(call_data, *tokenizer_, model_args_);
     if (request == nullptr) {
-      call_data->finish_with_error(grpc::StatusCode::UNKNOWN,
-                                   "Unknown request processing error");
       return;
     }
 

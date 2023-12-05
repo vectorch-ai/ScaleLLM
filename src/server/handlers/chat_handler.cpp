@@ -92,8 +92,9 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   auto dialog_factory =
       ModelRegistry::get_conversation_template(model_args.model_type());
   if (dialog_factory == nullptr) {
-    // TODO: return meaningful error message to client
-    // Error: Chat template has not configured, please use /completion API
+    call_data->finish_with_error(
+        grpc::StatusCode::INVALID_ARGUMENT,
+        "Chat template has not configured, please use /completion API");
     GLOG(ERROR) << "Failed to get dialog factory for model type: "
                 << model_args.model_type();
     return nullptr;
@@ -107,22 +108,30 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     } else if (boost::iequals(message.role(), "assistant")) {
       dialog->add_message(Conversation::Role::Assistant, message.content());
     } else {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "Unknown message role: " + message.role());
       GLOG(ERROR) << "Unknown message role: " << message.role();
       return nullptr;
     }
   }
   auto prompt = dialog->get_prompt();
   if (!prompt.has_value()) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "Failed to construct prompt from messages");
     GLOG(ERROR) << "Failed to construct prompt from messages";
     return nullptr;
   }
 
   std::vector<int> token_ids;
   if (!tokenizer.encode(prompt.value(), &token_ids)) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "Failed to encode prompt");
     GLOG(ERROR) << "Failed to encode prompt: " << prompt.value();
     return nullptr;
   }
   if (token_ids.size() > max_context_len) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "Prompt is too long");
     GLOG(ERROR) << "Prompt is too long: " << token_ids.size();
     return nullptr;
   }
@@ -257,8 +266,6 @@ void ChatHandler::chat_async(ChatCallData* call_data) {
 
     auto request = grpc_request_to_request(call_data, *tokenizer_, model_args_);
     if (request == nullptr) {
-      call_data->finish_with_error(grpc::StatusCode::UNKNOWN,
-                                   "Unknown request processing error");
       return;
     }
 
