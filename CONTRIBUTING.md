@@ -18,19 +18,43 @@ Before you start building the project, you need to install the build tools. You 
 [to be updated]
 
 ``` bash
-sudo apt-get install build-essential ninja-build cmake python3-dev zip pkg-config libssl-dev
+sudo apt-get install build-essential ninja-build cmake python3-dev zip pkg-config libssl-dev libboost-all-dev wget curl
 ```
-### Install cuda toolkit 11.8
+### Install cuda toolkit and nccl
 
-Since this project depends on libtorch 2.0 (nightly), which is built with cuda 12.1. You can download the cuda toolkit from nvidia website <https://developer.nvidia.com/cuda-downloads>. You can leverage the script to install it as well.
+This project depends on libtorch 2.1, which is compatible with both cuda 12.1 and cuda 11.8. Consequently, it's essential to install either CUDA Toolkit 12.1 or CUDA Toolkit 11.8.
 
+To download the necessary CUDA Toolkit, please visit NVIDIA's [official website](https://developer.nvidia.com/cuda-downloads). Additionally, you have the option to use the following script for the installation process.
+
+#### install cuda 12.1 with nccl 2.17
 ``` bash
-wget https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run
+# install cuda 12.1
+wget -q https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run
 sudo sh cuda_12.1.0_530.30.02_linux.run --no-drm --no-man-page --override --toolkit --silent
+# install nccl 2.17
+wget -q https://developer.download.nvidia.com/compute/redist/nccl/v2.17.1/nccl_2.17.1-1+cuda12.1_x86_64.txz
+tar xf nccl_2.17.1-1+cuda12.1_x86_64.txz
+sudo cp -a nccl_2.17.1-1+cuda12.1_x86_64/include/* /usr/local/cuda-12.1/include/
+sudo cp -a nccl_2.17.1-1+cuda12.1_x86_64/lib/* /usr/local/cuda-12.1/lib64/
+sudo ldconfig
 ```
+
+#### install cuda 11.8 with nccl 2.15
+``` bash
+# install cuda 11.8
+wget -q https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
+sudo sh cuda_11.8.0_520.61.05_linux.run --no-drm --no-man-page --override --toolkit --silent
+# install nccl 2.15
+wget -q https://developer.download.nvidia.com/compute/redist/nccl/v2.15.5/nccl_2.15.5-1+cuda11.8_x86_64.txz
+tar xf nccl_2.15.5-1+cuda11.8_x86_64.txz
+sudo cp -a nccl_2.15.5-1+cuda11.8_x86_64/include/* /usr/local/cuda-11.8/include/
+sudo cp -a nccl_2.15.5-1+cuda11.8_x86_64/lib/* /usr/local/cuda-11.8/lib64/
+sudo ldconfig
+```
+
 ### Install rust
 
-You can install rust by running the following command.
+ScaleLLM relies on two open-source projects: [safetensors](https://github.com/huggingface/safetensors/) and [tokenizers](https://github.com/huggingface/tokenizers), both of which are developed in Rust. To successfully build ScaleLLM, installing Rust is a prerequisite. You can install Rust by executing the following command:
 
 ``` bash
 curl https://sh.rustup.rs -sSf | sh

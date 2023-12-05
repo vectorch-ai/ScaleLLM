@@ -75,19 +75,18 @@ If your model is not included in the supported list, we are more than willing to
 
 ## Getting Started
 
-The easiest way to get started with our project is by using the official Docker images. If you don't have Docker installed, please follow the installation instructions for your platform.
-
-### Docker Installation
-
-You can download and install Docker from the official website: [Docker Installation](https://docs.docker.com/get-docker/). To use GPUs in docker, you also need to install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-
-Here are all available docker images:
+The easiest way to get started with our project is by using the official Docker images. If you don't have Docker installed, please follow the installation instructions for your platform. 
+Below, you will find a list of all available Docker images for our project:
 |   Docker Image   | cuda 12.1 | cuda 11.8 |
 | :--------------: | :-------: | :-------: |
 | [scalellm](https://hub.docker.com/r/vectorchai/scalellm/tags) |     Yes   | No |
 | [scalellm_cu118](https://hub.docker.com/r/vectorchai/scalellm_cu118/tags) |     No   | Yes |
 | [scalellm-gateway](https://hub.docker.com/r/vectorchai/scalellm-gateway/tags) |     -   | - |
 | [chatbot-ui](https://hub.docker.com/r/vectorchai/chatbot-ui/tags) |     -   | - |
+
+### Docker Installation
+
+You can download and install Docker from the official website: [Docker Installation](https://docs.docker.com/get-docker/). To use GPUs in docker, you also need to install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 ### ScaleLLM server
 
@@ -105,7 +104,7 @@ This command starts the Docker container with GPU support and various configurat
 
 - `HF_MODEL_ID` specifies which Hugging Face model you want to run.
 - `HF_MODEL_REVISION` specifies which Hugging Face model revision you want to run. By default, it is set to `"main"`.
-- `DEVICE` specifies the device on which this model should run. By default, it is set to `"auto"`, using all available GPUs. You can also specify a specific GPU by using `"cuda:0"`, or use CPU by using `"cpu"`.
+- `DEVICE` specifies the device on which this model should run. By default, it is set to `"auto"`, using all available GPUs. You can also specify specific GPUs by using `"cuda:0,cuda:1"`, or use CPU by using `"cpu"`.
 - `HF_MODEL_ALLOW_PATTERN` specifies which types of files are allowed to be downloaded. By default, it will be configured automatically based on tensor type. Only use this option if the default configuration is not working for you.
 - `HUGGING_FACE_HUB_TOKEN` specifies the token from [huggingface](https://huggingface.co/settings/tokens) for gated models.
 
