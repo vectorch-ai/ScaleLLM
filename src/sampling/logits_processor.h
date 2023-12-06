@@ -4,14 +4,14 @@
 #include <torch/torch.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <memory>
-#include <string>
 #include <tuple>
 #include <vector>
 
-#include "models/input_parameters.h"
 #include "kernels/sampling/sampling_kernels.h"
+#include "request/sampling_parameter.h"
 
 namespace llm {
 
@@ -37,6 +37,7 @@ class LogitsProcessor {
   // logits: [num_seqs, vocab_size]
   // the logits to be processed
   virtual torch::Tensor forward(const torch::Tensor& token_ids,
+                                const torch::Tensor& token_counts,
                                 const torch::Tensor& logits) const = 0;
 
   // operator() allows us to use the module as a function.
@@ -58,10 +59,11 @@ class LogitsProcessorList : public LogitsProcessor {
       : processors_(std::move(processors)) {}
 
   torch::Tensor forward(const torch::Tensor& token_ids,
+                        const torch::Tensor& token_counts,
                         const torch::Tensor& logits) const override {
     torch::Tensor output = logits;
     for (const auto& processor : processors_) {
-      output = processor->forward(token_ids, output);
+      output = processor->forward(token_ids, token_counts, output);
     }
     return output;
   }
@@ -92,22 +94,17 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
   }
 
   torch::Tensor forward(const torch::Tensor& token_ids,
+                        const torch::Tensor& token_counts,
                         const torch::Tensor& logits) const override {
-    const auto batch_size = logits.size(0);
-    const auto vocab_size = logits.size(1);
-
-    // calculate bin count for each sequence
-    std::vector<torch::Tensor> bin_counts;
-    for (int64_t i = 0; i < batch_size; ++i) {
-      bin_counts.push_back(torch::bincount(
-          token_ids[i], /*weights=*/{}, /*minlength=*/vocab_size));
-    }
-    auto bin_counts_tensor = torch::stack(bin_counts, /*dim=*/0);
+    // select the logits for tokens of each sequence
+    auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
 
     // apply frequency and presence penalties
-    logits.sub_(bin_counts_tensor * frequency_penalties_);
-    logits.sub_((bin_counts_tensor > 0) * presence_penalties_);
+    score.sub_(token_counts * frequency_penalties_);
+    score.sub_((token_counts > 0) * presence_penalties_);
 
+    // scatter the modified score back to logits
+    logits.scatter_(/*dim=*/1, /*index=*/token_ids, /*src=*/score);
     return logits;
   };
 
@@ -130,6 +127,7 @@ class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
 
   // token_ids, [num_seqs, max_num_tokens] LongTensor
   torch::Tensor forward(const torch::Tensor& token_ids,
+                        const torch::Tensor& /*token_counts*/,
                         const torch::Tensor& logits) const override {
     // select the logits for tokens of each sequence
     auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
@@ -167,6 +165,7 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
+                        const torch::Tensor& /*token_counts*/,
                         const torch::Tensor& logits) const override {
     if (logits.is_cuda()) {
       auto logits_ = logits;
@@ -197,6 +196,7 @@ class TopPLogitsProcessor : public LogitsProcessor {
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
+                        const torch::Tensor& /*token_counts*/,
                         const torch::Tensor& logits) const override {
     // sort the logits in descending order
     auto [sorted_logits, sorted_indices] =
@@ -260,8 +260,9 @@ class TopKLogitsProcessor : public LogitsProcessor {
                            torch::dtype(torch::kInt64).device(device))
                  .unsqueeze(1);
 
-    if (std::any_of(
-            disabled.begin(), disabled.end(), [](bool v) { return v == 1; })) {
+    if (std::any_of(disabled.begin(), disabled.end(), [](int8_t v) {
+          return v == 1;
+        })) {
       top_k_disabled_mask_ =
           torch::tensor(disabled, torch::dtype(torch::kBool).device(device))
               .unsqueeze(1);
@@ -269,6 +270,7 @@ class TopKLogitsProcessor : public LogitsProcessor {
   }
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
+                        const torch::Tensor& /*token_counts*/,
                         const torch::Tensor& logits) const override {
     torch::Tensor top_k = top_k_;
     auto max_top_k = max_top_k_;

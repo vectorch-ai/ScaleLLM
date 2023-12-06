@@ -19,9 +19,9 @@ struct InputParameters {
     params.slot_ids = slot_ids.to(device);
     params.block_tables = block_tables.to(device);
     params.context_lens = context_lens.to(device);
-    params.last_token_indicies = last_token_indicies.to(device);
+    params.last_token_idxes = last_token_idxes.to(device);
     params.token_ids = token_ids.to(device);
-    params.seq_lens = seq_lens.to(device);
+    params.token_counts = token_counts.to(device);
     return params;
   }
 
@@ -72,16 +72,15 @@ struct InputParameters {
   // for prompt sequence, it is the index of last token in the prompt.
   // for decode sequence, it is the index of the token. (only one token)
   // IntTensor
-  torch::Tensor last_token_indicies;
+  torch::Tensor last_token_idxes;
 
-  // the token ids of the prompt.
-  // used in logit processor to calculate frequency of each token
-  // [num_seq (num_prompt_seq + num_decode_seq), max_tokens_len] LongTensor
+  // the unique token ids of each sequence in the batch.
+  // [num_seq, max_unique_tokens] LongTensor
   torch::Tensor token_ids;
 
-  // the length of each sequence in the batch.
-  // [num_seq] IntTensor
-  torch::Tensor seq_lens;
+  // the count of each token in the prompt.
+  // [num_seq, max_unique_tokens] IntTensor
+  torch::Tensor token_counts;
 };
 
 }  // namespace llm

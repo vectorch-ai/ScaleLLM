@@ -7,7 +7,6 @@
 #include <torch/torch.h>
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "common/executor.h"
@@ -59,26 +58,28 @@ void Worker::verify_loaded_weights() const {
 }
 
 OutputParameters Worker::execute_model(
-    torch::Tensor tokens,     // [num_tokens]
-    torch::Tensor positions,  // [num_tokens]
+    torch::Tensor flatten_tokens,     // [num_tokens]
+    torch::Tensor flatten_positions,  // [num_tokens]
     const InputParameters& params,
     const SamplingParameters& sampling_params) {
   torch::DeviceGuard device_guard(device_);
 
-  torch::Device input_device = tokens.device();
+  torch::Device input_device = flatten_tokens.device();
 
   // all tensors should be on the same device as model
-  tokens = tokens.to(device_);
-  positions = positions.to(device_);
+  flatten_tokens = flatten_tokens.to(device_);
+  flatten_positions = flatten_positions.to(device_);
   InputParameters d_params = params.to(device_);
 
   // call model forward and return the result
-  auto logits = model_->forward(tokens, positions, kv_caches_, d_params);
+  auto logits =
+      model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
 
   // create and call logits processors
   auto logits_processor =
       LogitsProcessor::create(sampling_params, dtype_, device_);
-  logits = logits_processor->forward(d_params.token_ids, logits);
+  logits = logits_processor->forward(
+      d_params.token_ids, d_params.token_counts, logits);
 
   // create and call sampler
   auto sampler = std::make_unique<Sampler>(
@@ -92,15 +93,15 @@ OutputParameters Worker::execute_model(
 }
 
 folly::SemiFuture<OutputParameters> Worker::execute_model_async(
-    torch::Tensor tokens,     // [num_tokens]
-    torch::Tensor positions,  // [num_tokens]
+    torch::Tensor flatten_tokens,     // [num_tokens]
+    torch::Tensor flatten_positions,  // [num_tokens]
     const InputParameters& params,
     const SamplingParameters& sampling_params) {
   folly::Promise<OutputParameters> promise;
   auto future = promise.getSemiFuture();
   executor_.schedule([this,
-                      tokens = tokens,
-                      positions = positions,
+                      tokens = flatten_tokens,
+                      positions = flatten_positions,
                       parameters = params,
                       sampling_params = sampling_params,
                       promise = std::move(promise)]() mutable {

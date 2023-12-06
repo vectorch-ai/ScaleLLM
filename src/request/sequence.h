@@ -3,7 +3,6 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -43,6 +42,11 @@ class Sequence final {
 
   // get token ids
   const std::vector<int32_t>& token_ids() const { return token_ids_; }
+
+  // get token ids count
+  const std::unordered_map<int32_t, int32_t>& token_counts() const {
+    return token_counts_;
+  }
 
   // get the total number of tokens
   size_t num_tokens() const { return token_ids_.size(); }
@@ -126,9 +130,11 @@ class Sequence final {
   // prompt to generate completions for
   std::string prompt_;
 
-  // private:
   // token ids generated from p
   std::vector<int32_t> token_ids_;
+
+  // the count of each token id
+  std::unordered_map<int32_t, int32_t> token_counts_;
 
   // the length of the prompt tokens
   size_t num_prompt_tokens_ = 0;

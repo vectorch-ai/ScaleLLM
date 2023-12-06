@@ -9,8 +9,6 @@
 #include "memory/memory.h"
 #include "model_loader/model_loader.h"
 #include "models/args.h"
-#include "request/request.h"
-#include "tokenizer/sentencepiece_tokenizer.h"
 #include "utils.h"
 #include "worker.h"
 
@@ -173,7 +171,7 @@ bool Engine::init_kv_cache() {
   const int64_t head_dim = args_.hidden_size() / n_heads;
   const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
   // key + value for all layers
-  const int64_t block_size_in_bytes = int64_t(2) * block_size *
+  const int64_t block_size_in_bytes = 2 * block_size *
                                       n_local_kv_heads * head_dim *
                                       args_.n_layers() * dtype_size;
   GLOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
@@ -254,26 +252,26 @@ bool Engine::init_kv_cache() {
 
 OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   // prepare inputs for workers
-  torch::Tensor input_token_ids;
-  torch::Tensor input_positions;
+  torch::Tensor flatten_token_ids;
+  torch::Tensor flatten_positions;
   // track the sequence indices in the batch
   // from original index to the new index in the batch
-  torch::Tensor seq_indices;
+  torch::Tensor seq_idxes;
   InputParameters input_params;
   SamplingParameters sampling_params;
   Utils::prepare_inputs(batch,
                         FLAGS_block_size,
-                        &input_token_ids,
-                        &input_positions,
-                        &seq_indices,
+                        &flatten_token_ids,
+                        &flatten_positions,
+                        &seq_idxes,
                         &input_params,
                         &sampling_params);
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     auto output = workers_[0]->execute_model(
-        input_token_ids, input_positions, input_params, sampling_params);
+        flatten_token_ids, flatten_positions, input_params, sampling_params);
     // mapping outout back to the original request order in the batch
-    output.index_select(seq_indices);
+    output.index_select(seq_idxes);
     return output;
   }
 
@@ -282,14 +280,14 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
     futures.push_back(worker->execute_model_async(
-        input_token_ids, input_positions, input_params, sampling_params));
+        flatten_token_ids, flatten_positions, input_params, sampling_params));
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
   // return the result from the first worker
   auto first_output = results.front().value();
   // mapping output back to the original request order in the batch
-  first_output.index_select(seq_indices);
+  first_output.index_select(seq_idxes);
   return first_output;
 }
 

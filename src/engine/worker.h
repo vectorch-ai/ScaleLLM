@@ -3,9 +3,6 @@
 #include <folly/futures/Future.h>
 #include <torch/torch.h>
 
-#include <string>
-#include <utility>
-
 #include "common/executor.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
@@ -53,8 +50,8 @@ class Worker final {
                      const std::vector<int64_t>& value_cache_shape);
 
   // Run the model on the given input. blocking call
-  OutputParameters execute_model(torch::Tensor tokens,     // [num_tokens]
-                                 torch::Tensor positions,  // [num_tokens]
+  OutputParameters execute_model(torch::Tensor flatten_tokens,     // [num_tokens]
+                                 torch::Tensor flatten_positions,  // [num_tokens]
                                  const InputParameters& params,
                                  const SamplingParameters& sampling_params);
 
@@ -76,8 +73,8 @@ class Worker final {
   // Run the model on the given input. async call
   // the future returns a successfull status with no meaningful value
   folly::SemiFuture<OutputParameters> execute_model_async(
-      torch::Tensor tokens,     // [num_tokens]
-      torch::Tensor positions,  // [num_tokens]
+      torch::Tensor flatten_tokens,     // [num_tokens]
+      torch::Tensor flatten_positions,  // [num_tokens]
       const InputParameters& params,
       const SamplingParameters& sampling_params);
 

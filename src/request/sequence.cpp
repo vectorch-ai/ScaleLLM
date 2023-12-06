@@ -3,7 +3,6 @@
 #include <absl/strings/match.h>
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -30,8 +29,17 @@ Sequence::Sequence(std::string prompt,
   // so that the token ids are not invalidated
   const size_t max_tokens = stopping_criteria_->max_tokens;
   token_ids_.reserve(max_tokens + token_ids_.size());
+
+  // if echo is true, set prefix_offset_ and output_offset_ to 0 to print the
+  // whole sequence, otherwise set them to the length of the prompt to skip the
+  // prompt.
   prefix_offset_ = echo ? 0 : token_ids_.size();
   output_offset_ = echo ? 0 : token_ids_.size();
+  
+  // calculate the token counts
+  for (const int32_t token_id : token_ids_) {
+    token_counts_[token_id]++;
+  }
 }
 
 bool Sequence::append_new_token_id(int32_t next_token_id) {
@@ -56,6 +64,7 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   // all tokens before pos should be processed and cached.
   cache_pos_ = token_ids_.size();
   token_ids_.push_back(next_token_id);
+  token_counts_[next_token_id]++;
 
   // check against max tokens
   const size_t generated_tokens = token_ids_.size() - num_prompt_tokens_;

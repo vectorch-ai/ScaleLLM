@@ -401,7 +401,7 @@ class BloomForCausalLMImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     auto h = model_(tokens, kv_caches, input_params);
     // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_indicies);
+    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
     return lm_head_(h);
   }
 
