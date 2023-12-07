@@ -18,6 +18,7 @@ cc_library(
     sampling/penalty_kernels.cu
     sampling/softmax_kernels.cu
     sampling/topk_kernels.cu
+    sampling/topp_kernels.cu
   DEPS
     glog::glog
     torch
