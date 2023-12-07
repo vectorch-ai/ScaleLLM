@@ -50,10 +50,11 @@ class Worker final {
                      const std::vector<int64_t>& value_cache_shape);
 
   // Run the model on the given input. blocking call
-  OutputParameters execute_model(torch::Tensor flatten_tokens,     // [num_tokens]
-                                 torch::Tensor flatten_positions,  // [num_tokens]
-                                 const InputParameters& params,
-                                 const SamplingParameters& sampling_params);
+  OutputParameters execute_model(
+      torch::Tensor flatten_tokens,     // [num_tokens]
+      torch::Tensor flatten_positions,  // [num_tokens]
+      const InputParameters& params,
+      const SamplingParameters& sampling_params);
 
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,

@@ -85,7 +85,6 @@ find_package(Python REQUIRED COMPONENTS Development)
 
 find_package(Jemalloc)
 if(Jemalloc_FOUND)
-  message(STATUS "jemalloc found, linking to jemalloc")
   link_libraries(Jemalloc::jemalloc)
 endif()
 

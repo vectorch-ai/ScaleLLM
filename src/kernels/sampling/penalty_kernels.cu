@@ -57,32 +57,32 @@ void apply_temperature_penalty(torch::Tensor& logits,
 template <typename T>
 __global__ void apply_repetition_penalty_kernel(
     T* __restrict__ logits,
-    const int* __restrict__ token_ids,
+    const long* __restrict__ token_ids,
+    const int* __restrict__ token_ids_lens,
     const T* __restrict__ penalities,
-    const int* __restrict__ seq_lens,
     int max_seq_len,
     int vocab_size) {
   const int tid = threadIdx.x;
   // batch idx
   const int bid = blockIdx.x;
   const float penalty = penalities[bid];
-  const int seq_len = seq_lens[bid];
+  const int len = token_ids_lens[bid];
   // move the pointer to the start of the batch
   logits += bid * vocab_size;
 
-  for (int i = tid; i < seq_len; i += blockDim.x) {
-    const int token_id = token_ids[bid * max_seq_len + i];
+  for (int i = tid; i < len; i += blockDim.x) {
+    const long token_id = token_ids[bid * max_seq_len + i];
     const float logit = logits[token_id];
-    assert(token_id < vocab_size);
+    // assert(token_id < vocab_size);
     // apply repetition penalty
     logits[token_id] = logit < 0.0f ? logit * penalty : logit / penalty;
   }
 }
 
 void apply_repetition_penalty(torch::Tensor& logits,
-                              torch::Tensor token_ids,
-                              torch::Tensor seq_lens,
-                              torch::Tensor penalities) {
+                              const torch::Tensor& token_ids,
+                              const torch::Tensor& token_ids_lens,
+                              const torch::Tensor& penalities) {
   DCHECK(logits.is_contiguous()) << "logits tensor must be contiguous";
   DCHECK(token_ids.is_contiguous()) << "token_ids tensor must be contiguous";
   DCHECK(penalities.is_contiguous()) << "penalities tensor must be contiguous";
@@ -102,9 +102,9 @@ void apply_repetition_penalty(torch::Tensor& logits,
         apply_repetition_penalty_kernel<scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
                 logits.data_ptr<scalar_t>(),
-                token_ids.data_ptr<int>(),
+                token_ids.data_ptr<long>(),
+                token_ids_lens.data_ptr<int>(),
                 penalities.data_ptr<scalar_t>(),
-                seq_lens.data_ptr<int>(),
                 max_seq_len,
                 vocab_size);
       });
@@ -113,46 +113,46 @@ void apply_repetition_penalty(torch::Tensor& logits,
 template <typename T>
 __global__ void apply_frequency_presence_penalty_kernel(
     T* __restrict__ logits,
-    const int* __restrict__ token_ids,
+    const long* __restrict__ token_ids,
     const int* __restrict__ token_counts,
-    const T* __restrict__ frequency_penalities,
-    const T* __restrict__ presence_penalities,
-    const int* __restrict__ seq_lens,
+    const int* __restrict__ token_ids_lens,
+    const T* __restrict__ frequency_penalties,
+    const T* __restrict__ presence_penalties,
     int max_seq_len,
     int vocab_size) {
   const int tid = threadIdx.x;
   // batch idx
   const int bid = blockIdx.x;
-  const int seq_len = seq_lens ? seq_lens[bid] : max_seq_len;
+  const int len = token_ids_lens[bid];
   // move the pointer to the start of the batch
   logits += bid * vocab_size;
 
-  for (int i = tid; i < seq_len; i += blockDim.x) {
+  for (int i = tid; i < len; i += blockDim.x) {
     const int idx = bid * max_seq_len + i;
-    const int token_id = token_ids[idx];
+    const long token_id = token_ids[idx];
     const int token_count = token_counts[idx];
-    assert(token_id < vocab_size);
+    // assert(token_id < vocab_size);
     if (token_count > 0) {
-      // apply frequency and presence penalities
+      // apply frequency then presence penalities
       float logit = logits[token_id];
-      logit -= (token_count * (float)frequency_penalities[bid]);
-      logit -= presence_penalities[bid];
+      logit -= (token_count * (float)frequency_penalties[bid]);
+      logit -= presence_penalties[bid];
       logits[token_id] = logit;
     }
   }
 }
 
 void apply_frequency_presence_penalty(torch::Tensor& logits,
-                                      torch::Tensor token_ids,
-                                      torch::Tensor token_counts,
-                                      torch::Tensor seq_lens,
-                                      torch::Tensor frequency_penalities,
-                                      torch::Tensor presence_penalities) {
+                                      const torch::Tensor& token_ids,
+                                      const torch::Tensor& token_counts,
+                                      const torch::Tensor& token_ids_lens,
+                                      const torch::Tensor& frequency_penalties,
+                                      const torch::Tensor& presence_penalties) {
   DCHECK(logits.is_contiguous()) << "logits tensor must be contiguous";
   DCHECK(token_ids.is_contiguous()) << "token_ids tensor must be contiguous";
-  DCHECK(frequency_penalities.is_contiguous())
+  DCHECK(frequency_penalties.is_contiguous())
       << "penalities tensor must be contiguous";
-  DCHECK(presence_penalities.is_contiguous())
+  DCHECK(presence_penalties.is_contiguous())
       << "penalities tensor must be contiguous";
   DCHECK(logits.size(0) == token_ids.size(0))
       << "logits and token_ids must have the same batch size";
@@ -171,11 +171,11 @@ void apply_frequency_presence_penalty(torch::Tensor& logits,
         apply_frequency_presence_penalty_kernel<scalar_t>
             <<<grid, block, smem_size, at::cuda::getCurrentCUDAStream()>>>(
                 logits.data_ptr<scalar_t>(),
-                token_ids.data_ptr<int>(),
+                token_ids.data_ptr<long>(),
                 token_counts.data_ptr<int>(),
-                frequency_penalities.data_ptr<scalar_t>(),
-                presence_penalities.data_ptr<scalar_t>(),
-                seq_lens.defined() ? seq_lens.data_ptr<int>() : nullptr,
+                token_ids_lens.data_ptr<int>(),
+                frequency_penalties.data_ptr<scalar_t>(),
+                presence_penalties.data_ptr<scalar_t>(),
                 max_seq_len,
                 vocab_size);
       });

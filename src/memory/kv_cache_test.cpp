@@ -28,8 +28,8 @@ TEST(KVCacheTest, Basic) {
 
   // set key and value cache for the given slot_ids
   for (int32_t i = 0; i < num_blocks * block_size; ++i) {
-    torch::Tensor slot_ids = torch::tensor(
-        {i}, torch::TensorOptions().dtype(torch::kInt).device(device));
+    torch::Tensor slot_ids =
+        torch::tensor({i}, torch::dtype(torch::kInt).device(device));
     torch::Tensor keys =
         torch::ones({1, num_kv_heads, head_dim}, /*device=*/device) * i;
     torch::Tensor values =
@@ -39,8 +39,8 @@ TEST(KVCacheTest, Basic) {
 
   // get key and value cache for the given slot_ids
   for (int32_t i = 0; i < num_blocks * block_size; ++i) {
-    torch::Tensor slot_ids = torch::tensor(
-        {i}, torch::TensorOptions().dtype(torch::kInt).device(device));
+    torch::Tensor slot_ids =
+        torch::tensor({i}, torch::dtype(torch::kInt).device(device));
     auto [keys, values] = kv_cache.get_kv_cache(slot_ids);
     auto desired =
         torch::ones({1, num_kv_heads, head_dim}, /*device=*/device) * i;
@@ -65,10 +65,10 @@ TEST(KVCacheTest, Random) {
 
   torch::Tensor key_cache =
       torch::rand({num_blocks, num_kv_heads, head_dim / x, block_size, x},
-                   /*device=*/device);
+                  /*device=*/device);
   torch::Tensor value_cache =
       torch::rand({num_blocks, num_kv_heads, head_dim, block_size},
-                   /*device=*/device);
+                  /*device=*/device);
 
   KVCache kv_cache(key_cache, value_cache);
 
@@ -78,15 +78,14 @@ TEST(KVCacheTest, Random) {
     const int sample_size = std::min(num_blocks * block_size, 10);
     const int num_slots = i % sample_size + 1;
     torch::Tensor slot_ids =
-        torch::randperm(
-            num_blocks * block_size,
-            torch::TensorOptions().dtype(torch::kInt).device(device))
+        torch::randperm(num_blocks * block_size,
+                        torch::dtype(torch::kInt).device(device))
             .index({Slice(0, num_slots)});
 
-    torch::Tensor keys = torch::rand({num_slots, num_kv_heads, head_dim},
-                                     torch::TensorOptions().device(device));
-    torch::Tensor values = torch::rand({num_slots, num_kv_heads, head_dim},
-                                       torch::TensorOptions().device(device));
+    torch::Tensor keys =
+        torch::rand({num_slots, num_kv_heads, head_dim}, torch::device(device));
+    torch::Tensor values =
+        torch::rand({num_slots, num_kv_heads, head_dim}, torch::device(device));
 
     kv_cache.set_kv_cache_cuda(slot_ids, keys, values);
 

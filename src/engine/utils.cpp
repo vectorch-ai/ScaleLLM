@@ -1,6 +1,7 @@
 #include "utils.h"
 
 #include <torch/torch.h>
+#include <torch/types.h>
 
 #include <vector>
 
@@ -58,7 +59,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   std::vector<int32_t> last_token_idxes;
 
   // track the token ids and counts in the batch
-  std::vector<std::vector<int32_t>> token_ids_vec;
+  std::vector<std::vector<int64_t>> token_ids_vec;
+  std::vector<int32_t> token_ids_lens_vec;
   std::vector<std::vector<int32_t>> token_counts_vec;
   size_t max_unique_tokens = 0;
 
@@ -88,8 +90,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
       flatten_positions_vec.push_back(i);
     }
 
-    std::vector<int32_t>& ids = token_ids_vec.emplace_back();
-    std::vector<int32_t>& counts = token_counts_vec.emplace_back();
+    auto& ids = token_ids_vec.emplace_back();
+    auto& counts = token_counts_vec.emplace_back();
 
     const auto& seq_token_counts = sequence->token_counts();
     const auto unique_tokens = seq_token_counts.size();
@@ -99,6 +101,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
       ids.push_back(token_id);
       counts.push_back(count);
     }
+    token_ids_lens_vec.push_back(static_cast<int32_t>(unique_tokens));
     max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
 
     num_prompt_tokens += num_tokens;
@@ -130,8 +133,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     flatten_tokens_vec.push_back(seq_token_ids.back());
     flatten_positions_vec.push_back(num_tokens - 1);
 
-    std::vector<int32_t>& ids = token_ids_vec.emplace_back();
-    std::vector<int32_t>& counts = token_counts_vec.emplace_back();
+    auto& ids = token_ids_vec.emplace_back();
+    auto& counts = token_counts_vec.emplace_back();
 
     const auto& seq_token_counts = sequence->token_counts();
     const auto unique_tokens = seq_token_counts.size();
@@ -141,6 +144,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
       ids.push_back(token_id);
       counts.push_back(count);
     }
+    token_ids_lens_vec.push_back(static_cast<int32_t>(unique_tokens));
     max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
 
     context_lens.push_back(num_tokens);
@@ -160,7 +164,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   auto token_ids_tensor =
       torch::empty({static_cast<int64_t>(token_ids_vec.size()),
                     static_cast<int64_t>(max_unique_tokens)},
-                   torch::kLong);
+                   torch::kInt64);
   auto token_counts_tensor =
       torch::empty({static_cast<int64_t>(token_counts_vec.size()),
                     static_cast<int64_t>(max_unique_tokens)},
@@ -169,7 +173,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     auto& ids = token_ids_vec[i];
     // padding token ids to the same length
     ids.resize(max_unique_tokens, /*pad_id=*/0);
-    token_ids_tensor.index_put_({i, Slice()}, torch::tensor(ids, torch::kLong));
+    token_ids_tensor.index_put_({i, Slice()},
+                                torch::tensor(ids, torch::kInt64));
 
     auto& counts = token_counts_vec[i];
     counts.resize(max_unique_tokens, /*pad_id=*/0);
@@ -200,6 +205,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   input_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt);
   input_params->token_ids = token_ids_tensor;
   input_params->token_counts = token_counts_tensor;
+  input_params->token_ids_lens = torch::tensor(token_ids_lens_vec, torch::kInt);
 }
 
 }  // namespace llm

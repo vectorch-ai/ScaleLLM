@@ -161,8 +161,8 @@ torch::Tensor prepare_kv_head_mapping(int64_t n_heads,
                                       int64_t n_kv_heads,
                                       const torch::Device& device) {
   // prepare kv_head_mapping
-  auto kv_head_mapping = torch::arange(
-      0, n_kv_heads, torch::TensorOptions().dtype(torch::kInt).device(device));
+  auto kv_head_mapping =
+      torch::arange(0, n_kv_heads, torch::dtype(torch::kInt).device(device));
   const auto num_group = n_heads / n_kv_heads;
   if (num_group > 1) {
     kv_head_mapping = kv_head_mapping.repeat_interleave(/*repeats=*/num_group);

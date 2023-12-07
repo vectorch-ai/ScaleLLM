@@ -78,8 +78,10 @@ OutputParameters Worker::execute_model(
   // create and call logits processors
   auto logits_processor =
       LogitsProcessor::create(sampling_params, dtype_, device_);
-  logits = logits_processor->forward(
-      d_params.token_ids, d_params.token_counts, logits);
+  logits = logits_processor->forward(d_params.token_ids,
+                                     d_params.token_counts,
+                                     d_params.token_ids_lens,
+                                     logits);
 
   // create and call sampler
   auto sampler = std::make_unique<Sampler>(

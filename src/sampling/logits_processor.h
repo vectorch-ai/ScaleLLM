@@ -14,6 +14,51 @@
 #include "request/sampling_parameter.h"
 
 namespace llm {
+namespace detail {
+inline void apply_temperature_penalty(torch::Tensor& logits,
+                                      const torch::Tensor& temperatures) {
+  // logits: [num_seqs, vocab_size]
+  // temperatures: [num_seqs, 1]
+  logits.div_(temperatures);
+}
+
+inline void apply_repetition_penalty(torch::Tensor& logits,
+                                     const torch::Tensor& token_ids,
+                                     const torch::Tensor& /*token_ids_lens*/,
+                                     const torch::Tensor& penalties) {
+  // For now, the padding token (id 0) also gets penalized unexpectedly based on
+  // the current implementation.
+  // TODO: filter out the padding token ids
+
+  // select the logits for tokens of each sequence
+  auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
+
+  // if score < 0 then repetition penalty has to be multiplied to reduce the
+  // previous token probability
+  score = torch::where(score < 0, score * penalties, score / penalties);
+
+  // scatter the modified score back to logits
+  logits.scatter_(/*dim=*/1, /*index=*/token_ids, /*src=*/score);
+}
+
+inline void apply_frequency_presence_penalty(
+    torch::Tensor& logits,
+    const torch::Tensor& token_ids,
+    const torch::Tensor& token_counts,
+    const torch::Tensor& /*token_ids_lens*/,
+    const torch::Tensor& frequency_penalties,
+    const torch::Tensor& presence_penalties) {
+  // select the logits for tokens of each sequence
+  auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
+
+  // apply frequency and presence penalties
+  score.sub_(token_counts * frequency_penalties);
+  score.sub_((token_counts > 0) * presence_penalties);
+
+  // scatter the modified score back to logits
+  logits.scatter_(/*dim=*/1, /*index=*/token_ids, /*src=*/score);
+}
+}  // namespace detail
 
 // supported logits processors:
 // 1. frequency and presence penalty
@@ -38,6 +83,7 @@ class LogitsProcessor {
   // the logits to be processed
   virtual torch::Tensor forward(const torch::Tensor& token_ids,
                                 const torch::Tensor& token_counts,
+                                const torch::Tensor& token_ids_lens,
                                 const torch::Tensor& logits) const = 0;
 
   // operator() allows us to use the module as a function.
@@ -60,10 +106,12 @@ class LogitsProcessorList : public LogitsProcessor {
 
   torch::Tensor forward(const torch::Tensor& token_ids,
                         const torch::Tensor& token_counts,
+                        const torch::Tensor& token_ids_lens,
                         const torch::Tensor& logits) const override {
     torch::Tensor output = logits;
     for (const auto& processor : processors_) {
-      output = processor->forward(token_ids, token_counts, output);
+      output =
+          processor->forward(token_ids, token_counts, token_ids_lens, output);
     }
     return output;
   }
@@ -95,17 +143,26 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
 
   torch::Tensor forward(const torch::Tensor& token_ids,
                         const torch::Tensor& token_counts,
+                        const torch::Tensor& token_ids_lens,
                         const torch::Tensor& logits) const override {
-    // select the logits for tokens of each sequence
-    auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
+    auto logits_ = logits;
+    if (logits.is_cuda()) {
+      kernel::apply_frequency_presence_penalty(logits_,
+                                               token_ids,
+                                               token_counts,
+                                               token_ids_lens,
+                                               frequency_penalties_,
+                                               presence_penalties_);
+    } else {
+      detail::apply_frequency_presence_penalty(logits_,
+                                               token_ids,
+                                               token_counts,
+                                               token_ids_lens,
+                                               frequency_penalties_,
+                                               presence_penalties_);
+    }
 
-    // apply frequency and presence penalties
-    score.sub_(token_counts * frequency_penalties_);
-    score.sub_((token_counts > 0) * presence_penalties_);
-
-    // scatter the modified score back to logits
-    logits.scatter_(/*dim=*/1, /*index=*/token_ids, /*src=*/score);
-    return logits;
+    return logits_;
   };
 
  private:
@@ -114,8 +171,6 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
   torch::Tensor presence_penalties_;
 };
 
-// Adapted from TGI:
-// https://github.com/huggingface/text-generation-inference/blob/main/server/text_generation_server/utils/logits_process.py#L84
 class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
  public:
   RepetitionPenaltyLogitsProcessor(const std::vector<float>& penalties,
@@ -128,17 +183,17 @@ class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
   // token_ids, [num_seqs, max_num_tokens] LongTensor
   torch::Tensor forward(const torch::Tensor& token_ids,
                         const torch::Tensor& /*token_counts*/,
+                        const torch::Tensor& token_ids_lens,
                         const torch::Tensor& logits) const override {
-    // select the logits for tokens of each sequence
-    auto score = logits.gather(/*dim=*/1, /*index=*/token_ids);
-
-    // if score < 0 then repetition penalty has to be multiplied to reduce the
-    // previous token probability
-    score = torch::where(score < 0, score * penalties_, score / penalties_);
-
-    // scatter the modified score back to logits
-    logits.scatter_(/*dim=*/1, /*index=*/token_ids, /*src=*/score);
-    return logits;
+    auto logits_ = logits;
+    if (logits.is_cuda()) {
+      kernel::apply_repetition_penalty(
+          logits_, token_ids, token_ids_lens, penalties_);
+    } else {
+      detail::apply_repetition_penalty(
+          logits_, token_ids, token_ids_lens, penalties_);
+    }
+    return logits_;
   }
 
  private:
@@ -155,8 +210,7 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
                              const torch::Device& device = torch::kCPU) {
     // Convert temperature to a tensor and unsqueeze it for broadcasting
     temperatures_ =
-        torch::tensor(temperatures,
-                      torch::TensorOptions().dtype(dtype).device(device))
+        torch::tensor(temperatures, torch::dtype(dtype).device(device))
             .unsqueeze(1);
 
     // Replace 0. with 1. to avoid division by 0
@@ -166,14 +220,15 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
                         const torch::Tensor& /*token_counts*/,
+                        const torch::Tensor& /*token_ids_lens*/,
                         const torch::Tensor& logits) const override {
+    auto logits_ = logits;
     if (logits.is_cuda()) {
-      auto logits_ = logits;
       kernel::apply_temperature_penalty(logits_, temperatures_);
-      return logits_;
+    } else {
+      detail::apply_temperature_penalty(logits_, temperatures_);
     }
-    logits.div_(temperatures_);
-    return logits;
+    return logits_;
   }
 
  private:
@@ -197,6 +252,7 @@ class TopPLogitsProcessor : public LogitsProcessor {
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
                         const torch::Tensor& /*token_counts*/,
+                        const torch::Tensor& /*token_ids_lens*/,
                         const torch::Tensor& logits) const override {
     // sort the logits in descending order
     auto [sorted_logits, sorted_indices] =
@@ -271,6 +327,7 @@ class TopKLogitsProcessor : public LogitsProcessor {
 
   torch::Tensor forward(const torch::Tensor& /*token_ids*/,
                         const torch::Tensor& /*token_counts*/,
+                        const torch::Tensor& /*token_ids_lens*/,
                         const torch::Tensor& logits) const override {
     torch::Tensor top_k = top_k_;
     auto max_top_k = max_top_k_;

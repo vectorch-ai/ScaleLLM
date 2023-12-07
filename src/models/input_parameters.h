@@ -22,6 +22,7 @@ struct InputParameters {
     params.last_token_idxes = last_token_idxes.to(device);
     params.token_ids = token_ids.to(device);
     params.token_counts = token_counts.to(device);
+    params.token_ids_lens = token_ids_lens.to(device);
     return params;
   }
 
@@ -78,9 +79,13 @@ struct InputParameters {
   // [num_seq, max_unique_tokens] LongTensor
   torch::Tensor token_ids;
 
-  // the count of each token in the prompt.
+  // the count of each token in each sequence.
   // [num_seq, max_unique_tokens] IntTensor
   torch::Tensor token_counts;
+
+  // the number of unique tokens in each sequence.
+  // [num_seq] IntTensor
+  torch::Tensor token_ids_lens;
 };
 
 }  // namespace llm
