@@ -4,9 +4,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <string>
-
-#include "common/logging.h"
 
 namespace llm {
 std::unique_ptr<LogitsProcessor> LogitsProcessor::create(
@@ -41,20 +38,6 @@ std::unique_ptr<LogitsProcessor> LogitsProcessor::create(
                   [](float t) { return t != 1.0; })) {
     processors.push_back(std::make_unique<TemperatureLogitsProcessor>(
         params.temperatures, dtype, device));
-  }
-
-  if (std::any_of(params.top_k.begin(), params.top_k.end(), [](int64_t t) {
-        return t != 0;
-      })) {
-    processors.push_back(
-        std::make_unique<TopKLogitsProcessor>(params.top_k, dtype, device));
-  }
-
-  if (std::any_of(params.top_p.begin(), params.top_p.end(), [](float t) {
-        return t != 1.0;
-      })) {
-    processors.push_back(
-        std::make_unique<TopPLogitsProcessor>(params.top_p, dtype, device));
   }
 
   return std::make_unique<LogitsProcessorList>(std::move(processors));
