@@ -86,6 +86,14 @@ You can run all tests in build directory by running the following command.
 cd build && ctest --output-on-failure
 ``````
 
+## Devel Image
+
+You can use development image which have installed cuda 12.1, nccl 2.17 and list of tools for build and debug.
+
+```
+vectorchai/scalellm:devel
+```
+
 ## Compiler
 
 You may want to chose different compiler for the project. You can do it by setting the environment variable `CXX` and `CC` before running cmake. For example, if you want to use gcc-12 and g++-12, you can run the following command.
