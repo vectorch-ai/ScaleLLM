@@ -5,7 +5,7 @@
 
 #include "server/call_data.h"
 #include "chat.grpc.pb.h"
-#include "common/executor.h"
+#include "common/threadpool.h"
 #include "engine/engine.h"
 #include "models/args.h"
 #include "scheduler/scheduler.h"
@@ -31,8 +31,8 @@ class ChatHandler final {
   // model args
   ModelArgs model_args_;
 
-  // converter executor
-  Executor converter_executor_;
+  // converter threadpool 
+  ThreadPool converter_threadpool_;
 };
 
 }  // namespace llm

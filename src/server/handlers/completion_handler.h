@@ -4,7 +4,7 @@
 #include <thread>
 
 #include "server/call_data.h"
-#include "common/executor.h"
+#include "common/threadpool.h"
 #include "completion.grpc.pb.h"
 #include "engine/engine.h"
 #include "models/args.h"
@@ -32,8 +32,8 @@ class CompletionHandler final {
   // model args
   ModelArgs model_args_;
 
-  // converter executor
-  Executor converter_executor_;
+  // converter threadpool 
+  ThreadPool converter_threadpool_;
 };
 
 }  // namespace llm

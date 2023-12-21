@@ -258,7 +258,7 @@ ChatHandler::ChatHandler(Scheduler* scheduler, const Engine* engine)
 }
 
 void ChatHandler::chat_async(ChatCallData* call_data) {
-  converter_executor_.schedule([this, call_data = call_data]() {
+  converter_threadpool_.schedule([this, call_data = call_data]() {
     if (!verify_request_arguments(call_data)) {
       // request is not valid, finish with error
       return;

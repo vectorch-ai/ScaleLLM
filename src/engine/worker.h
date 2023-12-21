@@ -3,7 +3,7 @@
 #include <folly/futures/Future.h>
 #include <torch/torch.h>
 
-#include "common/executor.h"
+#include "common/threadpool.h"
 #include "model_loader/state_dict.h"
 #include "models/args.h"
 #include "models/causal_lm.h"
@@ -83,7 +83,7 @@ class Worker final {
 
  private:
   // working thread
-  Executor executor_;
+  ThreadPool threadpool_;
 
   // dtype of the model
   torch::ScalarType dtype_;

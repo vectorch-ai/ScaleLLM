@@ -66,8 +66,8 @@ class ContinuousBatchingScheduler final : public Scheduler {
   // low.
   std::deque<Request*> preemptable_candidates_;
 
-  // the executor to handle responses
-  Executor response_executor_;
+  // the threadpool to handle responses
+  ThreadPool response_threadpool_;
 };
 
 }  // namespace llm

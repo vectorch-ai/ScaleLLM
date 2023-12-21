@@ -6,25 +6,25 @@
 
 namespace llm {
 
-class Executor final {
+class ThreadPool final {
  public:
-  // a runnable is an object intended to be executed by the executor
+  // a runnable is an object intended to be executed by the threadpool
   // it must be invokable with no arguments and return void.
   using Runnable = folly::Function<void()>;
 
   // constructors
-  Executor() : Executor(1) {}
+  ThreadPool() : ThreadPool(1) {}
 
   // disable copy/move constructor and assignment
-  Executor(const Executor&) = delete;
-  Executor& operator=(const Executor&) = delete;
-  Executor(Executor&&) = delete;
-  Executor& operator=(Executor&&) = delete;
+  ThreadPool(const ThreadPool&) = delete;
+  ThreadPool& operator=(const ThreadPool&) = delete;
+  ThreadPool(ThreadPool&&) = delete;
+  ThreadPool& operator=(ThreadPool&&) = delete;
 
-  explicit Executor(size_t num_threads);
+  explicit ThreadPool(size_t num_threads);
 
   // destructor
-  ~Executor();
+  ~ThreadPool();
 
   // schedule a runnable to be executed
   void schedule(Runnable runnable);

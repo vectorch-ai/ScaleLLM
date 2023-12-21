@@ -9,7 +9,7 @@
 #include <memory>
 #include <utility>
 
-#include "common/executor.h"
+#include "common/threadpool.h"
 #include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "models/input_parameters.h"
@@ -101,7 +101,7 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
     const SamplingParameters& sampling_params) {
   folly::Promise<OutputParameters> promise;
   auto future = promise.getSemiFuture();
-  executor_.schedule([this,
+  threadpool_.schedule([this,
                       tokens = flatten_tokens,
                       positions = flatten_positions,
                       parameters = params,
@@ -121,7 +121,7 @@ folly::SemiFuture<bool> Worker::init_model_async(torch::ScalarType dtype,
                                                  const QuantArgs& quant_args) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
-  executor_.schedule([this,
+  threadpool_.schedule([this,
                       dtype,
                       &args,
                       &quant_args,
@@ -137,7 +137,7 @@ folly::SemiFuture<bool> Worker::init_kv_cache_async(
     const std::vector<int64_t>& value_cache_shape) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
-  executor_.schedule([this,
+  threadpool_.schedule([this,
                       &key_cache_shape,
                       &value_cache_shape,
                       promise = std::move(promise)]() mutable {
@@ -152,7 +152,7 @@ folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
     const StateDict& state_dict) {
   folly::Promise<folly::Unit> promise;
   auto future = promise.getSemiFuture();
-  executor_.schedule(
+  threadpool_.schedule(
       [this, &state_dict, promise = std::move(promise)]() mutable {
         // load the model weights from state_dict within the working thread
         this->load_state_dict(state_dict);
