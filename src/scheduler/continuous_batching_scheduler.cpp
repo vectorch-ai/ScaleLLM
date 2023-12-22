@@ -59,8 +59,8 @@ void ContinuousBatchingScheduler::on_request_finish(Request* request) {
   block_manager_->release_slots_for_request(request);
   // take over the ownership of the request
   std::unique_ptr<Request> finished_request(request);
-  response_executor_.schedule([tokenizer = tokenizer_.get(),
-                               request = std::move(finished_request)]() {
+  response_threadpool_.schedule([tokenizer = tokenizer_.get(),
+                                 request = std::move(finished_request)]() {
     if (request->stream) {
       // just finish the request
       request->on_finish("", FinishReason::NONE, Status());
@@ -83,7 +83,7 @@ void ContinuousBatchingScheduler::on_sequence_stream(Sequence* seq) {
       num_tokens_to_output >= FLAGS_streaming_token_buffer_size) {
     const auto finish_reason = seq->finish_reason();
     // output the delta text til the end of the sequence to the client
-    response_executor_.schedule(
+    response_threadpool_.schedule(
         [seq, tokenizer = tokenizer_.get(), end = num_tokens, finish_reason]() {
           const auto detla = seq->decode_delta_text(end, *tokenizer);
           if (!detla.empty() || finish_reason != FinishReason::NONE) {

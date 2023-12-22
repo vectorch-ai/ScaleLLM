@@ -9,11 +9,11 @@ cc_library(
     metrics.h
     slice.h
     concurrent_queue.h
-    executor.h
+    threadpool.h
     pretty_print.h
     json_reader.h
   SRCS
-    executor.cpp
+    threadpool.cpp
     pretty_print.cpp
     json_reader.cpp
   DEPS
