@@ -7,8 +7,10 @@ cc_library(
   HDRS
     scheduler.h
     continuous_batching_scheduler.h
+    speculative_scheduler.h
   SRCS 
     continuous_batching_scheduler.cpp
+    speculative_scheduler.cpp
   DEPS
     :request
     :engine
