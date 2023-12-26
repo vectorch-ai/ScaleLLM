@@ -33,6 +33,9 @@ struct ModelArgs {
   // number of tokens in the vocabulary.
   DEFINE_ARG(int64_t, vocab_size) = -1;
 
+  // whether to use rms norm.
+  DEFINE_ARG(bool, use_rms_norm) = false;
+  
   // the epsilon value to use for rms norm.
   DEFINE_ARG(float, rms_norm_eps) = 0.0f;
 
@@ -79,14 +82,24 @@ struct ModelArgs {
   // max alibi bias
   DEFINE_ARG(float, alibi_bias_max) = 0.0f;
 
-  // whether to use bias
+  // whether to use bias. only used for mpt models
   DEFINE_ARG(bool, no_bias) = false;
+
+  // whether to use bias for linear.
+  DEFINE_ARG(bool, linear_bias) = false;
+
+  // whether to use bias for qkv.
+  DEFINE_ARG(bool, qkv_bias) = false;
 
   // whether to apply residual connection post layernorm
   DEFINE_ARG(bool, residual_post_layernorm) = false;
 
-  // Stop token ids
+  // Following args belong to the tokenizer, but we put them here for now.
+  // Stop token ids for decoding.
   DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
+
+  // Path to the vocab file for se
+  DEFINE_ARG(std::string, vocab_file) = "tokenizer.model";
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {

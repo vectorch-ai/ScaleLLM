@@ -150,25 +150,24 @@ HFModelLoader::HFModelLoader(const std::string& model_weights_path)
 }
 
 std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
-  // use the tokenizer path specified by the user if exists
+  // check if fast tokenizer exists
   const std::string tokenizer_path = model_weights_path_ + "/tokenizer.json";
   if (std::filesystem::exists(tokenizer_path)) {
     return HFTokenizer::from_file(tokenizer_path);
   }
 
-  // fallback to tokenizer.model if tokenizer.json does not exist
-  const std::string vocab_path = model_weights_path_ + "/tokenizer.model";
+  // fallback to sentencepiece tokenizer if no fast tokenizer exists
+  const std::string vocab_path = model_weights_path_ + "/" + args_.vocab_file();
   if (std::filesystem::exists(vocab_path)) {
-    GLOG(WARNING) << "Failed to find tokenizer.json, use tokenizer.model "
-                     "instead. Please consider using fast tokenizer for "
+    GLOG(WARNING) << "Failed to find tokenizer.json, use " << args_.vocab_file()
+                  << " instead. Please consider using fast tokenizer for "
                      "better performance.";
     return std::make_unique<SentencePieceTokenizer>(vocab_path,
                                                     /*prepend_bos=*/false);
   }
 
-  GLOG(ERROR)
-      << "Failed to find tokenizer file tokenizer.json or tokenizer.model from "
-      << model_weights_path_;
+  GLOG(ERROR) << "Failed to find tokenizer file tokenizer.json or "
+              << args_.vocab_file() << " from " << model_weights_path_;
   return nullptr;
 }
 

@@ -111,27 +111,42 @@ class ModelRegistry {
                                return true;                                \
                              })
 
-#define LOAD_ARG_OR(arg_name, json_name, default_value)           \
-  [&] {                                                           \
-    auto value = args->arg_name();                                \
-    args->arg_name() =                                            \
-        json.value_or<decltype(value)>(json_name, default_value); \
+template <typename type>
+struct RemoveOptional {
+  using value_type = type;
+};
+
+// specialization for optional
+template <typename type>
+struct RemoveOptional<std::optional<type>> {
+  using value_type = type;
+};
+
+#define LOAD_ARG_OR(arg_name, json_name, default_value)                      \
+  [&] {                                                                      \
+    auto value = args->arg_name();                                           \
+    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
+    args->arg_name() = json.value_or<value_type>(json_name, default_value);  \
   }()
 
-#define LOAD_OPTIONAL_ARG(arg_name, json_name)                             \
-  [&] {                                                                    \
-    auto value = args->arg_name();                                         \
-    args->arg_name() = json.value<decltype(value)::value_type>(json_name); \
+#define LOAD_ARG(arg_name, json_name)                                        \
+  [&] {                                                                      \
+    auto value = args->arg_name();                                           \
+    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
+    if (auto data_value = json.value<value_type>(json_name)) {               \
+      args->arg_name() = data_value.value();                                 \
+    }                                                                        \
   }()
 
-#define LOAD_ARG_OR_FUNC(arg_name, json_name, ...)                  \
-  [&] {                                                             \
-    auto value = args->arg_name();                                  \
-    if (auto data_value = json.value<decltype(value)>(json_name)) { \
-      args->arg_name() = data_value.value();                        \
-    } else {                                                        \
-      args->arg_name() = __VA_ARGS__();                             \
-    }                                                               \
+#define LOAD_ARG_OR_FUNC(arg_name, json_name, ...)                           \
+  [&] {                                                                      \
+    auto value = args->arg_name();                                           \
+    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
+    if (auto data_value = json.value<value_type>(json_name)) {               \
+      args->arg_name() = data_value.value();                                 \
+    } else {                                                                 \
+      args->arg_name() = __VA_ARGS__();                                      \
+    }                                                                        \
   }()
 
 }  // namespace llm

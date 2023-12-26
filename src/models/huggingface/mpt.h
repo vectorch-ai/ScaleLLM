@@ -498,7 +498,7 @@ REGISTER_MODEL_ARGS(mpt, [&] {
   LOAD_ARG_OR(no_bias, "no_bias", true);
 
   // load config for attention
-  LOAD_OPTIONAL_ARG(attn_qkv_clip, "attn_config.clip_qkv");
+  LOAD_ARG(attn_qkv_clip, "attn_config.clip_qkv");
   LOAD_ARG_OR(attn_qk_ln, "attn_config.qk_ln", false);
   LOAD_ARG_OR(attn_alibi, "attn_config.alibi", false);
   LOAD_ARG_OR(alibi_bias_max, "attn_config.alibi_bias_max", 0.0f);

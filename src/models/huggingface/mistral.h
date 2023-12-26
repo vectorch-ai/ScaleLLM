@@ -138,7 +138,6 @@ class MistralAttentionImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
@@ -406,7 +405,7 @@ REGISTER_MODEL_ARGS(mistral, [&] {
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
   LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
-  LOAD_OPTIONAL_ARG(n_kv_heads, "num_key_value_heads");
+  LOAD_ARG(n_kv_heads, "num_key_value_heads");
   LOAD_ARG_OR(intermediate_size, "intermediate_size", 14336);
   LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 4096 * 32);

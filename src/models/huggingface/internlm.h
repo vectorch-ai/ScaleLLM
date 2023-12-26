@@ -131,7 +131,6 @@ class InternlmAttentionImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    const auto num_tokens = x.size(0);
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
     auto qkv = qkv_proj_(x).chunk(/*chunks=*/3, /*dim=*/1);
@@ -392,7 +391,7 @@ REGISTER_MODEL_ARGS(internlm, [&] {
   LOAD_ARG_OR(hidden_size, "hidden_size", 5120);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 60);
   LOAD_ARG_OR(n_heads, "num_attention_heads", 40);
-  LOAD_OPTIONAL_ARG(n_kv_heads, "num_key_value_heads");
+  LOAD_ARG(n_kv_heads, "num_key_value_heads");
   LOAD_ARG_OR(intermediate_size, "intermediate_size", 13824);
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 4096);
   LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-6);

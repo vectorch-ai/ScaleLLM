@@ -15,15 +15,15 @@
 #include "request/stopping_criteria.h"
 
 DEFINE_string(model_name_or_path,
-              "TheBloke/Llama-2-7B-GPTQ",
+              "THUDM/chatglm3-6b",
               "hf model name or path to the model file.");
 
 DEFINE_string(model_allow_patterns,
-              "*.json,*.safetensors,*.model",
+              "*",
               "Allow patterns for model files.");
 
 DEFINE_string(device,
-              "auto",
+              "cuda",
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
               "auto to use all available gpus.");
 

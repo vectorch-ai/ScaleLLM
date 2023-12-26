@@ -9,6 +9,8 @@
 namespace llm {
 
 // Attention with rotary embedding
+// only support linear scaling type for now.
+// TODO: add dynamic and yarn scaling type.
 class AttentionWithRoPEImpl : public torch::nn::Module {
  public:
   AttentionWithRoPEImpl(int64_t n_heads,
