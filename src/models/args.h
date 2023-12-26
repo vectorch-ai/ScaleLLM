@@ -35,7 +35,7 @@ struct ModelArgs {
 
   // whether to use rms norm.
   DEFINE_ARG(bool, use_rms_norm) = false;
-  
+
   // the epsilon value to use for rms norm.
   DEFINE_ARG(float, rms_norm_eps) = 0.0f;
 
@@ -127,6 +127,8 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", attn_alibi: " << args.attn_alibi();
   os << ", alibi_bias_max: " << args.alibi_bias_max();
   os << ", no_bias: " << args.no_bias();
+  os << ", linear_bias: " << args.linear_bias();
+  os << ", qkv_bias: " << args.qkv_bias();
   os << ", residual_post_layernorm: " << args.residual_post_layernorm();
   os << "]";
   return os;
