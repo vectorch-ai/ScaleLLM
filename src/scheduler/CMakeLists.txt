@@ -6,9 +6,11 @@ cc_library(
     scheduler
   HDRS
     scheduler.h
+    scheduler_policy.h
     continuous_batching_scheduler.h
     speculative_scheduler.h
   SRCS 
+    scheduler_policy.cpp
     continuous_batching_scheduler.cpp
     speculative_scheduler.cpp
   DEPS
