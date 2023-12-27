@@ -19,8 +19,23 @@ class SchedulerType {
 SchedulerType SchedulerType::CONTINOUS_BATCHING("continous_batching");
 SchedulerType SchedulerType::SPECULATIVE("speculative");
 
+class SchedulerPolicyType {
+ public:
+  SchedulerPolicyType(const std::string& type) : type_(type) {}
+
+  static SchedulerPolicyType FCFS;
+  static SchedulerPolicyType PSA;
+
+ private:
+  std::string type_;
+};
+
+SchedulerPolicyType SchedulerPolicyType::FCFS("fcfs");
+SchedulerPolicyType SchedulerPolicyType::PSA("psa");
+
 struct SchedulerConfig {
   SchedulerType type = SchedulerType::CONTINOUS_BATCHING;
+  SchedulerPolicyType policy_type = SchedulerPolicyType::PSA;
   
   // speculative configuration
   const uint64_t speculative_steps = kSpeculativeSteps;
