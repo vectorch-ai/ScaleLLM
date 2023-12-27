@@ -11,18 +11,12 @@
 
 namespace llm {
 constexpr size_t kRequestQueueSize = 100000;
-// TODO: reader from config
 constexpr size_t kMaxBatchSize = 100;
-
-constexpr uint64_t kStepSleepTimeMs = 10;
-
-DEFINE_int32(streaming_token_buffer_size,
-             1,
-             "number of tokens to buffer before streaming to client");
 
 FCFSSchedulerPolicy::FCFSSchedulerPolicy(ResponseHandler* response_handler,
                                          BlockManager* block_manager)
-  : response_handler_(response_handler), block_manager_(block_manager) {}
+  : response_handler_(response_handler), block_manager_(block_manager),
+    waiting_queue_(kRequestQueueSize) {}
 
 FCFSSchedulerPolicy::~FCFSSchedulerPolicy() {
   // release all requests in the queue
@@ -47,7 +41,7 @@ FCFSSchedulerPolicy::~FCFSSchedulerPolicy() {
   blocking_queue_.clear();
 }
 
-bool FCFSSchedulerPolicy::try_emplace(std::unique_ptr<Request>& request) {
+bool FCFSSchedulerPolicy::schedule(std::unique_ptr<Request>& request) {
   GCHECK(request != nullptr);
   if (waiting_queue_.write(request.get())) {
     // take over the ownership of the request
@@ -58,18 +52,15 @@ bool FCFSSchedulerPolicy::try_emplace(std::unique_ptr<Request>& request) {
   return false;
 }
 
-void FCFSSchedulerPolicy::schedule() {
+std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
   std::vector<Request*> ready_queue;
   for (Request* request : running_queue_) {
     if (request->is_finished()) {
       response_handler_->on_request_finish(request);
     }
-
     ready_queue.emplace_back(request);
   }
-
   running_queue_.clear();
-  running_batch_.clear();
 
   for (Request* request : blocking_queue_) {
     ready_queue.emplace_back(request);
@@ -83,6 +74,8 @@ void FCFSSchedulerPolicy::schedule() {
     ready_queue.emplace_back(request);
   }
 
+  std::vector<Sequence*> running_batch;
+  running_batch.reserve(kMaxBatchSize);
   for (Request* request : ready_queue) {
     if (request->sequences.empty() || request->is_finished()) {
       continue;
@@ -103,13 +96,12 @@ void FCFSSchedulerPolicy::schedule() {
     } else {
       running_queue_.emplace_back(request);
       running_batch_.insert(running_batch_.end(),
-                             sequences.begin(),
-                             sequences.end());
+                            sequences.begin(),
+                            sequences.end());
     }
   }
   
-  if (running_batch_.empty() && !blocking_queue_.empty()) {
-    // don't have enough memory to schedule one sequence
+  if (running_batch.empty() && !blocking_queue_.empty()) {
     GLOG(ERROR) << "Not enough memory to schedule one sequence";
 
     Request* request = blocking_queue_.back();
@@ -118,5 +110,6 @@ void FCFSSchedulerPolicy::schedule() {
     // TODO: optimize the logic to only release blocks for sequences one by one
     response_handler_->on_request_finish(request);
   }
+  return running_batch;
 }
 } // llm
