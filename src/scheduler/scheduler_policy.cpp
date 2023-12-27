@@ -4,8 +4,10 @@
 #include <absl/time/time.h>
 
 #include "common/logging.h"
+#include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
+#include "scheduler/response_handler.h"
 
 namespace llm {
 constexpr size_t kRequestQueueSize = 100000;
@@ -17,6 +19,10 @@ constexpr uint64_t kStepSleepTimeMs = 10;
 DEFINE_int32(streaming_token_buffer_size,
              1,
              "number of tokens to buffer before streaming to client");
+
+FCFSSchedulerPolicy::FCFSSchedulerPolicy(ResponseHandler* response_handler,
+                                         BlockManager* block_manager)
+  : response_handler_(response_handler), block_manager_(block_manager) {}
 
 FCFSSchedulerPolicy::~FCFSSchedulerPolicy() {
   // release all requests in the queue
@@ -56,7 +62,7 @@ void FCFSSchedulerPolicy::schedule() {
   std::vector<Request*> ready_queue;
   for (Request* request : running_queue_) {
     if (request->is_finished()) {
-      // TODO: on_request_finish(request);
+      response_handler_->on_request_finish(request);
     }
 
     ready_queue.emplace_back(request);
@@ -88,10 +94,9 @@ void FCFSSchedulerPolicy::schedule() {
       if (sequence.is_finished()) {
         continue;
       }
-      // TODO 
-      // if (block_manager_->allocate_slotes_for_sequence(&sequence)) {
-      //  sequences.emplace_back(&sequence);
-      // }
+      if (block_manager_->allocate_slots_for_sequence(&sequence)) {
+        sequences.emplace_back(&sequence);
+      }
     }
     if (sequences.empty()) {
       blocking_queue_.emplace_back(request);
@@ -111,7 +116,7 @@ void FCFSSchedulerPolicy::schedule() {
     blocking_queue_.pop_back();
 
     // TODO: optimize the logic to only release blocks for sequences one by one
-    // on_request_finish(request);
+    response_handler_->on_request_finish(request);
   }
 }
 } // llm
