@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <memory>
 
+#include "engine/engine.h"
 #include "request/request.h"
 #include "scheduler.h"
+#include "scheduler_config.h"
 
 namespace llm {
 
@@ -15,21 +17,22 @@ class SchedulerPolicy;
 class Tokenizer;
 class SpeculativeScheduler final : public Scheduler {
  public:
-  SpeculativeScheduler(Engine* llm_engine, Engine* ssm_engine);
-
+  SpeculativeScheduler(const SchedulerConfig& config,
+      Engine* llm_engine, Engine* ssm_engine);
   ~SpeculativeScheduler() override;
 
-  // schedule a request, thread safe and non-blocking
-  // may return false if the queue is full
   bool schedule(std::unique_ptr<Request>& request) override;
-
-  // step the scheduler forward by one step
-  // may get blocked if there are no requests to process
   void step(const absl::Duration& timeout) override;
+
+ private:
+  void speculative_multiple_steps(std::vector<Sequence*>& sequences);
+  OutputParameters validate_once(std::vector<Sequence*>& sequences);
  
  private:
-  Engine* ssm_engine_;
+  SchedulerConfig config_;
+
   Engine* llm_engine_;
+  Engine* ssm_engine_;
 
   BlockManager* llm_block_manager_;
   BlockManager* ssm_block_manager_; 

@@ -12,9 +12,10 @@ namespace llm {
 
 constexpr uint64_t kStepSleepTimeMs = 10;
 
-SpeculativeScheduler::SpeculativeScheduler(Engine* llm_engine,
+SpeculativeScheduler::SpeculativeScheduler(const SchedulerConfig& config,
+                                           Engine* llm_engine,
                                            Engine* ssm_engine)
-    : llm_engine_(llm_engine), ssm_engine_(ssm_engine) {
+    : config_(config), llm_engine_(llm_engine), ssm_engine_(ssm_engine) {
   GCHECK(llm_engine_ != nullptr);
   llm_block_manager_ = llm_engine_->block_manager();
   GCHECK(ssm_engine_ != nullptr);
@@ -40,6 +41,7 @@ bool SpeculativeScheduler::schedule(std::unique_ptr<Request>& request) {
   return scheduler_policy_->schedule(request);
 }
 
+// TODO: need to finish the speculative process.
 void SpeculativeScheduler::step(const absl::Duration& timeout) {
   // get a new batch of requests
   const auto deadline = absl::Now() + timeout;
@@ -61,12 +63,11 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
     absl::SleepFor(time_to_sleep);
   }
 
-  GCHECK(!sequences_batch.empty());
-  // TODO: execute multiple steps in ssm
-  auto ssm_output_parameters = ssm_engine_->execute_model(sequences_batch);
-  // TODO: execute on validation step in llm
-  auto llm_output_parameters = llm_engine_->execute_model(sequences_batch);
-
+  // TODO
+  speculative_multiple_steps(sequences_batch);
+ 
+  // TODO
+  auto llm_output_parameters = validate_once(sequences_batch);
   const auto& next_tokens = llm_output_parameters.next_tokens;
   const int64_t num_seqs = next_tokens.numel();
   GCHECK(num_seqs == sequences_batch.size());
@@ -85,6 +86,19 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
       response_handler_->on_sequence_stream(seq);
     }
   }
+}
+
+void SpeculativeScheduler::speculative_multiple_steps(
+    std::vector<Sequence*>& sequences_batch) {
+  GCHECK(!sequences_batch.empty());
+  // TODO: execute multiple steps in ssm
+  auto ssm_output_parameters = ssm_engine_->execute_model(sequences_batch);
+}
+
+OutputParameters SpeculativeScheduler::validate_once(
+    std::vector<Sequence*>& sequences_batch) {
+  // TODO: execute on validation step in llm
+  return llm_engine_->execute_model(sequences_batch);
 }
 
 }  // namespace llm
