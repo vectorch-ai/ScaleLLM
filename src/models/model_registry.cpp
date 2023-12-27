@@ -13,6 +13,7 @@
 #include "huggingface/llama.h"
 #include "huggingface/mistral.h"
 #include "huggingface/mpt.h"
+#include "huggingface/qwen.h"
 #include "huggingface/yi.h"
 #include "llama.h"
 
