@@ -28,7 +28,9 @@ class QWenMLPImpl : public torch::nn::Module {
     GCHECK(act_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
-    const int64_t intermediate_size = args.intermediate_size();
+    // the intermediate size is half of the size from the config
+    // ref: https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py#L562
+    const int64_t intermediate_size = args.intermediate_size() / 2;
 
     // register the weight parameter
     w1_w2_proj_ = register_module("gate_up_proj",
