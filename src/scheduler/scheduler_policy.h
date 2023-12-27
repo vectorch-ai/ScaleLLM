@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <memory>
 
+#include "scheduler/scheduler_config.h"
+
 namespace llm {
 
 class Request;
@@ -37,6 +39,17 @@ class FCFSSchedulerPolicy final : public SchedulerPolicy {
   std::vector<Request*> running_queue_;
 
   std::vector<Sequence*> running_batch_;
+};
+
+class SchedulerPolicyFactory {
+ public:
+  static SchedulerPolicy* Create(const SchedulerPolicyType& type,
+                                 ResponseHandler* response_handler,
+                                 BlockManager* block_manager) {
+    static FCFSSchedulerPolicy policy(response_handler,
+                                      block_manager);
+    return &policy;
+  }
 };
 
 }  // namespace llm

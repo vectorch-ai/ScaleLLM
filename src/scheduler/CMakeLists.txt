@@ -8,6 +8,7 @@ cc_library(
     response_handler.h
     scheduler.h
     scheduler_config.h
+    scheduler_factory.h
     scheduler_policy.h
     continuous_batching_scheduler.h
     speculative_scheduler.h
