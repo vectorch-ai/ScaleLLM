@@ -18,28 +18,27 @@ class SchedulerPolicy {
   virtual void schedule() = 0;
 };
 
+class BlockManager;
+class ResponseHandler;
 class Sequence; 
 // First come first serve scheduler policy
-class FCFSSchedulerPolicy : public SchedulerPolicy {
+class FCFSSchedulerPolicy final : public SchedulerPolicy {
  public:
-  FCFSSchedulerPolicy() = default;
+  explicit FCFSSchedulerPolicy(ResponseHandler* response_handler,
+                               BlockManager* block_manager);
   ~FCFSSchedulerPolicy() override;
 
   bool try_emplace(std::unique_ptr<Request>& request) override;
   void schedule() override;
 
  private:
-  // a thread safe queue of requests, bounded by kRequestQueueSize
-  // the schedule owns the requests and manages their lifetimes.
+  ResponseHandler* response_handler_;
+  BlockManager* block_manager_;
+
   folly::MPMCQueue<Request*> waiting_queue_;
-
-  // blocking request queue
   std::vector<Request*> blocking_queue_;
-
-  // running request queue
   std::vector<Request*> running_queue_;
 
-  // a batch of sequence to be processed.
   std::vector<Sequence*> running_batch_;
 };
 

@@ -27,7 +27,7 @@ class SpeculativeScheduler final : public Scheduler {
   // step the scheduler forward by one step
   // may get blocked if there are no requests to process
   void step(const absl::Duration& timeout) override;
-
+ 
  private:
   // get a batch of requests from the priority queue
   void build_sequence_batch();

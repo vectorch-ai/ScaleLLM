@@ -5,11 +5,13 @@ cc_library(
   NAME 
     scheduler
   HDRS
+    response_handler.h
     scheduler.h
     scheduler_policy.h
     continuous_batching_scheduler.h
     speculative_scheduler.h
   SRCS 
+    response_handler.cpp
     scheduler_policy.cpp
     continuous_batching_scheduler.cpp
     speculative_scheduler.cpp
