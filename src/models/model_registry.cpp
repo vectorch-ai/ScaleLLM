@@ -3,19 +3,20 @@
 #include "common/logging.h"
 
 // list all registered models here
-#include "huggingface/aquila.h"
-#include "huggingface/bloom.h"
-#include "huggingface/chatglm.h"
-#include "huggingface/gpt2.h"
-#include "huggingface/gpt_j.h"
-#include "huggingface/gpt_neox.h"
-#include "huggingface/internlm.h"
-#include "huggingface/llama.h"
-#include "huggingface/mistral.h"
-#include "huggingface/mpt.h"
-#include "huggingface/qwen.h"
-#include "huggingface/yi.h"
-#include "llama.h"
+#include "huggingface/aquila.h"    // IWYU pragma: keep
+#include "huggingface/bloom.h"     // IWYU pragma: keep
+#include "huggingface/chatglm.h"   // IWYU pragma: keep
+#include "huggingface/gpt2.h"      // IWYU pragma: keep
+#include "huggingface/gpt_j.h"     // IWYU pragma: keep
+#include "huggingface/gpt_neox.h"  // IWYU pragma: keep
+#include "huggingface/internlm.h"  // IWYU pragma: keep
+#include "huggingface/llama.h"     // IWYU pragma: keep
+#include "huggingface/mistral.h"   // IWYU pragma: keep
+#include "huggingface/mpt.h"       // IWYU pragma: keep
+#include "huggingface/phi.h"       // IWYU pragma: keep
+#include "huggingface/qwen.h"      // IWYU pragma: keep
+#include "huggingface/yi.h"        // IWYU pragma: keep
+#include "llama.h"                 // IWYU pragma: keep
 
 namespace llm {
 

@@ -66,8 +66,8 @@ class ModelRegistry {
 };
 
 // Macro to register a model with the ModelRegistry
-#define REGISTER_CAUSAL_MODEL(ModelType, ModelClass)                        \
-  const bool ModelType##_registered = []() {                                \
+#define REGISTER_CAUSAL_MODEL_WITH_VARNAME(VarName, ModelType, ModelClass)  \
+  const bool VarName##_registered = []() {                                  \
     ModelRegistry::register_causallm_factory(                               \
         #ModelType,                                                         \
         [](const ModelArgs& args,                                           \
@@ -83,33 +83,49 @@ class ModelRegistry {
     return true;                                                            \
   }()
 
-#define REGISTER_CONVERSATION_TEMPLATE(ModelType, ModelClass)         \
-  const bool ModelType##_dialog_registered = []() {                   \
+#define REGISTER_CAUSAL_MODEL(ModelType, ModelClass) \
+  REGISTER_CAUSAL_MODEL_WITH_VARNAME(ModelType, ModelType, ModelClass)
+
+#define REGISTER_CONVERSATION_TEMPLATE_WITH_VARNAME(                  \
+    VarName, ModelType, ModelClass)                                   \
+  const bool VarName##_dialog_registered = []() {                     \
     ModelRegistry::register_conversation_template(                    \
         #ModelType, []() { return std::make_unique<ModelClass>(); }); \
     return true;                                                      \
   }()
 
+#define REGISTER_CONVERSATION_TEMPLATE(ModelType, ModelClass) \
+  REGISTER_CONVERSATION_TEMPLATE_WITH_VARNAME(ModelType, ModelType, ModelClass)
+
 // Macro to register a model args loader with the ModelRegistry
-#define REGISTER_MODEL_ARGS_LOADER(ModelType, Loader)              \
-  const bool ModelType##_args_loader_registered = []() {           \
-    ModelRegistry::register_model_args_loader(#ModelType, Loader); \
-    return true;                                                   \
+#define REGISTER_MODEL_ARGS_LOADER_WITH_VARNAME(VarName, ModelType, Loader) \
+  const bool VarName##_args_loader_registered = []() {                      \
+    ModelRegistry::register_model_args_loader(#ModelType, Loader);          \
+    return true;                                                            \
   }()
+
+#define REGISTER_MODEL_ARGS_LOADER(ModelType, Loader) \
+  REGISTER_MODEL_ARGS_LOADER_WITH_VARNAME(ModelType, ModelType, Loader)
+
+#define REGISTER_MODEL_ARGS_WITH_VARNAME(VarName, ModelType, ...)       \
+  REGISTER_MODEL_ARGS_LOADER_WITH_VARNAME(                              \
+      VarName, ModelType, [](const JsonReader& json, ModelArgs* args) { \
+        __VA_ARGS__();                                                  \
+        return true;                                                    \
+      })
+
+#define REGISTER_MODEL_ARGS(ModelType, ...) \
+  REGISTER_MODEL_ARGS_WITH_VARNAME(ModelType, ModelType, __VA_ARGS__)
 
 // Macro to register a quantization args loader with the ModelRegistry
-#define REGISTER_QUANT_ARGS_LOADER(ModelType, Loader)              \
-  const bool ModelType##_quant_args_loader_registered = []() {     \
-    ModelRegistry::register_quant_args_loader(#ModelType, Loader); \
-    return true;                                                   \
+#define REGISTER_QUANT_ARGS_LOADER_WITH_VARNAME(VarName, ModelType, Loader) \
+  const bool VarName##_quant_args_loader_registered = []() {                \
+    ModelRegistry::register_quant_args_loader(#ModelType, Loader);          \
+    return true;                                                            \
   }()
 
-#define REGISTER_MODEL_ARGS(ModelType, ...)                                \
-  REGISTER_MODEL_ARGS_LOADER(ModelType,                                    \
-                             [](const JsonReader& json, ModelArgs* args) { \
-                               __VA_ARGS__();                              \
-                               return true;                                \
-                             })
+#define REGISTER_QUANT_ARGS_LOADER(ModelType, Loader) \
+  REGISTER_QUANT_ARGS_LOADER_WITH_VARNAME(ModelType, ModelType, Loader)
 
 template <typename type>
 struct RemoveOptional {
