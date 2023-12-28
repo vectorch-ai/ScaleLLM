@@ -15,6 +15,7 @@ cc_library(
     hf_tokenizer.cpp
   DEPS
     :sentencepiece
+    absl::flat_hash_map
     tokenizers
     glog::glog
     re2::re2
