@@ -55,6 +55,11 @@
       "name": "inja",
       "version>=": "3.4.0",
       "default-features": false
+    },
+    {
+      "name": "re2",
+      "version>=": "2023-07-01",
+      "default-features": false
     }
   ],
   "builtin-baseline": "9edb1b8e590cc086563301d735cae4b6e732d2d2"
