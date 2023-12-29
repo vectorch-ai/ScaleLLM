@@ -65,6 +65,10 @@ class Sequence final {
   // returns false if the sequence is finished.
   bool append_new_token_id(int32_t next_token_id);
 
+  // speculative decoding
+  bool append_spec_token_id(int32_t spec_token_id);
+  void clear_spec_token_ids();
+
   // add new cache blocks
   void append_blocks(const std::vector<int32_t>& new_blocks) {
     blocks_.insert(blocks_.end(), new_blocks.begin(), new_blocks.end());
@@ -170,6 +174,13 @@ class Sequence final {
   // id allocator for sequences
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
   static std::atomic<int64_t> next_id_;
+
+  // TODO speculative decoding
+  std::vector<int32_t> spec_token_ids_;
+
+  int32_t spec_token_count_;
+
+  bool is_spec_finished_ = false;
 };
 
 }  // namespace llm
