@@ -303,4 +303,9 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   return first_output;
 }
 
+// TODO
+OutputParameters Engine::validate(const std::vector<Sequence*>& batch) {
+  return OutputParameters();
+}
+
 }  // namespace llm

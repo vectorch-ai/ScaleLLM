@@ -41,41 +41,38 @@ bool SpeculativeScheduler::schedule(std::unique_ptr<Request>& request) {
   return scheduler_policy_->schedule(request);
 }
 
-// TODO: need to finish the speculative process.
 void SpeculativeScheduler::step(const absl::Duration& timeout) {
   // get a new batch of requests
   const auto deadline = absl::Now() + timeout;
-  std::vector<Sequence*> sequences_batch;
+  std::vector<Sequence*> spec_sequences_batch;
   while (true) {
-    sequences_batch = scheduler_policy_->build_batch();
-    if (!sequences_batch.empty()) {
-      // find one batch of requests to process
+    spec_sequences_batch = scheduler_policy_->build_batch();
+    if (!spec_sequences_batch.empty()) {
       break;
     }
     const auto now = absl::Now();
     if (now > deadline) {
-      // no requests to process
       return;
     }
-    // wait for new requests to arrive
     const auto time_to_sleep =
         std::min(absl::Milliseconds(kStepSleepTimeMs), deadline - now);
     absl::SleepFor(time_to_sleep);
   }
 
-  // TODO
-  speculative_multiple_steps(sequences_batch);
- 
-  // TODO
-  auto llm_output_parameters = validate_once(sequences_batch);
-  const auto& next_tokens = llm_output_parameters.next_tokens;
+  // run multiple steps on ssm to generate multiple tokens.
+  speculative_multiple_steps(spec_sequences_batch);
+
+  // run validation on llm.
+  auto output_parameters = validate_once(spec_sequences_batch);
+
+  const auto& next_tokens = output_parameters.next_tokens;
   const int64_t num_seqs = next_tokens.numel();
-  GCHECK(num_seqs == sequences_batch.size());
+  GCHECK(num_seqs == spec_sequences_batch.size());
 
   const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
   // process sequence in batch
   for (int64_t i = 0; i < num_seqs; ++i) {
-    Sequence* seq = sequences_batch[i];
+    Sequence* seq = spec_sequences_batch[i];
     //TODO here wouldbe multiple new tokens
     const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
     // add the next token to sequence and check if the sequence is finished
@@ -91,14 +88,36 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
 void SpeculativeScheduler::speculative_multiple_steps(
     std::vector<Sequence*>& sequences_batch) {
   GCHECK(!sequences_batch.empty());
-  // TODO: execute multiple steps in ssm
-  auto ssm_output_parameters = ssm_engine_->execute_model(sequences_batch);
+
+  std::vector<Sequence*> spec_batch(sequences_batch);
+  for (uint64_t i = 0; i < config_.speculative_steps; ++i) {
+    auto output_parameters = ssm_engine_->execute_model(spec_batch);
+
+    const auto& next_tokens = output_parameters.next_tokens;
+    const int64_t num_seqs = next_tokens.numel();
+    GCHECK(num_seqs == spec_batch.size());
+
+    std::vector<Sequence*> next_spec_batch;
+    next_spec_batch.reserve(spec_batch.size());
+    const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
+    for (int64_t i = 0; i < num_seqs; ++i) {
+      auto seq = spec_batch[i];
+      const auto next_token_id = static_cast<int32_t>(new_token_ids[i]);
+      seq->append_new_token_id(next_token_id);
+      seq->append_spec_token_id(next_token_id);
+
+      if (!seq->is_finished()) {
+        next_spec_batch.emplace_back(seq);
+      }
+    }
+    spec_batch.swap(next_spec_batch);
+  }
 }
 
+// OutputParameters should be extent to support multiple tokens output
 OutputParameters SpeculativeScheduler::validate_once(
     std::vector<Sequence*>& sequences_batch) {
-  // TODO: execute on validation step in llm
-  return llm_engine_->execute_model(sequences_batch);
+  return llm_engine_->validate(sequences_batch);
 }
 
 }  // namespace llm

@@ -18,7 +18,8 @@ class Tokenizer;
 class SpeculativeScheduler final : public Scheduler {
  public:
   SpeculativeScheduler(const SchedulerConfig& config,
-      Engine* llm_engine, Engine* ssm_engine);
+                       Engine* llm_engine,
+                       Engine* ssm_engine);
   ~SpeculativeScheduler() override;
 
   bool schedule(std::unique_ptr<Request>& request) override;

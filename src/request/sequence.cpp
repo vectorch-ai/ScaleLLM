@@ -95,6 +95,18 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   return true;
 }
 
+// TODO
+bool Sequence::append_spec_token_id(int32_t spec_token_id) {
+  spec_token_ids_.push_back(spec_token_id);
+  ++spec_token_count_;
+  return true;
+}
+
+void Sequence::clear_spec_token_ids() {
+  spec_token_ids_.clear();
+  spec_token_count_ = 0;
+}
+
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(size_t end,
                                         const Tokenizer& tokenizer) {
