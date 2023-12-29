@@ -58,6 +58,13 @@ class Worker final {
       const InputParameters& params,
       const SamplingParameters& sampling_params);
 
+  // TODO
+  OutputParameters validate(
+      torch::Tensor flatten_tokens,
+      torch::Tensor flatten_positions,
+      const InputParameters& params,
+      const SamplingParameters& sampling_params);
+
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
                                            const ModelArgs& args,
@@ -78,6 +85,12 @@ class Worker final {
   folly::SemiFuture<OutputParameters> execute_model_async(
       torch::Tensor flatten_tokens,     // [num_tokens]
       torch::Tensor flatten_positions,  // [num_tokens]
+      const InputParameters& params,
+      const SamplingParameters& sampling_params);
+
+  folly::SemiFuture<OutputParameters> validate_async(
+      torch::Tensor flatten_tokens,
+      torch::Tensor flatten_positions,
       const InputParameters& params,
       const SamplingParameters& sampling_params);
 

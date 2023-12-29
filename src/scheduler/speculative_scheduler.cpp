@@ -5,8 +5,8 @@
 #include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
-#include "scheduler/scheduler_policy.h"
 #include "scheduler/response_handler.h"
+#include "scheduler/scheduler_policy.h"
 
 namespace llm {
 
@@ -60,10 +60,10 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
   }
 
   // run multiple steps on ssm to generate multiple tokens.
-  speculative_multiple_steps(spec_sequences_batch);
+  speculate_multiple_steps(spec_sequences_batch);
 
   // run validation on llm.
-  auto output_parameters = validate_once(spec_sequences_batch);
+  auto output_parameters = validate(spec_sequences_batch);
 
   const auto& next_tokens = output_parameters.next_tokens;
   const int64_t num_seqs = next_tokens.numel();
@@ -73,7 +73,7 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
   // process sequence in batch
   for (int64_t i = 0; i < num_seqs; ++i) {
     Sequence* seq = spec_sequences_batch[i];
-    //TODO here wouldbe multiple new tokens
+    //TODO here would be multiple new tokens
     const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
     // add the next token to sequence and check if the sequence is finished
     seq->append_new_token_id(next_token_id);
@@ -85,10 +85,11 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
   }
 }
 
-void SpeculativeScheduler::speculative_multiple_steps(
+void SpeculativeScheduler::speculate_multiple_steps(
     std::vector<Sequence*>& sequences_batch) {
   GCHECK(!sequences_batch.empty());
 
+  //TODO should not support beam search
   std::vector<Sequence*> spec_batch(sequences_batch);
   for (uint64_t i = 0; i < config_.speculative_steps; ++i) {
     auto output_parameters = ssm_engine_->execute_model(spec_batch);
@@ -114,8 +115,8 @@ void SpeculativeScheduler::speculative_multiple_steps(
   }
 }
 
-// OutputParameters should be extent to support multiple tokens output
-OutputParameters SpeculativeScheduler::validate_once(
+// TODO: OutputParameters should be extent to support multiple tokens output
+OutputParameters SpeculativeScheduler::validate(
     std::vector<Sequence*>& sequences_batch) {
   return llm_engine_->validate(sequences_batch);
 }
