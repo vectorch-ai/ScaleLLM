@@ -305,7 +305,37 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
 
 // TODO
 OutputParameters Engine::validate(const std::vector<Sequence*>& batch) {
-  return OutputParameters();
+  torch::Tensor flatten_token_ids;
+  torch::Tensor flatten_positions;
+  torch::Tensor seq_idxes;
+  InputParameters input_params;
+  SamplingParameters sampling_params;
+
+  Utils::prepare_validate_inputs(batch,
+                                 FLAGS_block_size,
+                                 &flatten_token_ids,
+                                 &flatten_positions,
+                                 &seq_idxes,
+                                 &input_params,
+                                 &sampling_params);
+  if (workers_.size() == 1) {
+    auto output = workers_[0]->validate(
+        flatten_token_ids, flatten_positions, input_params, sampling_params);
+    output.index_select(seq_idxes);
+    return output;
+  }
+
+  std::vector<folly::SemiFuture<OutputParameters>> futures;
+  futures.reserve(workers_.size());
+  for (auto& worker : workers_) {
+    futures.emplace_back(worker->validate_async(
+        flatten_token_ids, flatten_positions, input_params, sampling_params));
+  }
+  auto results = folly::collectAll(futures).get();
+  auto first_output = results.front().value();
+
+  first_output.index_select(seq_idxes);
+  return first_output;
 }
 
 }  // namespace llm

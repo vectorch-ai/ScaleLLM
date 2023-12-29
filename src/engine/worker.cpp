@@ -94,6 +94,38 @@ OutputParameters Worker::execute_model(
   return output_params;
 }
 
+OutputParameters Worker::validate(
+    torch::Tensor flatten_tokens,
+    torch::Tensor flatten_positions,
+    const InputParameters& params,
+    const SamplingParameters& sampling_params) {
+  torch::DeviceGuard device_guard(device_);
+
+  torch::Device input_device = flatten_tokens.device();
+
+  flatten_tokens = flatten_tokens.to(device_);
+  flatten_positions = flatten_positions.to(device_);
+  InputParameters d_params = params.to(device_);
+
+  auto logits =
+      model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
+
+  auto logits_processor =
+      LogitsProcessor::create(sampling_params, dtype_, device_);
+
+  logits_processor->forward(logits,
+                            d_params.token_ids,
+                            d_params.token_counts,
+                            d_params.token_ids_lens);
+
+  auto sampler = std::make_unique<Sampler>(sampling_params, dtype_, device_);
+  auto next_tokens = sampler->forward(logits);
+
+  OutputParameters output_params;
+  output_params.next_tokens = next_tokens.to(input_device);
+  return output_params;
+}
+
 folly::SemiFuture<OutputParameters> Worker::execute_model_async(
     torch::Tensor flatten_tokens,     // [num_tokens]
     torch::Tensor flatten_positions,  // [num_tokens]
@@ -110,6 +142,26 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
     // run the model on the given input in working thread
     const auto output =
         this->execute_model(tokens, positions, parameters, sampling_params);
+    promise.setValue(output);
+  });
+  return future;
+}
+
+folly::SemiFuture<OutputParameters> Worker::validate_async(
+    torch::Tensor flatten_tokens,
+    torch::Tensor flatten_positions,
+    const InputParameters& params,
+    const SamplingParameters& sampling_params) {
+  folly::Promise<OutputParameters> promise;
+  auto future = promise.getSemiFuture();
+  threadpool_.schedule([this,
+                        tokens = flatten_tokens,
+                        positions = flatten_positions,
+                        parameters = params,
+                        sampling_params = sampling_params,
+                        promise = std::move(promise)]() mutable {
+    const auto output =
+        this->validate(tokens, positions, parameters, sampling_params);
     promise.setValue(output);
   });
   return future;

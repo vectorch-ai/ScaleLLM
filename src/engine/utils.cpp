@@ -208,4 +208,115 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   input_params->token_ids_lens = torch::tensor(token_ids_lens_vec, torch::kInt);
 }
 
+void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,
+                                    int32_t block_size,
+                                    torch::Tensor* flatten_token_ids,
+                                    torch::Tensor* flatten_positions,
+                                    torch::Tensor* seq_idxes,
+                                    InputParameters* input_params,
+                                    SamplingParameters* sampling_params) {
+  std::vector<int32_t> flatten_tokens_vec;
+  std::vector<int32_t> flatten_positions_vec;
+  std::vector<int32_t> last_token_idxes;
+
+  std::vector<std::vector<int64_t>> token_ids_vec;
+  std::vector<int32_t> token_ids_lens_vec;
+  std::vector<std::vector<int32_t>> token_counts_vec;
+  size_t max_unique_tokens = 0;
+
+  std::vector<int32_t> seq_idxes_vec(batch.size());
+
+  int32_t num_total_tokens = 0;
+  int32_t max_seq_len = 0;
+  std::vector<int32_t> cu_seq_lens = {0};
+  std::vector<int32_t> slot_ids;
+
+  for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
+    const auto* sequence = batch[i];
+    GCHECK(has_enough_cache_slots(*sequence, block_size));
+
+    seq_idxes_vec[i] = static_cast<int32_t>(token_ids_vec.size());
+
+    const auto& seq_token_ids = sequence->token_ids();
+    const int32_t num_tokens = static_cast<int32_t>(seq_token_ids.size());
+    for (int32_t i = 0; i < num_tokens; ++i) {
+      flatten_tokens_vec.emplace_back(seq_token_ids[i]);
+      flatten_positions_vec.emplace_back(i);
+    }
+
+    auto& ids = token_ids_vec.emplace_back();
+    auto& counts = token_counts_vec.emplace_back();
+
+    const auto& seq_token_counts = sequence->token_counts();
+    const auto unique_tokens = seq_token_counts.size();
+    ids.reserve(unique_tokens);
+    counts.reserve(unique_tokens);
+    for (const auto& [token_id, count] : seq_token_counts) {
+      ids.emplace_back(token_id);
+      counts.emplace_back(count);
+    }
+    token_ids_lens_vec.emplace_back(static_cast<int32_t>(unique_tokens));
+    max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
+    num_total_tokens += num_tokens;
+    max_seq_len = std::max(max_seq_len, num_tokens);
+    cu_seq_lens.emplace_back(num_total_tokens);
+    sampling_params->add(sequence->sampling_param());
+    last_token_idxes.emplace_back(
+        static_cast<int32_t>(flatten_tokens_vec.size() - 1));
+
+    const auto slots = cache_slots(*sequence, block_size);
+    slot_ids.insert(slot_ids.end(), slots.begin(), slots.end());
+  }
+
+  using torch::indexing::Slice;
+  auto token_ids_tensor =
+      torch::empty({static_cast<int64_t>(token_ids_vec.size()),
+                    static_cast<int64_t>(max_unique_tokens)},
+                    torch::kInt64);
+  auto token_counts_tensor =
+      torch::empty({static_cast<int64_t>(token_counts_vec.size()),
+                    static_cast<int64_t>(max_unique_tokens)},
+                    torch::kInt);
+  for (int64_t i = 0; i < token_ids_vec.size(); ++i) {
+    auto& ids = token_ids_vec[i];
+    ids.resize(max_unique_tokens, 0);
+    token_ids_tensor.index_put_({i, Slice()},
+                                torch::tensor(ids, torch::kInt64));
+
+    auto& counts = token_counts_vec[i];
+    counts.resize(max_unique_tokens, 0);
+    token_counts_tensor.index_put_({i, Slice()},
+                                   torch::tensor(counts, torch::kInt));
+  }
+  // TODO
+  std::vector<std::vector<int32_t>> block_tables;
+  int32_t max_block_table_len = 0;
+  auto block_tables_tensor = torch::empty(
+      {static_cast<int64_t>(block_tables.size()), max_block_table_len},
+      torch::kInt);
+
+  for(int64_t i = 0; i < block_tables.size(); ++i) {
+    auto& block_table = block_tables[i];
+    block_table.resize(max_block_table_len, 0);
+    block_tables_tensor.index_put_({i, Slice()},
+                                   torch::tensor(block_table, torch::kInt));
+  }
+
+  *flatten_token_ids = torch::tensor(flatten_tokens_vec, torch::kInt);
+  *flatten_positions = torch::tensor(flatten_positions_vec, torch::kInt);
+  *seq_idxes = torch::tensor(seq_idxes_vec, torch::kInt);
+
+  input_params->num_prompt_tokens = num_total_tokens;
+  input_params->max_seq_len = max_seq_len;
+  //input_params->max_context_len = max_context_len; TODO
+  input_params->cu_seq_lens = torch::tensor(cu_seq_lens, torch::kInt);
+  input_params->slot_ids = torch::tensor(slot_ids, torch::kInt);
+  input_params->block_tables = block_tables_tensor;
+  //input_params->context_lens = torch::tensor(context_lens, torch::kInt); TODO
+  input_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt);
+  input_params->token_ids = token_ids_tensor;
+  input_params->token_counts = token_counts_tensor;
+  input_params->token_ids_lens = torch::tensor(token_ids_lens_vec, torch::kInt);
+}
+
 }  // namespace llm

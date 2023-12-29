@@ -5,8 +5,8 @@
 
 #include "engine/engine.h"
 #include "request/request.h"
-#include "scheduler.h"
-#include "scheduler_config.h"
+#include "scheduler/scheduler.h"
+#include "scheduler/scheduler_config.h"
 
 namespace llm {
 
@@ -26,8 +26,8 @@ class SpeculativeScheduler final : public Scheduler {
   void step(const absl::Duration& timeout) override;
 
  private:
-  void speculative_multiple_steps(std::vector<Sequence*>& sequences);
-  OutputParameters validate_once(std::vector<Sequence*>& sequences);
+  void speculate_multiple_steps(std::vector<Sequence*>& sequences);
+  OutputParameters validate(std::vector<Sequence*>& sequences);
  
  private:
   SchedulerConfig config_;
