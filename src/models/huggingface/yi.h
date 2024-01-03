@@ -417,7 +417,7 @@ REGISTER_MODEL_ARGS(Yi, [&] {
   LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
   // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>", "<|im_sep|>"
-  LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({2, 6, 7, 8}));
+  SET_ARG(stop_token_ids, std::unordered_set<int32_t>({2, 6, 7, 8}));
 });
 
 }  // namespace llm::hf

@@ -1,4 +1,5 @@
 #include "engine.h"
+
 #include <gflags/gflags_declare.h>
 
 #include <boost/algorithm/string.hpp>
@@ -96,9 +97,17 @@ bool Engine::init_model(const std::string& model_weights_path) {
   GLOG(INFO) << "Initializing model with dtype: " << dtype_;
 
   if (tokenizer_->vocab_size() != args_.vocab_size()) {
-    GLOG(WARNING) << "Vocab size mismatch: tokenizer: "
-                  << tokenizer_->vocab_size()
-                  << ", model: " << args_.vocab_size();
+    // use tokenizer vocab size if model vocab size is not set
+    if (args_.vocab_size() <= 0) {
+      GLOG(WARNING) << "Model vocab size is not set, using tokenizer vocab "
+                       "size: "
+                    << tokenizer_->vocab_size();
+      args_.vocab_size(tokenizer_->vocab_size());
+    } else {
+      GLOG(WARNING) << "Vocab size mismatch: tokenizer: "
+                    << tokenizer_->vocab_size()
+                    << ", model: " << args_.vocab_size();
+    }
   }
 
   const auto& quant_args = model_loader->quant_args();
@@ -171,9 +180,8 @@ bool Engine::init_kv_cache() {
   const int64_t head_dim = args_.hidden_size() / n_heads;
   const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
   // key + value for all layers
-  const int64_t block_size_in_bytes = 2 * block_size *
-                                      n_local_kv_heads * head_dim *
-                                      args_.n_layers() * dtype_size;
+  const int64_t block_size_in_bytes = 2 * block_size * n_local_kv_heads *
+                                      head_dim * args_.n_layers() * dtype_size;
   GLOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
              << ", block_size: " << block_size << ", head_dim: " << head_dim
              << ", n_local_kv_heads: " << n_local_kv_heads

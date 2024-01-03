@@ -16,6 +16,7 @@ cc_library(
     conversation.cpp
   DEPS
     :common
+    :process_group
     :layers
     :memory
     glog::glog

@@ -8,6 +8,7 @@
 #include "causal_lm.h"
 #include "common/json_reader.h"
 #include "conversation.h"
+#include "tokenizer/tokenizer_args.h"
 
 namespace llm {
 
@@ -26,12 +27,16 @@ using ModelArgsLoader =
 using QuantArgsLoader =
     std::function<bool(const JsonReader& json, QuantArgs* args)>;
 
+using TokenizerArgsLoader =
+    std::function<bool(const JsonReader& json, TokenizerArgs* args)>;
+
 // TODO: add default args loader.
 struct ModelMeta {
   CausalLMFactory causal_lm_factory;
   ConversationTemplate conversation_template;
   ModelArgsLoader model_args_loader;
   QuantArgsLoader quant_args_loader;
+  TokenizerArgsLoader tokenizer_args_loader;
 };
 
 // Model registry is a singleton class that registers all models with the
@@ -49,6 +54,9 @@ class ModelRegistry {
   static void register_quant_args_loader(const std::string& name,
                                          QuantArgsLoader loader);
 
+  static void register_tokenizer_args_loader(const std::string& name,
+                                             TokenizerArgsLoader loader);
+
   static void register_conversation_template(const std::string& name,
                                              ConversationTemplate factory);
 
@@ -57,6 +65,8 @@ class ModelRegistry {
   static ModelArgsLoader get_model_args_loader(const std::string& name);
 
   static QuantArgsLoader get_quant_args_loader(const std::string& name);
+
+  static TokenizerArgsLoader get_tokenizer_args_loader(const std::string& name);
 
   static ConversationTemplate get_conversation_template(
       const std::string& name);
@@ -110,6 +120,8 @@ class ModelRegistry {
 #define REGISTER_MODEL_ARGS_WITH_VARNAME(VarName, ModelType, ...)       \
   REGISTER_MODEL_ARGS_LOADER_WITH_VARNAME(                              \
       VarName, ModelType, [](const JsonReader& json, ModelArgs* args) { \
+        (void)json;                                                     \
+        (void)args;                                                     \
         __VA_ARGS__();                                                  \
         return true;                                                    \
       })
@@ -127,6 +139,29 @@ class ModelRegistry {
 #define REGISTER_QUANT_ARGS_LOADER(ModelType, Loader) \
   REGISTER_QUANT_ARGS_LOADER_WITH_VARNAME(ModelType, ModelType, Loader)
 
+// Macro to register a tokenizer args loader with the ModelRegistry
+#define REGISTER_TOKENIZER_ARGS_LOADER_WITH_VARNAME(                   \
+    VarName, ModelType, Loader)                                        \
+  const bool VarName##_tokenizer_args_loader_registered = []() {       \
+    ModelRegistry::register_tokenizer_args_loader(#ModelType, Loader); \
+    return true;                                                       \
+  }()
+
+#define REGISTER_TOKENIZER_ARGS_LOADER(ModelType, Loader) \
+  REGISTER_TOKENIZER_ARGS_LOADER_WITH_VARNAME(ModelType, ModelType, Loader)
+
+#define REGISTER_TOKENIZER_ARGS_WITH_VARNAME(VarName, ModelType, ...)       \
+  REGISTER_TOKENIZER_ARGS_LOADER_WITH_VARNAME(                              \
+      VarName, ModelType, [](const JsonReader& json, TokenizerArgs* args) { \
+        (void)json;                                                         \
+        (void)args;                                                         \
+        __VA_ARGS__();                                                      \
+        return true;                                                        \
+      })
+
+#define REGISTER_TOKENIZER_ARGS(ModelType, ...) \
+  REGISTER_TOKENIZER_ARGS_WITH_VARNAME(ModelType, ModelType, __VA_ARGS__)
+
 template <typename type>
 struct RemoveOptional {
   using value_type = type;
@@ -138,13 +173,6 @@ struct RemoveOptional<std::optional<type>> {
   using value_type = type;
 };
 
-#define LOAD_ARG_OR(arg_name, json_name, default_value)                      \
-  [&] {                                                                      \
-    auto value = args->arg_name();                                           \
-    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
-    args->arg_name() = json.value_or<value_type>(json_name, default_value);  \
-  }()
-
 #define LOAD_ARG(arg_name, json_name)                                        \
   [&] {                                                                      \
     auto value = args->arg_name();                                           \
@@ -152,6 +180,13 @@ struct RemoveOptional<std::optional<type>> {
     if (auto data_value = json.value<value_type>(json_name)) {               \
       args->arg_name() = data_value.value();                                 \
     }                                                                        \
+  }()
+
+#define LOAD_ARG_OR(arg_name, json_name, default_value)                      \
+  [&] {                                                                      \
+    auto value = args->arg_name();                                           \
+    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
+    args->arg_name() = json.value_or<value_type>(json_name, default_value);  \
   }()
 
 #define LOAD_ARG_OR_FUNC(arg_name, json_name, ...)                           \
@@ -164,5 +199,7 @@ struct RemoveOptional<std::optional<type>> {
       args->arg_name() = __VA_ARGS__();                                      \
     }                                                                        \
   }()
+
+#define SET_ARG(arg_name, value) [&] { args->arg_name() = value; }()
 
 }  // namespace llm

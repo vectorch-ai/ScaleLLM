@@ -5,12 +5,15 @@
 namespace llm {
 
 TEST(TiktokenTokenizerTest, EncodeDecodeTest) {
-  TiktokenTokenizer tokenizer("data/test.tiktoken");
+  TokenizerArgs args;
+  args.vocab_file() = "test.tiktoken";
+  TiktokenTokenizer tokenizer("data", args);
   EXPECT_EQ(tokenizer.vocab_size(), 300);
   const std::string test_text = "Hello, world!";
   std::vector<int> ids;
   ASSERT_TRUE(tokenizer.encode(test_text, &ids));
-  const std::vector<int> desired_ids = {39, 68, 75, 75, 78, 11, 289, 269, 75, 67, 0};
+  const std::vector<int> desired_ids = {
+      39, 68, 75, 75, 78, 11, 289, 269, 75, 67, 0};
   EXPECT_EQ(ids, desired_ids);
 
   const auto text = tokenizer.decode(ids);
@@ -18,7 +21,9 @@ TEST(TiktokenTokenizerTest, EncodeDecodeTest) {
 }
 
 TEST(TiktokenTokenizerTest, CJKTest) {
-  TiktokenTokenizer tokenizer("data/test.tiktoken");
+  TokenizerArgs args;
+  args.vocab_file() = "test.tiktoken";
+  TiktokenTokenizer tokenizer("data", args);
   const std::string test_text = "你好，世界！";
   std::vector<int> ids;
   ASSERT_TRUE(tokenizer.encode(test_text, &ids));
@@ -33,6 +38,27 @@ TEST(TiktokenTokenizerTest, CJKTest) {
   EXPECT_EQ(decoded_text, test_text);
 }
 
+TEST(TiktokenTokenizerTest, PatternTest) {
+  const std::vector<std::string> special_tokens;
+  const std::string pattern =
+      R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+[^\S]|\s+)";
+  TokenizerArgs args;
+  args.vocab_file() = "test.tiktoken";
+  args.pattern() = pattern;
+  args.special_tokens() = special_tokens;
+  TiktokenTokenizer tokenizer("data", args);
+  EXPECT_EQ(tokenizer.vocab_size(), 300);
+  const std::string test_text = "Hello, world!";
+  std::vector<int> ids;
+  ASSERT_TRUE(tokenizer.encode(test_text, &ids));
+  const std::vector<int> desired_ids = {
+      39, 68, 75, 75, 78, 11, 289, 269, 75, 67, 0};
+  EXPECT_EQ(ids, desired_ids);
+
+  const auto text = tokenizer.decode(ids);
+  EXPECT_EQ(text, test_text);
+}
+
 TEST(TiktokenTokenizerTest, SpecialTokenTest) {
   // clang-format off
   std::vector<std::string> special_tokens = {
@@ -40,7 +66,10 @@ TEST(TiktokenTokenizerTest, SpecialTokenTest) {
     "<|system|>", "<|user|>", "<|assistant|>", "<|observation|>"
   };
   // clang-format on
-  TiktokenTokenizer tokenizer("data/test.tiktoken", special_tokens);
+  TokenizerArgs args;
+  args.vocab_file() = "test.tiktoken";
+  args.special_tokens() = special_tokens;
+  TiktokenTokenizer tokenizer("data", args);
   EXPECT_EQ(tokenizer.vocab_size(), 300 + special_tokens.size());
   // test encode each special token
   for (const auto& token : special_tokens) {

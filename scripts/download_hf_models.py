@@ -35,8 +35,10 @@ if __name__ == '__main__':
   if not allow_patterns:
     # Define allowed file patterns for config, tokenizer, and model weights
     has_safetensors = check_safetensors_present(repo_id, revision)
+    # download tokenizer and json configs
+    allow_patterns = "*.json,*.tiktoken,*.model"
     # download safetensors if present, otherwise download pickle files
-    allow_patterns = "*.json,*.safetensors,*.model" if has_safetensors else "*.json,*.bin,*.pth,*.model"
+    allow_patterns += ",*.safetensors" if has_safetensors else ",*.bin,*.pth"
     
   path = snapshot_download(args.repo_id, 
                            revision=revision, 

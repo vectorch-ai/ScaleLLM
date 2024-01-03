@@ -94,12 +94,8 @@ struct ModelArgs {
   // whether to apply residual connection post layernorm
   DEFINE_ARG(bool, residual_post_layernorm) = false;
 
-  // Following args belong to the tokenizer, but we put them here for now.
   // Stop token ids for decoding.
   DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
-
-  // Path to the vocab file for se
-  DEFINE_ARG(std::string, vocab_file) = "tokenizer.model";
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
@@ -110,7 +106,7 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", intermediate_size: " << args.intermediate_size();
   os << ", n_layers: " << args.n_layers();
   os << ", n_heads: " << args.n_heads();
-  os << ", n_kv_heads: " << args.n_kv_heads().value_or(0);
+  os << ", n_kv_heads: " << args.n_kv_heads().value_or(-1);
   os << ", vocab_size: " << args.vocab_size();
   os << ", rms_norm_eps: " << args.rms_norm_eps();
   os << ", layer_norm_eps: " << args.layer_norm_eps();

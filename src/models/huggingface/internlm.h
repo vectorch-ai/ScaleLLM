@@ -401,7 +401,7 @@ REGISTER_MODEL_ARGS(internlm, [&] {
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
 
   // stop token ids: [1, 103028]
-  LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({1, 103028}));
+  SET_ARG(stop_token_ids, std::unordered_set<int32_t>({1, 103028}));
 });
 
 }  // namespace llm::hf

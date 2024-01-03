@@ -5,6 +5,7 @@ cc_library(
   NAME 
     tokenizer
   HDRS 
+    tokenizer_args.h
     tokenizer.h
     tiktoken_tokenizer.h
     sentencepiece_tokenizer.h

@@ -395,4 +395,12 @@ REGISTER_MODEL_ARGS(llama2, [&] {
   });
 });
 
+// Register tokenizer args since llama2 is using sentencepiece tokenizer.
+REGISTER_TOKENIZER_ARGS(llama2, [&] {
+  SET_ARG(tokenizer_type, "sentencepiece");
+  SET_ARG(vocab_file, "tokenizer.model");
+  // add bos token "<s>" to the prefix tokens
+  SET_ARG(prefix_tokens, std::vector<std::string>({"<s>"}));
+});
+
 }  // namespace llm

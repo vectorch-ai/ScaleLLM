@@ -5,7 +5,10 @@
 namespace llm {
 
 TEST(SentencePieceTokenizerTest, EncodeDecodeTest) {
-  SentencePieceTokenizer tokenizer("data/tokenizer.model", /*prepend_bos=*/true);
+  TokenizerArgs args;
+  args.vocab_file() = "tokenizer.model";
+  args.prefix_tokens() = {"<s>"};
+  SentencePieceTokenizer tokenizer("data", args);
   EXPECT_EQ(tokenizer.vocab_size(), 32000);
   const std::string test_text = "Hello, world!";
   std::vector<int> ids;
@@ -18,7 +21,10 @@ TEST(SentencePieceTokenizerTest, EncodeDecodeTest) {
 }
 
 TEST(SentencePieceTokenizerTest, CJKTest) {
-  SentencePieceTokenizer tokenizer("data/tokenizer.model", /*prepend_bos=*/true);
+  TokenizerArgs args;
+  args.vocab_file() = "tokenizer.model";
+  args.prefix_tokens() = {"<s>"};
+  SentencePieceTokenizer tokenizer("data", args);
   EXPECT_EQ(tokenizer.vocab_size(), 32000);
   const std::string test_text = "你好，世界！";
   std::vector<int> ids;
@@ -38,7 +44,10 @@ TEST(SentencePieceTokenizerTest, SpecialTokenTest) {
     "<|system|>", "<|user|>", "<|assistant|>", "<|observation|>"
   };
   // clang-format on
-  SentencePieceTokenizer tokenizer("data/tokenizer.model", special_tokens, /*prepend_bos=*/false);
+  TokenizerArgs args;
+  args.vocab_file() = "tokenizer.model";
+  args.special_tokens() = special_tokens;
+  SentencePieceTokenizer tokenizer("data", args);
   EXPECT_EQ(tokenizer.vocab_size(), 32000 + special_tokens.size());
   // test encode each special token
   for (const auto& token : special_tokens) {

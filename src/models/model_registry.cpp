@@ -55,6 +55,15 @@ void ModelRegistry::register_quant_args_loader(const std::string& name,
   }
 }
 
+void ModelRegistry::register_tokenizer_args_loader(const std::string &name, TokenizerArgsLoader loader) {
+  ModelRegistry* instance = get_instance();
+  if (instance->model_registry_[name].tokenizer_args_loader != nullptr) {
+    GLOG(WARNING) << "tokenizer args loader for " << name << "already registered.";
+  } else {
+    instance->model_registry_[name].tokenizer_args_loader = loader;
+  }
+}
+
 void ModelRegistry::register_conversation_template(
     const std::string& name,
     ConversationTemplate factory) {
@@ -80,6 +89,11 @@ ModelArgsLoader ModelRegistry::get_model_args_loader(const std::string& name) {
 QuantArgsLoader ModelRegistry::get_quant_args_loader(const std::string& name) {
   ModelRegistry* instance = get_instance();
   return instance->model_registry_[name].quant_args_loader;
+}
+
+TokenizerArgsLoader ModelRegistry::get_tokenizer_args_loader(const std::string &name) {
+  ModelRegistry* instance = get_instance();
+  return instance->model_registry_[name].tokenizer_args_loader;
 }
 
 ConversationTemplate ModelRegistry::get_conversation_template(

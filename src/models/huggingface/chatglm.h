@@ -489,8 +489,27 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
     return rope_ratio * 10000.0f;
   });
 
-  // stop token ids: "</s>", "<|user|>", "<|observation|>"
-  LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({2, 64795, 64797}));
+  // stop token ids: "</s>", "<|user|>", "<|assistant|>", "<|observation|>"
+  SET_ARG(stop_token_ids,
+          std::unordered_set<int32_t>({2, 64795, 64796, 64797}));
+});
+
+// Register tokenizer args since chatglm is using sentencepiece tokenizer.
+REGISTER_TOKENIZER_ARGS(chatglm, [&] {
+  SET_ARG(tokenizer_type, "sentencepiece");
+  // adapted from
+  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/tokenization_chatglm.py
+  SET_ARG(vocab_file, "tokenizer.model");
+
+  // set special tokens
+  // clang-format off
+  const std::vector<std::string> special_tokens({
+    "[MASK]", "[gMASK]", "[sMASK]", "sop", "eop",
+    "<|system|>", "<|user|>", "<|assistant|>", "<|observation|>"
+  });
+  // clang-format on
+  SET_ARG(special_tokens, special_tokens);
+  SET_ARG(prefix_tokens, std::vector<std::string>({"[gMASK]", "sop"}));
 });
 
 }  // namespace llm::hf

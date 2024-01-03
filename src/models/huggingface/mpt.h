@@ -510,7 +510,7 @@ REGISTER_MODEL_ARGS(mpt, [&] {
   });
 
   // stop token ids: [0, 50278]
-  LOAD_ARG_OR(stop_token_ids, "", std::unordered_set<int32_t>({0, 50278}));
+  SET_ARG(stop_token_ids, std::unordered_set<int32_t>({0, 50278}));
 });
 
 }  // namespace llm::hf

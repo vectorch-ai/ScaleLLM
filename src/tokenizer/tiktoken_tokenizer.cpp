@@ -9,26 +9,55 @@
 
 #include <fstream>
 #include <optional>
+#include <string>
 
 #include "common/logging.h"
 
 namespace llm {
 
-TiktokenTokenizer::TiktokenTokenizer(
-    const std::string& vocab_file_path,
-    const std::vector<std::string>& special_tokens)
-    : vocab_file_path_(vocab_file_path), special_tokens_(special_tokens) {
+TiktokenTokenizer::TiktokenTokenizer(const std::string_view& dir_path,
+                                     const TokenizerArgs& args)
+    : dir_path_(dir_path), args_(args) {
   // load vocab from file
-  load_vocab(vocab_file_path_);
-
-  if (special_tokens.empty()) {
-    // no special tokens, just return
-    return;
-  }
+  const std::string vocab_file_path =
+      dir_path.empty() ? args.vocab_file()
+                       : absl::StrCat(dir_path_, "/", args.vocab_file());
+  load_vocab(vocab_file_path);
 
   // add special tokens and construct special token regex
-  // TODO: use special token start id from tokenizer args
-  int32_t next_id = static_cast<int32_t>(encoder_.size());
+  if (!args.special_tokens().empty()) {
+    const auto vocab_size = encoder_.size();
+    const int32_t start_id = args.special_start_id().value_or(vocab_size);
+    load_special_tokens(args.special_tokens(), start_id);
+  }
+
+  // construct regex
+  if (!args.pattern().empty()) {
+    const auto regex_str = absl::StrCat("(", args.pattern(), ")");
+    regex_ = std::make_unique<re2::RE2>(regex_str);
+  }
+
+  // construct prefix tokens
+  if (!args.prefix_tokens().empty()) {
+    for (const auto& token : args.prefix_tokens()) {
+      if (token.empty()) {
+        continue;
+      }
+      const auto token_id = token_to_id(token);
+      if (token_id.has_value()) {
+        prefix_token_ids_.push_back(token_id.value());
+        GLOG(INFO) << "Prefix token: " << token << ", id: " << token_id.value();
+      } else {
+        GLOG(ERROR) << "Failed to find prefix token: " << token;
+      }
+    }
+  }
+}
+
+void TiktokenTokenizer::load_special_tokens(
+    const std::vector<std::string>& special_tokens,
+    int32_t start_id) {
+  int32_t next_id = start_id;
   for (const auto& token : special_tokens) {
     if (token.empty()) {
       continue;
@@ -60,7 +89,6 @@ TiktokenTokenizer::TiktokenTokenizer(
     special_token_regex_ = std::make_unique<re2::RE2>(regex_str);
   }
 }
-
 
 void TiktokenTokenizer::load_vocab(const std::string& vocab_file_path) {
   // read token + rank from vocab file
@@ -183,10 +211,35 @@ void TiktokenTokenizer::byte_pair_encode(const std::string_view& piece,
   }
 }
 
+void TiktokenTokenizer::encode_internal(const std::string_view& text,
+                                        std::vector<int32_t>* ids) const {
+  if (regex_ == nullptr) {
+    byte_pair_encode(text, ids);
+    return;
+  }
+
+  std::string_view input = text;
+  std::string_view piece;
+  while (re2::RE2::FindAndConsume(&input, *regex_, &piece)) {
+    auto it = encoder_.find(piece);
+    if (it != encoder_.end()) {
+      ids->push_back(it->second);
+      continue;
+    }
+    byte_pair_encode(piece, ids);
+  }
+}
+
 bool TiktokenTokenizer::encode(const std::string_view& text,
                                std::vector<int32_t>* ids) const {
+  // prepend prefix tokens if exists
+  if (!prefix_token_ids_.empty()) {
+    ids->insert(
+        ids->begin(), prefix_token_ids_.begin(), prefix_token_ids_.end());
+  }
+
   if (special_token_regex_ == nullptr) {
-    byte_pair_encode(text, ids);
+    encode_internal(text, ids);
     return true;
   }
 
@@ -202,7 +255,7 @@ bool TiktokenTokenizer::encode(const std::string_view& text,
     // encode text before special token if exists
     const std::string_view sub_input(start,
                                      input.begin() - start - special.size());
-    byte_pair_encode(sub_input, ids);
+    encode_internal(sub_input, ids);
 
     // add special token id if exists
     const auto sit = special_token_encoder_.find(special);
@@ -213,7 +266,7 @@ bool TiktokenTokenizer::encode(const std::string_view& text,
   }
 
   // encode remaining text if exists
-  byte_pair_encode(input, ids);
+  encode_internal(input, ids);
   return true;
 }
 
@@ -240,11 +293,27 @@ std::string TiktokenTokenizer::decode(const std::vector<int32_t>& ids) const {
 
 size_t TiktokenTokenizer::vocab_size() const {
   // vocab size = encoder size + special tokens size
-  return encoder_.size() + special_tokens_.size();
+  return encoder_.size() + args_.special_tokens().size();
 }
 
 std::unique_ptr<Tokenizer> TiktokenTokenizer::clone() const {
-  return std::make_unique<TiktokenTokenizer>(vocab_file_path_, special_tokens_);
+  return std::make_unique<TiktokenTokenizer>(dir_path_, args_);
+}
+
+std::optional<int32_t> TiktokenTokenizer::token_to_id(
+    const std::string_view& token) const {
+  // encode special token
+  const auto sit = special_token_encoder_.find(token);
+  if (sit != special_token_encoder_.end()) {
+    return sit->second;
+  }
+
+  // encode token
+  const auto it = encoder_.find(token);
+  if (it != encoder_.end()) {
+    return it->second;
+  }
+  return std::nullopt;
 }
 
 }  // namespace llm

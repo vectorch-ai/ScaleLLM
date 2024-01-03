@@ -1,11 +1,11 @@
 #include "model_loader.h"
 
+#include <absl/strings/match.h>
 #include <gflags/gflags.h>
 #include <torch/torch.h>
 
 #include <boost/algorithm/string.hpp>
 #include <filesystem>
-#include <fstream>
 #include <vector>
 
 #include "args_overrider.h"
@@ -16,8 +16,7 @@
 #include "models/model_registry.h"
 #include "tokenizer/hf_tokenizer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"
-
-DEFINE_string(tokenizer_path, "", "Path to the tokenizer file.");
+#include "tokenizer/tiktoken_tokenizer.h"
 
 namespace llm {
 StateDictIterator::StateDictIterator(
@@ -68,16 +67,30 @@ std::unique_ptr<ModelLoader> ModelLoader::create(
 }
 
 std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
-  // use the tokenizer path specified by the user if exists
-  const std::string tokenizer_path =
-      !FLAGS_tokenizer_path.empty() ? FLAGS_tokenizer_path
-                                    : model_weights_path_ + "/tokenizer.model";
-  if (!std::filesystem::exists(tokenizer_path)) {
-    GLOG(ERROR) << "Failed to find tokenizer file: " << tokenizer_path;
-    return nullptr;
+  // read tokenizer args from tokenizer_config.json if exists
+  JsonReader tokenizer_reader;
+  const std::string tokenizer_args_file_path =
+      model_weights_path_ + "/tokenizer_config.json";
+  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
+    GLOG(WARNING) << "Failed to parse tokenizer args file: "
+                  << tokenizer_args_file_path;
   }
-  return std::make_unique<SentencePieceTokenizer>(tokenizer_path,
-                                                  /*prepend_bos=*/true);
+  TokenizerArgs tokenizer_args;
+  auto tokenizer_args_loader =
+      ModelRegistry::get_tokenizer_args_loader(args_.model_type());
+  if (tokenizer_args_loader != nullptr) {
+    if (!tokenizer_args_loader(tokenizer_reader, &tokenizer_args)) {
+      GLOG(ERROR) << "Failed to load tokenizer args from "
+                  << tokenizer_args_file_path;
+      return nullptr;
+    }
+  } else {
+    // use default values if no tokenizer args loader exists
+    GLOG(WARNING) << "Failed to find tokenizer args loader for model type "
+                  << args_.model_type();
+  }
+  GLOG(INFO) << "Tokenizer args: " << tokenizer_args;
+  return std::make_unique<SentencePieceTokenizer>(model_weights_path_, tokenizer_args);
 }
 
 PTModelLoader::PTModelLoader(const std::string& model_weights_path)
@@ -153,22 +166,44 @@ std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
   // check if fast tokenizer exists
   const std::string tokenizer_path = model_weights_path_ + "/tokenizer.json";
   if (std::filesystem::exists(tokenizer_path)) {
+    // load fast tokenizer
     return HFTokenizer::from_file(tokenizer_path);
   }
 
-  // fallback to sentencepiece tokenizer if no fast tokenizer exists
-  const std::string vocab_path = model_weights_path_ + "/" + args_.vocab_file();
-  if (std::filesystem::exists(vocab_path)) {
-    GLOG(WARNING) << "Failed to find tokenizer.json, use " << args_.vocab_file()
-                  << " instead. Please consider using fast tokenizer for "
-                     "better performance.";
-    return std::make_unique<SentencePieceTokenizer>(vocab_path,
-                                                    /*prepend_bos=*/false);
+  // fallback to sentencepiece/tiktoken tokenizer if no fast tokenizer exists
+  GLOG(WARNING)
+      << "Failed to locate tokenizer.json, falling back on slow tokenizers "
+         "instead.";
+
+  // read tokenizer args from tokenizer_config.json if exists
+  JsonReader tokenizer_reader;
+  const std::string tokenizer_args_file_path =
+      model_weights_path_ + "/tokenizer_config.json";
+  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
+    GLOG(WARNING) << "Failed to parse tokenizer args file: "
+                  << tokenizer_args_file_path;
   }
 
-  GLOG(ERROR) << "Failed to find tokenizer file tokenizer.json or "
-              << args_.vocab_file() << " from " << model_weights_path_;
-  return nullptr;
+  TokenizerArgs tokenizer_args;
+  auto tokenizer_args_loader =
+      ModelRegistry::get_tokenizer_args_loader(args_.model_type());
+  if (tokenizer_args_loader != nullptr) {
+    if (!tokenizer_args_loader(tokenizer_reader, &tokenizer_args)) {
+      GLOG(ERROR) << "Failed to load tokenizer args from "
+                  << tokenizer_args_file_path;
+      return nullptr;
+    }
+  } else {
+    // use default values if no tokenizer args loader exists
+    GLOG(WARNING) << "Failed to find tokenizer args loader for model type "
+                  << args_.model_type();
+  }
+
+  GLOG(INFO) << "Tokenizer args: " << tokenizer_args;
+  if (tokenizer_args.tokenizer_type() == "tiktoken") {
+    return std::make_unique<TiktokenTokenizer>(model_weights_path_, tokenizer_args);
+  }
+  return std::make_unique<SentencePieceTokenizer>(model_weights_path_, tokenizer_args);
 }
 
 bool HFModelLoader::load_model_args(const std::string& model_weights_path) {

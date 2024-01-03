@@ -22,27 +22,46 @@
 
 namespace llm {
 
-SentencePieceTokenizer::SentencePieceTokenizer(
-    const std::string& vocab_file_path,
-    const std::vector<std::string>& special_tokens,
-    bool prepend_bos)
-    : vocab_file_path_(vocab_file_path),
-      special_tokens_(special_tokens),
-      prepend_bos_(prepend_bos) {
+SentencePieceTokenizer::SentencePieceTokenizer(const std::string_view& dir_path,
+                                               const TokenizerArgs& args)
+    : dir_path_(dir_path), args_(args) {
+  const std::string vocab_file_path =
+      dir_path.empty() ? args.vocab_file()
+                       : absl::StrCat(dir_path_, "/", args.vocab_file());
   const auto status = sp_processor_.Load(vocab_file_path);
   if (!status.ok()) {
     GLOG(FATAL) << "Failed to load SentencePiece model from " << vocab_file_path
                 << ": " << status.ToString() << ", error " << status.ToString();
   }
 
-  if (special_tokens.empty()) {
-    // no special tokens, just return
-    return;
+  // add special tokens and construct special token regex
+  if (!args.special_tokens().empty()) {
+    const auto vocab_size = sp_processor_.GetPieceSize();
+    const int32_t start_id = args.special_start_id().value_or(vocab_size);
+    load_special_tokens(args.special_tokens(), start_id);
   }
 
-  // add special tokens and construct special token regex
-  // TODO: use special token start id from tokenizer args
-  int32_t next_id = static_cast<int32_t>(sp_processor_.GetPieceSize());
+  // construct prefix tokens
+  if (!args.prefix_tokens().empty()) {
+    for (const auto& token : args.prefix_tokens()) {
+      if (token.empty()) {
+        continue;
+      }
+      const auto token_id = token_to_id(token);
+      if (token_id.has_value()) {
+        prefix_token_ids_.push_back(token_id.value());
+        GLOG(INFO) << "Prefix token: " << token << ", id: " << token_id.value();
+      } else {
+        GLOG(ERROR) << "Failed to find prefix token: " << token;
+      }
+    }
+  }
+}
+
+void SentencePieceTokenizer::load_special_tokens(
+    const std::vector<std::string>& special_tokens,
+    int32_t start_id) {
+  int32_t next_id = start_id;
   for (const auto& token : special_tokens) {
     if (token.empty()) {
       continue;
@@ -92,9 +111,10 @@ bool SentencePieceTokenizer::encode_internal(const std::string_view& text,
 
 bool SentencePieceTokenizer::encode(const std::string_view& text,
                                     std::vector<int32_t>* ids) const {
-  // prepend bos token
-  if (prepend_bos_) {
-    ids->insert(ids->begin(), sp_processor_.bos_id());
+  // prepend prefix tokens if exists
+  if (!prefix_token_ids_.empty()) {
+    ids->insert(
+        ids->begin(), prefix_token_ids_.begin(), prefix_token_ids_.end());
   }
 
   if (special_token_regex_ == nullptr) {
@@ -175,14 +195,30 @@ std::string SentencePieceTokenizer::decode(
   return ss.str();
 }
 
+std::optional<int32_t> SentencePieceTokenizer::token_to_id(
+    const std::string_view& token) const {
+  // encode special token
+  const auto sit = special_token_encoder_.find(token);
+  if (sit != special_token_encoder_.end()) {
+    return sit->second;
+  }
+
+  // encode token
+  const auto token_id = sp_processor_.PieceToId(token);
+  if (sp_processor_.IsUnknown(token_id)) {
+    GLOG(ERROR) << "Failed to find token for token: " << token;
+    return std::nullopt;
+  }
+  return token_id;
+}
+
 size_t SentencePieceTokenizer::vocab_size() const {
   // vocab size = sentencepiece vocab size + special tokens
-  return sp_processor_.GetPieceSize() + special_tokens_.size();
+  return sp_processor_.GetPieceSize() + args_.special_tokens().size();
 }
 
 std::unique_ptr<Tokenizer> SentencePieceTokenizer::clone() const {
-  return std::make_unique<SentencePieceTokenizer>(
-      this->vocab_file_path_, this->special_tokens_, this->prepend_bos_);
+  return std::make_unique<SentencePieceTokenizer>(dir_path_, args_);
 }
 
 }  // namespace llm

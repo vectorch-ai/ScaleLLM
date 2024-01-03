@@ -2,12 +2,15 @@
 
 #include <torch/torch.h>
 
+#include <string>
+#include <unordered_set>
+#include <vector>
+
 #include "layers/activation.h"
 #include "layers/attention_rope.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
-#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
 #include "models/conversation.h"
@@ -398,9 +401,30 @@ REGISTER_MODEL_ARGS(qwen, [&] {
   // LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
   // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>"
-  LOAD_ARG_OR(stop_token_ids,
-              "",
-              std::unordered_set<int32_t>({151643, 151644, 151645}));
+  SET_ARG(stop_token_ids,
+          std::unordered_set<int32_t>({151643, 151644, 151645}));
+});
+
+// Register tokenizer args since Qwen is using tiktoken tokenizer.
+REGISTER_TOKENIZER_ARGS(qwen, [&] {
+  SET_ARG(tokenizer_type, "tiktoken");
+  // adapted from
+  // https://huggingface.co/Qwen/Qwen-14B-Chat-Int4/blob/main/tokenization_qwen.py
+  SET_ARG(vocab_file, "qwen.tiktoken");
+
+  // set special tokens
+  std::vector<std::string> special_tokens(
+      {"<|endoftext|>", "<|im_start|>", "<|im_end|>"});
+  for (int32_t i = 0; i < 205; ++i) {
+    special_tokens.push_back("<|extra_" + std::to_string(i) + "|>");
+  }
+  SET_ARG(special_tokens, special_tokens);
+
+  // set regex pattern for tiktoken tokenizer.
+  const std::string pattern =
+      R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+[^\S]|\s+)";
+  SET_ARG(pattern, pattern);
+  SET_ARG(special_start_id, 151643);
 });
 
 }  // namespace llm::hf
