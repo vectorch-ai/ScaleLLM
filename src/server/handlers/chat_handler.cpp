@@ -31,10 +31,16 @@ bool verify_request_arguments(ChatCallData* call_data) {
     return false;
   }
 
-  // n and best_of are not implemented yet
-  if (request.has_n() && request.n() > 1) {
-    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
-                                 "n > 1 is not supported yet");
+  const bool stream = request.has_stream() ? request.stream() : false;
+  // n is not implemented for stream requests
+  // N.B. grpc stream requires user to send messages in sequence for order
+  // guarantee. If we want to support n > 1 for stream requests, we need to add
+  // support in call_data to send messages in sequence explicitly to workaround
+  // the grpc stream limitation.
+  if (stream && request.has_n() && request.n() > 1) {
+    call_data->finish_with_error(
+        grpc::StatusCode::UNIMPLEMENTED,
+        "n != 1 is not supported yet for stream requests");
     return false;
   }
   // temperature between [0.0, 2.0]
@@ -74,6 +80,70 @@ bool verify_request_arguments(ChatCallData* call_data) {
     }
   }
   return true;
+}
+
+bool send_delta_to_client(ChatCallData* call_data,
+                          Request* request,
+                          uint32_t index,
+                          bool first_message,
+                          const std::string& delta,
+                          FinishReason reason) {
+  ChatResponse response;
+  response.set_object("chat.completion.chunk");
+  response.set_id(request->id);
+  response.set_created(request->created_time);
+  // response.set_model(request->model);
+  auto* choice = response.add_choices();
+  choice->set_index(index);
+  // add message
+  auto* message = choice->mutable_delta();
+  // only set role for first message
+  if (first_message) {
+    message->set_role("assistant");
+  }
+  message->set_content(delta);
+  if (reason != FinishReason::NONE) {
+    choice->set_finish_reason(finish_reason_to_string(reason));
+  }
+  return call_data->write(response);
+}
+
+bool send_result_to_client(ChatCallData* call_data,
+                           Request* request,
+                           const std::vector<SequenceResult>& seq_results,
+                           const Status& /*status*/,
+                           const Statistics& stats) {
+  ChatResponse response;
+  response.set_object("chat.completion");
+  response.set_id(request->id);
+  response.set_created(request->created_time);
+  // response.set_model(request->model);
+
+  // add choices into response
+  for (uint32_t i = 0; i < seq_results.size(); ++i) {
+    const auto& seq_result = seq_results[i];
+    auto* choice = response.add_choices();
+    choice->set_index(i);
+    auto* message = choice->mutable_message();
+    message->set_role("assistant");
+    message->set_content(seq_result.output_text);
+    if (seq_result.finish_reason != FinishReason::NONE) {
+      choice->set_finish_reason(
+          finish_reason_to_string(seq_result.finish_reason));
+    }
+  }
+
+  // add usage statistics
+  auto* usage = response.mutable_usage();
+  usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
+  usage->set_completion_tokens(
+      static_cast<int32_t>(stats.num_generated_tokens));
+  usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
+
+  // TODO: combine write and finish
+  call_data->write(response);
+  // TODO: mapping status to grpc status
+  return call_data->finish();
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
@@ -180,72 +250,37 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   request->echo = false;
 
   // add on_stream and on_finish callbacks
+  const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
   if (request->stream) {
-    auto on_stream = [call_data, request = request.get(), first_message = true](
-                         const std::string& delta,
-                         FinishReason reason) mutable -> bool {
-      ChatResponse response;
-      response.set_object("chat.completion.chunk");
-      response.set_id(request->id);
-      response.set_created(request->created_time);
-      // response.set_model(request->model);
-      auto* choice = response.add_choices();
-      auto* message = choice->mutable_delta();
-      // only set role for first message
-      if (first_message) {
-        message->set_role("assistant");
-        first_message = false;
-      }
-      message->set_content(delta);
-      choice->set_index(0);
-      if (reason != FinishReason::NONE) {
-        choice->set_finish_reason(finish_reason_to_string(reason));
-      }
-      return call_data->write(response);
-    };
+    // add sequences with on_stream callback
+    for (uint32_t i = 0; i < num_seqs; ++i) {
+      request->add_sequence(
+          [call_data, request = request.get(), i, first_message = true](
+              const std::string& delta, FinishReason reason) mutable -> bool {
+            bool ret = send_delta_to_client(
+                call_data, request, i, first_message, delta, reason);
+            first_message = false;
+            return ret;
+          });
+    }
 
-    request->add_sequence(on_stream);
-
+    // set callback for stream request
     request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
       return call_data->finish();
     };
   } else {
-    request->add_sequence();
+    // add sequences
+    for (uint32_t i = 0; i < num_seqs; ++i) {
+      request->add_sequence();
+    }
+
+    // set callback for non-stream request
     request->on_finish = [call_data, request = request.get()](
                              const std::vector<SequenceResult>& seq_results,
-                             const Status& /*status*/,
+                             const Status& status,
                              const Statistics& stats) -> bool {
-      ChatResponse response;
-      response.set_object("chat.completion");
-      response.set_id(request->id);
-      response.set_created(request->created_time);
-      // response.set_model(request->model);
-
-      // add choices into response
-      for (uint32_t i = 0; i < seq_results.size(); ++i) {
-        const auto& seq_result = seq_results[i];
-        auto* choice = response.add_choices();
-        choice->set_index(i);
-        auto* message = choice->mutable_message();
-        message->set_role("assistant");
-        message->set_content(seq_result.output_text);
-        if (seq_result.finish_reason != FinishReason::NONE) {
-          choice->set_finish_reason(
-              finish_reason_to_string(seq_result.finish_reason));
-        }
-      }
-
-      // add usage statistics
-      auto* usage = response.mutable_usage();
-      usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
-      usage->set_completion_tokens(
-          static_cast<int32_t>(stats.num_generated_tokens));
-      usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
-
-      // TODO: combine write and finish
-      call_data->write(response);
-      // TODO: mapping status to grpc status
-      return call_data->finish();
+      return send_result_to_client(
+          call_data, request, seq_results, status, stats);
     };
   }
   return request;

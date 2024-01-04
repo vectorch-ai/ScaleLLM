@@ -23,15 +23,18 @@ std::string generate_request_id() {
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 bool verify_request_arguments(CompletionCallData* call_data) {
   const auto& request = call_data->request();
-  // n and best_of are not implemented yet
-  if (request.has_n() && request.n() > 1) {
+  // n is not implemented yet for stream request
+  const bool stream = request.has_stream() ? request.stream() : false;
+  const uint32_t n = request.has_n() ? request.n() : 1;
+  if (stream && n > 1) {
     call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
                                  "n > 1 is not supported yet");
     return false;
   }
-  if (request.has_best_of() && request.best_of() > 1) {
+
+  if (request.has_best_of() && request.best_of() != n) {
     call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
-                                 "best_of > 1 is not supported yet");
+                                 "best_of != n is not supported yet");
     return false;
   }
 
@@ -94,6 +97,61 @@ bool verify_request_arguments(CompletionCallData* call_data) {
     }
   }
   return true;
+}
+
+bool send_delta_to_client(CompletionCallData* call_data,
+                          Request* request,
+                          uint32_t index,
+                          const std::string& delta,
+                          FinishReason reason) {
+  CompletionResponse response;
+  response.set_object("text_completion");
+  response.set_id(request->id);
+  response.set_created(request->created_time);
+  // response.set_model(request->model);
+  auto* choice = response.add_choices();
+  choice->set_index(index);
+  choice->set_text(delta);
+  if (reason != FinishReason::NONE) {
+    choice->set_finish_reason(finish_reason_to_string(reason));
+  }
+  return call_data->write(response);
+}
+
+bool send_result_to_client(CompletionCallData* call_data,
+                           Request* request,
+                           const std::vector<SequenceResult>& seq_results,
+                           const Status& /*status*/,
+                           const Statistics& stats) {
+  CompletionResponse response;
+  response.set_object("text_completion");
+  response.set_id(request->id);
+  response.set_created(request->created_time);
+  // response.set_model(request->model);
+
+  // add choices into response
+  for (uint32_t i = 0; i < seq_results.size(); ++i) {
+    const auto& seq_result = seq_results[i];
+    auto* choice = response.add_choices();
+    choice->set_index(i);
+    choice->set_text(seq_result.output_text);
+    // choice->set_logprobs(0);
+    if (seq_result.finish_reason != FinishReason::NONE) {
+      choice->set_finish_reason(
+          finish_reason_to_string(seq_result.finish_reason));
+    }
+  }
+
+  // add usage statistics
+  auto* usage = response.mutable_usage();
+  usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
+  usage->set_completion_tokens(
+      static_cast<int32_t>(stats.num_generated_tokens));
+  usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
+  // TODO: combine write and finish
+  call_data->write(response);
+  // TODO: mapping status to grpc status
+  return call_data->finish();
 }
 
 std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
@@ -166,66 +224,34 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   }
 
   // add on_stream and on_finish callbacks
+  const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
   if (request->stream) {
-    auto on_stream = [call_data, request = request.get()](
-                         const std::string& delta,
-                         FinishReason reason) -> bool {
-      CompletionResponse response;
-      response.set_object("text_completion");
-      response.set_id(request->id);
-      response.set_created(request->created_time);
-      // response.set_model(request->model);
-      auto* choice = response.add_choices();
-      choice->set_text(delta);
-      // choice->set_logprobs(0);
-      choice->set_index(0);
-      if (reason != FinishReason::NONE) {
-        choice->set_finish_reason(finish_reason_to_string(reason));
-      }
-      return call_data->write(response);
-    };
+    // add sequences with on_stream callback
+    for (uint32_t i = 0; i < num_seqs; ++i) {
+      request->add_sequence(
+          [call_data, request = request.get(), i](const std::string& delta,
+                                                  FinishReason reason) -> bool {
+            return send_delta_to_client(call_data, request, i, delta, reason);
+          });
+    }
 
-    request->add_sequence(on_stream);
-
+    // add on_stream_finish callback
     request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
-      // TODO: mapping status to grpc status
       return call_data->finish();
     };
   } else {
-    request->add_sequence();
+    // add sequences
+    for (uint32_t i = 0; i < num_seqs; ++i) {
+      request->add_sequence();
+    }
+
+    // add on_finish callback
     request->on_finish = [call_data, request = request.get()](
                              const std::vector<SequenceResult>& seq_results,
-                             const Status& /*status*/,
+                             const Status& status,
                              const Statistics& stats) -> bool {
-      CompletionResponse response;
-      response.set_object("text_completion");
-      response.set_id(request->id);
-      response.set_created(request->created_time);
-      // response.set_model(request->model);
-
-      // add choices into response
-      for (uint32_t i = 0; i < seq_results.size(); ++i) {
-        const auto& seq_result = seq_results[i];
-        auto* choice = response.add_choices();
-        choice->set_index(i);
-        choice->set_text(seq_result.output_text);
-        // choice->set_logprobs(0);
-        if (seq_result.finish_reason != FinishReason::NONE) {
-          choice->set_finish_reason(
-              finish_reason_to_string(seq_result.finish_reason));
-        }
-      }
-
-      // add usage statistics
-      auto* usage = response.mutable_usage();
-      usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
-      usage->set_completion_tokens(
-          static_cast<int32_t>(stats.num_generated_tokens));
-      usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
-      // TODO: combine write and finish
-      call_data->write(response);
-      // TODO: mapping status to grpc status
-      return call_data->finish();
+      return send_result_to_client(
+          call_data, request, seq_results, status, stats);
     };
   }
   return request;
