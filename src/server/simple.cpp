@@ -18,9 +18,7 @@ DEFINE_string(model_name_or_path,
               "THUDM/chatglm3-6b",
               "hf model name or path to the model file.");
 
-DEFINE_string(model_allow_patterns,
-              "*",
-              "Allow patterns for model files.");
+DEFINE_string(model_allow_patterns, "*", "Allow patterns for model files.");
 
 DEFINE_string(device,
               "cuda",
@@ -49,7 +47,9 @@ std::string download_model(const std::string& model_name) {
   py::exec(R"(
     from huggingface_hub import snapshot_download
     model_path = snapshot_download(repo_id, allow_patterns=allow_patterns.split(','))
-  )", globals, globals);
+  )",
+           globals,
+           globals);
   return globals["model_path"].cast<std::string>();
 }
 
@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
     model_path = download_model(FLAGS_model_name_or_path);
   }
 
-// parse devices
+  // parse devices
   const auto devices = parse_devices(FLAGS_device);
   GLOG(INFO) << "Using devices: " << to_string(devices);
 
@@ -140,22 +140,24 @@ int main(int argc, char* argv[]) {
     }
 
     // create a request
-    std::vector<int> tokens_ids;
-    tokenizer->encode(input, &tokens_ids);
-    int64_t prompt_token_len = tokens_ids.size();
+    std::vector<int> prompt_tokens;
+    tokenizer->encode(input, &prompt_tokens);
+    const int64_t prompt_token_len = static_cast<int64_t>(prompt_tokens.size());
 
-    llm::Sequence sequence(std::move(input),
-                           std::move(tokens_ids),
-                           &sampling_param,
-                           &stopping_criteria,
-                           nullptr,
-                           /*echo=*/true);
+    llm::Request request("request_id_0", prompt_tokens);
+    request.echo = true;
+    request.sampling_param = sampling_param;
+    request.stopping_criteria = stopping_criteria;
+
+    // create a sequence
+    request.add_sequence();
+    auto& sequence = request.sequences.front();
 
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
       // allocate slots for the sequence
-      GCHECK(block_manager->allocate_slots_for_sequence(&sequence));
+      GCHECK(block_manager->allocate_slots_for_request(&request));
 
       // run inference
       const auto output_params = engine.execute_model({&sequence});
@@ -176,10 +178,10 @@ int main(int argc, char* argv[]) {
     }
 
     // release the slots for the sequence
-    block_manager->release_slots_for_sequence(&sequence);
+    block_manager->release_slots_for_request(&request);
 
     // print the prompt and wait for the next input
-    std::cout << std::endl << prompt;
+    std::cout << '\n' << prompt;
   }
 
   return 0;

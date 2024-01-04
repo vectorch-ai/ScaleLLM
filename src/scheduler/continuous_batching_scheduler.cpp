@@ -63,13 +63,25 @@ void ContinuousBatchingScheduler::on_request_finish(Request* request) {
                                  request = std::move(finished_request)]() {
     if (request->stream) {
       // just finish the request
-      request->on_finish("", FinishReason::NONE, Status());
+      request->on_stream_finish(Status());
     } else {
-      // generate the final output
-      GCHECK(request->sequences.size() == 1);
-      Sequence& seq = request->sequences.front();
-      const auto output = seq.decode_delta_text(seq.num_tokens(), *tokenizer);
-      request->on_finish(output, seq.finish_reason(), Status());
+      // summarize statistics for all sequences
+      Statistics stats;
+      stats.num_prompt_tokens = request->num_prompt_tokens();
+      for (const Sequence& seq : request->sequences) {
+        stats.num_generated_tokens += seq.num_generated_tokens();
+      }
+      stats.num_total_tokens =
+          stats.num_prompt_tokens + stats.num_generated_tokens;
+
+      std::vector<SequenceResult> seq_results;
+      seq_results.reserve(request->sequences.size());
+      for (Sequence& seq : request->sequences) {
+        // generate the final output
+        const auto output = seq.decode_delta_text(seq.num_tokens(), *tokenizer);
+        seq_results.push_back({output, seq.finish_reason()});
+      }
+      request->on_finish(seq_results, Status(), stats);
     }
   });
 }

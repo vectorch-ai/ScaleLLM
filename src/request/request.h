@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <deque>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -37,36 +36,60 @@ enum class ScheduleStatus {
   CANCELLED,
 };
 
+struct Statistics {
+  // the number of tokens in the prompt.
+  size_t num_prompt_tokens = 0;
+  // the number of tokens in the generated completion.
+  size_t num_generated_tokens = 0;
+  // the total number of tokens used in the request (prompt + completion).
+  size_t num_total_tokens = 0;
+};
+
 // Priority of the request.
 // The higher the priority, the sooner the request is processed.
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
-using OnFinish = std::function<bool(const std::string& output_text,
-                                    FinishReason finish_reason,
-                                    const Status& status)>;
+struct SequenceResult {
+  std::string output_text;
+
+  FinishReason finish_reason;
+};
+
+// Function to call when a request is finished.
+using OnFinish =
+    std::function<bool(const std::vector<SequenceResult>& seq_results,
+                       const Status& status,
+                       const Statistics& stats)>;
+
+// Function to call when a stream request is finished.
+using OnStreamFinish = std::function<bool(const Status& status)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
 // container, holding essential data, such as input parameters, configuration
 // settings, and any additional context-specific details related to the
 // request's handling.
-struct Request {
+struct Request final {
  public:
-  Request(std::string id) : id(std::move(id)){};
+  Request(const std::string& id, const std::vector<int32_t>& prompt_tokens);
 
-  void add_sequence(std::string prompt,
-                    std::vector<int32_t> token_ids,
-                    OnStream on_stream);
+  void add_sequence(OnStream on_stream = nullptr);
 
   bool is_finished() const;
+
+  size_t num_prompt_tokens() const { return prompt_tokens.size(); }
 
   // The unique id of the request.
   // NOLINTNEXTLINE
   const std::string id;
 
-  // list of sequences to generate completions for the prompt
-  // use deque instead of vector to avoid no-copy move for Sequence
-  std::deque<Sequence> sequences;
+  // Scheduled time of the request.
+  // NOLINTNEXTLINE
+  const int64_t created_time;
+
+  // the token ids from request's prompt.
+  // NOLINTNEXTLINE
+  const std::vector<int32_t> prompt_tokens;
 
   // sampling parameters
   SamplingParameter sampling_param;
@@ -80,17 +103,18 @@ struct Request {
   // Whether to echo back the prompt in the output.
   bool echo = true;
 
-  // The status of the request.
-  // ScheduleStatus status = ScheduleStatus::WAITING;
-
   // the priority of the request.
   RequestPriority priority = RequestPriority::MEDIUM;
 
-  // Scheduled time of the request.
-  int64_t created_time = 0;
+  // list of sequences to generate completions for the prompt
+  // use deque instead of vector to avoid no-copy move for Sequence
+  std::deque<Sequence> sequences;
 
   // function to call when the request is finished.
   OnFinish on_finish;
+
+  // function to call when a stream request is finished.
+  OnStreamFinish on_stream_finish;
 };
 
 // Compare two request contexts based on priority then scheduled time.

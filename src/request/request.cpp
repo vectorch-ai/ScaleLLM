@@ -1,26 +1,28 @@
 #include "request.h"
 
+#include <absl/time/clock.h>
+#include <absl/time/time.h>
+
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
-#include "sampling_parameter.h"
+#include "common/logging.h"
 #include "sequence.h"
-#include "status.h"
-#include "stopping_criteria.h"
 
 namespace llm {
 
-void Request::add_sequence(std::string prompt,
-                           std::vector<int32_t> token_ids,
-                           OnStream on_stream) {
-  sequences.emplace_back(std::move(prompt),
-                         std::move(token_ids),
-                         &sampling_param,
-                         &stopping_criteria,
-                         on_stream,
-                         echo);
+Request::Request(const std::string& id,
+                 const std::vector<int32_t>& prompt_tokens)
+    : id(id),
+      created_time(absl::ToUnixSeconds(absl::Now())),
+      prompt_tokens(prompt_tokens) {}
+
+void Request::add_sequence(OnStream on_stream) {
+  if (stream) {
+    GCHECK(on_stream) << "on_stream should not be null if stream is true";
+  }
+  sequences.emplace_back(*this, on_stream);
 }
 
 bool Request::is_finished() const {

@@ -5,15 +5,11 @@
 #include <uuid.h>
 
 #include <cstdint>
-#include <sstream>
 #include <string>
-#include <thread>
 
 #include "common/logging.h"
-#include "completion.grpc.pb.h"
 #include "models/args.h"
 #include "request/request.h"
-#include "server/call_data.h"
 #include "utils.h"
 
 namespace llm {
@@ -108,21 +104,22 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
   const int64_t max_context_len = model_args.max_position_embeddings();
 
-  std::vector<int> token_ids;
-  if (!tokenizer.encode(grpc_request.prompt(), &token_ids)) {
+  std::vector<int> prompt_tokens;
+  if (!tokenizer.encode(grpc_request.prompt(), &prompt_tokens)) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Failed to encode prompt");
     GLOG(ERROR) << "Failed to encode prompt: " << grpc_request.prompt();
     return nullptr;
   }
-  if (token_ids.size() > max_context_len) {
+  if (prompt_tokens.size() > max_context_len) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Prompt is too long");
-    GLOG(ERROR) << "Prompt is too long: " << token_ids.size();
+    GLOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
     return nullptr;
   }
 
-  auto request = std::make_unique<Request>(generate_request_id());
+  auto request =
+      std::make_unique<Request>(generate_request_id(), prompt_tokens);
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -146,7 +143,8 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
-  auto max_tokens = static_cast<uint32_t>(max_context_len - token_ids.size());
+  auto max_tokens =
+      static_cast<uint32_t>(max_context_len - prompt_tokens.size());
   if (grpc_request.has_max_tokens()) {
     max_tokens = std::min(max_tokens, grpc_request.max_tokens());
   } else {
@@ -166,7 +164,6 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   if (grpc_request.has_priority()) {
     request->priority = grpc_priority_to_priority(grpc_request.priority());
   }
-  request->created_time = absl::ToUnixSeconds(absl::Now());
 
   // add on_stream and on_finish callbacks
   if (request->stream) {
@@ -188,37 +185,43 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
       return call_data->write(response);
     };
 
-    request->add_sequence(
-        grpc_request.prompt(), std::move(token_ids), on_stream);
+    request->add_sequence(on_stream);
 
-    request->on_finish = [call_data, request = request.get()](
-                             const std::string& output_text,
-                             FinishReason reason,
-                             const Status& status) -> bool {
-      GCHECK(output_text.empty());
-      GCHECK(reason == FinishReason::NONE);
-
+    request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
       // TODO: mapping status to grpc status
       return call_data->finish();
     };
   } else {
-    request->add_sequence(grpc_request.prompt(), std::move(token_ids), nullptr);
+    request->add_sequence();
     request->on_finish = [call_data, request = request.get()](
-                             const std::string& output_text,
-                             FinishReason reason,
-                             const Status& status) -> bool {
+                             const std::vector<SequenceResult>& seq_results,
+                             const Status& /*status*/,
+                             const Statistics& stats) -> bool {
       CompletionResponse response;
       response.set_object("text_completion");
       response.set_id(request->id);
       response.set_created(request->created_time);
       // response.set_model(request->model);
-      auto* choice = response.add_choices();
-      choice->set_text(output_text);
-      // choice->set_logprobs(0);
-      choice->set_index(0);
-      if (reason != FinishReason::NONE) {
-        choice->set_finish_reason(finish_reason_to_string(reason));
+
+      // add choices into response
+      for (uint32_t i = 0; i < seq_results.size(); ++i) {
+        const auto& seq_result = seq_results[i];
+        auto* choice = response.add_choices();
+        choice->set_index(i);
+        choice->set_text(seq_result.output_text);
+        // choice->set_logprobs(0);
+        if (seq_result.finish_reason != FinishReason::NONE) {
+          choice->set_finish_reason(
+              finish_reason_to_string(seq_result.finish_reason));
+        }
       }
+
+      // add usage statistics
+      auto* usage = response.mutable_usage();
+      usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
+      usage->set_completion_tokens(
+          static_cast<int32_t>(stats.num_generated_tokens));
+      usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
       // TODO: combine write and finish
       call_data->write(response);
       // TODO: mapping status to grpc status

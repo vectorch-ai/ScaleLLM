@@ -11,6 +11,7 @@
 #include "tokenizer/tokenizer.h"
 
 namespace llm {
+struct Request;
 
 // "stop" - the model hit a natural stop point or a provided stop sequence.
 // "length" - the maximum number of tokens specified in the request was reached.
@@ -30,12 +31,7 @@ using OnStream =
 // current position in generating tokens, etc.
 class Sequence final {
  public:
-  Sequence(std::string prompt,
-           std::vector<int32_t> token_ids,
-           const SamplingParameter* sampling_param,
-           const StoppingCriteria* stopping_criteria,
-           OnStream on_stream,
-           bool echo);
+  Sequence(const Request& request, OnStream on_stream);
 
   // get the id of the sequence
   int64_t id() const { return id_; }
@@ -43,9 +39,9 @@ class Sequence final {
   // get token ids
   const std::vector<int32_t>& token_ids() const { return token_ids_; }
 
-  // get token ids count
-  const std::unordered_map<int32_t, int32_t>& token_counts() const {
-    return token_counts_;
+  // get token ids to count map
+  const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
+    return token_to_count_map_;
   }
 
   // get the total number of tokens
@@ -54,11 +50,13 @@ class Sequence final {
   // get the number of prompt tokens
   size_t num_prompt_tokens() const { return num_prompt_tokens_; }
 
-  // get the prompt string
-  const std::string& prompt() const { return prompt_; }
+  // get the number of generated tokens
+  size_t num_generated_tokens() const {
+    return num_tokens() - num_prompt_tokens();
+  }
 
   // get the sampling parameters
-  const SamplingParameter& sampling_param() const { return *sampling_param_; }
+  const SamplingParameter& sampling_param() const;
 
   // whether the sequence is in prefill stage, no kv cache has been generated
   bool is_prefill() const { return cache_pos_ == 0; }
@@ -125,24 +123,19 @@ class Sequence final {
   }
 
   // global unique id for the sequence
-  int64_t id_ = 0;
+  const int64_t id_;
 
-  // prompt to generate completions for
-  std::string prompt_;
+  // The request that the sequence belongs to.
+  const Request& request_;
 
-  // token ids generated from p
+  // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
 
   // the count of each token id
-  std::unordered_map<int32_t, int32_t> token_counts_;
+  std::unordered_map<int32_t, int32_t> token_to_count_map_;
 
   // the length of the prompt tokens
   size_t num_prompt_tokens_ = 0;
-
-  // sampling parameters
-  const SamplingParameter* sampling_param_ = nullptr;
-
-  const StoppingCriteria* stopping_criteria_ = nullptr;
 
   // the cache position.
   // all tokens before pos should be processed and cached.

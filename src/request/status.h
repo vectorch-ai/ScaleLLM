@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <ostream>
 #include <string>
 
 namespace llm {
@@ -36,17 +37,17 @@ class Status final {
   StatusCode error_code() const { return code_; }
   const std::string& error_msg() const { return msg_; }
 
-  bool ok() const { return code_ == StatusCode::OK;}
+  bool ok() const { return code_ == StatusCode::OK; }
 
  private:
   StatusCode code_ = StatusCode::OK;
   std::string msg_;
 };
 
-// inline std::ostream& operator<<(std::ostream& os, const Status& status) {
-//   os << "Status, code: " << status.error_code() << ", message: " << status.error_msg();
-//   return os;
-// }
-
+inline std::ostream& operator<<(std::ostream& os, const Status& status) {
+  os << "Status, code: " << static_cast<uint8_t>(status.error_code())
+     << ", message: " << status.error_msg();
+  return os;
+}
 
 }  // namespace llm

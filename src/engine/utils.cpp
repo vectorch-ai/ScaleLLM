@@ -93,7 +93,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     auto& ids = token_ids_vec.emplace_back();
     auto& counts = token_counts_vec.emplace_back();
 
-    const auto& seq_token_counts = sequence->token_counts();
+    const auto& seq_token_counts = sequence->token_to_count_map();
     const auto unique_tokens = seq_token_counts.size();
     ids.reserve(unique_tokens);
     counts.reserve(unique_tokens);
@@ -136,7 +136,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     auto& ids = token_ids_vec.emplace_back();
     auto& counts = token_counts_vec.emplace_back();
 
-    const auto& seq_token_counts = sequence->token_counts();
+    const auto& seq_token_counts = sequence->token_to_count_map();
     const auto unique_tokens = seq_token_counts.size();
     ids.reserve(unique_tokens);
     counts.reserve(unique_tokens);
