@@ -47,14 +47,14 @@
       "default-features": false
     },
     {
+      "name": "rapidjson",
+      "version>=": "2023-07-17",
+      "default-features": false
+    },
+    {
       "name": "stduuid",
       "version>=": "1.2.3",
       "features": ["system-gen"]
-    },
-    {
-      "name": "inja",
-      "version>=": "3.4.0",
-      "default-features": false
     },
     {
       "name": "re2",
