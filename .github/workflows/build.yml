@@ -73,12 +73,19 @@ jobs:
         restore-keys: |
           scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}
 
+    - name: Get Timestamp
+      id: get-timestamp
+      shell: cmake -P {0}
+      run: |
+        string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
+        file(APPEND "$ENV{GITHUB_OUTPUT}" "timestamp=${current_date}")
+        
     - name: Restore ccache and its artifacts.
       uses: actions/cache@v3
       with:
         path: ${{ env.CCACHE_DIR }}
         key: |
-          scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}
+          scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}-${{ steps.get-timestamp.outputs.timestamp }}
         restore-keys: |
           scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}
 
