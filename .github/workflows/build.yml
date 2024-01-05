@@ -3,14 +3,13 @@ name: build and test
 on:
   push:
     paths-ignore:
-      - ".github/**"
+      - ".github/docker.yml"
       - "docs/**"
       - "tools/**"
       - "gateway/**"
       - "scripts/**"
       - "**/*.md"
       - "**/*.txt"
-      - "**/*.yml"
       - "**/*.sh"
       - "Dockerfile"
       - "Dockerfile.*"
@@ -19,14 +18,13 @@ on:
 
   pull_request:
     paths-ignore:
-      - ".github/**"
+      - ".github/docker.yml"
       - "docs/**"
       - "tools/**"
       - "gateway/**"
       - "scripts/**"
       - "**/*.md"
       - "**/*.txt"
-      - "**/*.yml"
       - "**/*.sh"
       - "Dockerfile"
       - "Dockerfile.*"
