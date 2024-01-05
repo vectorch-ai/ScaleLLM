@@ -56,14 +56,7 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Get Timestamp
-      id: get-timestamp
-      shell: cmake -P {0}
-      run: |
-        string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-        file(APPEND "$ENV{GITHUB_OUTPUT}" "timestamp=${current_date}")
-
-    # Restore both vcpkg and its artifacts from the last successful build.
+    # Restore vcpkg bincache from the newest or latest cache available.
     # TODO: use a distribute storage for bincache by following the instruction here: 
     # https://learn.microsoft.com/en-us/vcpkg/users/binarycaching#aws
     - name: Restore vcpkg and its artifacts.
@@ -71,9 +64,8 @@ jobs:
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
         key: |
-          scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}-${{ steps.get-timestamp.outputs.timestamp }}-${{ hashFiles( 'vcpkg.json' ) }}
+          scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}-${{ hashFiles( 'vcpkg.json' ) }}
         restore-keys: |
-          scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}-${{ steps.get-timestamp.outputs.timestamp }}
           scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}
 
     - name: CMake Build in the 'build' subdirectory

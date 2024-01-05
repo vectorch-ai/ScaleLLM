@@ -16,7 +16,7 @@
     },
     {
       "name": "folly",
-      "version>=": "2023.07.03.00",
+      "version>=": "2023.10.02.00",
       "default-features": false
     },
     {
@@ -62,5 +62,5 @@
       "default-features": false
     }
   ],
-  "builtin-baseline": "9edb1b8e590cc086563301d735cae4b6e732d2d2"
+  "builtin-baseline": "c8696863d371ab7f46e213d8f5ca923c4aef2a00"
 }

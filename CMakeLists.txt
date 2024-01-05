@@ -33,7 +33,7 @@ else()
   include(FetchContent)
   FetchContent_Declare(vcpkg
     GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
-    GIT_TAG "2023.10.19"
+    GIT_TAG "2023.12.12"
   )
   FetchContent_MakeAvailable(vcpkg)
 
