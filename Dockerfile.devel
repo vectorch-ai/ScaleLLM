@@ -12,6 +12,7 @@ RUN apt-get update -q -y && \
     build-essential \
     ninja-build \
     cmake \
+    ccache \
     python3-dev \
     zip \
     pkg-config \

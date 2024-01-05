@@ -18,7 +18,7 @@ Before you start building the project, you need to install the build tools. You 
 [to be updated]
 
 ``` bash
-sudo apt-get install build-essential ninja-build cmake python3-dev zip pkg-config libssl-dev libboost-all-dev wget curl
+sudo apt-get install build-essential ninja-build cmake ccache python3-dev zip pkg-config libssl-dev libboost-all-dev wget curl
 ```
 ### Install cuda toolkit and nccl
 

@@ -1,9 +1,23 @@
 cmake_minimum_required(VERSION 3.18)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
+
 if(POLICY CMP0135)
   # CMP0135: ExternalProject ignores timestamps in archives by default for the URL download method.
   cmake_policy(SET CMP0135 NEW)
+endif()
+
+if(USE_CCACHE)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "C compiler launcher")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "CXX compiler launcher")
+    set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "CUDA compiler launcher")
+    message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+  else()
+    message(STATUS "Could not find ccache. Consider installing ccache to speed up compilation.")
+  endif()
 endif()
 
 # if defined, create and use the default binary cache for vcpkg

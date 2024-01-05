@@ -45,16 +45,21 @@ jobs:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
         VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg/bincache
+        # Tells ccache where to store its cache.
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
 
     steps:
     - name: Install toolkits
       run: |
-        sudo apt-get install -y build-essential ninja-build bison gcc-12 libunwind-dev python3-dev libboost-all-dev
+        sudo apt-get install -y build-essential ninja-build bison gcc-12 libunwind-dev python3-dev libboost-all-dev ccache
   
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    
+    - name: Zero out ccache statistics
+      run: ccache -z
 
     # Restore vcpkg bincache from the newest or latest cache available.
     # TODO: use a distribute storage for bincache by following the instruction here: 
@@ -67,6 +72,15 @@ jobs:
           scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}-${{ hashFiles( 'vcpkg.json' ) }}
         restore-keys: |
           scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}
+
+    - name: Restore ccache and its artifacts.
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: |
+          scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}
+        restore-keys: |
+          scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}
 
     - name: CMake Build in the 'build' subdirectory
       run: |
@@ -82,3 +96,5 @@ jobs:
       # Execute tests defined by the CMake configuration.
       run: ctest --output-on-failure -C ${{env.BUILD_TYPE}}
 
+    - name: Show ccache statistics
+      run: ccache -s
