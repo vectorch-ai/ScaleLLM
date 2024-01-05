@@ -466,7 +466,7 @@ private:
                     FinishCurrentLine(match.position() + 2);
                     return MakeParseError(ErrorCode::UnexpectedExprEnd, MakeToken(Token::ExprEnd, { matchStart, matchStart + 2 }));
                 }
-                else if (m_currentBlockInfo.type != TextBlockType::Expression || (*m_template)[match.position() - 1] == '\'')
+                else if (m_currentBlockInfo.type != TextBlockType::Expression)
                     break;
 
                 m_currentBlockInfo.range.startOffset = FinishCurrentBlock(matchStart, TextBlockType::RawText);
@@ -480,7 +480,7 @@ private:
                     FinishCurrentLine(match.position() + 2);
                     return MakeParseError(ErrorCode::UnexpectedStmtEnd, MakeToken(Token::StmtEnd, { matchStart, matchStart + 2 }));
                 }
-                else if (m_currentBlockInfo.type != TextBlockType::Statement || (*m_template)[match.position() - 1] == '\'')
+                else if (m_currentBlockInfo.type != TextBlockType::Statement)
                     break;
 
                 m_currentBlockInfo.range.startOffset = FinishCurrentBlock(matchStart, TextBlockType::RawText);
