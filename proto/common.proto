@@ -11,7 +11,7 @@ message Usage {
   optional int32 completion_tokens = 2 [json_name="completion_tokens"];
 
   // the total number of tokens used in the request (prompt + completion).
-  optional int32 total_tokens = 3 [json_name="total_tokens"];;  
+  optional int32 total_tokens = 3 [json_name="total_tokens"];
 }
 
 enum Priority {

@@ -23,7 +23,7 @@ struct StoppingCriteria {
   std::unordered_set<int32_t> stop_token_ids;
 
   // stop sequences
-  // std::vector<std::string> stop_sequences;
+  std::vector<std::vector<int32_t>> stop_sequences;
 };
 
 }  // namespace llm

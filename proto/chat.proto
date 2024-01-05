@@ -19,8 +19,9 @@ message ChatMessage {
   // FunctionCall function_call = 4;
 }
 
+// Next Id: 17
 message ChatRequest {
-  // unique id for the completion request
+  // ID of the model to use. You can use the ListModels endpoint to list available models.
   string model = 1;
 
   // A list of messages comprising the conversation so far.
@@ -48,8 +49,11 @@ message ChatRequest {
   // whether to stream partial completions back as they are generated. default = false
   optional bool stream = 8;
 
-  // TODO: stop string/array/null. default = null
   // up to 4 sequences where the API will stop generating further tokens.
+  repeated string stop = 9;
+
+  // the list of token ids where the API will stop generating further tokens.
+  repeated int32 stop_token_ids = 16;
   
   // the maximum number of tokens to generate in the chat completion. default = infinity
   optional uint32 max_tokens = 10;

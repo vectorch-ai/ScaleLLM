@@ -41,7 +41,13 @@ bool verify_request_arguments(CompletionCallData* call_data) {
   // prompt is required
   if (request.prompt().empty()) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
-                                 "Missing prompt");
+                                 "missing prompt");
+    return false;
+  }
+  // up to 4 stop sequences
+  if (request.stop_size() > 4) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "stop size is too large");
     return false;
   }
   // temperature between [0.0, 2.0]
@@ -212,6 +218,25 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   stopping_criteria.max_tokens = max_tokens;
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
+
+  // use stop token ids if specified in the request
+  if (grpc_request.stop_token_ids_size() > 0) {
+    const auto& stop_token_ids = grpc_request.stop_token_ids();
+    stopping_criteria.stop_token_ids.insert(stop_token_ids.begin(),
+                                            stop_token_ids.end());
+  }
+
+  for (const auto& stop_seq : grpc_request.stop()) {
+    // encode stop sequence
+    std::vector<int> token_ids;
+    if (!tokenizer.encode(stop_seq, &token_ids)) {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "Failed to encode stop sequence");
+      GLOG(ERROR) << "Failed to encode stop sequence: " << stop_seq;
+      return nullptr;
+    }
+    stopping_criteria.stop_sequences.push_back(token_ids);
+  }
 
   if (grpc_request.has_stream()) {
     request->stream = grpc_request.stream();

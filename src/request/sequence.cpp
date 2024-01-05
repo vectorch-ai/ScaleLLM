@@ -10,6 +10,17 @@
 #include "tokenizer/tokenizer.h"
 
 namespace llm {
+namespace {
+// Returns whether a given `sequence` ends with `suffix`.
+inline bool sequence_end_withs(const std::vector<int32_t>& sequence,
+                               const std::vector<int32_t>& suffix) noexcept {
+  return suffix.empty() ||
+         (sequence.size() >= suffix.size() &&
+          memcmp(sequence.data() + (sequence.size() - suffix.size()),
+                 suffix.data(),
+                 suffix.size() * sizeof(int32_t)) == 0);
+}
+}  // namespace
 
 // NOLINTNEXTLINE
 std::atomic<int64_t> Sequence::next_id_{1};
@@ -61,6 +72,16 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   cache_pos_ = token_ids_.size();
   token_ids_.push_back(next_token_id);
   token_to_count_map_[next_token_id]++;
+
+  // check against stop sequences after adding the token
+  for (const auto& stop_sequence : stopping_criteria.stop_sequences) {
+    if (stop_sequence.back() == next_token_id &&
+        sequence_end_withs(token_ids_, stop_sequence)) {
+      finish_reason_ = FinishReason::STOP;
+      is_finished_ = true;
+      return false;
+    }
+  }
 
   // check against max tokens
   const size_t max_new_tokens = stopping_criteria.max_tokens;

@@ -5,8 +5,10 @@ package llm;
 
 import "common.proto";
 
+// Next ID: 19
 message CompletionRequest {
   // ID of the model to use. (required)
+  // You can use the ListModels endpoint to list available models.
   string model = 1;
 
   // the prompt to generate completions for. (required)
@@ -38,8 +40,11 @@ message CompletionRequest {
   // whether to include the original prompt in the completion response. default = true
   optional bool echo = 10;
 
-  // TODO: stop string/array/null. default = null
   // up to 4 sequences where the API will stop generating further tokens.
+  repeated string stop = 11;
+
+  // the list of token ids where the API will stop generating further tokens.
+  repeated int32 stop_token_ids = 18;
 
   // presence penalty to reduce the likelihood of generating words already in the prompt.
   // values between [-2.0, 2.0]. Positive values penalize new tokens based on their existing

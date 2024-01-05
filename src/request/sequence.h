@@ -98,6 +98,7 @@ class Sequence final {
   FinishReason finish_reason() const { return finish_reason_; }
 
   // decode the tokens till end to get delta text using the tokenizer
+  // not thread safe
   std::string decode_delta_text(size_t end, const Tokenizer& tokenizer);
 
   // check if streaming is enabled
@@ -113,7 +114,7 @@ class Sequence final {
     }
   }
 
-  // get the offset of output text
+  // get the offset of output tokens
   size_t output_offset() const { return output_offset_; }
 
  private:
