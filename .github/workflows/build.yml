@@ -78,7 +78,7 @@ jobs:
       with:
         path: ${{ env.CCACHE_DIR }}
         key: |
-          scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}-${GITHUB_SHA}
+          scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}-${{ github.sha }}
         restore-keys: |
           scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}
 
