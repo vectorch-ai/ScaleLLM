@@ -10,6 +10,9 @@
 # clangd cache
 /.cache*
 
+# ccache
+/.ccache*
+
 # libtorch
 /libtorch
 

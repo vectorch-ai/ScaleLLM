@@ -79,6 +79,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Boost CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 # find all dependencies from vcpkg
+find_package(fmt CONFIG REQUIRED)
 find_package(glog CONFIG REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)

@@ -3,7 +3,29 @@ include(cc_library)
 cc_library(
   NAME 
     jinja2cpp
-  HDRS 
   SRCS 
+    src/error_info.cpp
+    src/expression_evaluator.cpp
+    src/expression_parser.cpp
+    src/filesystem_handler.cpp
+    src/filters.cpp
+    src/generic_list.cpp
+    src/internal_value.cpp
+    src/lexer.cpp
+    src/serialize_filters.cpp
+    src/statements.cpp
+    src/string_converter_filter.cpp
+    src/template.cpp
+    src/template_env.cpp
+    src/template_parser.cpp
+    src/testers.cpp
+    src/value.cpp
+    src/binding/rapid_json_serializer.cpp
+    # src/binding/boost_json_serializer.cpp
+  INCLUDES 
+    include
   DEPS
+    fmt::fmt
+    rapidjson
+    nlohmann_json::nlohmann_json
 )
