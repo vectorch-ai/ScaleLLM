@@ -3,6 +3,7 @@
 #include <c10/core/ScalarType.h>
 #include <torch/torch.h>
 
+#include "chat_template/common_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention_rope.h"
 #include "layers/embedding.h"
@@ -10,7 +11,6 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
-#include "models/conversation.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -365,7 +365,7 @@ TORCH_MODULE(LlamaForCausalLM);
 
 // register the causal model
 REGISTER_CAUSAL_MODEL(llama, LlamaForCausalLM);
-REGISTER_CONVERSATION_TEMPLATE(llama, Llama2Conversation);
+REGISTER_DEFAULT_CHAT_TEMPLATE(llama, Llama2ChatTemplate);
 // register the model args
 // example config:
 // https://huggingface.co/meta-llama/Llama-2-7b-hf/blob/main/config.json set

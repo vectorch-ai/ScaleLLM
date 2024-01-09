@@ -1,11 +1,16 @@
 #pragma once
 
-#include "server/call_data.h"
+#include <gflags/gflags.h>
+
 #include "chat.grpc.pb.h"  // IWYU pragma: keep
+#include "chat_template/chat_template.h"
 #include "common/threadpool.h"
 #include "engine/engine.h"
 #include "models/args.h"
 #include "scheduler/scheduler.h"
+#include "server/call_data.h"
+
+DECLARE_bool(disable_default_chat_template);
 
 namespace llm {
 using ChatCallData = CallData<ChatRequest, ChatResponse>;
@@ -25,10 +30,13 @@ class ChatHandler final {
   // tokenizer instance
   std::unique_ptr<Tokenizer> tokenizer_;
 
+  // chat template instance
+  std::unique_ptr<ChatTemplate> chat_template_;
+
   // model args
   ModelArgs model_args_;
 
-  // converter threadpool 
+  // converter threadpool
   ThreadPool converter_threadpool_;
 };
 

@@ -4,6 +4,7 @@
 
 #include <unordered_set>
 
+#include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention_rope.h"
 #include "layers/embedding.h"
@@ -11,7 +12,6 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
-#include "models/conversation.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -364,28 +364,30 @@ class YiForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(YiForCausalLM);
 
-class YiConversation final : public Conversation {
+class YiChatTemplate final : public CodedChatTemplate {
  public:
   // generate prompt from dialogs
   // https://huggingface.co/01-ai/Yi-34B-Chat/blob/main/tokenizer_config.json#L60
   // Prompt template:
   // <|im_start|>user\n {message} <|im_end|>\n
   // <|im_start|>assistant\n
-  std::optional<std::string> get_prompt() const override {
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
     // at least one user message
-    if (messages_.size() % 2 == 0) {
+    if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
 
     std::stringstream ss;
-    if (!system_message_.empty()) {
-      ss << "<|im_start|>system\n" << system_message_ << "<|im_end|>\n";
+    if (!system_message.empty()) {
+      ss << "<|im_start|>system\n" << system_message << "<|im_end|>\n";
     }
 
     // then user and assistant message pairs (u/a/u/a/u...)
-    for (size_t i = 0; i < messages_.size(); ++i) {
+    for (size_t i = 0; i < messages.size(); ++i) {
       const char* role = (i % 2) == 0 ? "user" : "assistant";
-      ss << "<|im_start|>" << role << "\n" << messages_[i] << "<|im_end|>\n";
+      ss << "<|im_start|>" << role << "\n" << messages[i] << "<|im_end|>\n";
     }
     // end with assistant message
     ss << "<|im_start|>assistant\n";
@@ -395,7 +397,7 @@ class YiConversation final : public Conversation {
 
 // register the causal model
 REGISTER_CAUSAL_MODEL(Yi, YiForCausalLM);
-REGISTER_CONVERSATION_TEMPLATE(Yi, YiConversation);
+REGISTER_DEFAULT_CHAT_TEMPLATE(Yi, YiChatTemplate);
 // register the model args
 // example config:
 // https://huggingface.co/01-ai/Yi-6B/blob/main/config.json

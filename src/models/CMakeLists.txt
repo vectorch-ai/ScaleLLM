@@ -9,16 +9,15 @@ cc_library(
     input_parameters.h
     model_registry.h
     causal_lm.h
-    conversation.h
   SRCS
     model_registry.cpp
     causal_lm.cpp
-    conversation.cpp
   DEPS
     :common
     :process_group
     :layers
     :memory
+    :chat_template
     glog::glog
     torch
 )

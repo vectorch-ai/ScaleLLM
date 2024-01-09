@@ -11,7 +11,7 @@
 namespace llm {
 
 // A chat template implementation that uses jinja2 as the template engine.
-class JinjaChatTemplate : ChatTemplate {
+class JinjaChatTemplate : public ChatTemplate {
  public:
   JinjaChatTemplate(const std::string& template_str,
                     bool add_generation_prompt);

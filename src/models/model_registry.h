@@ -6,8 +6,8 @@
 
 #include "args.h"
 #include "causal_lm.h"
+#include "chat_template/chat_template.h"
 #include "common/json_reader.h"
-#include "conversation.h"
 #include "tokenizer/tokenizer_args.h"
 
 namespace llm {
@@ -19,7 +19,7 @@ using CausalLMFactory =
                                             torch::ScalarType dtype,
                                             const torch::Device& device)>;
 
-using ConversationTemplate = std::function<std::unique_ptr<Conversation>()>;
+using ChatTemplateFactory = std::function<std::unique_ptr<ChatTemplate>()>;
 
 using ModelArgsLoader =
     std::function<bool(const JsonReader& json, ModelArgs* args)>;
@@ -33,7 +33,7 @@ using TokenizerArgsLoader =
 // TODO: add default args loader.
 struct ModelMeta {
   CausalLMFactory causal_lm_factory;
-  ConversationTemplate conversation_template;
+  ChatTemplateFactory chat_template_factory;
   ModelArgsLoader model_args_loader;
   QuantArgsLoader quant_args_loader;
   TokenizerArgsLoader tokenizer_args_loader;
@@ -57,8 +57,9 @@ class ModelRegistry {
   static void register_tokenizer_args_loader(const std::string& name,
                                              TokenizerArgsLoader loader);
 
-  static void register_conversation_template(const std::string& name,
-                                             ConversationTemplate factory);
+  static void register_default_chat_template_factory(
+      const std::string& name,
+      ChatTemplateFactory factory);
 
   static CausalLMFactory get_causallm_factory(const std::string& name);
 
@@ -68,7 +69,7 @@ class ModelRegistry {
 
   static TokenizerArgsLoader get_tokenizer_args_loader(const std::string& name);
 
-  static ConversationTemplate get_conversation_template(
+  static ChatTemplateFactory get_default_chat_template_factory(
       const std::string& name);
 
  private:
@@ -96,16 +97,17 @@ class ModelRegistry {
 #define REGISTER_CAUSAL_MODEL(ModelType, ModelClass) \
   REGISTER_CAUSAL_MODEL_WITH_VARNAME(ModelType, ModelType, ModelClass)
 
-#define REGISTER_CONVERSATION_TEMPLATE_WITH_VARNAME(                  \
-    VarName, ModelType, ModelClass)                                   \
-  const bool VarName##_dialog_registered = []() {                     \
-    ModelRegistry::register_conversation_template(                    \
-        #ModelType, []() { return std::make_unique<ModelClass>(); }); \
-    return true;                                                      \
+#define REGISTER_DEFAULT_CHAT_TEMPLATE_WITH_VARNAME(                         \
+    VarName, ModelType, ChatTemplateClass)                                   \
+  const bool VarName##_chat_template_registered = []() {                     \
+    ModelRegistry::register_default_chat_template_factory(                   \
+        #ModelType, []() { return std::make_unique<ChatTemplateClass>(); }); \
+    return true;                                                             \
   }()
 
-#define REGISTER_CONVERSATION_TEMPLATE(ModelType, ModelClass) \
-  REGISTER_CONVERSATION_TEMPLATE_WITH_VARNAME(ModelType, ModelType, ModelClass)
+#define REGISTER_DEFAULT_CHAT_TEMPLATE(ModelType, ChatTemplateClass) \
+  REGISTER_DEFAULT_CHAT_TEMPLATE_WITH_VARNAME(                       \
+      ModelType, ModelType, ChatTemplateClass)
 
 // Macro to register a model args loader with the ModelRegistry
 #define REGISTER_MODEL_ARGS_LOADER_WITH_VARNAME(VarName, ModelType, Loader) \

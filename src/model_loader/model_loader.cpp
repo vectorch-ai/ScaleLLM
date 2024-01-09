@@ -112,9 +112,11 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
   JsonReader tokenizer_reader;
   const std::string tokenizer_args_file_path =
       model_weights_path_ + "/tokenizer_config.json";
-  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
-    GLOG(WARNING) << "Failed to parse tokenizer args file: "
-                  << tokenizer_args_file_path;
+  if (tokenizer_reader.parse(tokenizer_args_file_path)) {
+    // read chat template if exists
+    if (auto v = tokenizer_reader.value<std::string>("chat_template")) {
+      tokenizer_args_.chat_template() = v.value();
+    }
   }
 
   auto tokenizer_args_loader =
@@ -277,9 +279,11 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   JsonReader tokenizer_reader;
   const std::string tokenizer_args_file_path =
       model_weights_path_ + "/tokenizer_config.json";
-  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
-    GLOG(WARNING) << "Failed to parse tokenizer args file: "
-                  << tokenizer_args_file_path;
+  if (tokenizer_reader.parse(tokenizer_args_file_path)) {
+    // read chat template if exists
+    if (auto v = tokenizer_reader.value<std::string>("chat_template")) {
+      tokenizer_args_.chat_template() = v.value();
+    }
   }
 
   auto tokenizer_args_loader =

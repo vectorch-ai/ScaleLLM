@@ -19,6 +19,7 @@ cc_library(
     :request
     :engine
     :models
+    :chat_template
     stduuid
     glog::glog
     grpc_proto::completion

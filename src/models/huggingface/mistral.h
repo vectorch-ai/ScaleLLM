@@ -360,33 +360,35 @@ class MistralForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(MistralForCausalLM);
 
-class MistralConversation final : public Conversation {
+class MistralChatTemplate final : public CodedChatTemplate {
  public:
   // generate prompt from dialogs
   // Prompt template:
   // <s>[INST] Instruction [/INST] Model answer</s>[INST] Follow-up instruction
   // [/INST]
-  std::optional<std::string> get_prompt() const override {
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
     // at least one user message
-    if (messages_.size() % 2 == 0) {
+    if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
 
     std::stringstream ss;
     // start with system message
     // N.B. tokenizer would add <s> to the beginning of the prompt
-    if (!system_message_.empty()) {
-      ss << system_message_;
+    if (!system_message.empty()) {
+      ss << system_message;
     }
 
     // then user and assistant message pairs (u/a/u/a/u...)
-    for (size_t i = 0; i < messages_.size(); ++i) {
+    for (size_t i = 0; i < messages.size(); ++i) {
       if (i % 2 == 0) {
         // user message
-        ss << "[INST] " << messages_[i] << " ";
+        ss << "[INST] " << messages[i] << " ";
       } else {
         // assistant message
-        ss << "[/INST] " << messages_[i] << "</s>";
+        ss << "[/INST] " << messages[i] << "</s>";
       }
     }
     // end with assistant message
@@ -397,7 +399,7 @@ class MistralConversation final : public Conversation {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(mistral, MistralForCausalLM);
-REGISTER_CONVERSATION_TEMPLATE(mistral, MistralConversation);
+REGISTER_DEFAULT_CHAT_TEMPLATE(mistral, MistralChatTemplate);
 REGISTER_MODEL_ARGS(mistral, [&] {
   LOAD_ARG_OR(model_type, "model_type", "mistral");
   LOAD_ARG_OR(dtype, "torch_dtype", "");

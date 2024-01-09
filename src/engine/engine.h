@@ -6,9 +6,8 @@
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 
 #include "memory/block_manager.h"
-#include "models/input_parameters.h"
-#include "request/request.h"
 #include "tokenizer/tokenizer.h"
+#include "tokenizer/tokenizer_args.h"
 #include "worker.h"
 
 DECLARE_int32(block_size);
@@ -48,6 +47,10 @@ class Engine {
 
   const ModelArgs& model_args() const { return args_; }
 
+  const QuantArgs& quant_args() const { return quant_args_; }
+
+  const TokenizerArgs& tokenizer_args() const { return tokenizer_args_; }
+
  private:
   bool init_model(const std::string& model_weights_path);
 
@@ -61,6 +64,12 @@ class Engine {
 
   // model args
   ModelArgs args_;
+
+  // quantization args
+  QuantArgs quant_args_;
+
+  // Tokenizer args
+  TokenizerArgs tokenizer_args_;
 
   // a list of process groups, with each process group handling a single device
   std::vector<std::unique_ptr<ProcessGroup>> process_groups_;

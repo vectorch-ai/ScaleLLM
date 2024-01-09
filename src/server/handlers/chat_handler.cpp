@@ -8,11 +8,16 @@
 #include <cstdint>
 #include <string>
 
+#include "chat_template/jinja_chat_template.h"
 #include "common/logging.h"
 #include "models/args.h"
 #include "models/model_registry.h"
 #include "request/request.h"
 #include "utils.h"
+
+DEFINE_bool(disable_default_chat_template,
+            false,
+            "Disable default chat template");
 
 namespace llm {
 
@@ -155,16 +160,14 @@ bool send_result_to_client(ChatCallData* call_data,
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
+                                                 ChatTemplate* chat_template,
                                                  const Tokenizer& tokenizer,
                                                  const ModelArgs& model_args) {
   const ChatRequest& grpc_request = call_data->request();
-
   const int64_t max_context_len = model_args.max_position_embeddings();
 
   // construct prompt from dialog messages
-  auto dialog_factory =
-      ModelRegistry::get_conversation_template(model_args.model_type());
-  if (dialog_factory == nullptr) {
+  if (chat_template == nullptr) {
     call_data->finish_with_error(
         grpc::StatusCode::INVALID_ARGUMENT,
         "Chat template has not configured, please use /completion API");
@@ -172,22 +175,8 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
                 << model_args.model_type();
     return nullptr;
   }
-  auto dialog = dialog_factory();
-  for (const auto& message : grpc_request.messages()) {
-    if (boost::iequals(message.role(), "system")) {
-      dialog->add_message(Conversation::Role::System, message.content());
-    } else if (boost::iequals(message.role(), "user")) {
-      dialog->add_message(Conversation::Role::User, message.content());
-    } else if (boost::iequals(message.role(), "assistant")) {
-      dialog->add_message(Conversation::Role::Assistant, message.content());
-    } else {
-      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
-                                   "Unknown message role: " + message.role());
-      GLOG(ERROR) << "Unknown message role: " << message.role();
-      return nullptr;
-    }
-  }
-  auto prompt = dialog->get_prompt();
+
+  auto prompt = chat_template->apply(grpc_request.messages());
   if (!prompt.has_value()) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Failed to construct prompt from messages");
@@ -322,6 +311,23 @@ ChatHandler::ChatHandler(Scheduler* scheduler, const Engine* engine)
   GCHECK(scheduler_ != nullptr);
   tokenizer_ = engine->tokenizer();
   model_args_ = engine->model_args();
+
+  // construct chat template
+  auto factory = ModelRegistry::get_default_chat_template_factory(
+      model_args_.model_type());
+  if (!FLAGS_disable_default_chat_template && factory) {
+    GLOG(INFO) << "Use default chat template for model type: "
+               << model_args_.model_type();
+    chat_template_ = factory();
+  } else {
+    const auto& tokenizer_args = engine->tokenizer_args();
+    if (!tokenizer_args.chat_template().empty()) {
+      GLOG(INFO) << "Use chat template from tokenizer args for model type: "
+                 << model_args_.model_type();
+      chat_template_ = std::make_unique<JinjaChatTemplate>(
+          tokenizer_args.chat_template(), /*add_generation_prompt=*/true);
+    }
+  }
 }
 
 void ChatHandler::chat_async(ChatCallData* call_data) {
@@ -331,7 +337,8 @@ void ChatHandler::chat_async(ChatCallData* call_data) {
       return;
     }
 
-    auto request = grpc_request_to_request(call_data, *tokenizer_, model_args_);
+    auto request = grpc_request_to_request(
+        call_data, chat_template_.get(), *tokenizer_, model_args_);
     if (request == nullptr) {
       return;
     }

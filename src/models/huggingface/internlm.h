@@ -349,30 +349,32 @@ class InternlmForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(InternlmForCausalLM);
 
-class InternlmDialog final : public Conversation {
+class InternlmDialog final : public CodedChatTemplate {
  public:
   // generate prompt from dialogs
   // Prompt template:
   // <s><|User|>:{messages[0]}<eoh>\n<|Bot|>:{messages[1]}<eoa>\n
-  std::optional<std::string> get_prompt() const override {
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
     // at least one user message
-    if (messages_.size() % 2 == 0) {
+    if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
 
     std::stringstream ss;
     // start with system message
-    if (!system_message_.empty()) {
-      ss << system_message_;
+    if (!system_message.empty()) {
+      ss << system_message;
     }
     // then user and assistant message pairs (u/a/u/a/u...)
-    for (size_t i = 0; i < messages_.size(); ++i) {
+    for (size_t i = 0; i < messages.size(); ++i) {
       if (i % 2 == 0) {
         // user message
-        ss << "<s><|User|>:" << messages_[i] << "<eoh>\n";
+        ss << "<s><|User|>:" << messages[i] << "<eoh>\n";
       } else {
         // assistant message
-        ss << "<|Bot|>:" << messages_[i] << "<eoa>\n";
+        ss << "<|Bot|>:" << messages[i] << "<eoa>\n";
       }
     }
     // end with assistant message
@@ -383,7 +385,7 @@ class InternlmDialog final : public Conversation {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(internlm, InternlmForCausalLM);
-REGISTER_CONVERSATION_TEMPLATE(internlm, InternlmDialog);
+REGISTER_DEFAULT_CHAT_TEMPLATE(internlm, InternlmDialog);
 REGISTER_MODEL_ARGS(internlm, [&] {
   LOAD_ARG_OR(model_type, "model_type", "internlm");
   LOAD_ARG_OR(dtype, "torch_dtype", "");

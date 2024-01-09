@@ -424,25 +424,27 @@ class ChatGLMForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(ChatGLMForCausalLM);
 
-class ChatGLMConversation final : public Conversation {
+class ChatGLMChatTemplate final : public CodedChatTemplate {
  public:
   // generate prompt from dialogs
   // https://github.com/THUDM/ChatGLM3/blob/main/PROMPT.md
-  std::optional<std::string> get_prompt() const override {
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
     // at least one user message
-    if (messages_.size() % 2 == 0) {
+    if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
 
     std::stringstream ss;
-    if (!system_message_.empty()) {
-      ss << "<|system|>\n" << system_message_ << "\n";
+    if (!system_message.empty()) {
+      ss << "<|system|>\n" << system_message << "\n";
     }
 
     // then user and assistant message pairs (u/a/u/a/u...)
-    for (size_t i = 0; i < messages_.size(); ++i) {
+    for (size_t i = 0; i < messages.size(); ++i) {
       const char* role = (i % 2) == 0 ? "user" : "assistant";
-      ss << "<|" << role << "|>\n" << messages_[i] << "\n";
+      ss << "<|" << role << "|>\n" << messages[i] << "\n";
     }
     // end with assistant message
     ss << "<|assistant|>\n";
@@ -452,7 +454,7 @@ class ChatGLMConversation final : public Conversation {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(chatglm, ChatGLMForCausalLM);
-REGISTER_CONVERSATION_TEMPLATE(chatglm, ChatGLMConversation);
+REGISTER_DEFAULT_CHAT_TEMPLATE(chatglm, ChatGLMChatTemplate);
 REGISTER_MODEL_ARGS(chatglm, [&] {
   // example config:
   // https://huggingface.co/THUDM/chatglm3-6b/blob/main/config.json

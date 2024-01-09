@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention_rope.h"
 #include "layers/embedding.h"
@@ -9,7 +10,6 @@
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/args.h"
-#include "models/conversation.h"
 #include "models/input_parameters.h"
 #include "models/model_registry.h"
 
@@ -362,29 +362,31 @@ class AquilaForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(AquilaForCausalLM);
 
-class AquilaConversation final : public Conversation {
+class AquilaChatTemplate final : public CodedChatTemplate {
  public:
   // generate prompt from dialogs
   // Prompt template for Aquila:
   // System: A chat between a curious ...
   // Human: {prompt}
   // Assistant:
-  std::optional<std::string> get_prompt() const override {
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
     // at least one user message
-    if (messages_.size() % 2 == 0) {
+    if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
 
     std::stringstream ss;
     // start with system message
-    if (!system_message_.empty()) {
-      ss << "System: " << system_message_ << "\n";
+    if (!system_message.empty()) {
+      ss << "System: " << system_message << "\n";
     }
 
     // then user and assistant message pairs (u/a/u/a/u...)
-    for (size_t i = 0; i < messages_.size(); ++i) {
+    for (size_t i = 0; i < messages.size(); ++i) {
       const char* role = (i % 2) == 0 ? "Human: " : "Assistant: ";
-      ss << role << messages_[i] << "\n";
+      ss << role << messages[i] << "\n";
     }
     // end with assistant message
     ss << "Assistant:";
@@ -394,7 +396,7 @@ class AquilaConversation final : public Conversation {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(aquila, AquilaForCausalLM);
-REGISTER_CONVERSATION_TEMPLATE(aquila, AquilaConversation);
+REGISTER_DEFAULT_CHAT_TEMPLATE(aquila, AquilaChatTemplate);
 REGISTER_MODEL_ARGS(aquila, [&] {
   // example config:
   // https://huggingface.co/BAAI/Aquila-7B/blob/main/config.json.

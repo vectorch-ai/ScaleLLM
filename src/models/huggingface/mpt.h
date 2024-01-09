@@ -454,27 +454,29 @@ class MPTForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(MPTForCausalLM);
 
-class MPTConversation final : public Conversation {
+class MPTChatTemplate final : public CodedChatTemplate {
  public:
   // Prompt template:
   // <|im_start|>system\n {system_message} <|im_end|>\n
   // <|im_start|>user\n {message} <|im_end|>\n
   // <|im_start|>assistant\n
-  std::optional<std::string> get_prompt() const override {
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
     // at least one user message
-    if (messages_.size() % 2 == 0) {
+    if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
 
     std::stringstream ss;
-    if (!system_message_.empty()) {
-      ss << "<|im_start|>system\n" << system_message_ << "<|im_end|>\n";
+    if (!system_message.empty()) {
+      ss << "<|im_start|>system\n" << system_message << "<|im_end|>\n";
     }
 
     // then user and assistant message pairs (u/a/u/a/u...)
-    for (size_t i = 0; i < messages_.size(); ++i) {
+    for (size_t i = 0; i < messages.size(); ++i) {
       const char* role = (i % 2) == 0 ? "user" : "assistant";
-      ss << "<|im_start|>" << role << "\n" << messages_[i] << "<|im_end|>\n";
+      ss << "<|im_start|>" << role << "\n" << messages[i] << "<|im_end|>\n";
     }
     // end with assistant message
     ss << "<|im_start|>assistant\n";
@@ -484,7 +486,7 @@ class MPTConversation final : public Conversation {
 
 // register the causal model
 REGISTER_CAUSAL_MODEL(mpt, MPTForCausalLM);
-REGISTER_CONVERSATION_TEMPLATE(mpt, MPTConversation);
+REGISTER_DEFAULT_CHAT_TEMPLATE(mpt, MPTChatTemplate);
 
 REGISTER_MODEL_ARGS(mpt, [&] {
   LOAD_ARG_OR(model_type, "model_type", "mpt");

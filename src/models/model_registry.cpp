@@ -55,24 +55,26 @@ void ModelRegistry::register_quant_args_loader(const std::string& name,
   }
 }
 
-void ModelRegistry::register_tokenizer_args_loader(const std::string &name, TokenizerArgsLoader loader) {
+void ModelRegistry::register_tokenizer_args_loader(const std::string& name,
+                                                   TokenizerArgsLoader loader) {
   ModelRegistry* instance = get_instance();
   if (instance->model_registry_[name].tokenizer_args_loader != nullptr) {
-    GLOG(WARNING) << "tokenizer args loader for " << name << "already registered.";
+    GLOG(WARNING) << "tokenizer args loader for " << name
+                  << "already registered.";
   } else {
     instance->model_registry_[name].tokenizer_args_loader = loader;
   }
 }
 
-void ModelRegistry::register_conversation_template(
+void ModelRegistry::register_default_chat_template_factory(
     const std::string& name,
-    ConversationTemplate factory) {
+    ChatTemplateFactory factory) {
   ModelRegistry* instance = get_instance();
-  if (instance->model_registry_[name].conversation_template != nullptr) {
+  if (instance->model_registry_[name].chat_template_factory != nullptr) {
     GLOG(WARNING) << "conversation template for " << name
                   << "already registered.";
   } else {
-    instance->model_registry_[name].conversation_template = factory;
+    instance->model_registry_[name].chat_template_factory = factory;
   }
 }
 
@@ -91,15 +93,16 @@ QuantArgsLoader ModelRegistry::get_quant_args_loader(const std::string& name) {
   return instance->model_registry_[name].quant_args_loader;
 }
 
-TokenizerArgsLoader ModelRegistry::get_tokenizer_args_loader(const std::string &name) {
+TokenizerArgsLoader ModelRegistry::get_tokenizer_args_loader(
+    const std::string& name) {
   ModelRegistry* instance = get_instance();
   return instance->model_registry_[name].tokenizer_args_loader;
 }
 
-ConversationTemplate ModelRegistry::get_conversation_template(
+ChatTemplateFactory ModelRegistry::get_default_chat_template_factory(
     const std::string& name) {
   ModelRegistry* instance = get_instance();
-  return instance->model_registry_[name].conversation_template;
+  return instance->model_registry_[name].chat_template_factory;
 }
 
 }  // namespace llm

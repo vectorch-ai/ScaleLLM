@@ -1,5 +1,6 @@
 #pragma once
 #include <absl/strings/str_join.h>
+#include <absl/strings/escaping.h>
 
 #include <cstdint>
 #include <optional>
@@ -43,13 +44,13 @@ inline std::ostream& operator<<(std::ostream& os, const TokenizerArgs& args) {
     os << ", special_tokens: [" << absl::StrJoin(args.special_tokens(), ", ")
        << "]";
   }
-  os << ", pattern: " << args.pattern();
+  os << ", pattern: " << absl::CEscape(args.pattern());
   os << ", special_start_id: " << args.special_start_id().value_or(-1);
   if (!args.prefix_tokens().empty()) {
     os << ", prefix_tokens: [" << absl::StrJoin(args.prefix_tokens(), ", ")
        << "]";
   }
-  os << ", chat_template: " << args.chat_template();
+  os << ", chat_template: " << absl::CEscape(args.chat_template());
   os << "]";
   return os;
 }

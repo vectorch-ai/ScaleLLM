@@ -93,6 +93,8 @@ bool Engine::init_model(const std::string& model_weights_path) {
   GCHECK(tokenizer_ != nullptr);
 
   args_ = model_loader->model_args();
+  quant_args_ = model_loader->quant_args();
+  tokenizer_args_ = model_loader->tokenizer_args();
   dtype_ = parse_dtype(args_.dtype(), devices_[0]);
   GLOG(INFO) << "Initializing model with dtype: " << dtype_;
 
@@ -110,16 +112,14 @@ bool Engine::init_model(const std::string& model_weights_path) {
     }
   }
 
-  const auto& quant_args = model_loader->quant_args();
   GLOG(INFO) << "Initializing model with " << args_;
-  GLOG(INFO) << "Initializing model with quant args: " << quant_args;
-  GLOG(INFO) << "Initializing model with tokenizer args: "
-             << model_loader->tokenizer_args();
+  GLOG(INFO) << "Initializing model with quant args: " << quant_args_;
+  GLOG(INFO) << "Initializing model with tokenizer args: " << tokenizer_args_;
 
   if (workers_.size() == 1) {
     Worker* worker = workers_[0].get();
     // only one worker, call init_model in current thread
-    if (!worker->init_model(dtype_, args_, quant_args)) {
+    if (!worker->init_model(dtype_, args_, quant_args_)) {
       return false;
     }
     // load the weights from the checkpoint
@@ -135,7 +135,7 @@ bool Engine::init_model(const std::string& model_weights_path) {
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->init_model_async(dtype_, args_, quant_args));
+    futures.push_back(worker->init_model_async(dtype_, args_, quant_args_));
   }
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();
