@@ -114,13 +114,13 @@ if (DEFINED ENV{LIBTORCH_ROOT})
 else()
   include(FetchContent)
   if (CUDA_VERSION VERSION_GREATER_EQUAL 12.1)
-    # download libtorch 2.1 with cuda 12.1 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.0%2Bcu121.zip")
-    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1 for cuda ${CUDA_VERSION}")
+    # download libtorch 2.1.2 with cuda 12.1 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu121.zip")
+    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1.2 for cuda ${CUDA_VERSION}")
   elseif(CUDA_VERSION VERSION_GREATER_EQUAL 11.8)
     # download libtorch 2.1 with cuda 11.8 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.1.0%2Bcu118.zip")
-    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1 for cuda ${CUDA_VERSION}")
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu118.zip")
+    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1.2 for cuda ${CUDA_VERSION}")
   else()
     # error out if cuda version is not supported
     message(FATAL_ERROR "Unsupported CUDA version: ${CUDA_VERSION}")

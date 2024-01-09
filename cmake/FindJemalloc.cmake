@@ -56,6 +56,5 @@ else()
       INTERFACE_INCLUDE_DIRECTORIES "${Jemalloc_INCLUDE_DIR}"
       INTERFACE_LINK_LIBRARIES "m;stdc++;Threads::Threads;dl"
     )
-    message(STATUS "Using Jemalloc: " ${Jemalloc_LIBRARY})
   endif()
 endif()
