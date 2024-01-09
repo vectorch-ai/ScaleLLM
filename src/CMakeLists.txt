@@ -1,3 +1,4 @@
+add_subdirectory(chat_template)
 add_subdirectory(common)
 add_subdirectory(kernels)
 add_subdirectory(tokenizer)

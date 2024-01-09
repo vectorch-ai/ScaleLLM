@@ -1,10 +1,7 @@
 #pragma once
 
-#include <string>
-#include <thread>
-
 #include "server/call_data.h"
-#include "chat.grpc.pb.h"
+#include "chat.grpc.pb.h"  // IWYU pragma: keep
 #include "common/threadpool.h"
 #include "engine/engine.h"
 #include "models/args.h"

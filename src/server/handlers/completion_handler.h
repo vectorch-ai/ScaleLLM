@@ -1,11 +1,8 @@
 #pragma once
 
-#include <string>
-#include <thread>
-
 #include "server/call_data.h"
 #include "common/threadpool.h"
-#include "completion.grpc.pb.h"
+#include "completion.grpc.pb.h"  // IWYU pragma: keep
 #include "engine/engine.h"
 #include "models/args.h"
 #include "scheduler/scheduler.h"
