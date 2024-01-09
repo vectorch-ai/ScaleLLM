@@ -2,9 +2,8 @@
 
 #include <gflags/gflags.h>
 
-#include <vector>
-
 #include "models/args.h"
+#include "tokenizer/tokenizer_args.h"
 
 // Model args flags
 DECLARE_string(model_type);
@@ -40,9 +39,21 @@ DECLARE_string(group_size);
 DECLARE_string(desc_act);
 DECLARE_string(true_sequential);
 
+// tokenizer flags
+DECLARE_string(tokenizer_type);
+DECLARE_string(vocab_file);
+DECLARE_string(special_tokens);
+DECLARE_string(pattern);
+DECLARE_string(special_start_id);
+DECLARE_string(prefix_tokens);
+DECLARE_string(chat_template);
+
+
 namespace llm {
 
 // a utility function to override model args from gflag
-void override_args_from_gflag(ModelArgs& args, QuantArgs& quant_args);
+void override_args_from_gflag(ModelArgs& args,
+                              QuantArgs& quant_args,
+                              TokenizerArgs& tokenizer_args);
 
 }  // namespace llm

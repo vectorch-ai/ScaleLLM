@@ -30,6 +30,9 @@ struct TokenizerArgs {
 
   // tokens to add to the beginning of the input sequence.
   DEFINE_ARG(std::vector<std::string>, prefix_tokens);
+
+  // chat template
+  DEFINE_ARG(std::string, chat_template);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const TokenizerArgs& args) {
@@ -46,6 +49,7 @@ inline std::ostream& operator<<(std::ostream& os, const TokenizerArgs& args) {
     os << ", prefix_tokens: [" << absl::StrJoin(args.prefix_tokens(), ", ")
        << "]";
   }
+  os << ", chat_template: " << args.chat_template();
   os << "]";
   return os;
 }

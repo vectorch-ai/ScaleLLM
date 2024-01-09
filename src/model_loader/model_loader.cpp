@@ -1,6 +1,7 @@
 #include "model_loader.h"
 
 #include <absl/strings/match.h>
+#include <absl/strings/str_replace.h>
 #include <gflags/gflags.h>
 #include <torch/torch.h>
 
@@ -67,30 +68,8 @@ std::unique_ptr<ModelLoader> ModelLoader::create(
 }
 
 std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
-  // read tokenizer args from tokenizer_config.json if exists
-  JsonReader tokenizer_reader;
-  const std::string tokenizer_args_file_path =
-      model_weights_path_ + "/tokenizer_config.json";
-  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
-    GLOG(WARNING) << "Failed to parse tokenizer args file: "
-                  << tokenizer_args_file_path;
-  }
-  TokenizerArgs tokenizer_args;
-  auto tokenizer_args_loader =
-      ModelRegistry::get_tokenizer_args_loader(args_.model_type());
-  if (tokenizer_args_loader != nullptr) {
-    if (!tokenizer_args_loader(tokenizer_reader, &tokenizer_args)) {
-      GLOG(ERROR) << "Failed to load tokenizer args from "
-                  << tokenizer_args_file_path;
-      return nullptr;
-    }
-  } else {
-    // use default values if no tokenizer args loader exists
-    GLOG(WARNING) << "Failed to find tokenizer args loader for model type "
-                  << args_.model_type();
-  }
-  GLOG(INFO) << "Tokenizer args: " << tokenizer_args;
-  return std::make_unique<SentencePieceTokenizer>(model_weights_path_, tokenizer_args);
+  return std::make_unique<SentencePieceTokenizer>(model_weights_path_,
+                                                  tokenizer_args_);
 }
 
 PTModelLoader::PTModelLoader(const std::string& model_weights_path)
@@ -129,8 +108,31 @@ bool PTModelLoader::load_model_args(const std::string& args_file_path) {
     return false;
   }
 
+  // read tokenizer args from tokenizer_config.json if exists
+  JsonReader tokenizer_reader;
+  const std::string tokenizer_args_file_path =
+      model_weights_path_ + "/tokenizer_config.json";
+  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
+    GLOG(WARNING) << "Failed to parse tokenizer args file: "
+                  << tokenizer_args_file_path;
+  }
+
+  auto tokenizer_args_loader =
+      ModelRegistry::get_tokenizer_args_loader(args_.model_type());
+  if (tokenizer_args_loader != nullptr) {
+    if (!tokenizer_args_loader(tokenizer_reader, &tokenizer_args_)) {
+      GLOG(ERROR) << "Failed to load tokenizer args from "
+                  << tokenizer_args_file_path;
+      return false;
+    }
+  } else {
+    // use default values if no tokenizer args loader exists
+    GLOG(WARNING) << "Failed to find tokenizer args loader for model type "
+                  << args_.model_type();
+  }
+
   // apply args override from gflag if exists
-  override_args_from_gflag(args_, quant_args_);
+  override_args_from_gflag(args_, quant_args_, tokenizer_args_);
   return true;
 }
 
@@ -175,35 +177,12 @@ std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
       << "Failed to locate tokenizer.json, falling back on slow tokenizers "
          "instead.";
 
-  // read tokenizer args from tokenizer_config.json if exists
-  JsonReader tokenizer_reader;
-  const std::string tokenizer_args_file_path =
-      model_weights_path_ + "/tokenizer_config.json";
-  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
-    GLOG(WARNING) << "Failed to parse tokenizer args file: "
-                  << tokenizer_args_file_path;
+  if (tokenizer_args_.tokenizer_type() == "tiktoken") {
+    return std::make_unique<TiktokenTokenizer>(model_weights_path_,
+                                               tokenizer_args_);
   }
-
-  TokenizerArgs tokenizer_args;
-  auto tokenizer_args_loader =
-      ModelRegistry::get_tokenizer_args_loader(args_.model_type());
-  if (tokenizer_args_loader != nullptr) {
-    if (!tokenizer_args_loader(tokenizer_reader, &tokenizer_args)) {
-      GLOG(ERROR) << "Failed to load tokenizer args from "
-                  << tokenizer_args_file_path;
-      return nullptr;
-    }
-  } else {
-    // use default values if no tokenizer args loader exists
-    GLOG(WARNING) << "Failed to find tokenizer args loader for model type "
-                  << args_.model_type();
-  }
-
-  GLOG(INFO) << "Tokenizer args: " << tokenizer_args;
-  if (tokenizer_args.tokenizer_type() == "tiktoken") {
-    return std::make_unique<TiktokenTokenizer>(model_weights_path_, tokenizer_args);
-  }
-  return std::make_unique<SentencePieceTokenizer>(model_weights_path_, tokenizer_args);
+  return std::make_unique<SentencePieceTokenizer>(model_weights_path_,
+                                                  tokenizer_args_);
 }
 
 bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
@@ -294,15 +273,50 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     }
   }
 
-  // apply args override from gflag if exists
-  override_args_from_gflag(args_, quant_args_);
+  // load tokenizer args from tokenizer_config.json if exists
+  JsonReader tokenizer_reader;
+  const std::string tokenizer_args_file_path =
+      model_weights_path_ + "/tokenizer_config.json";
+  if (!tokenizer_reader.parse(tokenizer_args_file_path)) {
+    GLOG(WARNING) << "Failed to parse tokenizer args file: "
+                  << tokenizer_args_file_path;
+  }
 
+  auto tokenizer_args_loader =
+      ModelRegistry::get_tokenizer_args_loader(args_.model_type());
+  if (tokenizer_args_loader != nullptr) {
+    if (!tokenizer_args_loader(tokenizer_reader, &tokenizer_args_)) {
+      GLOG(ERROR) << "Failed to load tokenizer args from "
+                  << tokenizer_args_file_path;
+      return false;
+    }
+  } else {
+    // use default values if no tokenizer args loader exists
+    GLOG(WARNING) << "Failed to find tokenizer args loader for model type "
+                  << args_.model_type();
+  }
+
+  // apply args override from gflag if exists
+  override_args_from_gflag(args_, quant_args_, tokenizer_args_);
+
+  // Some hacky logics to support loading of old models
   // always use float16 for quantization
   // TODO: support quantization for other data types
   if (!quant_args_.quant_method().empty() && args_.dtype() != "float16") {
     GLOG(WARNING) << "Overwriting dtype from " << args_.dtype()
                   << " to float16 for quantization";
     args_.dtype() = "float16";
+  }
+
+  // fix chat template
+  if (!tokenizer_args_.chat_template().empty()) {
+    std::string chat_template = tokenizer_args_.chat_template();
+    // replace "if not add_generation_prompt is defined" since the predence of
+    // "not" and "defined" is different across implementations
+    tokenizer_args_.chat_template() =
+        absl::StrReplaceAll(chat_template,
+                            {{"if not add_generation_prompt is defined",
+                              "if add_generation_prompt is undefined"}});
   }
   return true;
 }

@@ -111,7 +111,10 @@ bool Engine::init_model(const std::string& model_weights_path) {
   }
 
   const auto& quant_args = model_loader->quant_args();
-  GLOG(INFO) << "Initializing model with " << args_ << ", " << quant_args;
+  GLOG(INFO) << "Initializing model with " << args_;
+  GLOG(INFO) << "Initializing model with quant args: " << quant_args;
+  GLOG(INFO) << "Initializing model with tokenizer args: "
+             << model_loader->tokenizer_args();
 
   if (workers_.size() == 1) {
     Worker* worker = workers_[0].get();

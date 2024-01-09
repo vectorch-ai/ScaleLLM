@@ -1,8 +1,10 @@
 #include "args_overrider.h"
 
+#include <absl/strings/str_split.h>
 #include <gflags/gflags.h>
 
 #include "common/logging.h"
+#include "tokenizer/tokenizer_args.h"
 
 // define gflags for all model args defined in src/models/args.h
 DEFINE_string(model_type, "", "model type, e.g. llama2, llama, gpt_neox");
@@ -55,6 +57,19 @@ DEFINE_string(group_size, "", "group size for quantization");
 DEFINE_string(desc_act, "", "desc_act for quantization");
 DEFINE_string(true_sequential, "", "true_sequential for quantization");
 
+// define gflags for all tokenizer args defined in
+DEFINE_string(tokenizer_type,
+              "",
+              "tokenizer type, e.g. sentencepiece, tiktoken");
+DEFINE_string(vocab_file, "", "vocab file name");
+DEFINE_string(special_tokens, "", "special tokens to add to the vocabulary");
+DEFINE_string(pattern, "", "regex pattern used by tiktok tokenizer");
+DEFINE_string(special_start_id, "", "start id for special tokens");
+DEFINE_string(prefix_tokens,
+              "",
+              "tokens to add to the beginning of the input sequence");
+DEFINE_string(chat_template, "", "chat template");
+
 // In gflag, we can't tell the difference between a flag not set and a flag set
 // to default value. Instead, we use string to represent the flag value, and use
 // empty string to represent the flag not set. this leads to a lot of
@@ -63,29 +78,48 @@ DEFINE_string(true_sequential, "", "true_sequential for quantization");
 template <typename T>
 std::optional<T> convert_from_string(const std::string& str) {
   try {
-    if constexpr (std::is_same<T, std::string>::value) {
+    if constexpr (std::is_same_v<T, std::string>) {
       return str;
     } else if constexpr (std::is_same<T, bool>::value) {
       // return true if match "1", "t", "true", "y", "yes"
       return str == "1" || str == "true" || str == "t" || str == "y" ||
              str == "yes";
-    } else if constexpr (std::is_same<T, float>::value) {
+    } else if constexpr (std::is_same_v<T, float>) {
       return std::stof(str);
-    } else if constexpr (std::is_same<T, double>::value) {
+    } else if constexpr (std::is_same_v<T, double>) {
       return std::stod(str);
-    } else if constexpr (std::is_same<T, int32_t>::value) {
+    } else if constexpr (std::is_same_v<T, int32_t>) {
       return std::stoi(str);
-    } else if constexpr (std::is_same<T, int64_t>::value) {
+    } else if constexpr (std::is_same_v<T, int64_t>) {
       return std::stoll(str);
-    } else if constexpr (std::is_same<T, uint32_t>::value) {
+    } else if constexpr (std::is_same_v<T, uint32_t>) {
       return std::stoul(str);
-    } else if constexpr (std::is_same<T, uint64_t>::value) {
+    } else if constexpr (std::is_same_v<T, uint64_t>) {
       return std::stoull(str);
+    } else if constexpr (std::is_same_v<T, std::vector<std::string>>) {
+      // split string by comma
+      std::vector<std::string> parts =
+          absl::StrSplit(str, ",;", absl::SkipWhitespace());
+      return parts;
+    } else if constexpr (std::is_same_v<T, std::vector<int32_t>>) {
+      const std::vector<std::string> parts =
+          absl::StrSplit(str, ",;", absl::SkipWhitespace());
+      std::vector<int32_t> values;
+      for (const auto& part : parts) {
+        int32_t value = 0;
+        if (!absl::SimpleAtoi(part, &value)) {
+          GLOG(ERROR) << "invalid argument: " << str;
+          return std::nullopt;
+        }
+        values.push_back(value);
+      }
+      return values;
     } else {
-      static_assert(std::is_same<T, void>::value,
+      static_assert(std::is_same_v<T, void>,
                     "unsupported type for convert_from_string");
     }
   } catch (const std::invalid_argument& e) {
+    GLOG(ERROR) << "invalid argument: " << str << ", " << e.what();
   }
   return std::nullopt;
 }
@@ -127,7 +161,9 @@ std::optional<T> convert_from_string(const std::string& str) {
 namespace llm {
 
 // a utility function to override model args from gflag
-void override_args_from_gflag(ModelArgs& args, QuantArgs& quant_args) {
+void override_args_from_gflag(ModelArgs& args,
+                              QuantArgs& quant_args,
+                              TokenizerArgs& tokenizer_args) {
   // override args from gflag
   OVERRIDE_ARG_FROM_GFLAG(args, model_type);
   OVERRIDE_ARG_FROM_GFLAG(args, dtype);
@@ -161,6 +197,15 @@ void override_args_from_gflag(ModelArgs& args, QuantArgs& quant_args) {
   OVERRIDE_ARG_FROM_GFLAG(quant_args, group_size);
   OVERRIDE_ARG_FROM_GFLAG(quant_args, desc_act);
   OVERRIDE_ARG_FROM_GFLAG(quant_args, true_sequential);
+
+  // override tokenizer args from gflag
+  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, tokenizer_type);
+  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, vocab_file);
+  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, pattern);
+  OVERRIDE_OPTIONAL_ARG_FROM_GFLAG(tokenizer_args, special_start_id);
+  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, special_tokens);
+  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, prefix_tokens);
+  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, chat_template);
 }
 
 }  // namespace llm
