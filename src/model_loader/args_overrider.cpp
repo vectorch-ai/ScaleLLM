@@ -4,6 +4,7 @@
 #include <gflags/gflags.h>
 
 #include "common/logging.h"
+#include "common/type_traits.h"  // IWYU pragma: keep
 #include "tokenizer/tokenizer_args.h"
 
 // define gflags for all model args defined in src/models/args.h
@@ -80,7 +81,7 @@ std::optional<T> convert_from_string(const std::string& str) {
   try {
     if constexpr (std::is_same_v<T, std::string>) {
       return str;
-    } else if constexpr (std::is_same<T, bool>::value) {
+    } else if constexpr (std::is_same_v<T, bool>) {
       // return true if match "1", "t", "true", "y", "yes"
       return str == "1" || str == "true" || str == "t" || str == "y" ||
              str == "yes";
@@ -124,38 +125,30 @@ std::optional<T> convert_from_string(const std::string& str) {
   return std::nullopt;
 }
 
-#define OVERRIDE_ARG_FROM_GFLAG(args, arg_name)                            \
-  if (!FLAGS_##arg_name.empty()) {                                         \
-    auto value = args.arg_name();                                          \
-    auto arg_val = convert_from_string<decltype(value)>(FLAGS_##arg_name); \
-    if (arg_val.has_value()) {                                             \
-      args.arg_name() = arg_val.value();                                   \
-      GLOG(WARNING) << "Overwriting " << #arg_name << " from " << value    \
-                    << " to " << arg_val.value();                          \
-    } else {                                                               \
-      GLOG(WARNING) << "Ignoring invalid value for " << #arg_name << ": "  \
-                    << FLAGS_##arg_name;                                   \
-    }                                                                      \
-  }
+template <typename T>
+T extract_value(const T& t) {
+  return t;
+}
 
-#define OVERRIDE_OPTIONAL_ARG_FROM_GFLAG(args, arg_name)                    \
-  if (!FLAGS_##arg_name.empty()) {                                          \
-    auto value = args.arg_name();                                           \
-    auto arg_val =                                                          \
-        convert_from_string<decltype(value)::value_type>(FLAGS_##arg_name); \
-    if (arg_val.has_value()) {                                              \
-      args.arg_name() = arg_val.value();                                    \
-      if (value.has_value()) {                                              \
-        GLOG(WARNING) << "Overwriting " << #arg_name << " from "            \
-                      << value.value() << " to " << arg_val.value();        \
-      } else {                                                              \
-        GLOG(WARNING) << "Overwriting " << #arg_name << " from nullopt"     \
-                      << " to " << arg_val.value();                         \
-      }                                                                     \
-    } else {                                                                \
-      GLOG(WARNING) << "Ignoring invalid value for " << #arg_name << ": "   \
-                    << FLAGS_##arg_name;                                    \
-    }                                                                       \
+template <typename T>
+T extract_value(const std::optional<T>& t) {
+  // caller should make sure t has value
+  return t.value();
+}
+
+#define OVERRIDE_ARG_FROM_GFLAG(args, arg_name)                           \
+  if (!FLAGS_##arg_name.empty()) {                                        \
+    auto value = args.arg_name();                                         \
+    using value_type = remove_optional_t<decltype(value)>;                \
+    auto arg_val = convert_from_string<value_type>(FLAGS_##arg_name);     \
+    if (arg_val.has_value()) {                                            \
+      args.arg_name() = arg_val.value();                                  \
+      GLOG(WARNING) << "Overwriting " << #arg_name << " with "            \
+                    << FLAGS_##arg_name;                                  \
+    } else {                                                              \
+      GLOG(WARNING) << "Ignoring invalid value for " << #arg_name << ": " \
+                    << FLAGS_##arg_name;                                  \
+    }                                                                     \
   }
 
 namespace llm {
@@ -172,7 +165,7 @@ void override_args_from_gflag(ModelArgs& args,
   OVERRIDE_ARG_FROM_GFLAG(args, intermediate_size);
   OVERRIDE_ARG_FROM_GFLAG(args, n_layers);
   OVERRIDE_ARG_FROM_GFLAG(args, n_heads);
-  OVERRIDE_OPTIONAL_ARG_FROM_GFLAG(args, n_kv_heads);
+  OVERRIDE_ARG_FROM_GFLAG(args, n_kv_heads);
   OVERRIDE_ARG_FROM_GFLAG(args, vocab_size);
   OVERRIDE_ARG_FROM_GFLAG(args, rms_norm_eps);
   OVERRIDE_ARG_FROM_GFLAG(args, layer_norm_eps);
@@ -184,7 +177,7 @@ void override_args_from_gflag(ModelArgs& args,
   OVERRIDE_ARG_FROM_GFLAG(args, bos_token_id);
   OVERRIDE_ARG_FROM_GFLAG(args, eos_token_id);
   OVERRIDE_ARG_FROM_GFLAG(args, use_parallel_residual);
-  OVERRIDE_OPTIONAL_ARG_FROM_GFLAG(args, attn_qkv_clip);
+  OVERRIDE_ARG_FROM_GFLAG(args, attn_qkv_clip);
   OVERRIDE_ARG_FROM_GFLAG(args, attn_qk_ln);
   OVERRIDE_ARG_FROM_GFLAG(args, attn_alibi);
   OVERRIDE_ARG_FROM_GFLAG(args, alibi_bias_max);
@@ -202,7 +195,7 @@ void override_args_from_gflag(ModelArgs& args,
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, tokenizer_type);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, vocab_file);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, pattern);
-  OVERRIDE_OPTIONAL_ARG_FROM_GFLAG(tokenizer_args, special_start_id);
+  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, special_start_id);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, special_tokens);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, prefix_tokens);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, chat_template);

@@ -2,48 +2,81 @@ include(cc_library)
 include(cc_test)
 
 cc_library(
-  NAME 
-    layers
-  HDRS 
-    model_parallel.h
-    normalization.h
+  NAME
+    linear 
+  HDRS
     linear.h
     linear_impl.h
-    embedding.h
-    pos_embedding.h
-    attention.h
-    attention_rope.h
-    attention_alibi.h
-    activation.h
-    quantization/qlinear_impl.h
-    quantization/qlinear_gptq_impl.h
-    quantization/qlinear_exllama_impl.h
-    quantization/qlinear_exllamav2_impl.h
-    quantization/qlinear_awq_impl.h
-  SRCS 
+  SRCS
     linear.cpp
     linear_impl.cpp
-    model_parallel.cpp
+  DEPS
+    :state_dict
+    :model_parallel
+    :quantization
+    :kernels
+    glog::glog
+    gflags::gflags
+    torch
+)
+
+cc_library(
+  NAME 
+    pos_embedding
+  HDRS 
+    pos_embedding.h
+  SRCS 
     pos_embedding.cpp
-    attention.cpp
-    attention_rope.cpp
-    attention_alibi.cpp
-    activation.cpp
-    quantization/qlinear_impl.cpp
-    quantization/qlinear_gptq_impl.cpp
-    quantization/qlinear_exllama_impl.cpp
-    quantization/qlinear_exllamav2_impl.cpp
-    quantization/qlinear_awq_impl.cpp
   DEPS
     :state_dict
     :memory
     :kernels
+    glog::glog
+    gflags::gflags
+    torch
+)
+
+cc_library(
+  NAME 
+    attention
+  HDRS 
+    attention.h
+    attention_rope.h
+    attention_alibi.h
+  SRCS 
+    attention.cpp
+    attention_rope.cpp
+    attention_alibi.cpp
+  DEPS
+    :state_dict
+    :memory
+    :pos_embedding
+    :kernels
     :vllm.kernels
     :flash-attn.kernels
-    :gptq.kernels
-    :awq.kernels
-    :exllama.kernels
-    :exllamav2.kernels
+    glog::glog
+    gflags::gflags
+    torch
+)
+
+cc_library(
+  NAME 
+    layers
+  HDRS 
+    normalization.h
+    embedding.h
+    activation.h
+  SRCS 
+    activation.cpp
+  DEPS
+    :state_dict
+    :memory
+    :linear
+    :pos_embedding
+    :attention
+    :kernels
+    :vllm.kernels
+    :flash-attn.kernels
     glog::glog
     gflags::gflags
     torch
@@ -58,12 +91,8 @@ cc_test(
     layers_test.cpp
     pos_embedding_test.cpp
     normalization_test.cpp
-    quantization/qlinear_impl_test.cpp
   DEPS
     :layers
     :state_dict
     GTest::gtest_main
-  DATA 
-    data/gptq_small.safetensors
-    data/gptq.safetensors
 )

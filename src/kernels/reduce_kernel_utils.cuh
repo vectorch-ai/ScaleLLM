@@ -127,7 +127,7 @@ struct TopK {
 
   // initialize the heap with pointers to -1 and values to -FLT_MAX
   __device__ __forceinline__ void init() {
-    const bool IS_FP16 = std::is_same<T, half>::value;
+    const bool IS_FP16 = std::is_same_v<T, half>;
     const T MAX_T_VAL = (IS_FP16) ? HALF_FLT_MAX : FLT_MAX;
 
     for (int i = 0; i < K; i++) {
@@ -155,7 +155,7 @@ struct TopK_2 {
   // the index of the topk elements
   int p = -1;
   // the value of the topk elements
-  T u = -((std::is_same<T, half>::value) ? HALF_FLT_MAX : FLT_MAX);
+  T u = -((std::is_same_v<T, half>) ? HALF_FLT_MAX : FLT_MAX);
 
   __device__ __forceinline__ void insert(T elem, int elem_id) {
     if (elem > u) {
@@ -166,7 +166,7 @@ struct TopK_2 {
 
   __device__ __forceinline__ void init() {
     p = -1;
-    u = -((std::is_same<T, half>::value) ? HALF_FLT_MAX : FLT_MAX);
+    u = -((std::is_same_v<T, half>) ? HALF_FLT_MAX : FLT_MAX);
   }
 };
 

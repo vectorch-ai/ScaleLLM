@@ -6,7 +6,8 @@
 #include <vector>
 
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "models/model_args.h"
+#include "quantization/quant_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 

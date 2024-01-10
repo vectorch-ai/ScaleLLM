@@ -3,10 +3,10 @@
 #include <ATen/core/TensorBody.h>
 #include <torch/torch.h>
 
-#include "../linear_impl.h"
-#include "../model_parallel.h"
+#include "layers/linear_impl.h"
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "model_parallel/model_parallel.h"
+#include "models/model_args.h"
 
 namespace llm {
 

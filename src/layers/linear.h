@@ -4,7 +4,8 @@
 
 #include "common/logging.h"
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "model_parallel/parallel_args.h"
+#include "quantization/quant_args.h"
 
 namespace llm {
 

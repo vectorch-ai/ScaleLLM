@@ -1,54 +1,49 @@
-#include "chat_handler.h"
+#include "completion_handler.h"
 
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
 #include <uuid.h>
 
-#include <boost/algorithm/string.hpp>
 #include <cstdint>
 #include <string>
 
-#include "chat_template/jinja_chat_template.h"
 #include "common/logging.h"
-#include "models/args.h"
-#include "models/model_registry.h"
+#include "models/model_args.h"
 #include "request/request.h"
 #include "utils.h"
-
-DEFINE_bool(disable_default_chat_template,
-            false,
-            "Disable default chat template");
 
 namespace llm {
 
 namespace {
 
 std::string generate_request_id() {
-  return "chatcmpl-" + uuids::to_string(uuids::uuid_system_generator{}());
+  return "cmpl-" + uuids::to_string(uuids::uuid_system_generator{}());
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-bool verify_request_arguments(ChatCallData* call_data) {
+bool verify_request_arguments(CompletionCallData* call_data) {
   const auto& request = call_data->request();
-  if (request.messages().empty()) {
-    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
-                                 "messages is empty");
-    return false;
-  }
-
+  // n is not implemented yet for stream request
   const bool stream = request.has_stream() ? request.stream() : false;
-  // n is not implemented for stream requests
-  // N.B. grpc stream requires user to send messages in sequence for order
-  // guarantee. If we want to support n > 1 for stream requests, we need to add
-  // support in call_data to send messages in sequence explicitly to workaround
-  // the grpc stream limitation.
-  if (stream && request.has_n() && request.n() > 1) {
-    call_data->finish_with_error(
-        grpc::StatusCode::UNIMPLEMENTED,
-        "n != 1 is not supported yet for stream requests");
+  const uint32_t n = request.has_n() ? request.n() : 1;
+  if (stream && n > 1) {
+    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
+                                 "n > 1 is not supported yet");
     return false;
   }
 
+  if (request.has_best_of() && request.best_of() != n) {
+    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
+                                 "best_of != n is not supported yet");
+    return false;
+  }
+
+  // prompt is required
+  if (request.prompt().empty()) {
+    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "missing prompt");
+    return false;
+  }
   // up to 4 stop sequences
   if (request.stop_size() > 4) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
@@ -72,6 +67,14 @@ bool verify_request_arguments(ChatCallData* call_data) {
     }
   }
 
+  // logprobs <= 5
+  if (request.has_logprobs()) {
+    if (request.logprobs() > 5) {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "logprobs must be between 0 and 5");
+      return false;
+    }
+  }
   // presence_penalty between [-2.0, 2.0]
   if (request.has_presence_penalty()) {
     if (request.presence_penalty() < -2.0 || request.presence_penalty() > 2.0) {
@@ -91,42 +94,43 @@ bool verify_request_arguments(ChatCallData* call_data) {
       return false;
     }
   }
+  // best_of >= n
+  if (request.has_best_of() && request.has_n()) {
+    if (request.best_of() < request.n()) {
+      call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "best_of must be greater or equal to n");
+      return false;
+    }
+  }
   return true;
 }
 
-bool send_delta_to_client(ChatCallData* call_data,
+bool send_delta_to_client(CompletionCallData* call_data,
                           Request* request,
                           uint32_t index,
-                          bool first_message,
                           const std::string& delta,
                           FinishReason reason) {
-  ChatResponse response;
-  response.set_object("chat.completion.chunk");
+  CompletionResponse response;
+  response.set_object("text_completion");
   response.set_id(request->id);
   response.set_created(request->created_time);
   // response.set_model(request->model);
   auto* choice = response.add_choices();
   choice->set_index(index);
-  // add message
-  auto* message = choice->mutable_delta();
-  // only set role for first message
-  if (first_message) {
-    message->set_role("assistant");
-  }
-  message->set_content(delta);
+  choice->set_text(delta);
   if (reason != FinishReason::NONE) {
     choice->set_finish_reason(finish_reason_to_string(reason));
   }
   return call_data->write(response);
 }
 
-bool send_result_to_client(ChatCallData* call_data,
+bool send_result_to_client(CompletionCallData* call_data,
                            Request* request,
                            const std::vector<SequenceResult>& seq_results,
                            const Status& /*status*/,
                            const Statistics& stats) {
-  ChatResponse response;
-  response.set_object("chat.completion");
+  CompletionResponse response;
+  response.set_object("text_completion");
   response.set_id(request->id);
   response.set_created(request->created_time);
   // response.set_model(request->model);
@@ -136,9 +140,8 @@ bool send_result_to_client(ChatCallData* call_data,
     const auto& seq_result = seq_results[i];
     auto* choice = response.add_choices();
     choice->set_index(i);
-    auto* message = choice->mutable_message();
-    message->set_role("assistant");
-    message->set_content(seq_result.output_text);
+    choice->set_text(seq_result.output_text);
+    // choice->set_logprobs(0);
     if (seq_result.finish_reason != FinishReason::NONE) {
       choice->set_finish_reason(
           finish_reason_to_string(seq_result.finish_reason));
@@ -151,44 +154,25 @@ bool send_result_to_client(ChatCallData* call_data,
   usage->set_completion_tokens(
       static_cast<int32_t>(stats.num_generated_tokens));
   usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
-
   // TODO: combine write and finish
   call_data->write(response);
   // TODO: mapping status to grpc status
   return call_data->finish();
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
-std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
-                                                 ChatTemplate* chat_template,
+std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
                                                  const Tokenizer& tokenizer,
                                                  const ModelArgs& model_args) {
-  const ChatRequest& grpc_request = call_data->request();
+  const CompletionRequest& grpc_request = call_data->request();
+  GCHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
+
   const int64_t max_context_len = model_args.max_position_embeddings();
 
-  // construct prompt from dialog messages
-  if (chat_template == nullptr) {
-    call_data->finish_with_error(
-        grpc::StatusCode::INVALID_ARGUMENT,
-        "Chat template has not configured, please use /completion API");
-    GLOG(ERROR) << "Failed to get dialog factory for model type: "
-                << model_args.model_type();
-    return nullptr;
-  }
-
-  auto prompt = chat_template->apply(grpc_request.messages());
-  if (!prompt.has_value()) {
-    call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
-                                 "Failed to construct prompt from messages");
-    GLOG(ERROR) << "Failed to construct prompt from messages";
-    return nullptr;
-  }
-
   std::vector<int> prompt_tokens;
-  if (!tokenizer.encode(prompt.value(), &prompt_tokens)) {
+  if (!tokenizer.encode(grpc_request.prompt(), &prompt_tokens)) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Failed to encode prompt");
-    GLOG(ERROR) << "Failed to encode prompt: " << prompt.value();
+    GLOG(ERROR) << "Failed to encode prompt: " << grpc_request.prompt();
     return nullptr;
   }
   if (prompt_tokens.size() > max_context_len) {
@@ -240,12 +224,8 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     const auto& stop_token_ids = grpc_request.stop_token_ids();
     stopping_criteria.stop_token_ids.insert(stop_token_ids.begin(),
                                             stop_token_ids.end());
-  } else {
-    // otherwise use stop token ids from model args
-    stopping_criteria.stop_token_ids = model_args.stop_token_ids();
   }
 
-  // construct stop sequences
   for (const auto& stop_seq : grpc_request.stop()) {
     // encode stop sequence
     std::vector<int> token_ids;
@@ -261,11 +241,12 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   if (grpc_request.has_stream()) {
     request->stream = grpc_request.stream();
   }
+  if (grpc_request.has_echo()) {
+    request->echo = grpc_request.echo();
+  }
   if (grpc_request.has_priority()) {
     request->priority = grpc_priority_to_priority(grpc_request.priority());
   }
-  // disable echo for chat completion
-  request->echo = false;
 
   // add on_stream and on_finish callbacks
   const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
@@ -273,16 +254,13 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     // add sequences with on_stream callback
     for (uint32_t i = 0; i < num_seqs; ++i) {
       request->add_sequence(
-          [call_data, request = request.get(), i, first_message = true](
-              const std::string& delta, FinishReason reason) mutable -> bool {
-            bool ret = send_delta_to_client(
-                call_data, request, i, first_message, delta, reason);
-            first_message = false;
-            return ret;
+          [call_data, request = request.get(), i](const std::string& delta,
+                                                  FinishReason reason) -> bool {
+            return send_delta_to_client(call_data, request, i, delta, reason);
           });
     }
 
-    // set callback for stream request
+    // add on_stream_finish callback
     request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
       return call_data->finish();
     };
@@ -292,7 +270,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
       request->add_sequence();
     }
 
-    // set callback for non-stream request
+    // add on_finish callback
     request->on_finish = [call_data, request = request.get()](
                              const std::vector<SequenceResult>& seq_results,
                              const Status& status,
@@ -306,39 +284,21 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
 }  // namespace
 
-ChatHandler::ChatHandler(Scheduler* scheduler, const Engine* engine)
+CompletionHandler::CompletionHandler(Scheduler* scheduler, const Engine* engine)
     : scheduler_(scheduler) {
   GCHECK(scheduler_ != nullptr);
   tokenizer_ = engine->tokenizer();
   model_args_ = engine->model_args();
-
-  // construct chat template
-  auto factory = ModelRegistry::get_default_chat_template_factory(
-      model_args_.model_type());
-  if (!FLAGS_disable_default_chat_template && factory) {
-    GLOG(INFO) << "Use default chat template for model type: "
-               << model_args_.model_type();
-    chat_template_ = factory();
-  } else {
-    const auto& tokenizer_args = engine->tokenizer_args();
-    if (!tokenizer_args.chat_template().empty()) {
-      GLOG(INFO) << "Use chat template from tokenizer args for model type: "
-                 << model_args_.model_type();
-      chat_template_ = std::make_unique<JinjaChatTemplate>(
-          tokenizer_args.chat_template(), /*add_generation_prompt=*/true);
-    }
-  }
 }
 
-void ChatHandler::chat_async(ChatCallData* call_data) {
+void CompletionHandler::complete_async(CompletionCallData* call_data) {
   converter_threadpool_.schedule([this, call_data = call_data]() {
     if (!verify_request_arguments(call_data)) {
       // request is not valid, finish with error
       return;
     }
 
-    auto request = grpc_request_to_request(
-        call_data, chat_template_.get(), *tokenizer_, model_args_);
+    auto request = grpc_request_to_request(call_data, *tokenizer_, model_args_);
     if (request == nullptr) {
       return;
     }

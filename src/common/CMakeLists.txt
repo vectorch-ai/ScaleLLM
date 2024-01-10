@@ -5,6 +5,7 @@ cc_library(
   NAME 
     common
   HDRS
+    macros.h
     logging.h
     metrics.h
     slice.h
@@ -20,28 +21,5 @@ cc_library(
     absl::strings
     prometheus-cpp::core
     nlohmann_json::nlohmann_json
-)
-
-cc_library(
-  NAME 
-    process_group
-  HDRS
-    process_group.h
-  SRCS
-    process_group.cpp
-  DEPS
-    torch
-    NCCL::nccl
-    glog::glog
-)
-
-cc_test(
-  NAME
-    process_group_test
-  SRCS
-    process_group_test.cpp
-  DEPS
-    :process_group
-    GTest::gtest_main
 )
 

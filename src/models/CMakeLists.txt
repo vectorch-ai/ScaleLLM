@@ -5,7 +5,7 @@ cc_library(
   NAME 
     models
   HDRS
-    args.h
+    model_args.h
     input_parameters.h
     model_registry.h
     causal_lm.h
@@ -14,8 +14,8 @@ cc_library(
     causal_lm.cpp
   DEPS
     :common
-    :process_group
     :layers
+    :quantization
     :memory
     :chat_template
     glog::glog

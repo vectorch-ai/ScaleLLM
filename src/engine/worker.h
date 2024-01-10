@@ -5,9 +5,11 @@
 
 #include "common/threadpool.h"
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "model_parallel/parallel_args.h"
 #include "models/causal_lm.h"
 #include "models/input_parameters.h"
+#include "models/model_args.h"
+#include "quantization/quant_args.h"
 
 namespace llm {
 

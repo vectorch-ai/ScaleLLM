@@ -6,6 +6,7 @@
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 
 #include "memory/block_manager.h"
+#include "quantization/quant_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 #include "worker.h"

@@ -17,6 +17,7 @@ cc_library(
   DEPS
     :sentencepiece
     absl::flat_hash_map
+    absl::strings
     tokenizers
     glog::glog
     re2::re2

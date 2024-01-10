@@ -1,4 +1,4 @@
-#include "model_parallel.h"
+#include "model_parallel/model_parallel.h"
 
 #include <torch/torch.h>
 
@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "common/logging.h"
-#include "models/args.h"
+#include "models/model_args.h"
 
 namespace llm {
 

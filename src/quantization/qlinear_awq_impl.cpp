@@ -4,10 +4,10 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "../model_parallel.h"
 #include "common/logging.h"
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "model_parallel/model_parallel.h"
+#include "models/model_args.h"
 
 extern torch::Tensor gemm_forward_cuda(torch::Tensor in_feats,
                                        torch::Tensor kernel,

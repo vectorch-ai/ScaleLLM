@@ -1,8 +1,7 @@
 #pragma once
 
 #include <torch/torch.h>
-
-#include "models/args.h"
+#include "parallel_args.h"
 
 namespace llm {
 

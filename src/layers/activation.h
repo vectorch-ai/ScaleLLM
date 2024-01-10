@@ -1,7 +1,9 @@
 #pragma once
 
 #include <torch/torch.h>
+
 namespace llm {
+  
 namespace detail {
 torch::Tensor gelu(torch::Tensor x);
 

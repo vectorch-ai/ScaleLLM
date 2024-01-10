@@ -9,7 +9,7 @@
 #include "common/logging.h"
 #include "linear_impl.h"
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "models/model_args.h"
 #include "quantization/qlinear_awq_impl.h"
 #include "quantization/qlinear_exllama_impl.h"
 #include "quantization/qlinear_exllamav2_impl.h"

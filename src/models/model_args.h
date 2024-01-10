@@ -1,10 +1,11 @@
 #pragma once
 
 #include <optional>
+#include <ostream>
+#include <string>
 #include <unordered_set>
 
-#include "common/arg.h"
-#include "common/process_group.h"
+#include "common/macros.h"
 
 namespace llm {
 
@@ -126,54 +127,6 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", linear_bias: " << args.linear_bias();
   os << ", qkv_bias: " << args.qkv_bias();
   os << ", residual_post_layernorm: " << args.residual_post_layernorm();
-  os << "]";
-  return os;
-}
-
-struct QuantArgs {
-  DEFINE_ARG(std::string, quant_method) = "";
-
-  // quantization bits
-  DEFINE_ARG(int64_t, bits) = 0;
-
-  // quantization group size
-  DEFINE_ARG(int64_t, group_size) = 0;
-
-  // aka act_order, true results in better quantisation accuracy.
-  DEFINE_ARG(bool, desc_act) = false;
-
-  DEFINE_ARG(bool, true_sequential) = false;
-};
-
-inline std::ostream& operator<<(std::ostream& os, const QuantArgs& args) {
-  os << "QuantArgs: [";
-  os << "quant_method: " << args.quant_method();
-  os << ", bits: " << args.bits();
-  os << ", group_size: " << args.group_size();
-  os << ", desc_act: " << args.desc_act();
-  os << ", true_sequential: " << args.true_sequential();
-  os << "]";
-  return os;
-}
-
-struct ParallelArgs {
-  ParallelArgs(int32_t rank, int32_t world_size, ProcessGroup* process_group)
-      : rank_(rank), world_size_(world_size), process_group_(process_group) {}
-
-  // rank of current process
-  DEFINE_ARG(int32_t, rank) = 0;
-
-  // world size
-  DEFINE_ARG(int32_t, world_size) = 0;
-
-  // pointer to process group, nullptr if world size is 1
-  DEFINE_PTR_ARG(ProcessGroup, process_group) = nullptr;
-};
-
-inline std::ostream& operator<<(std::ostream& os, const ParallelArgs& args) {
-  os << "ParallelArgs: [";
-  os << "rank: " << args.rank();
-  os << ", world_size: " << args.world_size();
   os << "]";
   return os;
 }

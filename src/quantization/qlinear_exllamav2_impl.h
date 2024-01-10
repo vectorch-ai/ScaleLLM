@@ -4,7 +4,7 @@
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "models/model_args.h"
 #include "qlinear_impl.h"
 
 namespace llm {

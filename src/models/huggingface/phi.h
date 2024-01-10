@@ -8,8 +8,8 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_args.h"
 #include "models/model_registry.h"
 
 // Phi model compatible with huggingface weights
@@ -387,8 +387,8 @@ class PhiForCausalLMImpl : public torch::nn::Module {
 TORCH_MODULE(PhiForCausalLM);
 
 // register the model to make it available
-REGISTER_CAUSAL_MODEL_WITH_VARNAME(phi, phi-msft, PhiForCausalLM);
-REGISTER_MODEL_ARGS_WITH_VARNAME(phi, phi-msft, [&] {
+REGISTER_CAUSAL_MODEL_WITH_VARNAME(phi, phi - msft, PhiForCausalLM);
+REGISTER_MODEL_ARGS_WITH_VARNAME(phi, phi - msft, [&] {
   // example config:
   // https://huggingface.co/microsoft/phi-2/blob/main/config.json
   LOAD_ARG_OR(model_type, "model_type", "phi-msft");

@@ -13,7 +13,7 @@
 #include "common/json_reader.h"
 #include "common/logging.h"
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "models/model_args.h"
 #include "models/model_registry.h"
 #include "tokenizer/hf_tokenizer.h"
 #include "tokenizer/sentencepiece_tokenizer.h"

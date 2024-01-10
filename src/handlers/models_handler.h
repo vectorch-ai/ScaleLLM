@@ -1,10 +1,8 @@
 #pragma once
 
 #include <string>
-#include <thread>
 
 #include "models.grpc.pb.h"
-#include "models/args.h"
 
 namespace llm {
 
@@ -16,7 +14,7 @@ class ModelsHandler : public Models::Service {
                     const ListRequest* request,
                     ListResponse* response) override;
 
-private:
+ private:
   std::string model_id_;
   // model created time
   // TODO: read from model config

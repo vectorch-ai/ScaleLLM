@@ -4,10 +4,10 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "../model_parallel.h"
 #include "common/logging.h"
 #include "model_loader/state_dict.h"
-#include "models/args.h"
+#include "model_parallel/model_parallel.h"
+#include "models/model_args.h"
 
 namespace llm {
 namespace {

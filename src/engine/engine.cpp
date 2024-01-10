@@ -9,7 +9,8 @@
 #include "common/pretty_print.h"
 #include "memory/memory.h"
 #include "model_loader/model_loader.h"
-#include "models/args.h"
+#include "model_parallel/parallel_args.h"
+#include "models/model_args.h"
 #include "utils.h"
 #include "worker.h"
 

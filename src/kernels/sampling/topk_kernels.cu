@@ -46,7 +46,7 @@ __global__ void partial_topk_within_block(const T* __restrict logits,
   }
 
   TopK_2<T> partial;
-  const T MAX_T_VAL = (std::is_same<T, half>::value) ? HALF_FLT_MAX : FLT_MAX;
+  const T MAX_T_VAL = (std::is_same_v<T, half>) ? HALF_FLT_MAX : FLT_MAX;
 
   // every thread does top-k then combine the result with block reduce
   for (int ite = 0; ite < k; ite++) {

@@ -4,10 +4,13 @@
 #include <string>
 #include <unordered_map>
 
-#include "args.h"
 #include "causal_lm.h"
 #include "chat_template/chat_template.h"
 #include "common/json_reader.h"
+#include "common/type_traits.h"  // IWYU pragma: keep
+#include "model_args.h"
+#include "model_parallel/parallel_args.h"
+#include "quantization/quant_args.h"
 #include "tokenizer/tokenizer_args.h"
 
 namespace llm {
@@ -122,8 +125,8 @@ class ModelRegistry {
 #define REGISTER_MODEL_ARGS_WITH_VARNAME(VarName, ModelType, ...)       \
   REGISTER_MODEL_ARGS_LOADER_WITH_VARNAME(                              \
       VarName, ModelType, [](const JsonReader& json, ModelArgs* args) { \
-        (void)json;                                                     \
-        (void)args;                                                     \
+        UNUSED_PARAMETER(json);                                         \
+        UNUSED_PARAMETER(args);                                         \
         __VA_ARGS__();                                                  \
         return true;                                                    \
       })
@@ -155,8 +158,8 @@ class ModelRegistry {
 #define REGISTER_TOKENIZER_ARGS_WITH_VARNAME(VarName, ModelType, ...)       \
   REGISTER_TOKENIZER_ARGS_LOADER_WITH_VARNAME(                              \
       VarName, ModelType, [](const JsonReader& json, TokenizerArgs* args) { \
-        (void)json;                                                         \
-        (void)args;                                                         \
+        UNUSED_PARAMETER(json);                                             \
+        UNUSED_PARAMETER(args);                                             \
         __VA_ARGS__();                                                      \
         return true;                                                        \
       })
@@ -164,42 +167,31 @@ class ModelRegistry {
 #define REGISTER_TOKENIZER_ARGS(ModelType, ...) \
   REGISTER_TOKENIZER_ARGS_WITH_VARNAME(ModelType, ModelType, __VA_ARGS__)
 
-template <typename type>
-struct RemoveOptional {
-  using value_type = type;
-};
-
-// specialization for optional
-template <typename type>
-struct RemoveOptional<std::optional<type>> {
-  using value_type = type;
-};
-
-#define LOAD_ARG(arg_name, json_name)                                        \
-  [&] {                                                                      \
-    auto value = args->arg_name();                                           \
-    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
-    if (auto data_value = json.value<value_type>(json_name)) {               \
-      args->arg_name() = data_value.value();                                 \
-    }                                                                        \
+#define LOAD_ARG(arg_name, json_name)                          \
+  [&] {                                                        \
+    auto value = args->arg_name();                             \
+    using value_type = remove_optional_t<decltype(value)>;     \
+    if (auto data_value = json.value<value_type>(json_name)) { \
+      args->arg_name() = data_value.value();                   \
+    }                                                          \
   }()
 
-#define LOAD_ARG_OR(arg_name, json_name, default_value)                      \
-  [&] {                                                                      \
-    auto value = args->arg_name();                                           \
-    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
-    args->arg_name() = json.value_or<value_type>(json_name, default_value);  \
+#define LOAD_ARG_OR(arg_name, json_name, default_value)                     \
+  [&] {                                                                     \
+    auto value = args->arg_name();                                          \
+    using value_type = remove_optional_t<decltype(value)>;                  \
+    args->arg_name() = json.value_or<value_type>(json_name, default_value); \
   }()
 
-#define LOAD_ARG_OR_FUNC(arg_name, json_name, ...)                           \
-  [&] {                                                                      \
-    auto value = args->arg_name();                                           \
-    using value_type = typename RemoveOptional<decltype(value)>::value_type; \
-    if (auto data_value = json.value<value_type>(json_name)) {               \
-      args->arg_name() = data_value.value();                                 \
-    } else {                                                                 \
-      args->arg_name() = __VA_ARGS__();                                      \
-    }                                                                        \
+#define LOAD_ARG_OR_FUNC(arg_name, json_name, ...)             \
+  [&] {                                                        \
+    auto value = args->arg_name();                             \
+    using value_type = remove_optional_t<decltype(value)>;     \
+    if (auto data_value = json.value<value_type>(json_name)) { \
+      args->arg_name() = data_value.value();                   \
+    } else {                                                   \
+      args->arg_name() = __VA_ARGS__();                        \
+    }                                                          \
   }()
 
 #define SET_ARG(arg_name, value) [&] { args->arg_name() = value; }()

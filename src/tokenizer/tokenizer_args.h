@@ -1,6 +1,6 @@
 #pragma once
-#include <absl/strings/str_join.h>
 #include <absl/strings/escaping.h>
+#include <absl/strings/str_join.h>
 
 #include <cstdint>
 #include <optional>
@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "common/arg.h"
+#include "common/macros.h"
 
 namespace llm {
 

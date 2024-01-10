@@ -4,8 +4,7 @@ include(cc_library)
 cc_library(
   NAME 
     grpc_server
-  HDRS 
-    call_data.h
+  HDRS
     grpc_server.h
   SRCS 
     grpc_server.cpp
@@ -92,5 +91,3 @@ cc_binary(
     gflags::gflags
     grpc_proto::completion
 )
-
-add_subdirectory(handlers)

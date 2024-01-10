@@ -2,7 +2,8 @@
 
 #include <gflags/gflags.h>
 
-#include "models/args.h"
+#include "models/model_args.h"
+#include "quantization/quant_args.h"
 #include "tokenizer/tokenizer_args.h"
 
 // Model args flags
@@ -47,7 +48,6 @@ DECLARE_string(pattern);
 DECLARE_string(special_start_id);
 DECLARE_string(prefix_tokens);
 DECLARE_string(chat_template);
-
 
 namespace llm {
 

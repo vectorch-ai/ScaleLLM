@@ -9,8 +9,8 @@
 #include "layers/normalization.h"
 #include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
-#include "models/args.h"
 #include "models/input_parameters.h"
+#include "models/model_args.h"
 #include "models/model_registry.h"
 
 // gpt-neox model compatible with huggingface weights

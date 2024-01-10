@@ -5,7 +5,6 @@
 #include <string>
 #include <thread>
 
-#include "common/logging.h"
 #include "handlers/chat_handler.h"
 #include "handlers/completion_handler.h"
 #include "handlers/models_handler.h"

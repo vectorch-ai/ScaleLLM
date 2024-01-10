@@ -2,13 +2,13 @@
 
 #include <gflags/gflags.h>
 
+#include "call_data.h"
 #include "chat.grpc.pb.h"  // IWYU pragma: keep
 #include "chat_template/chat_template.h"
 #include "common/threadpool.h"
 #include "engine/engine.h"
-#include "models/args.h"
+#include "models/model_args.h"
 #include "scheduler/scheduler.h"
-#include "server/call_data.h"
 
 DECLARE_bool(disable_default_chat_template);
 

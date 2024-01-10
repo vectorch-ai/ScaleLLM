@@ -22,7 +22,6 @@ cc_library(
     :sampler
     :tokenizer
     :model_loader
-    :process_group
     glog::glog
     Folly::folly
     absl::synchronization

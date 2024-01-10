@@ -1,10 +1,10 @@
 #pragma once
 
-#include "server/call_data.h"
+#include "call_data.h"
 #include "common/threadpool.h"
 #include "completion.grpc.pb.h"  // IWYU pragma: keep
 #include "engine/engine.h"
-#include "models/args.h"
+#include "models/model_args.h"
 #include "scheduler/scheduler.h"
 
 namespace llm {
@@ -29,7 +29,7 @@ class CompletionHandler final {
   // model args
   ModelArgs model_args_;
 
-  // converter threadpool 
+  // converter threadpool
   ThreadPool converter_threadpool_;
 };
 
