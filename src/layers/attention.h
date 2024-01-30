@@ -36,10 +36,6 @@ class AttentionImpl : public torch::nn::Module {
 
   // scale factor
   float scale_ = 0.0;
-
-  // head mapping used for single_query_masked_self_attention
-  // [num_heads]
-  torch::Tensor kv_head_mapping_;
 };
 TORCH_MODULE(Attention);
 
@@ -66,8 +62,8 @@ void varlen_masked_self_attention(
 // self attention with single token as query
 // used in decode stage
 void single_query_masked_self_attention(
-    const KVCache& kv_cache,               // kv cache
-    const torch::Tensor& kv_head_mapping,  // [num_heads]
+    const KVCache& kv_cache,            // kv cache
+    int32_t n_kv_heads,                 // number of kv heads
     const torch::Tensor& query,         // [n_tokens/n_seq, n_heads, head_dim]
     const torch::Tensor& block_tables,  // [n_tokens, max_num_blocks]
     const torch::Tensor& context_lens,  // [n_tokens]
@@ -112,8 +108,8 @@ void single_query_masked_self_attention_generic(
 
 // fast version of single_query_masked_self_attention with CUDA kernel
 void single_query_masked_self_attention_cuda(
-    const KVCache& kv_cache,               // kv cache
-    const torch::Tensor& kv_head_mapping,  // [num_heads]
+    const KVCache& kv_cache,            // kv cache
+    int32_t n_kv_heads,                 // number of kv heads
     const torch::Tensor& query,         // [n_tokens/n_seq, n_heads, head_dim]
     const torch::Tensor& block_tables,  // [n_tokens, max_num_blocks]
     const torch::Tensor& context_lens,  // [n_tokens]

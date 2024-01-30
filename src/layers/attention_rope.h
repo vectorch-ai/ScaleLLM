@@ -44,10 +44,6 @@ class AttentionWithRoPEImpl : public torch::nn::Module {
 
   // scale factor
   float scale_ = 0.0;
-
-  // head mapping used for single_query_masked_self_attention
-  // [num_heads]
-  torch::Tensor kv_head_mapping_;
 };
 TORCH_MODULE(AttentionWithRoPE);
 

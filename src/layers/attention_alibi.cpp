@@ -25,10 +25,6 @@ AttentionWithAlibiImpl::AttentionWithAlibiImpl(int64_t n_heads,
   GCHECK(alibi_slopes.dim() == 1 && alibi_slopes.size(0) == n_heads)
       << "alibi_slopes should be a 1D tensor of size " << n_heads << " but got "
       << alibi_slopes_.sizes() << " instead.";
-
-  kv_head_mapping_ = register_buffer(
-      "kv_head_mapping",
-      detail::prepare_kv_head_mapping(n_heads, n_kv_heads, device));
 }
 
 torch::Tensor AttentionWithAlibiImpl::forward(
@@ -74,7 +70,7 @@ torch::Tensor AttentionWithAlibiImpl::forward(
     auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
     auto sliced_query = q.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
     detail::single_query_masked_self_attention(kv_cache,
-                                               kv_head_mapping_,
+                                               static_cast<int32_t>(n_kv_heads_),
                                                sliced_query,
                                                input_params.block_tables,
                                                input_params.context_lens,
