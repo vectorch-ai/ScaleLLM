@@ -10,10 +10,12 @@ cc_library(
     metrics.h
     slice.h
     concurrent_queue.h
+    time.h
     threadpool.h
     pretty_print.h
     json_reader.h
   SRCS
+    time.cpp
     threadpool.cpp
     pretty_print.cpp
     json_reader.cpp
