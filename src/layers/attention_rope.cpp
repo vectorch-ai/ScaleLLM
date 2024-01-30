@@ -34,10 +34,6 @@ AttentionWithRoPEImpl::AttentionWithRoPEImpl(int64_t n_heads,
                                              interleaved,
                                              dtype,
                                              device));
-
-  kv_head_mapping_ = register_buffer(
-      "kv_head_mapping",
-      detail::prepare_kv_head_mapping(n_heads, n_kv_heads, device));
 }
 
 torch::Tensor AttentionWithRoPEImpl::forward(
@@ -88,7 +84,7 @@ torch::Tensor AttentionWithRoPEImpl::forward(
     auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
     auto sliced_query = q.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
     detail::single_query_masked_self_attention(kv_cache,
-                                               kv_head_mapping_,
+                                               static_cast<int32_t>(n_kv_heads_),
                                                sliced_query,
                                                input_params.block_tables,
                                                input_params.context_lens,
