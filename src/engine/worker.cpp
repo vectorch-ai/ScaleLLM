@@ -113,6 +113,7 @@ OutputParameters Worker::validate(
   auto logits_processor =
       LogitsProcessor::create(sampling_params, dtype_, device_);
 
+  // TODO: need to support validate multiple speculative steps
   logits_processor->forward(logits,
                             d_params.token_ids,
                             d_params.token_counts,

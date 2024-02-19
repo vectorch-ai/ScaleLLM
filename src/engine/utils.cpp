@@ -257,6 +257,7 @@ void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,
     }
     token_ids_lens_vec.emplace_back(static_cast<int32_t>(unique_tokens));
     max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
+
     num_total_tokens += num_tokens;
     max_seq_len = std::max(max_seq_len, num_tokens);
     cu_seq_lens.emplace_back(num_total_tokens);
@@ -288,7 +289,7 @@ void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,
     token_counts_tensor.index_put_({i, Slice()},
                                    torch::tensor(counts, torch::kInt));
   }
-  // TODO
+
   std::vector<std::vector<int32_t>> block_tables;
   int32_t max_block_table_len = 0;
   auto block_tables_tensor = torch::empty(
@@ -308,11 +309,11 @@ void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,
 
   input_params->num_prompt_tokens = num_total_tokens;
   input_params->max_seq_len = max_seq_len;
-  //input_params->max_context_len = max_context_len; TODO
+  input_params->max_context_len = 0;
   input_params->cu_seq_lens = torch::tensor(cu_seq_lens, torch::kInt);
   input_params->slot_ids = torch::tensor(slot_ids, torch::kInt);
   input_params->block_tables = block_tables_tensor;
-  //input_params->context_lens = torch::tensor(context_lens, torch::kInt); TODO
+  input_params->context_lens = torch::tensor({}, torch::kInt);
   input_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt);
   input_params->token_ids = token_ids_tensor;
   input_params->token_counts = token_counts_tensor;
