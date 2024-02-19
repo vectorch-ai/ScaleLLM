@@ -12,6 +12,7 @@
 #include "request/sequence.h"
 
 namespace llm {
+
 constexpr size_t kRequestQueueSize = 100000;
 // TODO: reader from config
 constexpr size_t kMaxBatchSize = 100;

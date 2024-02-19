@@ -42,7 +42,7 @@ class Engine {
   // step the engine forward by one step with the batch
   OutputParameters execute_model(const std::vector<Sequence*>& batch);
 
-  // validate multiple output tokens when use speculative
+  // validate multiple speculative tokens when use speculative decoding
   OutputParameters validate(const std::vector<Sequence*>& batch);
 
   std::unique_ptr<Tokenizer> tokenizer() const { return tokenizer_->clone(); }

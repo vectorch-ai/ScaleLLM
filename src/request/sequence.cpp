@@ -95,16 +95,34 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   return true;
 }
 
-// TODO
-bool Sequence::append_spec_token_id(int32_t spec_token_id) {
+void Sequence::append_spec_token_id(int32_t spec_token_id) {
   spec_token_ids_.push_back(spec_token_id);
-  ++spec_token_count_;
-  return true;
 }
 
-void Sequence::clear_spec_token_ids() {
+void Sequence::update_valid_token_ids(const int64_t* valid_ids) {
+  // reset finished flags
+  finish_reason_ = FinishReason::NONE;
+  is_finished_ = false;
+
+  size_t idx = 0;
+  for (; idx < spec_token_ids_.size(); ++idx) {
+    if (valid_ids[idx] != spec_token_ids_[idx]) {
+      // find first invalid token id (idx)
+      // 1. clear invalid token counts
+      for (int64_t i = idx; i < spec_token_ids_.size(); ++i) {
+        token_counts_[spec_token_ids_[i]]--;
+      }
+      // 2. erase invalid tokens
+      token_ids_.erase(token_ids_.end() - spec_token_ids_.size() + idx,
+          token_ids_.end());
+      break;
+    }
+  }
+  // clear spec token ids
   spec_token_ids_.clear();
-  spec_token_count_ = 0;
+
+  //append new valid id
+  append_new_token_id(valid_ids[idx]);
 }
 
 // decode the sequence to get delta text using the tokenizer
