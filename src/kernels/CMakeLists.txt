@@ -80,3 +80,49 @@ cc_library(
     # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
+cc_library(
+  NAME 
+    flash-attn.kernels
+  SRCS
+    flash_attn/flash_api.cpp
+    flash_attn/src/flash_fwd_hdim32_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim32_bf16_sm80.cu
+    flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim64_bf16_sm80.cu
+    flash_attn/src/flash_fwd_hdim96_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim96_bf16_sm80.cu
+    flash_attn/src/flash_fwd_hdim128_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim128_bf16_sm80.cu
+    flash_attn/src/flash_fwd_hdim160_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim160_bf16_sm80.cu
+    flash_attn/src/flash_fwd_hdim192_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim192_bf16_sm80.cu
+    flash_attn/src/flash_fwd_hdim224_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim224_bf16_sm80.cu
+    flash_attn/src/flash_fwd_hdim256_fp16_sm80.cu
+    flash_attn/src/flash_fwd_hdim256_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim32_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim32_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim64_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim64_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim96_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim96_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim128_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim128_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim160_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim160_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim192_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim192_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim224_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim224_bf16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim256_fp16_sm80.cu
+    flash_attn/src/flash_fwd_split_hdim256_bf16_sm80.cu
+  INCLUDES
+    flash_attn
+    flash_attn/src
+    cutlass/include
+  DEPS
+    torch
+)
+
+

@@ -13,15 +13,16 @@ DEFINE_bool(
     false,
     "force to use paged attention v2 for single_query_masked_self_attention");
 
-// ref to flash_attn in third_party/flash_attn
+// ref to flash_attn
 extern std::vector<at::Tensor> mha_varlen_fwd(
-    const at::Tensor& q,
+    at::Tensor& q,
     const at::Tensor& k,
     const at::Tensor& v,
     torch::optional<torch::Tensor>& out_,
     const at::Tensor& cu_seqlens_q,
     const at::Tensor& cu_seqlens_k,
-    torch::optional<torch::Tensor> alibi_slopes,
+    const torch::optional<torch::Tensor>& seqused_k,
+    const torch::optional<torch::Tensor>& alibi_slopes,
     int max_seqlen_q,
     int max_seqlen_k,
     float p_dropout,
@@ -298,13 +299,15 @@ void varlen_masked_self_attention_cuda(
     torch::Tensor& output) {
   const auto head_dim = query.size(-1);
 
+  auto query_ = query;
   torch::optional<at::Tensor> out = output;
-  mha_varlen_fwd(query,
+  mha_varlen_fwd(query_,
                  key,
                  value,
                  out,
                  cu_seq_lens,
                  cu_seq_lens,
+                 /*seqused_k=*/torch::nullopt,
                  alibi_slopes,
                  max_seq_len,
                  max_seq_len,
@@ -392,7 +395,7 @@ void single_query_masked_self_attention_cuda(
   // round up partition number
   const auto num_partitions =
       (max_context_len + kPartitionSize - 1) / kPartitionSize;
-    
+
   // For context len > 8192, use V2 kernel to avoid shared memory shortage.
   const bool use_v1 =
       (max_context_len <= 8192) &&

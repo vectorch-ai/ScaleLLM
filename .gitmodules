@@ -1,12 +1,6 @@
 [submodule "third_party/vllm"]
 	path = third_party/vllm
 	url = https://github.com/vllm-project/vllm.git
-[submodule "third_party/flash-attn"]
-	path = third_party/flash-attn
-	url = https://github.com/vectorch-ai/flash-attention.git
-[submodule "third_party/exllama"]
-	path = third_party/exllama
-	url = https://github.com/turboderp/exllama.git
 [submodule "src/kernels/cutlass"]
 	path = src/kernels/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
