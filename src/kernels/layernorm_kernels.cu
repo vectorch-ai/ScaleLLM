@@ -1,5 +1,6 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/torch.h>
+
 #include "dispatch.h"
 #include "reduce_kernel_utils.cuh"
 
@@ -39,17 +40,18 @@ __global__ void rms_norm_kernel(T* __restrict__ out,
   }
 }
 
-void rms_norm(torch::Tensor& out,
-              torch::Tensor input,
-              torch::Tensor weight,
+void rms_norm(torch::Tensor& out,    // [..., hidden_size]
+              torch::Tensor input,   // [..., hidden_size]
+              torch::Tensor weight,  // [hidden_size]
               float epsilon) {
   DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
   DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
 
-  const int n = input.size(1);
+  const int hidden_size = input.size(-1);
+  const int n_tokens = input.numel() / hidden_size;
 
-  dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  dim3 grid(n_tokens);
+  dim3 block(std::min(hidden_size, 1024));
   DISPATCH_FLOATING_TYPES(input.scalar_type(), "rms_norm_kernel", [&] {
     rms_norm_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -57,7 +59,7 @@ void rms_norm(torch::Tensor& out,
             input.data_ptr<scalar_t>(),
             weight.data_ptr<scalar_t>(),
             epsilon,
-            n);
+            hidden_size);
   });
 }
 
@@ -111,18 +113,20 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
   }
 }
 
-void layer_norm(torch::Tensor& out,
-                torch::Tensor input,
-                torch::Tensor weight,
+void layer_norm(torch::Tensor& out,    // [..., hidden_size]
+                torch::Tensor input,   // [..., hidden_size]
+                torch::Tensor weight,  // [hidden_size]
                 torch::Tensor bias,
                 float epsilon) {
   DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
   DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
 
-  const int n = input.size(1);
+  const int hidden_size = input.size(-1);
+  const int n_tokens = input.numel() / hidden_size;
+  LOG(INFO) << "hidden_size: " << hidden_size << " n_tokens: " << n_tokens;
 
-  dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  dim3 grid(n_tokens);
+  dim3 block(std::min(hidden_size, 1024));
   DISPATCH_FLOATING_TYPES(input.scalar_type(), "layer_norm_kernel", [&] {
     layer_norm_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -131,7 +135,7 @@ void layer_norm(torch::Tensor& out,
             weight.data_ptr<scalar_t>(),
             bias.defined() ? bias.data_ptr<scalar_t>() : nullptr,
             epsilon,
-            n);
+            hidden_size);
   });
 }
 

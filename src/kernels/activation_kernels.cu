@@ -75,17 +75,19 @@ __global__ void activation_kernel(T* __restrict__ out,
 
 template <template <typename T> class Activation>
 void launch_activation(torch::Tensor& out, torch::Tensor input) {
-  const int n = static_cast<int>(input.size(1));
-  const int stride = static_cast<int>(input.stride(0));
-  dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  const int hidden_size = static_cast<int>(input.size(-1));
+  const int stride = static_cast<int>(input.stride(-2));
+  const int n_tokens = static_cast<int>(input.numel() / hidden_size);
+
+  dim3 grid(n_tokens);
+  dim3 block(std::min(hidden_size, 1024));
   DISPATCH_FLOATING_TYPES(
       input.scalar_type(), "activation_kernel", ([&] {
         activation_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
                 out.data_ptr<scalar_t>(),
                 input.data_ptr<scalar_t>(),
-                n,
+                hidden_size,
                 stride);
       }));
 }
@@ -106,14 +108,18 @@ __global__ void activation_and_mul_kernel(T* __restrict__ out,
 
 template <template <typename T> class Activation>
 void launch_activation_and_mul(torch::Tensor& out, torch::Tensor input) {
-  const int n = static_cast<int>(input.size(1)) / 2;
-  dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  const int hidden_size = static_cast<int>(input.size(-1) / 2);
+  const int n_tokens = static_cast<int>(input.numel() / input.size(-1));
+
+  dim3 grid(n_tokens);
+  dim3 block(std::min(hidden_size, 1024));
   DISPATCH_FLOATING_TYPES(
       input.scalar_type(), "activation_and_mul_kernel", ([&] {
         activation_and_mul_kernel<Activation, scalar_t>
             <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
-                out.data_ptr<scalar_t>(), input.data_ptr<scalar_t>(), n);
+                out.data_ptr<scalar_t>(),
+                input.data_ptr<scalar_t>(),
+                hidden_size);
       }));
 }
 

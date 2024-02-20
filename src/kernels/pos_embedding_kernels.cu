@@ -82,9 +82,9 @@ __global__ void rotary_embedding_kernel(
 
 // apply rotary embedding to query and key inplace
 void apply_rotary_pos_emb(
-    torch::Tensor& query,            // [n_tokens, n_heads, head_dim]
-    torch::Tensor& key,              // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& positions,  // [n_tokens]
+    torch::Tensor& query,            // [..., n_heads, head_dim]
+    torch::Tensor& key,              // [..., n_kv_heads, head_dim]
+    const torch::Tensor& positions,  // [...]
     const torch::Tensor& cos_sin,    // [max_positions, 2, rotary_dim/2]
     int rotary_dim,
     bool interleaved) {
@@ -93,12 +93,12 @@ void apply_rotary_pos_emb(
   DCHECK(query.dim() == 3) << "query must be 3d";
   DCHECK(key.dim() == 3) << "key must be 3d";
 
-  const int n_tokens = query.size(0);
-  const int n_heads = query.size(1);
-  const int n_kv_heads = key.size(1);
-  const int head_dim = query.size(2);
-  const int q_stride = query.stride(0);
-  const int k_stride = key.stride(0);
+  const int n_tokens = query.numel() / query.size(-1);
+  const int n_heads = query.size(-2);
+  const int n_kv_heads = key.size(-2);
+  const int head_dim = query.size(-1);
+  const int q_stride = query.stride(-2);
+  const int k_stride = key.stride(-2);
 
   const dim3 grid(n_tokens);
   const dim3 block(std::min(1024, n_heads * rotary_dim) / 2);

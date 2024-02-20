@@ -3,14 +3,14 @@
 
 namespace llm::kernel {
 
-void rms_norm(torch::Tensor& out,
-              torch::Tensor input,
-              torch::Tensor weight,
+void rms_norm(torch::Tensor& out,    // [...(n_tokens), hidden_size]
+              torch::Tensor input,   // [...(n_tokens), hidden_size]
+              torch::Tensor weight,  // [hidden_size]
               float epsilon);
-              
-void layer_norm(torch::Tensor& out,
-                torch::Tensor input,
-                torch::Tensor weight,
+
+void layer_norm(torch::Tensor& out,    // [...(n_tokens), hidden_size]
+                torch::Tensor input,   // [...(n_tokens), hidden_size]
+                torch::Tensor weight,  // [hidden_size]
                 torch::Tensor bias,
                 float epsilon);
 
