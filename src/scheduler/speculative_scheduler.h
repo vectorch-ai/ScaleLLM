@@ -5,22 +5,22 @@
 
 #include "engine/engine.h"
 #include "request/request.h"
+#include "scheduler/response_handler.h"
 #include "scheduler/scheduler.h"
 #include "scheduler/scheduler_config.h"
+#include "scheduler/scheduler_policy.h"
 
 namespace llm {
 
 class BlockManager;
 class Engine;
-class ResponseHandler;
-class SchedulerPolicy;
 class Tokenizer;
 class SpeculativeScheduler final : public Scheduler {
  public:
   SpeculativeScheduler(const SchedulerConfig& config,
                        Engine* llm_engine,
                        Engine* ssm_engine);
-  ~SpeculativeScheduler() override;
+  ~SpeculativeScheduler() override = default;
 
   bool schedule(std::unique_ptr<Request>& request) override;
   void step(const absl::Duration& timeout) override;
@@ -40,8 +40,8 @@ class SpeculativeScheduler final : public Scheduler {
 
   std::unique_ptr<Tokenizer> tokenizer_;
 
-  SchedulerPolicy* scheduler_policy_;
-  ResponseHandler* response_handler_;
+  std::unique_ptr<SchedulerPolicy> scheduler_policy_;
+  std::unique_ptr<ResponseHandler> response_handler_;
 };
 
 }  // namespace llm

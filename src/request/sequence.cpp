@@ -110,7 +110,7 @@ void Sequence::update_valid_token_ids(const int64_t* valid_ids) {
       // find first invalid token id (idx)
       // 1. clear invalid token counts
       for (int64_t i = idx; i < spec_token_ids_.size(); ++i) {
-        token_counts_[spec_token_ids_[i]]--;
+        token_to_count_map_[spec_token_ids_[i]]--;
       }
       // 2. erase invalid tokens
       token_ids_.erase(token_ids_.end() - spec_token_ids_.size() + idx,

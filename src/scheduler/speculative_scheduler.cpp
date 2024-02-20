@@ -5,8 +5,6 @@
 #include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
-#include "scheduler/response_handler.h"
-#include "scheduler/scheduler_policy.h"
 
 namespace llm {
 
@@ -26,15 +24,10 @@ SpeculativeScheduler::SpeculativeScheduler(const SchedulerConfig& config,
   GCHECK(ssm_block_manager_ != nullptr);
   GCHECK(tokenizer_ != nullptr);
 
-  response_handler_ = new ResponseHandler(llm_block_manager_,
-                                          tokenizer_.get());
-  scheduler_policy_ = new FCFSSchedulerPolicy(response_handler_,
-                                              llm_block_manager_);
-}
-
-SpeculativeScheduler::~SpeculativeScheduler() {
-  delete scheduler_policy_;
-  delete response_handler_;
+  response_handler_ = std::make_unique<ResponseHandler>(
+      llm_block_manager_, tokenizer_.get());
+  scheduler_policy_ = std::make_unique<FCFSSchedulerPolicy>(
+      response_handler_.get(), llm_block_manager_);
 }
 
 bool SpeculativeScheduler::schedule(std::unique_ptr<Request>& request) {
@@ -71,8 +64,8 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
 
   for (int64_t i = 0; i < num_seqs; ++i) {
     Sequence* seq = spec_sequences_batch[i];
-    auto seq_next_tokens = next_tokens.index_select(0,
-        torch::tensor(i, torch::kInt));
+    auto seq_next_tokens = next_tokens.index_select(/*dim=*/ 0,
+        torch::tensor(i, torch::kInt64));
     const int64_t* ids = seq_next_tokens.data_ptr<int64_t>();
     seq->update_valid_token_ids(ids);
     // stream delta to client if streaming is enabled
