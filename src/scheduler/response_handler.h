@@ -12,10 +12,10 @@ class Tokenizer;
 class ResponseHandler {
  public:
   ResponseHandler(BlockManager* block_manager, Tokenizer* tokenizer);
-  ~ResponseHandler() {}
+  virtual ~ResponseHandler() = default;
 
-  void on_request_finish(Request* request);
-  void on_sequence_stream(Sequence* seq);
+  virtual void on_request_finish(Request* request);
+  virtual void on_sequence_stream(Sequence* seq);
 
  private:
   // the threadpool to handle responses
