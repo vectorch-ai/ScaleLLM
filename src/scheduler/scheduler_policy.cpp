@@ -36,7 +36,6 @@ FCFSSchedulerPolicy::~FCFSSchedulerPolicy() {
     std::unique_ptr<Request> request_ptr(request);
   }
 
-  running_batch_.clear();
   running_queue_.clear();
   blocking_queue_.clear();
 }
@@ -83,6 +82,7 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
 
     std::vector<Sequence*> sequences;
     sequences.reserve(request->sequences.size());
+
     for (Sequence& sequence : request->sequences) {
       if (sequence.is_finished()) {
         continue;
@@ -95,7 +95,7 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
       blocking_queue_.emplace_back(request);
     } else {
       running_queue_.emplace_back(request);
-      running_batch_.insert(running_batch_.end(),
+      running_batch.insert(running_batch.end(),
                             sequences.begin(),
                             sequences.end());
     }

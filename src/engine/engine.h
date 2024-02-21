@@ -37,13 +37,13 @@ class Engine {
 
   virtual ~Engine() = default;
 
-  bool init(const std::string& model_weights_path);
+  virtual bool init(const std::string& model_weights_path);
 
   // step the engine forward by one step with the batch
-  OutputParameters execute_model(const std::vector<Sequence*>& batch);
+  virtual OutputParameters execute_model(const std::vector<Sequence*>& batch);
 
   // validate multiple speculative tokens when use speculative decoding
-  OutputParameters validate(const std::vector<Sequence*>& batch);
+  virtual OutputParameters validate(const std::vector<Sequence*>& batch);
 
   std::unique_ptr<Tokenizer> tokenizer() const { return tokenizer_->clone(); }
 

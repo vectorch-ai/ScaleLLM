@@ -15,6 +15,7 @@ cc_library(
   SRCS 
     response_handler.cpp
     scheduler_policy.cpp
+    scheduler_config.cpp
     continuous_batching_scheduler.cpp
     speculative_scheduler.cpp
   DEPS
@@ -25,12 +26,13 @@ cc_library(
     absl::time
 )
 
-# cc_test(
-#   NAME
-#     scheduler_test
-#   SRCS
-#     scheduler_test.cpp
-#   DEPS
-#     :scheduler
-#     GTest::gtest_main
-# )
+cc_test(
+  NAME
+    scheduler_test
+  SRCS
+    scheduler_test.cpp
+  DEPS
+    :scheduler
+    absl::strings
+    GTest::gtest_main
+)
