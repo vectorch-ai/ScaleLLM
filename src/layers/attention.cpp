@@ -5,6 +5,7 @@
 #include <torch/torch.h>
 
 #include "common/logging.h"
+#include "kernels/flash_attn/flash_api.h"
 
 DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
 
@@ -12,27 +13,6 @@ DEFINE_bool(
     force_use_paged_attention_v2,
     false,
     "force to use paged attention v2 for single_query_masked_self_attention");
-
-// ref to flash_attn
-extern std::vector<at::Tensor> mha_varlen_fwd(
-    at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    torch::optional<torch::Tensor>& out_,
-    const at::Tensor& cu_seqlens_q,
-    const at::Tensor& cu_seqlens_k,
-    const torch::optional<torch::Tensor>& seqused_k,
-    const torch::optional<torch::Tensor>& alibi_slopes,
-    int max_seqlen_q,
-    int max_seqlen_k,
-    float p_dropout,
-    float softmax_scale,
-    bool zero_tensors,
-    bool is_causal,
-    int window_size_left,
-    int window_size_right,
-    bool return_softmax,
-    torch::optional<at::Generator> gen_);
 
 // ref to paged_attention_v1 in third_party/vllm
 extern void paged_attention_v1(
