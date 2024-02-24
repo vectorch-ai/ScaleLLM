@@ -59,9 +59,6 @@ struct Flash_fwd_params : public Qkv_params {
     index_t o_row_stride;
     index_t o_head_stride;
 
-    // The pointer to the P matrix.
-    void * __restrict__ p_ptr;
-
     // The pointer to the softmax sum.
     void * __restrict__ softmax_lse_ptr;
     void * __restrict__ softmax_lseaccum_ptr;
@@ -103,24 +100,8 @@ struct Flash_fwd_params : public Qkv_params {
     index_t block_table_batch_stride;
     int page_block_size;
 
-    // The dropout probability (probability of keeping an activation).
-    float p_dropout;
-    // uint32_t p_dropout_in_uint;
-    // uint16_t p_dropout_in_uint16_t;
-    uint8_t p_dropout_in_uint8_t;
-
-    // Scale factor of 1 / (1 - p_dropout).
-    float rp_dropout;
-    float scale_softmax_rp_dropout;
-
     // Local window size
     int window_size_left, window_size_right;
-
-    // Random state.
-    at::PhiloxCudaState philox_args;
-
-    // Pointer to the RNG seed (idx 0) and offset (idx 1).
-    uint64_t * rng_state;
 
     bool is_bf16;
     bool is_causal;

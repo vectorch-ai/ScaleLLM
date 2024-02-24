@@ -290,14 +290,10 @@ void varlen_masked_self_attention_cuda(
                  alibi_slopes,
                  max_seq_len,
                  max_seq_len,
-                 /*p_dropout=*/0.0f,
                  /*softmax_scale=*/scale,
-                 /*zero_tensors=*/false,
                  /*is_causal=*/true,
                  /*window_size_left=*/-1,
-                 /*window_size_right=*/0,
-                 /*return_softmax=*/false,
-                 /*gen_=*/torch::nullopt);
+                 /*window_size_right=*/0);
 }
 
 void single_query_masked_self_attention_generic(

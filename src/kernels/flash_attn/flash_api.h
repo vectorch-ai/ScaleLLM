@@ -20,12 +20,8 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
                const c10::optional<at::Tensor> &alibi_slopes_, // [num_heads]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V
-               float p_dropout,
                float softmax_scale,
-               bool zero_tensors,
                bool is_causal,
                int window_size_left,
-               int window_size_right,
-               bool return_softmax,
-               c10::optional<at::Generator> gen_);
+               int window_size_right);
 // clang-format on
