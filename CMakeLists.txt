@@ -56,7 +56,7 @@ else()
   include(FetchContent)
   FetchContent_Declare(vcpkg
     GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
-    GIT_TAG "2023.12.12"
+    GIT_TAG "2024.02.14"
   )
   FetchContent_MakeAvailable(vcpkg)
 
@@ -142,6 +142,7 @@ else()
 endif()
 
 # carry over torch flags to the rest of the project
+message(STATUS "TORCH_CXX_FLAGS: ${TORCH_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 # enable testing in this directory so we can do a top-level `make test`.
