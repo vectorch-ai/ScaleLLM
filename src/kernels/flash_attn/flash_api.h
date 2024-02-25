@@ -24,4 +24,23 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
                bool is_causal,
                int window_size_left,
                int window_size_right);
+
+
+std::vector<at::Tensor>
+mha_varlen_fwd_kvcache(at::Tensor &q,                   // [n_tokens, n_heads, head_dim]
+                       const at::Tensor &cu_seqlens_q,  // [batch + 1]
+                       const at::Tensor &kcache,            // [n_blocks, block_size, n_kv_heads, head_dim]
+                       const at::Tensor &vcache,            // [n_blocks, block_size, n_kv_heads, head_dim]
+                       c10::optional<const at::Tensor> &seqlens_k_, // [batch]: length of each sequence in kv cache
+                       c10::optional<const at::Tensor> &knew_,      // [n_tokens, n_kv_heads, head_dim]: new keys
+                       c10::optional<const at::Tensor> &vnew_,      // [n_tokens, n_kv_heads, head_dim]: new values
+                       c10::optional<const at::Tensor> &cu_seqlens_knew_, // [batch + 1]: index of the new keys/values
+                       c10::optional<at::Tensor> &block_table_,     // [batch, max_blocks_per_sequence]
+                       c10::optional<at::Tensor> &out_,             // [n_tokens, n_heads, head_dim]
+                       int max_seqlen_q,
+                       int max_seqlen_k,
+                       float softmax_scale,
+                       bool is_causal,
+                       int window_size_left,
+                       int window_size_right);
 // clang-format on

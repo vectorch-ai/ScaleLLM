@@ -38,8 +38,9 @@ TEST(AttentionTest, VarlenMaskedSelfAttention) {
 
   torch::Tensor alibi_slopes =
       torch::rand({n_heads}, torch::dtype(torch::kFloat32).device(device));
-  torch::Tensor cu_seq_lens = torch::tensor(
-      {0, max_seq_len}, torch::dtype(torch::kInt32).device(device));
+  const std::vector<int32_t> cu_lens = {0, 16, 55, 210, 331, num_tokens};
+  torch::Tensor cu_seq_lens =
+      torch::tensor(cu_lens, torch::dtype(torch::kInt32).device(device));
   torch::Tensor none_tensor;
 
   torch::Tensor output = torch::empty_like(query);
