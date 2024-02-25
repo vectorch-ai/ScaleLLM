@@ -12,11 +12,13 @@
 // clang-format off
 std::vector<at::Tensor>
 mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
-               const at::Tensor &k,   // [n_tokens, n_kv_heads, head_dim]
-               const at::Tensor &v,   // [n_tokens, n_kv_heads, head_dim]
+               // [n_tokens, n_kv_heads, head_dim] or cache [n_blocks, block_size, n_kv_heads, head_dim]
+               const at::Tensor &k,
+               const at::Tensor &v,
                c10::optional<at::Tensor> &out_, // [n_tokens, n_heads, head_dim]
                const at::Tensor &cu_seqlens_q,  // [batch + 1]
                const at::Tensor &cu_seqlens_k,  // [batch + 1]
+               const c10::optional<at::Tensor> &block_table_, // [batch, max_blocks_per_seq]
                const c10::optional<at::Tensor> &alibi_slopes_, // [num_heads]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V

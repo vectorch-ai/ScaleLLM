@@ -228,6 +228,7 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
                c10::optional<at::Tensor> &out_, // [n_tokens, n_heads, head_dim]
                const at::Tensor &cu_seqlens_q,  // [batch + 1]
                const at::Tensor &cu_seqlens_k,  // [batch + 1]
+               const c10::optional<at::Tensor> &block_table_, // [batch, max_blocks_per_seq]
                const c10::optional<at::Tensor> &alibi_slopes_, // [num_heads]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V
@@ -264,13 +265,26 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
     CHECK_CONTIGUOUS(cu_seqlens_q);
     CHECK_CONTIGUOUS(cu_seqlens_k);
 
+    at::Tensor block_table;
+    const bool paged_KV = block_table_.has_value();
+    if (paged_KV) {
+        block_table = block_table_.value();
+        CHECK_DEVICE(block_table);
+        TORCH_CHECK(block_table.dtype() == torch::kInt32, "block_table must have dtype torch.int32");
+        TORCH_CHECK(block_table.stride(-1) == 1, "block_table must have contiguous last dimension");
+    }
+    const int n_blocks = !paged_KV ? 0 : k.size(0);
+    const int block_size = !paged_KV ? 1 : k.size(1);
+    TORCH_CHECK(!paged_KV || block_size % 256 == 0, "Paged KV cache block size must be divisible by 256");
+
+    // [n_tokens, n_heads, head_dim]
     const auto sizes = q.sizes();
 
     const int batch_size = cu_seqlens_q.numel() - 1;
     int num_heads = sizes[1];
     const int head_size_og = sizes[2];
-    const int total_k = k.size(0);
-    const int num_heads_k = k.size(1);
+    // k: [..., n_kv_heads, head_dim]
+    const int num_heads_k = k.size(-2);
 
     if (max_seqlen_q == 1 && !alibi_slopes_.has_value()) { is_causal = false; }  // causal=true is the same as causal=false in this case
     if (is_causal) { window_size_right = 0; }
@@ -288,7 +302,7 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
         cu_seqlens_q_d = nullptr;
     }
 
-    const int total_q = q.sizes()[0];
+    const int total_q = q.size(0);
 
     TORCH_CHECK(batch_size > 0, "batch size must be positive");
     TORCH_CHECK(head_size_og <= 256, "FlashAttention forward only supports head dimension at most 256");
@@ -298,10 +312,16 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
     if (window_size_right >= max_seqlen_k) { window_size_right = -1; }
 
     CHECK_SHAPE(q, total_q, num_heads, head_size_og);
-    CHECK_SHAPE(k, total_k, num_heads_k, head_size_og);
-    CHECK_SHAPE(v, total_k, num_heads_k, head_size_og);
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
+    if (!paged_KV) {
+        const int total_k = k.size(0);
+        CHECK_SHAPE(k, total_k, num_heads_k, head_size_og);
+        CHECK_SHAPE(v, total_k, num_heads_k, head_size_og);
+    } else {
+        CHECK_SHAPE(k, n_blocks, block_size, num_heads_k, head_size_og);
+        CHECK_SHAPE(v, n_blocks, block_size, num_heads_k, head_size_og);
+    }
 
     at::Tensor q_padded, k_padded, v_padded;
     if (head_size_og % 8 != 0) {
@@ -363,18 +383,18 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
                            head_size_rounded, /*num_splits*/0, dprops, opts);
     }
 
-    // number of times random will be generated per thread, to offset philox counter in thc random
-    // state
-    // We use a custom RNG that increases the offset by batch_size * nheads * 32.
-    int64_t counter_offset = params.b * params.h * 32;
-    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
-    auto rng_state = torch::empty({2}, options.dtype(torch::kInt64));
+    if (paged_KV) {
+        // [batch_size, max_blocks_per_seq]
+        params.block_table = block_table.data_ptr<int>();
+        params.block_table_batch_stride = block_table.stride(0);
+    }
+    params.page_block_size = block_size;
 
     set_params_alibi(params, alibi_slopes_, batch_size, num_heads);
 
     if (max_seqlen_k > 0) {
         auto stream = at::cuda::getCurrentCUDAStream().stream();
-        run_mha_fwd(params, stream);
+        run_mha_fwd(params, stream, /*force_split_kernel=*/paged_KV);
     } else {
         // If seqlen_k == 0, then we have an empty tensor. We need to set the output to 0.
         out.zero_();
@@ -396,5 +416,5 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
         softmax_lse = softmax_lse.reshape({batch_size, num_heads_k * max_seqlen_q, 1});
     }
 
-    return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse, p, rng_state};
+    return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse, p};
 }

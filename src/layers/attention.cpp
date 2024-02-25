@@ -287,6 +287,7 @@ void varlen_masked_self_attention_cuda(
                  out,
                  cu_seq_lens,
                  cu_seq_lens,
+                 /*block_table=*/torch::nullopt,
                  alibi_slopes,
                  max_seq_len,
                  max_seq_len,
