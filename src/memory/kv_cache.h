@@ -50,15 +50,13 @@ class KVCache final {
   int64_t num_kv_heads_;
   int64_t head_size_;
   int64_t block_size_;
-  int64_t x_;
 
   // the contunuous memory region for key and value cache would be splited into
   // fixed size blocks. the blocks allocation would be managed by the
   // blockallocator.
-  // TODO: follow vllm key/value cache layout for now, refactor later
-  // [num_blocks, num_heads, head_dim/x, block_size, x]
+  // [num_blocks, block_size, num_heads, head_dim]
   torch::Tensor key_cache_;
-  // [num_blocks, num_heads, head_dim, block_size]
+  // [num_blocks, block_size, num_heads, head_dim]
   torch::Tensor value_cache_;
 };
 

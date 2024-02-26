@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
+option(USE_CCACHE "Attempt using CCache to wrap the compilation" OFF)
 
 if(POLICY CMP0135)
   # CMP0135: ExternalProject ignores timestamps in archives by default for the URL download method.
