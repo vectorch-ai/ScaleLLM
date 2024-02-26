@@ -277,8 +277,6 @@ void varlen_masked_self_attention_cuda(
     int32_t max_seq_len,                          // maximum sequence length
     float scale,                                  // scale for softmax
     torch::Tensor& output) {
-  const auto head_dim = query.size(-1);
-
   auto query_ = query;
   torch::optional<at::Tensor> out = output;
   mha_varlen_fwd(query_,
@@ -413,6 +411,36 @@ void single_query_masked_self_attention_cuda(
                        max_context_len,
                        alibi_slopes);
   }
+}
+
+void masked_self_attention_cuda(
+    const torch::Tensor& query,          // [n_q_tokens, n_heads, head_dim]
+    const torch::Tensor& key,            // [..., n_kv_heads, head_dim]
+    const torch::Tensor& value,          // [..., n_kv_heads, head_dim]
+    const torch::Tensor& q_cu_seq_lens,  // [n_seq + 1]
+    const torch::Tensor& k_cu_seq_lens,  // [n_seq + 1]
+    const torch::optional<torch::Tensor> block_tables,  // [n_seq, max_n_blocks]
+    const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
+    int32_t q_max_seq_len,  // maximum sequence length for Q
+    int32_t k_max_seq_len,  // maximum sequence length for K/V
+    float scale,
+    torch::Tensor& output) {
+  auto query_ = query;
+  torch::optional<at::Tensor> out = output;
+  mha_varlen_fwd(query_,
+                 key,
+                 value,
+                 out,
+                 q_cu_seq_lens,
+                 k_cu_seq_lens,
+                 block_tables,
+                 alibi_slopes,
+                 q_max_seq_len,
+                 k_max_seq_len,
+                 /*softmax_scale=*/scale,
+                 /*is_causal=*/true,
+                 /*window_size_left=*/-1,
+                 /*window_size_right=*/0);
 }
 
 }  // namespace detail

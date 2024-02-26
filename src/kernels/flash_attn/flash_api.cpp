@@ -388,6 +388,9 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
         // [batch_size, max_blocks_per_seq]
         params.block_table = block_table.data_ptr<int>();
         params.block_table_batch_stride = block_table.stride(0);
+        // k: [n_blocks, block_size, n_kv_heads, head_dim]
+        params.k_batch_stride = k_padded.stride(0);
+        params.v_batch_stride = v_padded.stride(0);
     }
     params.page_block_size = block_size;
 

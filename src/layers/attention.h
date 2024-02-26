@@ -111,10 +111,26 @@ void single_query_masked_self_attention_cuda(
     const KVCache& kv_cache,            // kv cache
     int32_t n_kv_heads,                 // number of kv heads
     const torch::Tensor& query,         // [n_tokens/n_seq, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [n_tokens, max_num_blocks]
+    const torch::Tensor& block_tables,  // [n_seq, max_n_blocks]
     const torch::Tensor& context_lens,  // [n_tokens]
     torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     int32_t max_context_len,                      // maximum context length
+    float scale,
+    torch::Tensor& output);
+
+// key/value support two type of inputs:
+// * packed continuous memory : [n_kv_tokens, n_kv_heads, head_dim]
+// * block-wise memory: [n_blocks, block_size, n_kv_heads, head_dim]
+void masked_self_attention_cuda(
+    const torch::Tensor& query,          // [n_q_tokens, n_heads, head_dim]
+    const torch::Tensor& key,            // [..., n_kv_heads, head_dim]
+    const torch::Tensor& value,          // [..., n_kv_heads, head_dim]
+    const torch::Tensor& q_cu_seq_lens,  // [n_seq + 1]
+    const torch::Tensor& k_cu_seq_lens,  // [n_seq + 1]
+    torch::optional<torch::Tensor> block_tables,  // [n_seq, max_n_blocks]
+    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
+    int32_t q_max_seq_len,  // maximum sequence length for Q
+    int32_t k_max_seq_len,  // maximum sequence length for K/V
     float scale,
     torch::Tensor& output);
 

@@ -94,5 +94,6 @@ cc_test(
   DEPS
     :layers
     :state_dict
+    absl::random_random
     GTest::gtest_main
 )
