@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include <ATen/cuda/CUDAContext.h>
 #include <gflags/gflags_declare.h>
 
 #include <boost/algorithm/string.hpp>
@@ -54,6 +55,19 @@ torch::ScalarType parse_dtype(const std::string& dtype_str,
 
 Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";
+
+  for (const auto device : devices) {
+    // all devices should be the same type
+    if (device.is_cuda()) {
+      // check cuda compute capability
+      const auto* properties = at::cuda::getDeviceProperties(device.index());
+      const bool is_sm8x = properties->major == 8 && properties->minor >= 0;
+      const bool is_sm90 = properties->major == 9 && properties->minor == 0;
+      GCHECK(is_sm90 || is_sm8x)
+          << "Engine only supports Ampere GPUs or newer.";
+      // TODO: add Turing(sm75) support in the near future.
+    }
+  }
 
   const int32_t world_size = static_cast<int32_t>(devices.size());
   if (world_size > 1) {

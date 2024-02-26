@@ -212,18 +212,6 @@ __forceinline__ __device__ auto convert_layout_acc_Aregs(Layout acc_layout) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Convert acc_layout from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)
-template<typename Layout>
-__forceinline__ __device__ auto convert_layout_acc_dropout(Layout acc_layout) {
-    using X = Underscore;
-    static_assert(decltype(size<0>(acc_layout))::value == 4);
-    static_assert(decltype(rank(acc_layout))::value == 3);
-    auto l = logical_divide(acc_layout, Shape<X, X, _2>{});  // (4, MMA_M, (2, MMA_N / 2)))
-    return make_layout(make_layout(get<0>(l), get<2, 0>(l)), get<1>(l), get<2, 1>(l));
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 template <typename To_type, typename Engine, typename Layout>
 __forceinline__ __device__ auto convert_type(Tensor<Engine, Layout> const &tensor) {
     using From_type = typename Engine::value_type;

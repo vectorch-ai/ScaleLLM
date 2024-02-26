@@ -5,6 +5,7 @@
 #include <torch/torch.h>
 
 #include "common/logging.h"
+#include "kernels/flash_attn/flash_api.h"
 
 DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
 
@@ -12,27 +13,6 @@ DEFINE_bool(
     force_use_paged_attention_v2,
     false,
     "force to use paged attention v2 for single_query_masked_self_attention");
-
-// ref to flash_attn
-extern std::vector<at::Tensor> mha_varlen_fwd(
-    at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    torch::optional<torch::Tensor>& out_,
-    const at::Tensor& cu_seqlens_q,
-    const at::Tensor& cu_seqlens_k,
-    const torch::optional<torch::Tensor>& seqused_k,
-    const torch::optional<torch::Tensor>& alibi_slopes,
-    int max_seqlen_q,
-    int max_seqlen_k,
-    float p_dropout,
-    float softmax_scale,
-    bool zero_tensors,
-    bool is_causal,
-    int window_size_left,
-    int window_size_right,
-    bool return_softmax,
-    torch::optional<at::Generator> gen_);
 
 // ref to paged_attention_v1 in third_party/vllm
 extern void paged_attention_v1(
@@ -297,8 +277,6 @@ void varlen_masked_self_attention_cuda(
     int32_t max_seq_len,                          // maximum sequence length
     float scale,                                  // scale for softmax
     torch::Tensor& output) {
-  const auto head_dim = query.size(-1);
-
   auto query_ = query;
   torch::optional<at::Tensor> out = output;
   mha_varlen_fwd(query_,
@@ -307,18 +285,14 @@ void varlen_masked_self_attention_cuda(
                  out,
                  cu_seq_lens,
                  cu_seq_lens,
-                 /*seqused_k=*/torch::nullopt,
+                 /*block_table=*/torch::nullopt,
                  alibi_slopes,
                  max_seq_len,
                  max_seq_len,
-                 /*p_dropout=*/0.0f,
                  /*softmax_scale=*/scale,
-                 /*zero_tensors=*/false,
                  /*is_causal=*/true,
                  /*window_size_left=*/-1,
-                 /*window_size_right=*/0,
-                 /*return_softmax=*/false,
-                 /*gen_=*/torch::nullopt);
+                 /*window_size_right=*/0);
 }
 
 void single_query_masked_self_attention_generic(
@@ -437,6 +411,36 @@ void single_query_masked_self_attention_cuda(
                        max_context_len,
                        alibi_slopes);
   }
+}
+
+void masked_self_attention_cuda(
+    const torch::Tensor& query,          // [n_q_tokens, n_heads, head_dim]
+    const torch::Tensor& key,            // [..., n_kv_heads, head_dim]
+    const torch::Tensor& value,          // [..., n_kv_heads, head_dim]
+    const torch::Tensor& q_cu_seq_lens,  // [n_seq + 1]
+    const torch::Tensor& k_cu_seq_lens,  // [n_seq + 1]
+    const torch::optional<torch::Tensor> block_tables,  // [n_seq, max_n_blocks]
+    const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
+    int32_t q_max_seq_len,  // maximum sequence length for Q
+    int32_t k_max_seq_len,  // maximum sequence length for K/V
+    float scale,
+    torch::Tensor& output) {
+  auto query_ = query;
+  torch::optional<at::Tensor> out = output;
+  mha_varlen_fwd(query_,
+                 key,
+                 value,
+                 out,
+                 q_cu_seq_lens,
+                 k_cu_seq_lens,
+                 block_tables,
+                 alibi_slopes,
+                 q_max_seq_len,
+                 k_max_seq_len,
+                 /*softmax_scale=*/scale,
+                 /*is_causal=*/true,
+                 /*window_size_left=*/-1,
+                 /*window_size_right=*/0);
 }
 
 }  // namespace detail
