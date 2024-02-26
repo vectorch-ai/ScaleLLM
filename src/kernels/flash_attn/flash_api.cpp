@@ -181,7 +181,7 @@ inline int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n
 void set_params_splitkv(Flash_fwd_params &params, const int batch_size,
     const int num_heads, const int head_size, const int max_seqlen_k, const int max_seqlen_q,
     const int head_size_rounded,
-    const int num_splits, cudaDeviceProp *dprops, struct c10::TensorOptions opts) {
+    const int num_splits, const cudaDeviceProp *dprops, struct c10::TensorOptions opts) {
 
     // This needs to match with run_mha_fwd_splitkv_dispatch
     const int block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
@@ -236,15 +236,15 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
                bool is_causal,
                int window_size_left,
                int window_size_right) {
-    auto dprops = at::cuda::getCurrentDeviceProperties();
+    const auto* dprops = at::cuda::getCurrentDeviceProperties();
     // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
-    bool is_sm8x = dprops->major == 8 && dprops->minor >= 0;
-    bool is_sm90 = dprops->major == 9 && dprops->minor == 0;
+    const bool is_sm8x = dprops->major == 8 && dprops->minor >= 0;
+    const bool is_sm90 = dprops->major == 9 && dprops->minor == 0;
     TORCH_CHECK(is_sm90 || is_sm8x, "FlashAttention only supports Ampere GPUs or newer.");
     // We will support Turing in the near future
     // TORCH_CHECK(is_sm90 || is_sm8x || is_sm75, "FlashAttention only supports Turing GPUs or newer.");
 
-    auto q_dtype = q.dtype();
+    const auto q_dtype = q.dtype();
     TORCH_CHECK(q_dtype == torch::kFloat16 || q_dtype == torch::kBFloat16,
                 "FlashAttention only support fp16 and bf16 data type");
     if (q_dtype == torch::kBFloat16) {
@@ -275,6 +275,7 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
     }
     const int n_blocks = !paged_KV ? 0 : k.size(0);
     const int block_size = !paged_KV ? 1 : k.size(1);
+    // TODO: support smaller block sizes
     TORCH_CHECK(!paged_KV || block_size % 256 == 0, "Paged KV cache block size must be divisible by 256");
 
     // [n_tokens, n_heads, head_dim]
@@ -293,7 +294,7 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
 
     // Faster to transpose q from (b, 1, (nheads_kv ngroups), d) to (b, ngroups, nheads_kv, d) in this case
     // H/t Daniel Haziza
-    const int seqlenq_ngroups_swapped = max_seqlen_q == 1 && num_heads > num_heads_k && window_size_left < 0 && window_size_right < 0 && head_size_og % 8 == 0 && !alibi_slopes_.has_value();
+    const bool seqlenq_ngroups_swapped = max_seqlen_q == 1 && num_heads > num_heads_k && window_size_left < 0 && window_size_right < 0 && head_size_og % 8 == 0 && !alibi_slopes_.has_value();
     if (seqlenq_ngroups_swapped) {
         const int ngroups = num_heads / num_heads_k;
         q = q.reshape({batch_size, num_heads_k, ngroups, head_size_og}).transpose(1, 2).reshape({batch_size * ngroups, num_heads_k, head_size_og});
@@ -325,9 +326,10 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
 
     at::Tensor q_padded, k_padded, v_padded;
     if (head_size_og % 8 != 0) {
-        q_padded = torch::nn::functional::pad(q, torch::nn::functional::PadFuncOptions({0, 8 - head_size_og % 8}));
-        k_padded = torch::nn::functional::pad(k, torch::nn::functional::PadFuncOptions({0, 8 - head_size_og % 8}));
-        v_padded = torch::nn::functional::pad(v, torch::nn::functional::PadFuncOptions({0, 8 - head_size_og % 8}));
+        const std::vector<int64_t> pad = {0, 8 - head_size_og % 8}; // left, right
+        q_padded = torch::nn::functional::pad(q, torch::nn::functional::PadFuncOptions(pad));
+        k_padded = torch::nn::functional::pad(k, torch::nn::functional::PadFuncOptions(pad));
+        v_padded = torch::nn::functional::pad(v, torch::nn::functional::PadFuncOptions(pad));
     } else {
         q_padded = q;
         k_padded = k;
@@ -359,7 +361,6 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
     auto opts = q.options();
 
     auto softmax_lse = torch::empty({batch_size, num_heads, max_seqlen_q}, opts.dtype(at::kFloat));
-    at::Tensor p;
 
     Flash_fwd_params params;
     set_params_fprop(params,
@@ -416,5 +417,5 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
         softmax_lse = softmax_lse.reshape({batch_size, num_heads_k * max_seqlen_q, 1});
     }
 
-    return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse, p};
+    return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse};
 }
