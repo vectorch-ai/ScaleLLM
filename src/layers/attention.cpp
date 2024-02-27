@@ -1,5 +1,6 @@
 #include "attention.h"
 
+#include <c10/util/Optional.h>
 #include <gflags/gflags.h>
 #include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
@@ -279,20 +280,23 @@ void varlen_masked_self_attention_cuda(
     torch::Tensor& output) {
   auto query_ = query;
   torch::optional<at::Tensor> out = output;
-  mha_varlen_fwd(query_,
-                 key,
-                 value,
-                 out,
-                 cu_seq_lens,
-                 cu_seq_lens,
-                 /*block_table=*/torch::nullopt,
-                 alibi_slopes,
-                 max_seq_len,
-                 max_seq_len,
-                 /*softmax_scale=*/scale,
-                 /*is_causal=*/true,
-                 /*window_size_left=*/-1,
-                 /*window_size_right=*/0);
+  mha_varlen_fwd_kvcache(query_,
+                         key,
+                         value,
+                         /*knew=*/torch::nullopt,
+                         /*vnew=*/torch::nullopt,
+                         out,
+                         cu_seq_lens,
+                         cu_seq_lens,
+                         /*cu_seqlens_knew=*/torch::nullopt,
+                         /*block_table=*/torch::nullopt,
+                         alibi_slopes,
+                         max_seq_len,
+                         max_seq_len,
+                         /*softmax_scale=*/scale,
+                         /*is_causal=*/true,
+                         /*window_size_left=*/-1,
+                         /*window_size_right=*/0);
 }
 
 void single_query_masked_self_attention_generic(
@@ -427,20 +431,59 @@ void masked_self_attention_cuda(
     torch::Tensor& output) {
   auto query_ = query;
   torch::optional<at::Tensor> out = output;
-  mha_varlen_fwd(query_,
-                 key,
-                 value,
-                 out,
-                 q_cu_seq_lens,
-                 k_cu_seq_lens,
-                 block_tables,
-                 alibi_slopes,
-                 q_max_seq_len,
-                 k_max_seq_len,
-                 /*softmax_scale=*/scale,
-                 /*is_causal=*/true,
-                 /*window_size_left=*/-1,
-                 /*window_size_right=*/0);
+  mha_varlen_fwd_kvcache(query_,
+                         key,
+                         value,
+                         /*knew=*/torch::nullopt,
+                         /*vnew=*/torch::nullopt,
+                         out,
+                         q_cu_seq_lens,
+                         k_cu_seq_lens,
+                         /*cu_seqlens_knew=*/torch::nullopt,
+                         block_tables,
+                         alibi_slopes,
+                         q_max_seq_len,
+                         k_max_seq_len,
+                         /*softmax_scale=*/scale,
+                         /*is_causal=*/true,
+                         /*window_size_left=*/-1,
+                         /*window_size_right=*/0);
+}
+
+void masked_self_attention_with_newk_cuda(
+    const torch::Tensor& query,  // [n_q_tokens, n_heads, head_dim]
+    const torch::Tensor& kcache,
+    const torch::Tensor& vcache,
+    torch::optional<torch::Tensor> knew,  // [new_tokens, n_kv_heads, head_dim]
+    torch::optional<torch::Tensor> vnew,  // [new_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& q_cu_seq_lens,   // [n_seq + 1]
+    const torch::Tensor& k_cu_seq_lens,   // [n_seq + 1]
+    torch::optional<torch::Tensor> knew_cu_seq_lens,  // [n_seq + 1]
+    torch::optional<torch::Tensor> block_tables,      // [n_seq, max_n_blocks]
+    torch::optional<torch::Tensor> alibi_slopes,      // [n_heads]
+    int32_t q_max_seq_len,  // maximum sequence length for Q
+    int32_t k_max_seq_len,  // maximum sequence length for K/V
+    float scale,
+    torch::Tensor& output) {
+  auto query_ = query;
+  torch::optional<at::Tensor> out = output;
+  mha_varlen_fwd_kvcache(query_,
+                         kcache,
+                         vcache,
+                         knew,
+                         vnew,
+                         out,
+                         q_cu_seq_lens,
+                         k_cu_seq_lens,
+                         knew_cu_seq_lens,
+                         block_tables,
+                         alibi_slopes,
+                         q_max_seq_len,
+                         k_max_seq_len,
+                         /*softmax_scale=*/scale,
+                         /*is_causal=*/true,
+                         /*window_size_left=*/-1,
+                         /*window_size_right=*/0);
 }
 
 }  // namespace detail

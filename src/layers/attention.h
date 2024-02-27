@@ -134,6 +134,22 @@ void masked_self_attention_cuda(
     float scale,
     torch::Tensor& output);
 
+void masked_self_attention_with_newk_cuda(
+    const torch::Tensor& query,           // [n_q_tokens, n_heads, head_dim]
+    const torch::Tensor& kcache,          // [n_blocks, block_size, n_kv_heads, head_dim]
+    const torch::Tensor& vcache,          // [n_blocks, block_size, n_kv_heads, head_dim]
+    torch::optional<torch::Tensor> knew,  // [new_tokens, n_kv_heads, head_dim]
+    torch::optional<torch::Tensor> vnew,  // [new_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& q_cu_seq_lens,   // [n_seq + 1]
+    const torch::Tensor& k_cu_seq_lens,   // [n_seq + 1]
+    torch::optional<torch::Tensor> knew_cu_seq_lens,  // [n_seq + 1]
+    torch::optional<torch::Tensor> block_tables,      // [n_seq, max_n_blocks]
+    torch::optional<torch::Tensor> alibi_slopes,      // [n_heads]
+    int32_t q_max_seq_len,  // maximum sequence length for Q
+    int32_t k_max_seq_len,  // maximum sequence length for K/V
+    float scale,
+    torch::Tensor& output);
+
 }  // namespace detail
 
 }  // namespace llm

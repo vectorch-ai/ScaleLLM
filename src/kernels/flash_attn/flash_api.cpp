@@ -2,19 +2,20 @@
  * Copyright (c) 2024, Tri Dao.
  ******************************************************************************/
 
-// Include these 2 headers instead of torch/extension.h since we don't need all of the torch headers.
-#include <ATen/core/TensorBody.h>
-#include <torch/torch.h>
-#include <torch/nn/functional.h>
+// Include these 2 headers instead of torch/extension.h since we don't need all
+// of the torch headers.
+#include "flash_api.h"
+
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
-
 #include <cutlass/numeric_types.h>
+#include <torch/torch.h>
 #include <torch/types.h>
 
 #include "flash.h"
-#include "flash_api.h"
 #include "static_switch.h"
+
+// clang-format off
 
 #define CHECK_DEVICE(x) TORCH_CHECK(x.is_cuda(), #x " must be on CUDA")
 #define CHECK_SHAPE(x, ...) TORCH_CHECK(x.sizes() == torch::IntArrayRef({__VA_ARGS__}), #x " must have shape (" #__VA_ARGS__ ")")
@@ -222,20 +223,23 @@ void set_params_alibi(Flash_fwd_params &params, const c10::optional<at::Tensor> 
 }
 
 std::vector<at::Tensor>
-mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
-               const at::Tensor &k,   // [n_tokens, n_kv_heads, head_dim]
-               const at::Tensor &v,   // [n_tokens, n_kv_heads, head_dim]
-               c10::optional<at::Tensor> &out_, // [n_tokens, n_heads, head_dim]
-               const at::Tensor &cu_seqlens_q,  // [batch + 1]
-               const at::Tensor &cu_seqlens_k,  // [batch + 1]
-               const c10::optional<at::Tensor> &block_table_, // [batch, max_blocks_per_seq]
-               const c10::optional<at::Tensor> &alibi_slopes_, // [num_heads]
-               int max_seqlen_q,      // max sequence length for Q
-               int max_seqlen_k,      // max sequence length for K/V
-               float softmax_scale,
-               bool is_causal,
-               int window_size_left,
-               int window_size_right) {
+mha_varlen_fwd_kvcache(at::Tensor &q,                     // [n_q_tokens, n_heads, head_dim]
+                       const at::Tensor& k,               // [n_tokens, n_kv_heads, head_dim]
+                       const at::Tensor& v,               // [n_tokens, n_kv_heads, head_dim]
+                       const c10::optional<at::Tensor> &knew, // [n_new_tokens, n_kv_heads, head_dim]
+                       const c10::optional<at::Tensor> &vnew, // [n_new_tokens, n_kv_heads, head_dim]
+                       c10::optional<at::Tensor> &out_, // [n_tokens, n_heads, head_dim]
+                       const at::Tensor &cu_seqlens_q,  // [batch + 1]
+                       const at::Tensor &cu_seqlens_k,  // [batch + 1]
+                       const c10::optional<at::Tensor> & cu_seqlens_knew,  // [batch + 1]
+                       const c10::optional<at::Tensor> &block_table_, // [batch, max_blocks_per_seq]
+                       const c10::optional<at::Tensor> &alibi_slopes_, // [num_heads]
+                       int max_seqlen_q,      // max sequence length for Q
+                       int max_seqlen_k,      // max sequence length for K/V
+                       float softmax_scale,
+                       bool is_causal,
+                       int window_size_left,
+                       int window_size_right) {
     const auto* dprops = at::cuda::getCurrentDeviceProperties();
     // bool is_sm75 = dprops->major == 7 && dprops->minor == 5;
     const bool is_sm8x = dprops->major == 8 && dprops->minor >= 0;
@@ -394,6 +398,24 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
     }
     params.page_block_size = block_size;
 
+    if (knew.has_value()) {
+        TORCH_CHECK(paged_KV, "If new key is only supported with paged KV cache");
+        TORCH_CHECK(vnew.has_value(), "If new key is supplied, new value must also be passed in");
+        TORCH_CHECK(cu_seqlens_knew.has_value(), "If new key is supplied, cu_seqlens_k must also be passed in");
+        TORCH_CHECK(max_seqlen_q <= max_seqlen_k, "If key is supplied, it must have seqlen <= the seqlen of the KV cache");
+        const auto& knew_ = knew.value();
+        const auto& vnew_ = vnew.value();
+        params.knew_ptr = knew_.data_ptr();
+        params.vnew_ptr = vnew_.data_ptr();
+        // All stride are in elements, not bytes.
+        // [n_new_tokens, n_kv_heads, head_dim]
+        params.knew_row_stride = knew_.stride(-3);
+        params.vnew_row_stride = vnew_.stride(-3);
+        params.knew_head_stride = knew_.stride(-2);
+        params.vnew_head_stride = vnew_.stride(-2);
+        params.cu_seqlens_knew = cu_seqlens_knew.value().data_ptr<int>();
+    }
+
     set_params_alibi(params, alibi_slopes_, batch_size, num_heads);
 
     if (max_seqlen_k > 0) {
@@ -422,3 +444,5 @@ mha_varlen_fwd(at::Tensor &q,         // [n_tokens, n_heads, head_dim]
 
     return {out, q_padded, k_padded, v_padded, out_padded, softmax_lse};
 }
+
+// clang-format on
