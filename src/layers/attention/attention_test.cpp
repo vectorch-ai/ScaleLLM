@@ -166,8 +166,7 @@ class AttentionDecodeTest
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
                                                  float /*scale*/,
-                                                 bool /*alibi*/,
-                                                 int32_t /*num_splits*/>> {};
+                                                 bool /*alibi*/>> {};
 
 TEST_P(AttentionDecodeTest, KVCache) {
   const auto& [device,
@@ -180,8 +179,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
                n_kv_heads,
                head_dim,
                scale,
-               alibi,
-               num_splits] = GetParam();
+               alibi] = GetParam();
   // make sure kv_max_seq_len >= q_max_seq_len
   if (kv_max_seq_len < q_max_seq_len) {
     GTEST_SKIP() << "kv_max_seq_len < q_max_seq_len";
@@ -325,15 +323,14 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(torch::kCUDA),
         ::testing::Values(torch::kHalf, torch::kBFloat16),
         ::testing::Values(1, 10),                            // batch_size
-        ::testing::Values(256),                              // block_size
+        ::testing::Values(16, 80, 256),                      // block_size
         ::testing::Values(1, 10),                            // q_max_seq_len
         ::testing::Values(100, 200),                         // kv_max_seq_len
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 40, 64, 128),                  // head_dim
         ::testing::Values(0.9, 1.0),                         // scale
-        ::testing::Values(false, true),                      // alibi
-        ::testing::Values(1)                                 // num_splits
+        ::testing::Values(false, true)                       // alibi
         ));
 
 }  // namespace llm
