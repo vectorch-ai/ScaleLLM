@@ -55,6 +55,9 @@ class Sequence final {
     return num_tokens() - num_prompt_tokens();
   }
 
+  // get the number of tokens in the kvcache
+  size_t num_tokens_in_cache() const { return cache_pos_; }
+
   // get the sampling parameters
   const SamplingParameter& sampling_param() const;
 

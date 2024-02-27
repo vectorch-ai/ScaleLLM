@@ -48,8 +48,7 @@ class Worker final {
   void verify_loaded_weights() const;
 
   // initialize kv cache. blocking call
-  bool init_kv_cache(const std::vector<int64_t>& key_cache_shape,
-                     const std::vector<int64_t>& value_cache_shape);
+  bool init_kv_cache(const std::vector<int64_t>& kv_cache_shape);
 
   // Run the model on the given input. blocking call
   OutputParameters execute_model(
@@ -59,11 +58,10 @@ class Worker final {
       const SamplingParameters& sampling_params);
 
   // TODO
-  OutputParameters validate(
-      torch::Tensor flatten_tokens,
-      torch::Tensor flatten_positions,
-      const InputParameters& params,
-      const SamplingParameters& sampling_params);
+  OutputParameters validate(torch::Tensor flatten_tokens,
+                            torch::Tensor flatten_positions,
+                            const InputParameters& params,
+                            const SamplingParameters& sampling_params);
 
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
@@ -77,8 +75,7 @@ class Worker final {
 
   // initialize kv cache. async call
   folly::SemiFuture<bool> init_kv_cache_async(
-      const std::vector<int64_t>& key_cache_shape,
-      const std::vector<int64_t>& value_cache_shape);
+      const std::vector<int64_t>& kv_cache_shape);
 
   // Run the model on the given input. async call
   // the future returns a successfull status with no meaningful value
