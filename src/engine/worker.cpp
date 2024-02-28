@@ -9,8 +9,8 @@
 #include <memory>
 #include <utility>
 
-#include "common/threadpool.h"
 #include "common/logging.h"
+#include "common/threadpool.h"
 #include "model_loader/state_dict.h"
 #include "models/input_parameters.h"
 #include "sampling/logits_processor.h"
@@ -32,16 +32,15 @@ bool Worker::init_model(torch::ScalarType dtype,
   return true;
 }
 
-bool Worker::init_kv_cache(const std::vector<int64_t>& key_cache_shape,
-                           const std::vector<int64_t>& value_cache_shape) {
+bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
   // create a KVCache for each layer
   const int64_t num_layers = args_.n_layers();
   kv_caches_.reserve(num_layers);
   for (int64_t i = 0; i < num_layers; ++i) {
     auto key_cache =
-        torch::empty(key_cache_shape, torch::dtype(dtype_).device(device_));
+        torch::empty(kv_cache_shape, torch::dtype(dtype_).device(device_));
     auto value_cache =
-        torch::empty(value_cache_shape, torch::dtype(dtype_).device(device_));
+        torch::empty(kv_cache_shape, torch::dtype(dtype_).device(device_));
     kv_caches_.emplace_back(key_cache, value_cache);
   }
   return true;
@@ -94,11 +93,10 @@ OutputParameters Worker::execute_model(
   return output_params;
 }
 
-OutputParameters Worker::validate(
-    torch::Tensor flatten_tokens,
-    torch::Tensor flatten_positions,
-    const InputParameters& params,
-    const SamplingParameters& sampling_params) {
+OutputParameters Worker::validate(torch::Tensor flatten_tokens,
+                                  torch::Tensor flatten_positions,
+                                  const InputParameters& params,
+                                  const SamplingParameters& sampling_params) {
   torch::DeviceGuard device_guard(device_);
 
   torch::Device input_device = flatten_tokens.device();
@@ -135,11 +133,11 @@ folly::SemiFuture<OutputParameters> Worker::execute_model_async(
   folly::Promise<OutputParameters> promise;
   auto future = promise.getSemiFuture();
   threadpool_.schedule([this,
-                      tokens = flatten_tokens,
-                      positions = flatten_positions,
-                      parameters = params,
-                      sampling_params = sampling_params,
-                      promise = std::move(promise)]() mutable {
+                        tokens = flatten_tokens,
+                        positions = flatten_positions,
+                        parameters = params,
+                        sampling_params = sampling_params,
+                        promise = std::move(promise)]() mutable {
     // run the model on the given input in working thread
     const auto output =
         this->execute_model(tokens, positions, parameters, sampling_params);
@@ -175,10 +173,10 @@ folly::SemiFuture<bool> Worker::init_model_async(torch::ScalarType dtype,
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
   threadpool_.schedule([this,
-                      dtype,
-                      &args,
-                      &quant_args,
-                      promise = std::move(promise)]() mutable {
+                        dtype,
+                        &args,
+                        &quant_args,
+                        promise = std::move(promise)]() mutable {
     const bool success = this->init_model(dtype, args, quant_args);
     promise.setValue(success);
   });
@@ -186,18 +184,14 @@ folly::SemiFuture<bool> Worker::init_model_async(torch::ScalarType dtype,
 }
 
 folly::SemiFuture<bool> Worker::init_kv_cache_async(
-    const std::vector<int64_t>& key_cache_shape,
-    const std::vector<int64_t>& value_cache_shape) {
+    const std::vector<int64_t>& kv_cache_shape) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule([this,
-                      &key_cache_shape,
-                      &value_cache_shape,
-                      promise = std::move(promise)]() mutable {
-    const bool success =
-        this->init_kv_cache(key_cache_shape, value_cache_shape);
-    promise.setValue(success);
-  });
+  threadpool_.schedule(
+      [this, &kv_cache_shape, promise = std::move(promise)]() mutable {
+        const bool success = this->init_kv_cache(kv_cache_shape);
+        promise.setValue(success);
+      });
   return future;
 }
 

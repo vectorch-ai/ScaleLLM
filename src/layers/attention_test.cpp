@@ -160,7 +160,7 @@ class AttentionDecodeTest
                                                  int64_t /*batch_size*/,
                                                  int64_t /*block_size*/,
                                                  int64_t /*q_max_seq_len*/,
-                                                 int64_t /*k_max_seq_len*/,
+                                                 int64_t /*kv_max_seq_len*/,
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
@@ -172,18 +172,18 @@ TEST_P(AttentionDecodeTest, KVCache) {
                batch_size,
                block_size,
                q_max_seq_len,
-               k_max_seq_len,
+               kv_max_seq_len,
                n_heads,
                n_kv_heads,
                head_dim,
                alibi] = GetParam();
-  // make sure k_max_seq_len >= q_max_seq_len
-  if (k_max_seq_len < q_max_seq_len) {
-    GTEST_SKIP() << "k_max_seq_len < q_max_seq_len";
+  // make sure kv_max_seq_len >= q_max_seq_len
+  if (kv_max_seq_len < q_max_seq_len) {
+    GTEST_SKIP() << "kv_max_seq_len < q_max_seq_len";
   }
   // total number of blocks: batch_size * max_n_blocks_per_seq
   const int32_t n_blocks =
-      (k_max_seq_len + block_size - 1) / block_size * batch_size * 2;
+      (kv_max_seq_len + block_size - 1) / block_size * batch_size * 2;
   // assign block ids for each sequence randomly
   std::vector<int32_t> available_block_ids(n_blocks);
   for (int32_t i = 0; i < n_blocks; ++i) {
@@ -193,12 +193,12 @@ TEST_P(AttentionDecodeTest, KVCache) {
       available_block_ids.begin(), available_block_ids.end(), std::mt19937());
 
   const int32_t max_n_blocks_per_seq =
-      (k_max_seq_len + block_size - 1) / block_size;
+      (kv_max_seq_len + block_size - 1) / block_size;
 
   std::vector<std::vector<int32_t>> block_tables_vec;
   std::vector<int> slot_ids;
 
-  // generate random seq lens with size in [1, q/k_max_seq_len]
+  // generate random seq lens with size in [1, q/kv_max_seq_len]
   std::vector<int32_t> q_cu_seq_lens_vec = {0};
   std::vector<int32_t> k_cu_seq_lens_vec = {0};
   int32_t n_kv_tokens = 0;
@@ -214,12 +214,12 @@ TEST_P(AttentionDecodeTest, KVCache) {
 
     // kv_len >= q_len
     int32_t kv_len = q_len;
-    if (q_len < k_max_seq_len) {
-      // sample kv_len from [q_len, k_max_seq_len]
+    if (q_len < kv_max_seq_len) {
+      // sample kv_len from [q_len, kv_max_seq_len]
       kv_len = absl::Uniform<int>(
-          absl::IntervalClosedClosed, gen, q_len, k_max_seq_len);
+          absl::IntervalClosedClosed, gen, q_len, kv_max_seq_len);
     }
-    // const int32_t kv_len = k_max_seq_len;
+    // const int32_t kv_len = kv_max_seq_len;
     n_kv_tokens += kv_len;
     k_cu_seq_lens_vec.push_back(n_kv_tokens);
 
@@ -286,30 +286,31 @@ TEST_P(AttentionDecodeTest, KVCache) {
   }
 
   torch::Tensor output = torch::empty_like(query);
-  detail::masked_self_attention_cuda(query,
-                                     key,
-                                     value,
-                                     q_cu_seq_lens,
-                                     k_cu_seq_lens,
-                                     /*block_tables=*/torch::nullopt,
-                                     alibi_slopes,
-                                     q_max_seq_len,
-                                     k_max_seq_len,
-                                     /*scale=*/1.0,
-                                     output);
+  detail::multiple_query_masked_self_attention_cuda(
+      query,
+      key,
+      value,
+      q_cu_seq_lens,
+      k_cu_seq_lens,
+      /*block_tables=*/torch::nullopt,
+      alibi_slopes,
+      q_max_seq_len,
+      kv_max_seq_len,
+      /*scale=*/1.0,
+      output);
 
   torch::Tensor output_with_cache = torch::empty_like(query);
-  detail::masked_self_attention_cuda(query,
-                                     k_cache,
-                                     v_cache,
-                                     q_cu_seq_lens,
-                                     k_cu_seq_lens,
-                                     block_tables,
-                                     alibi_slopes,
-                                     q_max_seq_len,
-                                     k_max_seq_len,
-                                     /*scale=*/1.0,
-                                     output_with_cache);
+  detail::multiple_query_masked_self_attention_cuda(query,
+                                                    k_cache,
+                                                    v_cache,
+                                                    q_cu_seq_lens,
+                                                    k_cu_seq_lens,
+                                                    block_tables,
+                                                    alibi_slopes,
+                                                    q_max_seq_len,
+                                                    kv_max_seq_len,
+                                                    /*scale=*/1.0,
+                                                    output_with_cache);
 
   EXPECT_TRUE(
       torch::allclose(output_with_cache, output, /*rtol=*/1e-2, /*atol=*/1e-3));
@@ -324,7 +325,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(1, 10),                            // batch_size
         ::testing::Values(16, 80, 256),                      // block_size
         ::testing::Values(1, 10),                            // q_max_seq_len
-        ::testing::Values(100, 1000),                        // k_max_seq_len
+        ::testing::Values(100, 1000),                        // kv_max_seq_len
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 40, 64, 256),                  // head_dim

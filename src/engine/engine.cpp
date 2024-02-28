@@ -17,7 +17,7 @@
 
 static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
-DEFINE_int32(block_size, 16, "slots per block, value must be [8, 16, 32]");
+DEFINE_int32(block_size, 16, "slots per block, value must be multiple of 16");
 DEFINE_int64(max_cache_size, 5 * GB, "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
               0.9,
@@ -244,27 +244,23 @@ bool Engine::init_kv_cache() {
              << ", block size: " << block_size;
 
   // init kv cache for each worker
-  const int64_t x = 16 / dtype_size;
-  const std::vector<int64_t> key_cache_shape = {
-      num_blocks, n_local_kv_heads, head_dim / x, block_size, x};
-  const std::vector<int64_t> value_cache_shape = {
-      num_blocks, n_local_kv_heads, head_dim, block_size};
-  GLOG(INFO) << "Initializing kv cache with key shape: [" << key_cache_shape
-             << "], value shape: [" << value_cache_shape << "]";
+  const std::vector<int64_t> kv_cache_shape = {
+      num_blocks, block_size, n_local_kv_heads, head_dim};
+  GLOG(INFO) << "Initializing kv cache with shape: [" << kv_cache_shape << "]";
 
   block_manager_ = std::make_unique<BlockManager>(num_blocks, block_size);
 
   // init kv cache for each worker in parallel
   if (workers_.size() == 1) {
     // only one worker, call init_kv_cache in current thread
-    return workers_[0]->init_kv_cache(key_cache_shape, value_cache_shape);
+    return workers_[0]->init_kv_cache(kv_cache_shape);
   }
 
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
     futures.push_back(
-        worker->init_kv_cache_async(key_cache_shape, value_cache_shape));
+        worker->init_kv_cache_async(kv_cache_shape));
   }
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();

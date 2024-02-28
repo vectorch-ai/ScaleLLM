@@ -12,11 +12,11 @@
 
 namespace llm {
 
+// [num_blocks, block_size, num_kv_heads, head_dim]
 KVCache::KVCache(torch::Tensor key_cache, torch::Tensor value_cache)
-    : num_kv_heads_(value_cache.size(1)),
-      head_size_(value_cache.size(2)),
-      block_size_(value_cache.size(3)),
-      x_(key_cache.size(-1)),
+    : num_kv_heads_(value_cache.size(-2)),
+      head_size_(value_cache.size(-1)),
+      block_size_(value_cache.size(-3)),
       key_cache_(std::move(key_cache)),
       value_cache_(std::move(value_cache)) {}
 
@@ -48,15 +48,11 @@ void KVCache::set_kv_cache_slow(const torch::Tensor& slot_ids,
     const auto block_id = slot_id / block_size_;
     const auto block_offset = slot_id % block_size_;
 
-    const auto key = keys[i];
-    const auto value = values[i];
-
-    // key_cache_[block_id, :, :, block_offset, :] =
-    // key.reshape(-1, head_size_/ x_, x_)
-    key_cache_.index_put_({block_id, Slice(), Slice(), block_offset, Slice()},
-                          key.reshape({-1, head_size_ / x_, x_}));
-    // value_cache_[block_id, :, :, block_offset] = value
-    value_cache_.index_put_({block_id, Slice(), Slice(), block_offset}, value);
+    // key_cache_[block_id, block_offset, :, :] = key
+    key_cache_.index_put_({block_id, block_offset, Slice(), Slice()}, keys[i]);
+    // value_cache_[block_id, block_offset, :, :] = value
+    value_cache_.index_put_({block_id, block_offset, Slice(), Slice()},
+                            values[i]);
   }
 }
 
@@ -93,13 +89,13 @@ std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
   for (int slot_id : slot_ids) {
     const auto block_id = slot_id / block_size_;
     const auto block_offset = slot_id % block_size_;
-    // key = key_cache_[block_id, :, :, block_offset, :]
+    // key = key_cache_[block_id, block_offset, :, :]
     const auto key =
-        key_cache_.index({block_id, Slice(), Slice(), block_offset, Slice()});
+        key_cache_.index({block_id, block_offset, Slice(), Slice()});
     keys.push_back(key.reshape({num_kv_heads_, head_size_}));
-    // value = value_cache_[block_id, :, :, block_offset]
+    // value = value_cache_[block_id, block_offset, :, :]
     const auto value =
-        value_cache_.index({block_id, Slice(), Slice(), block_offset});
+        value_cache_.index({block_id, block_offset, Slice(), Slice()});
     values.push_back(value);
   }
   return std::make_tuple(torch::stack(keys), torch::stack(values));

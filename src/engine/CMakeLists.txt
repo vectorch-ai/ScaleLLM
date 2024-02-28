@@ -31,6 +31,7 @@ cc_test(
   NAME
     engine_test
   SRCS
+    utils_test.cpp
     worker_test.cpp
   DEPS
     :engine

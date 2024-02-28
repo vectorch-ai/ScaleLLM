@@ -9,7 +9,6 @@ TEST(KVCacheTest, Basic) {
   const int num_kv_heads = 32;
   const int head_dim = 128;
   const int block_size = 8;
-  const int x = 8;
   const int num_blocks = 17;
 
   // auto dtype = torch::kFloat16;
@@ -18,10 +17,10 @@ TEST(KVCacheTest, Basic) {
   torch::Device device(torch::kCUDA);
 
   torch::Tensor key_cache =
-      torch::rand({num_blocks, num_kv_heads, head_dim / x, block_size, x},
+      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
                   /*device=*/device);
   torch::Tensor value_cache =
-      torch::rand({num_blocks, num_kv_heads, head_dim, block_size},
+      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
                   /*device=*/device);
 
   KVCache kv_cache(key_cache, value_cache);
@@ -64,10 +63,10 @@ TEST(KVCacheTest, Random) {
   torch::manual_seed(10);
 
   torch::Tensor key_cache =
-      torch::rand({num_blocks, num_kv_heads, head_dim / x, block_size, x},
+      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
                   /*device=*/device);
   torch::Tensor value_cache =
-      torch::rand({num_blocks, num_kv_heads, head_dim, block_size},
+      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
                   /*device=*/device);
 
   KVCache kv_cache(key_cache, value_cache);
