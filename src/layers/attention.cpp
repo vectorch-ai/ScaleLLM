@@ -313,7 +313,7 @@ void single_query_masked_self_attention_generic(
   const auto n_seqs = query.size(0);
   // process each sequence
   // don't need attention mask for single token
-  for (int64_t i = 0; i < n_seq; ++i) {
+  for (int64_t i = 0; i < n_seqs; ++i) {
     // [1, n_heads, head_dim]
     const auto q = query[i].unsqueeze(0);
     const auto block_table = block_tables[i];
