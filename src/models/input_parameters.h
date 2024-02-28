@@ -10,15 +10,14 @@ namespace llm {
 struct InputParameters {
   InputParameters to(const torch::Device& device) const {
     InputParameters params;
-    params.num_prompt_tokens = num_prompt_tokens;
-    params.max_seq_len = max_seq_len;
-    params.max_context_len = max_context_len;
+    params.kv_max_seq_len = kv_max_seq_len;
+    params.q_max_seq_len = q_max_seq_len;
 
     // all tensors should be on the same device as model
-    params.cu_seq_lens = cu_seq_lens.to(device);
-    params.slot_ids = slot_ids.to(device);
+    params.kv_cu_seq_lens = kv_cu_seq_lens.to(device);
+    params.q_cu_seq_lens = q_cu_seq_lens.to(device);
+    params.new_cache_slots = new_cache_slots.to(device);
     params.block_tables = block_tables.to(device);
-    params.context_lens = context_lens.to(device);
     params.last_token_idxes = last_token_idxes.to(device);
     params.token_ids = token_ids.to(device);
     params.token_counts = token_counts.to(device);
@@ -27,64 +26,47 @@ struct InputParameters {
   }
 
   // *******************************************************
-  // ******   parameters only for prefill stage   *******
+  // ******       parameters for attention           *******
   // *******************************************************
 
-  // total number of tokens in prompt sequences.
-  int64_t num_prompt_tokens = 0;
-
-  // cumulative sequence length of each sequence.
-  // used in prefill stage to determine the token range for each sequence
-  // [num_prompt_seq + 1]
+  // cumulative sequence length of each sequence
+  // used to determine the token range for each sequence
+  // IntTensor: [n_seq + 1]
   // for example: 3 sequences with length 2, 3, 4,
-  // the cu_seq_lens is [0, 2, 5, 9] IntTensor
-  torch::Tensor cu_seq_lens;
+  // the cu_seq_lens is [0, 2, 5, 9]
+  torch::Tensor q_cu_seq_lens;   // query len
+  torch::Tensor kv_cu_seq_lens;  //  kv len: (tokens in cache + new tokens)
 
-  // maximum sequence length for prompt sequences.
-  int32_t max_seq_len = 0;
+  // maximum sequence length for query and kv.
+  // used to help dispatch, choosing the right kernel based on the lenght
+  int32_t kv_max_seq_len = 0;  // kv seq len
+  int32_t q_max_seq_len = 0;   // query seq len
 
-  // *******************************************************
-  // ******   parameters only for decode stage   *******
-  // *******************************************************
-
-  // logical cache slot for each token.
+  // logical cache slot for each *new* token.
   // used to store kv-cache to right slot/block
-  // [num_prompt_tokens] IntTensor
-  torch::Tensor slot_ids;
+  // IntTensor: [n_tokens]
+  torch::Tensor new_cache_slots;
 
   // block ids for each sequence.
-  // used in decode stage to fetch cached key-value.
-  // [num_decode_seq, max_num_blocks] IntTensor
+  // used in attention kernel to fetch cached key-value.
+  // IntTensor: [n_seq, max_n_blocks]
   torch::Tensor block_tables;
-
-  // the maximum context len for decode sequence.
-  int32_t max_context_len = 0;
-
-  // number of tokens for each sequence.
-  // used in decode stage to determine the range of cache to fetch
-  // [num_decode_seq] IntTensor
-  torch::Tensor context_lens;
 
   // *******************************************************
   // *****  parameters for all sequence in the batch  ******
   // *******************************************************
 
   // the index of the last token of each sequence in the tokens.
-  // for prompt sequence, it is the index of last token in the prompt.
-  // for decode sequence, it is the index of the token. (only one token)
-  // IntTensor
+  // IntTensor: [n_seqs]
   torch::Tensor last_token_idxes;
 
-  // the unique token ids of each sequence in the batch.
-  // [num_seq, max_unique_tokens] LongTensor
+  // the unique token id and count of each sequence in the batch.
+  // LongTensor: [n_seqs, max_unique_tokens]
   torch::Tensor token_ids;
-
-  // the count of each token in each sequence.
-  // [num_seq, max_unique_tokens] IntTensor
-  torch::Tensor token_counts;
+  torch::Tensor token_counts;  // IntTensor
 
   // the number of unique tokens in each sequence.
-  // [num_seq] IntTensor
+  // IntTensor: [n_seqs]
   torch::Tensor token_ids_lens;
 };
 

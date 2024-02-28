@@ -3,7 +3,6 @@
 #include <gflags/gflags.h>
 #include <torch/torch.h>
 
-#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 
@@ -72,6 +71,18 @@ void single_query_masked_self_attention(
     float scale,
     torch::Tensor& output);
 
+void multiple_query_masked_self_attention(
+    const torch::Tensor& query,           // [n_q_tokens, n_heads, head_dim]
+    const KVCache& kv_cache,              // where to get key and value
+    const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
+    const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
+    torch::optional<torch::Tensor> block_tables,  // [n_seqs, max_n_blocks]
+    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
+    int32_t q_max_seq_len,  // maximum sequence length for Q
+    int32_t k_max_seq_len,  // maximum sequence length for K/V
+    float scale,
+    torch::Tensor& output);
+
 // different implementations start here
 // slow version of varlen_masked_self_attention
 void varlen_masked_self_attention_generic(
@@ -121,13 +132,13 @@ void single_query_masked_self_attention_cuda(
 // key/value support two type of inputs:
 // * packed continuous memory : [n_kv_tokens, n_kv_heads, head_dim]
 // * block-wise memory: [n_blocks, block_size, n_kv_heads, head_dim]
-void masked_self_attention_cuda(
+void multiple_query_masked_self_attention_cuda(
     const torch::Tensor& query,          // [n_q_tokens, n_heads, head_dim]
     const torch::Tensor& key,            // [..., n_kv_heads, head_dim]
     const torch::Tensor& value,          // [..., n_kv_heads, head_dim]
-    const torch::Tensor& q_cu_seq_lens,  // [n_seq + 1]
-    const torch::Tensor& k_cu_seq_lens,  // [n_seq + 1]
-    torch::optional<torch::Tensor> block_tables,  // [n_seq, max_n_blocks]
+    const torch::Tensor& q_cu_seq_lens,  // [n_seqs + 1]
+    const torch::Tensor& k_cu_seq_lens,  // [n_seqs + 1]
+    torch::optional<torch::Tensor> block_tables,  // [n_seqs, max_n_blocks]
     torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     int32_t q_max_seq_len,  // maximum sequence length for Q
     int32_t k_max_seq_len,  // maximum sequence length for K/V

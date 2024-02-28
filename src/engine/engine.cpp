@@ -17,7 +17,7 @@
 
 static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
-DEFINE_int32(block_size, 256, "slots per block, value must be [256]");
+DEFINE_int32(block_size, 16, "slots per block, value must be multiple of 16");
 DEFINE_int64(max_cache_size, 5 * GB, "max cache size in bytes, default 5GB");
 DEFINE_double(max_memory_utilization,
               0.9,

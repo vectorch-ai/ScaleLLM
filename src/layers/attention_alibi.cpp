@@ -41,44 +41,19 @@ torch::Tensor AttentionWithAlibiImpl::forward(
   auto v = value.view({num_tokens, n_kv_heads_, head_dim_});
 
   // store k/v into cache based on slots
-  kv_cache.set_kv_cache(input_params.slot_ids, k, v);
+  kv_cache.set_kv_cache(input_params.new_cache_slots, k, v);
 
   auto output = torch::empty_like(q);
-  const auto num_prompt_tokens = input_params.num_prompt_tokens;
-  if (num_prompt_tokens > 0) {
-    // process sequences with prompt tokens (prefill)
-    auto sliced_output =
-        output.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-    auto sliced_query =
-        q.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-    auto sliced_key =
-        k.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-    auto sliced_value =
-        v.slice(/*dim=*/0, /*start=*/0, /*end=*/num_prompt_tokens);
-    detail::varlen_masked_self_attention(sliced_query,
-                                         sliced_key,
-                                         sliced_value,
-                                         input_params.cu_seq_lens,
-                                         alibi_slopes_,
-                                         input_params.max_seq_len,
-                                         scale_,
-                                         sliced_output);
-  }
-
-  if (num_prompt_tokens < num_tokens) {
-    // process sequences without prompt tokens (decode)
-    auto sliced_output = output.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
-    auto sliced_query = q.slice(/*dim=*/0, /*start=*/num_prompt_tokens);
-    detail::single_query_masked_self_attention(kv_cache,
-                                               static_cast<int32_t>(n_kv_heads_),
-                                               sliced_query,
+  detail::multiple_query_masked_self_attention(q,
+                                               kv_cache,
+                                               input_params.q_cu_seq_lens,
+                                               input_params.kv_cu_seq_lens,
                                                input_params.block_tables,
-                                               input_params.context_lens,
                                                alibi_slopes_,
-                                               input_params.max_context_len,
+                                               input_params.q_max_seq_len,
+                                               input_params.kv_max_seq_len,
                                                scale_,
-                                               sliced_output);
-  }
+                                               output);
   return output.view({num_tokens, -1});
 }
 
