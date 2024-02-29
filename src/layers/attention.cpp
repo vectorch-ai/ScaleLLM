@@ -185,7 +185,8 @@ void multiple_query_masked_self_attention(
     const KVCache& kv_cache,              // where to get key and value
     const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
     const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
-    const torch::optional<torch::Tensor> block_tables,  // [n_seqs, max_n_blocks]
+    const torch::optional<torch::Tensor>
+        block_tables,  // [n_seqs, max_n_blocks]
     const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     int32_t q_max_seq_len,  // maximum sequence length for Q
     int32_t k_max_seq_len,  // maximum sequence length for K/V
@@ -204,7 +205,8 @@ void multiple_query_masked_self_attention(
                                                      q_max_seq_len,
                                                      k_max_seq_len,
                                                      scale,
-                                                     output);
+                                                     output,
+                                                     /*num_splits=*/0);
   }
   GCHECK(false)
       << "multiple_query_masked_self_attention not implemented for CPU";
@@ -283,12 +285,10 @@ void varlen_masked_self_attention_cuda(
     int32_t max_seq_len,                          // maximum sequence length
     float scale,                                  // scale for softmax
     torch::Tensor& output) {
-  auto query_ = query;
-  torch::optional<at::Tensor> out = output;
-  mha_varlen_fwd(query_,
+  mha_varlen_fwd(output,
+                 query,
                  key,
                  value,
-                 out,
                  cu_seq_lens,
                  cu_seq_lens,
                  /*block_table=*/torch::nullopt,
@@ -296,9 +296,9 @@ void varlen_masked_self_attention_cuda(
                  max_seq_len,
                  max_seq_len,
                  /*softmax_scale=*/scale,
-                 /*is_causal=*/true,
                  /*window_size_left=*/-1,
-                 /*window_size_right=*/0);
+                 /*window_size_right=*/0,
+                 /*num_splits=*/1);
 }
 
 void single_query_masked_self_attention_generic(
@@ -425,18 +425,18 @@ void multiple_query_masked_self_attention_cuda(
     const torch::Tensor& value,          // [..., n_kv_heads, head_dim]
     const torch::Tensor& q_cu_seq_lens,  // [n_seqs + 1]
     const torch::Tensor& k_cu_seq_lens,  // [n_seqs + 1]
-    const torch::optional<torch::Tensor> block_tables,  // [n_seqs, max_n_blocks]
+    const torch::optional<torch::Tensor>
+        block_tables,  // [n_seqs, max_n_blocks]
     const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     int32_t q_max_seq_len,  // maximum sequence length for Q
     int32_t k_max_seq_len,  // maximum sequence length for K/V
     float scale,
-    torch::Tensor& output) {
-  auto query_ = query;
-  torch::optional<at::Tensor> out = output;
-  mha_varlen_fwd(query_,
+    torch::Tensor& output,
+    int32_t num_splits) {
+  mha_varlen_fwd(output,
+                 query,
                  key,
                  value,
-                 out,
                  q_cu_seq_lens,
                  k_cu_seq_lens,
                  block_tables,
@@ -444,9 +444,9 @@ void multiple_query_masked_self_attention_cuda(
                  q_max_seq_len,
                  k_max_seq_len,
                  /*softmax_scale=*/scale,
-                 /*is_causal=*/true,
                  /*window_size_left=*/-1,
-                 /*window_size_right=*/0);
+                 /*window_size_right=*/0,
+                 num_splits);
 }
 
 }  // namespace detail

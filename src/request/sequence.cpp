@@ -25,21 +25,27 @@ inline bool sequence_end_withs(const std::vector<int32_t>& sequence,
 // NOLINTNEXTLINE
 std::atomic<int64_t> Sequence::next_id_{1};
 
-Sequence::Sequence(const Request& request, OnStream on_stream)
-    : id_(next_id_.fetch_add(1)), request_(request), on_stream_(on_stream) {
-  const auto& prompt_tokens = request_.prompt_tokens;
+Sequence::Sequence(const SamplingParameter& sampling_param,
+                   const StoppingCriteria& stopping_criteria,
+                   const std::vector<int32_t>& token_ids,
+                   bool echo,
+                   OnStream on_stream)
+    : id_(next_id_.fetch_add(1)),
+      sampling_param_(sampling_param),
+      stopping_criteria_(stopping_criteria),
+      token_ids_(token_ids),
+      on_stream_(on_stream) {
+  num_prompt_tokens_ = token_ids_.size();
   // reserve enough space for the token ids to avoid reallocation
   // so that the token ids are not invalidated
-  const size_t max_tokens = request_.stopping_criteria.max_tokens;
-  token_ids_.reserve(max_tokens + token_ids_.size());
-  token_ids_ = prompt_tokens;
-  num_prompt_tokens_ = prompt_tokens.size();
+  const size_t max_tokens = stopping_criteria.max_tokens;
+  token_ids_.reserve(max_tokens + num_prompt_tokens_);
 
   // if echo is true, set prefix_offset_ and output_offset_ to 0 to print the
   // whole sequence, otherwise set them to the length of the prompt to skip the
   // prompt.
-  prefix_offset_ = request_.echo ? 0 : token_ids_.size();
-  output_offset_ = request_.echo ? 0 : token_ids_.size();
+  prefix_offset_ = echo ? 0 : token_ids_.size();
+  output_offset_ = echo ? 0 : token_ids_.size();
 
   // calculate the token counts
   for (const int32_t token_id : token_ids_) {
@@ -52,17 +58,15 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
     return false;
   }
 
-  const auto& stopping_criteria = request_.stopping_criteria;
-
   // check eos and stop tokens ids first
-  if (!stopping_criteria.ignore_eos_token &&
-      next_token_id == stopping_criteria.eos_token_id) {
+  if (!stopping_criteria_.ignore_eos_token &&
+      next_token_id == stopping_criteria_.eos_token_id) {
     finish_reason_ = FinishReason::STOP;
     is_finished_ = true;
     return false;
   }
   // check against stop tokens ids
-  if (stopping_criteria.stop_token_ids.count(next_token_id) > 0) {
+  if (stopping_criteria_.stop_token_ids.count(next_token_id) > 0) {
     finish_reason_ = FinishReason::STOP;
     is_finished_ = true;
     return false;
@@ -74,7 +78,7 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   token_to_count_map_[next_token_id]++;
 
   // check against stop sequences after adding the token
-  for (const auto& stop_sequence : stopping_criteria.stop_sequences) {
+  for (const auto& stop_sequence : stopping_criteria_.stop_sequences) {
     if (stop_sequence.back() == next_token_id &&
         sequence_end_withs(token_ids_, stop_sequence)) {
       finish_reason_ = FinishReason::STOP;
@@ -84,7 +88,7 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   }
 
   // check against max tokens
-  const size_t max_new_tokens = stopping_criteria.max_tokens;
+  const size_t max_new_tokens = stopping_criteria_.max_tokens;
   if (max_new_tokens > 0 && num_generated_tokens() >= max_new_tokens) {
     finish_reason_ = FinishReason::LENGTH;
     is_finished_ = true;
@@ -114,14 +118,14 @@ void Sequence::update_valid_token_ids(const int64_t* valid_ids) {
       }
       // 2. erase invalid tokens
       token_ids_.erase(token_ids_.end() - spec_token_ids_.size() + idx,
-          token_ids_.end());
+                       token_ids_.end());
       break;
     }
   }
   // clear spec token ids
   spec_token_ids_.clear();
 
-  //append new valid id
+  // append new valid id
   append_new_token_id(valid_ids[idx]);
 }
 
@@ -143,7 +147,7 @@ std::string Sequence::decode_delta_text(size_t end,
 }
 
 const SamplingParameter& Sequence::sampling_param() const {
-  return request_.sampling_param;
+  return sampling_param_;
 }
 
 }  // namespace llm

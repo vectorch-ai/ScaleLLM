@@ -276,24 +276,18 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   // prepare inputs for workers
   torch::Tensor flatten_token_ids;
   torch::Tensor flatten_positions;
-  // track the sequence indices in the batch
-  // from original index to the new index in the batch
-  torch::Tensor seq_idxes;
   InputParameters input_params;
   SamplingParameters sampling_params;
   Utils::prepare_inputs(batch,
                         FLAGS_block_size,
                         &flatten_token_ids,
                         &flatten_positions,
-                        &seq_idxes,
                         &input_params,
                         &sampling_params);
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     auto output = workers_[0]->execute_model(
         flatten_token_ids, flatten_positions, input_params, sampling_params);
-    // mapping outout back to the original request order in the batch
-    output.index_select(seq_idxes);
     return output;
   }
 
@@ -308,8 +302,6 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   auto results = folly::collectAll(futures).get();
   // return the result from the first worker
   auto first_output = results.front().value();
-  // mapping output back to the original request order in the batch
-  first_output.index_select(seq_idxes);
   return first_output;
 }
 

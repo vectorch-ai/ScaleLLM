@@ -22,7 +22,11 @@ void Request::add_sequence(OnStream on_stream) {
   if (stream) {
     GCHECK(on_stream) << "on_stream should not be null if stream is true";
   }
-  sequences.emplace_back(*this, on_stream);
+  sequences.emplace_back(this->sampling_param,
+                         this->stopping_criteria,
+                         this->prompt_tokens,
+                         this->echo,
+                         on_stream);
 }
 
 bool Request::is_finished() const {
