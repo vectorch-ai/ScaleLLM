@@ -81,7 +81,7 @@ void SpeculativeScheduler::speculate_multiple_steps(
 
   //TODO: should not support beam search
   std::vector<Sequence*> spec_batch(sequences_batch);
-  for (uint64_t i = 0; i < config_.speculative_steps; ++i) {
+  for (uint64_t i = 0; i < config_.speculative_steps_; ++i) {
     auto output_parameters = ssm_engine_->execute_model(spec_batch);
 
     const auto& next_tokens = output_parameters.next_tokens;

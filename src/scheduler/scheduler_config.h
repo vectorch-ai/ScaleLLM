@@ -2,8 +2,9 @@
 #include <string>
 
 namespace llm {
-
+namespace {
 constexpr uint64_t kSpeculativeSteps = 10; 
+}
 
 class SchedulerType {
  public:
@@ -16,9 +17,6 @@ class SchedulerType {
   std::string type_;
 };
 
-SchedulerType SchedulerType::CONTINOUS_BATCHING("continous_batching");
-SchedulerType SchedulerType::SPECULATIVE("speculative");
-
 class SchedulerPolicyType {
  public:
   SchedulerPolicyType(const std::string& type) : type_(type) {}
@@ -30,15 +28,19 @@ class SchedulerPolicyType {
   std::string type_;
 };
 
-SchedulerPolicyType SchedulerPolicyType::FCFS("fcfs");
-SchedulerPolicyType SchedulerPolicyType::PSA("psa");
-
 struct SchedulerConfig {
-  SchedulerType type = SchedulerType::CONTINOUS_BATCHING;
-  SchedulerPolicyType policy_type = SchedulerPolicyType::PSA;
+  SchedulerConfig(SchedulerType type, SchedulerPolicyType policy_type,
+      uint64_t speculative_steps) : type_(type), policy_type_(policy_type),
+          speculative_steps_(speculative_steps) {}
+
+  SchedulerConfig(SchedulerType type, SchedulerPolicyType policy_type)
+      : type_(type), policy_type_(policy_type) {}
+
+  SchedulerType type_ = SchedulerType::CONTINOUS_BATCHING;
+  SchedulerPolicyType policy_type_ = SchedulerPolicyType::PSA;
   
   // speculative configuration
-  const uint64_t speculative_steps = kSpeculativeSteps;
+  const uint64_t speculative_steps_ = kSpeculativeSteps;
 };
 
 }  // namespace llm

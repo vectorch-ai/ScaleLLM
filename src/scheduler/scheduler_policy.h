@@ -37,8 +37,6 @@ class FCFSSchedulerPolicy final : public SchedulerPolicy {
   folly::MPMCQueue<Request*> waiting_queue_;
   std::vector<Request*> blocking_queue_;
   std::vector<Request*> running_queue_;
-
-  std::vector<Sequence*> running_batch_;
 };
 
 class SchedulerPolicyFactory {
