@@ -24,7 +24,7 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
                        torch::ScalarType dtype,
                        const torch::Device& device) {
     act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
-    GCHECK(act_with_mul_ != nullptr);
+    CHECK(act_with_mul_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();

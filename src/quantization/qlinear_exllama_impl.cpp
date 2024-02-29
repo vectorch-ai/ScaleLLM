@@ -2,10 +2,10 @@
 
 #include <c10/core/DeviceType.h>
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
 #include "models/model_args.h"
@@ -44,7 +44,7 @@ ColumnParallelQLinearExllamaImpl::ColumnParallelQLinearExllamaImpl(
                                 dtype,
                                 device) {
   const auto bits = quant_args.bits();
-  GCHECK(bits == 4) << "Only 4 bits are supported";
+  CHECK(bits == 4) << "Only 4 bits are supported";
   const auto group_size =
       quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
@@ -101,7 +101,7 @@ RowParallelQLinearExllamaImpl::RowParallelQLinearExllamaImpl(
                              dtype,
                              device) {
   const auto bits = quant_args.bits();
-  GCHECK(bits == 4) << "Only 4 bits are supported";
+  CHECK(bits == 4) << "Only 4 bits are supported";
   const auto group_size =
       quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 

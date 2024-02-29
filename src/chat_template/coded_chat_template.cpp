@@ -1,11 +1,12 @@
 #include "coded_chat_template.h"
 
+#include <glog/logging.h>
+
 #include <boost/algorithm/string.hpp>
 #include <optional>
 #include <string>
 
 #include "chat_template.h"
-#include "common/logging.h"
 
 namespace llm {
 
@@ -48,7 +49,7 @@ std::optional<std::string> CodedChatTemplate::apply(
       }
       last_message_role = Role::Assistant;
     } else {
-      GLOG(ERROR) << "Unknown message role: " << message.role();
+      LOG(ERROR) << "Unknown message role: " << message.role();
       return nullptr;
     }
   }

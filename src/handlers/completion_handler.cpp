@@ -1,5 +1,6 @@
 #include "completion_handler.h"
 
+#include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
 #include <uuid.h>
@@ -7,7 +8,6 @@
 #include <cstdint>
 #include <string>
 
-#include "common/logging.h"
 #include "models/model_args.h"
 #include "request/request.h"
 #include "utils.h"
@@ -164,7 +164,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
                                                  const Tokenizer& tokenizer,
                                                  const ModelArgs& model_args) {
   const CompletionRequest& grpc_request = call_data->request();
-  GCHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
+  CHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
 
   const int64_t max_context_len = model_args.max_position_embeddings();
 
@@ -172,13 +172,13 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   if (!tokenizer.encode(grpc_request.prompt(), &prompt_tokens)) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Failed to encode prompt");
-    GLOG(ERROR) << "Failed to encode prompt: " << grpc_request.prompt();
+    LOG(ERROR) << "Failed to encode prompt: " << grpc_request.prompt();
     return nullptr;
   }
   if (prompt_tokens.size() > max_context_len) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Prompt is too long");
-    GLOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
+    LOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
     return nullptr;
   }
 
@@ -232,7 +232,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     if (!tokenizer.encode(stop_seq, &token_ids)) {
       call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                    "Failed to encode stop sequence");
-      GLOG(ERROR) << "Failed to encode stop sequence: " << stop_seq;
+      LOG(ERROR) << "Failed to encode stop sequence: " << stop_seq;
       return nullptr;
     }
     stopping_criteria.stop_sequences.push_back(token_ids);
@@ -286,7 +286,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
 CompletionHandler::CompletionHandler(Scheduler* scheduler, const Engine* engine)
     : scheduler_(scheduler) {
-  GCHECK(scheduler_ != nullptr);
+  CHECK(scheduler_ != nullptr);
   tokenizer_ = engine->tokenizer();
   model_args_ = engine->model_args();
 }

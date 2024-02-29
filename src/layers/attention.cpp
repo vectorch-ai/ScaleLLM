@@ -1,10 +1,10 @@
 #include "attention.h"
 
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
 
-#include "common/logging.h"
 #include "kernels/flash_attn/flash_api.h"
 
 DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
@@ -55,7 +55,7 @@ AttentionImpl::AttentionImpl(int64_t n_heads,
       n_kv_heads_(n_kv_heads),
       head_dim_(head_dim),
       scale_(scale) {
-  GCHECK(n_heads % n_kv_heads == 0)
+  CHECK(n_heads % n_kv_heads == 0)
       << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
 }
 
@@ -208,7 +208,7 @@ void multiple_query_masked_self_attention(
                                                      output,
                                                      /*num_splits=*/0);
   }
-  GCHECK(false)
+  CHECK(false)
       << "multiple_query_masked_self_attention not implemented for CPU";
 }
 
@@ -234,7 +234,7 @@ void varlen_masked_self_attention_generic(
   const auto n_heads = query.size(1);
   const auto n_kv_heads = key.size(1);
   if (n_heads != n_kv_heads) {
-    GCHECK(n_heads % n_kv_heads == 0);
+    CHECK(n_heads % n_kv_heads == 0);
     const auto num_goups = n_heads / n_kv_heads;
     _key = _key.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
     _value = _value.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
@@ -254,7 +254,7 @@ void varlen_masked_self_attention_generic(
 
       if (alibi_slopes) {
         torch::Tensor slopes = alibi_slopes.value();
-        GCHECK(slopes.size(0) == n_heads);
+        CHECK(slopes.size(0) == n_heads);
 
         // calculate alibi attention mask
         auto bias = torch::arange(0, seq_len, query.options());
@@ -325,7 +325,7 @@ void single_query_masked_self_attention_generic(
     const auto n_heads = query.size(1);
     const auto n_kv_heads = k.size(1);
     if (n_heads != n_kv_heads) {
-      GCHECK(n_heads % n_kv_heads == 0);
+      CHECK(n_heads % n_kv_heads == 0);
       const auto n_goups = n_heads / n_kv_heads;
       k = k.repeat_interleave(/*repeats=*/n_goups, /*dim=*/1);
       v = v.repeat_interleave(/*repeats=*/n_goups, /*dim=*/1);
@@ -394,7 +394,7 @@ void single_query_masked_self_attention_cuda(
                        max_context_len,
                        alibi_slopes);
   } else {
-    GCHECK(kPartitionSize % block_size == 0);
+    CHECK(kPartitionSize % block_size == 0);
     auto tmp_out = torch::empty({n_seqs, n_heads, num_partitions, head_dim},
                                 output.options());
     auto exp_sums =

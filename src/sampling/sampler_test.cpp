@@ -3,12 +3,11 @@
 #include <c10/core/DeviceType.h>
 #include <c10/core/ScalarType.h>
 #include <c10/core/TensorImpl.h>
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <kernels/sampling/sampling_kernels.h>
 #include <torch/torch.h>
 #include <torch/types.h>
-
-#include "common/logging.h"
 
 namespace llm {
 

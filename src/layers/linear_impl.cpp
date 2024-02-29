@@ -1,11 +1,11 @@
 #include "linear_impl.h"
 
 #include <c10/core/TensorImpl.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <algorithm>
 
-#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
 
@@ -31,7 +31,7 @@ void merge_weights(const std::string& tensor_name,
   // copy over accumulated weights
   for (size_t i = 0; i < weight_list.size(); ++i) {
     if (accumulated_weight_list[i].defined()) {
-      GCHECK(!weight_list[i].defined()) << tensor_name << " weight already set";
+      CHECK(!weight_list[i].defined()) << tensor_name << " weight already set";
       weight_list[i] = accumulated_weight_list[i];
     }
   }
@@ -72,7 +72,7 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     const torch::Device& device)
     : gather_output_(gather_output), parallel_args_(parallel_args) {
   const auto world_size = parallel_args_.world_size();
-  GCHECK(out_features % world_size == 0)
+  CHECK(out_features % world_size == 0)
       << "out_features " << out_features << " not divisible by world_size "
       << world_size;
   const int64_t out_features_per_partition = out_features / world_size;
@@ -111,7 +111,7 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
 
 void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
                                                TensorTransform transform_func) {
-  GCHECK(transform_func != nullptr) << "transform_func must be provided";
+  CHECK(transform_func != nullptr) << "transform_func must be provided";
   auto weight =
       state_dict.get_sharded_tensor("weight",
                                     /*dim=*/0,
@@ -155,7 +155,7 @@ void ColumnParallelLinearImpl::load_state_dict(
                                       parallel_args_.rank(),
                                       parallel_args_.world_size());
     if (weight.defined()) {
-      GCHECK(!weight_list[i].defined()) << "weight already loaded";
+      CHECK(!weight_list[i].defined()) << "weight already loaded";
       weight_list[i] = weight;
     }
 
@@ -167,7 +167,7 @@ void ColumnParallelLinearImpl::load_state_dict(
                                         parallel_args_.rank(),
                                         parallel_args_.world_size());
       if (bias.defined()) {
-        GCHECK(!bias_list[i].defined()) << "bias already loaded";
+        CHECK(!bias_list[i].defined()) << "bias already loaded";
         bias_list[i] = bias;
       }
     }
@@ -201,7 +201,7 @@ RowParallelLinearImpl::RowParallelLinearImpl(int64_t in_features,
     : input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
   const auto world_size = parallel_args_.world_size();
-  GCHECK(in_features % world_size == 0)
+  CHECK(in_features % world_size == 0)
       << "in_features " << in_features << " not divisible by world_size "
       << world_size;
   const int64_t in_features_per_partition = in_features / world_size;

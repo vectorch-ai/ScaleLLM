@@ -4,12 +4,12 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <folly/Unit.h>
 #include <folly/futures/Future.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <memory>
 #include <utility>
 
-#include "common/logging.h"
 #include "common/threadpool.h"
 #include "model_loader/state_dict.h"
 #include "models/input_parameters.h"
@@ -28,7 +28,7 @@ bool Worker::init_model(torch::ScalarType dtype,
   args_ = args;
   dtype_ = dtype;
   model_ = CausalLM::create(args, quant_args, parallel_args_, dtype_, device_);
-  GCHECK(model_ != nullptr) << "Failed to create model.";
+  CHECK(model_ != nullptr) << "Failed to create model.";
   return true;
 }
 
@@ -47,12 +47,12 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
 }
 
 void Worker::load_state_dict(const StateDict& state_dict) {
-  GCHECK(model_ != nullptr);
+  CHECK(model_ != nullptr);
   model_->load_state_dict(state_dict);
 }
 
 void Worker::verify_loaded_weights() const {
-  GCHECK(model_ != nullptr);
+  CHECK(model_ != nullptr);
   model_->verify_loaded_weights();
 }
 

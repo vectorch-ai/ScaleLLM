@@ -27,7 +27,7 @@ class GPT2MLPImpl : public torch::nn::Module {
     const int64_t intermediate_size = args.intermediate_size();
 
     act_ = Activation::get_act_func(args.hidden_act(), device);
-    GCHECK(act_ != nullptr);
+    CHECK(act_ != nullptr);
 
     // register the weight parameter
     c_fc_ = register_module("c_fc",

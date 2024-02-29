@@ -1,9 +1,9 @@
 #pragma once
 
 #include <ATen/core/TensorBody.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "common/logging.h"
 #include "kernels/layernorm_kernels.h"
 #include "model_loader/state_dict.h"
 
@@ -91,9 +91,9 @@ class LayerNormImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const {
-    GCHECK(weight_is_loaded_)
+    CHECK(weight_is_loaded_)
         << "weight is not loaded for " << prefix + "weight";
-    GCHECK(!bias_.defined() || bias_is_loaded_)
+    CHECK(!bias_.defined() || bias_is_loaded_)
         << "bias is not loaded for " << prefix + "bias";
   }
 
@@ -153,7 +153,7 @@ class RMSNormImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const {
-    GCHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
   }
 
   void pretty_print(std::ostream& stream) const override {

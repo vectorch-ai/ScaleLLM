@@ -29,7 +29,7 @@ class BloomMLPImpl : public torch::nn::Module {
     const int64_t intermediate_size = args.intermediate_size();
 
     act_ = Activation::get_act_func("gelu", device);
-    GCHECK(act_ != nullptr);
+    CHECK(act_ != nullptr);
 
     // register the weight parameter
     dense_h_to_4h_ =
@@ -186,7 +186,7 @@ class BloomAttentionImpl : public torch::nn::Module {
   }
   // reshape qkv tensor from [n_heads, 3, ...] to [3, n_heads, ...]
   torch::Tensor reshape_qkv_tensor(const torch::Tensor& tensor) {
-    GCHECK(tensor.dim() == 2 || tensor.dim() == 1)
+    CHECK(tensor.dim() == 2 || tensor.dim() == 1)
         << "unexpected tensor dim: " << tensor.dim();
     if (tensor.dim() == 2) {
       return tensor.view({-1, 3, head_dim_, hidden_size_})

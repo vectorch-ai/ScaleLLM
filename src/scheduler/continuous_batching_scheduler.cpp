@@ -3,11 +3,11 @@
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
 #include <folly/MPMCQueue.h>
+#include <glog/logging.h>
 
 #include <cstdint>
 #include <memory>
 
-#include "common/logging.h"
 #include "request/request.h"
 #include "request/sequence.h"
 
@@ -25,11 +25,11 @@ DEFINE_int32(streaming_token_buffer_size,
 
 ContinuousBatchingScheduler::ContinuousBatchingScheduler(Engine* engine)
     : engine_(engine), request_queue_(kRequestQueueSize) {
-  GCHECK(engine_ != nullptr);
+  CHECK(engine_ != nullptr);
   block_manager_ = engine_->block_manager();
   tokenizer_ = engine_->tokenizer();
-  GCHECK(block_manager_ != nullptr);
-  GCHECK(tokenizer_ != nullptr);
+  CHECK(block_manager_ != nullptr);
+  CHECK(tokenizer_ != nullptr);
 }
 
 ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
@@ -107,7 +107,7 @@ void ContinuousBatchingScheduler::on_sequence_stream(Sequence* seq) {
 }
 
 bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
-  GCHECK(request != nullptr);
+  CHECK(request != nullptr);
   if (request_queue_.write(request.get())) {
     // take over the ownership of the request
     request.release();
@@ -123,7 +123,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     Request* request = nullptr;
     // read from request queue then push to priority queue
     request_queue_.read(request);
-    GCHECK(request != nullptr);
+    CHECK(request != nullptr);
     priority_queue_.push(request);
   }
 
@@ -203,7 +203,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
 
   if (sequences_batch_.empty() && !priority_queue_.empty()) {
     // don't have enough memory to schedule one sequence
-    GLOG(ERROR) << "Not enough memory to schedule one sequence";
+    LOG(ERROR) << "Not enough memory to schedule one sequence";
     Request* request = priority_queue_.top();
     priority_queue_.pop();
 
@@ -234,12 +234,12 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
     absl::SleepFor(time_to_sleep);
   }
 
-  GCHECK(!sequences_batch_.empty());
+  CHECK(!sequences_batch_.empty());
   auto output_parameters = engine_->execute_model(sequences_batch_);
 
   const auto& next_tokens = output_parameters.next_tokens;
   const int64_t num_seqs = next_tokens.numel();
-  GCHECK(num_seqs == sequences_batch_.size());
+  CHECK(num_seqs == sequences_batch_.size());
 
   const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
   // process sequence in batch

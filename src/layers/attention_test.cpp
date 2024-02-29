@@ -4,6 +4,7 @@
 #include <absl/random/random.h>
 #include <c10/core/TensorImpl.h>
 #include <c10/util/Optional.h>
+#include <glog/logging.h>
 #include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/cuda.h>
 #include <torch/torch.h>
@@ -11,7 +12,6 @@
 
 #include <cstdint>
 
-#include "common/logging.h"
 #include "gtest/gtest.h"
 
 namespace llm {
@@ -25,7 +25,7 @@ void set_kv_cache(
     torch::Tensor& key_cache,  // [n_blocks, block_size, n_kv_heads, head_dim]
     torch::Tensor& value_cache) {
   const auto n_tokens = keys.size(0);
-  GCHECK(slot_ids.size() == n_tokens);
+  CHECK(slot_ids.size() == n_tokens);
 
   // [n_blocks, block_size, n_kv_heads, head_dim]
   const int64_t block_size = key_cache.size(1);

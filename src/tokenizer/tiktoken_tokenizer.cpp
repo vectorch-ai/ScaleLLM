@@ -5,13 +5,12 @@
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_join.h>
 #include <absl/strings/str_split.h>
+#include <glog/logging.h>
 #include <re2/re2.h>
 
 #include <fstream>
 #include <optional>
 #include <string>
-
-#include "common/logging.h"
 
 namespace llm {
 
@@ -46,9 +45,9 @@ TiktokenTokenizer::TiktokenTokenizer(const std::string_view& dir_path,
       const auto token_id = token_to_id(token);
       if (token_id.has_value()) {
         prefix_token_ids_.push_back(token_id.value());
-        GLOG(INFO) << "Prefix token: " << token << ", id: " << token_id.value();
+        LOG(INFO) << "Prefix token: " << token << ", id: " << token_id.value();
       } else {
-        GLOG(ERROR) << "Failed to find prefix token: " << token;
+        LOG(ERROR) << "Failed to find prefix token: " << token;
       }
     }
   }
@@ -63,10 +62,10 @@ void TiktokenTokenizer::load_special_tokens(
       continue;
     }
     if (!special_token_encoder_.try_emplace(token, next_id).second) {
-      GLOG(WARNING) << "Duplicate special token: " << token;
+      LOG(WARNING) << "Duplicate special token: " << token;
     }
     if (!special_token_decoder_.try_emplace(next_id, token).second) {
-      GLOG(WARNING) << "Duplicate special token id: " << next_id;
+      LOG(WARNING) << "Duplicate special token id: " << next_id;
     }
     ++next_id;
   }
@@ -94,7 +93,7 @@ void TiktokenTokenizer::load_vocab(const std::string& vocab_file_path) {
   // read token + rank from vocab file
   std::ifstream fs(vocab_file_path);
   if (!fs) {
-    GLOG(FATAL) << "Failed to open vocab file: " << vocab_file_path;
+    LOG(FATAL) << "Failed to open vocab file: " << vocab_file_path;
   }
 
   std::string line;
@@ -106,26 +105,26 @@ void TiktokenTokenizer::load_vocab(const std::string& vocab_file_path) {
     // split line by space
     const std::vector<std::string> parts = absl::StrSplit(line, ' ');
     if (parts.size() != 2) {
-      GLOG(WARNING) << "Failed to parse line: " << line;
+      LOG(WARNING) << "Failed to parse line: " << line;
       continue;
     }
     // parse token and rank
     std::string token;
     if (!absl::Base64Unescape(parts[0], &token)) {
-      GLOG(WARNING) << "Failed to parse token: " << parts[0];
+      LOG(WARNING) << "Failed to parse token: " << parts[0];
       continue;
     }
     int32_t rank = 0;
     if (!absl::SimpleAtoi(parts[1], &rank)) {
-      GLOG(WARNING) << "Failed to parse rank: " << parts[1];
+      LOG(WARNING) << "Failed to parse rank: " << parts[1];
       continue;
     }
 
     if (!encoder_.try_emplace(token, rank).second) {
-      GLOG(WARNING) << "Duplicate token: " << token;
+      LOG(WARNING) << "Duplicate token: " << token;
     }
     if (!decoder_.try_emplace(rank, token).second) {
-      GLOG(WARNING) << "Duplicate rank: " << rank;
+      LOG(WARNING) << "Duplicate rank: " << rank;
     }
   }
 }
@@ -204,7 +203,7 @@ void TiktokenTokenizer::byte_pair_encode(const std::string_view& piece,
     const auto key = piece.substr(s, e - s);
     auto it = encoder_.find(key);
     if (it == encoder_.end()) {
-      GLOG(ERROR) << "Failed to find key: " << key;
+      LOG(ERROR) << "Failed to find key: " << key;
     } else {
       ids->push_back(it->second);
     }
@@ -286,7 +285,7 @@ std::string TiktokenTokenizer::decode(const std::vector<int32_t>& ids) const {
       ss << it->second;
       continue;
     }
-    GLOG(ERROR) << "Failed to find token for id: " << id;
+    LOG(ERROR) << "Failed to find token for id: " << id;
   }
   return ss.str();
 }

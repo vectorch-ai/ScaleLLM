@@ -1,4 +1,5 @@
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <grpc/grpc.h>
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
@@ -10,7 +11,6 @@
 #include <memory>
 #include <string>
 
-#include "common/logging.h"
 #include "completion.grpc.pb.h"
 #include "completion.pb.h"
 
@@ -54,7 +54,7 @@ class ChatClient final {
     request.set_stream(true);
 
     llm::Priority priority{};
-    GCHECK(llm::Priority_Parse(FLAGS_priority, &priority));
+    CHECK(llm::Priority_Parse(FLAGS_priority, &priority));
     request.set_priority(priority);
 
     // Create a stream for receiving messages
@@ -74,9 +74,9 @@ class ChatClient final {
 
     Status status = reader->Finish();
     if (!status.ok()) {
-      GLOG(ERROR) << "RPC failed, error code: " << status.error_code()
-                  << ", error message: " << status.error_message()
-                  << ", error details: " << status.error_details();
+      LOG(ERROR) << "RPC failed, error code: " << status.error_code()
+                 << ", error message: " << status.error_message()
+                 << ", error details: " << status.error_details();
     }
   }
 

@@ -1,11 +1,11 @@
 #include "model_parallel/model_parallel.h"
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <torch/csrc/distributed/c10d/Types.hpp>
 #include <vector>
 
-#include "common/logging.h"
 #include "models/model_args.h"
 
 namespace llm {
@@ -54,7 +54,7 @@ torch::Tensor scatter_to_model_parallel_region(
 
   // get the size for last dimension
   const auto last_dim_size = input.size(-1);
-  GCHECK(last_dim_size % world_size == 0)
+  CHECK(last_dim_size % world_size == 0)
       << "last_dim_size " << last_dim_size << " not divisible by world_size "
       << world_size;
 

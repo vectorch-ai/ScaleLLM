@@ -5,10 +5,9 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include <glog/logging.h>
 #include <torch/all.h>
 #include <torch/torch.h>
-
-#include "common/logging.h"
 
 namespace llm {
 
@@ -290,7 +289,7 @@ void vec_quant_matmul_64(torch::Tensor vec,
                                             /*BITS=*/8>(
           vec, mat, mul, scales, zeros, g_idx);
     default:
-      GLOG(FATAL) << "Unsupported bits " << bits;
+      LOG(FATAL) << "Unsupported bits " << bits;
   }
   __builtin_unreachable();
 }
@@ -323,7 +322,7 @@ void vec_quant_matmul_256(torch::Tensor vec,
                                             /*BITS=*/8>(
           vec, mat, mul, scales, zeros, g_idx);
     default:
-      GLOG(FATAL) << "Unsupported bits " << bits;
+      LOG(FATAL) << "Unsupported bits " << bits;
   }
   __builtin_unreachable();
 }

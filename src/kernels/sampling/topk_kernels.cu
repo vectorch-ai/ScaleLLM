@@ -2,13 +2,13 @@
 
 #include <ATen/cuda/CUDAContext.h>
 #include <curand_kernel.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <cub/cub.cuh>
 
 #include "../dispatch.h"
 #include "../reduce_kernel_utils.cuh"
-#include "common/logging.h"
 
 namespace llm::kernel {
 
@@ -246,8 +246,8 @@ void invoke_topk_sampling(torch::Tensor& output_ids,
       CASE_K_RANGE(33, 64, 256, 256, 8);
       CASE_K_RANGE(65, 1024, 256, 256, 8);
       default:
-        GLOG(FATAL) << "topk_sampling only supports max_top_k <= 1024 but got "
-                    << max_top_k;
+        LOG(FATAL) << "topk_sampling only supports max_top_k <= 1024 but got "
+                   << max_top_k;
     }
   });
 }

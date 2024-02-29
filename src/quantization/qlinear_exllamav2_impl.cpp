@@ -3,10 +3,10 @@
 #include <c10/core/DeviceType.h>
 #include <c10/core/ScalarType.h>
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
 #include "models/model_args.h"
@@ -42,7 +42,7 @@ thread_local torch::Tensor tl_temp_dq;
 
 void allocate_temp_dq(int64_t size, const torch::Device& device) {
   if (tl_temp_dq.defined()) {
-    GCHECK(tl_temp_dq.device() == device)
+    CHECK(tl_temp_dq.device() == device)
         << "temp_dq was allocated on " << tl_temp_dq.device()
         << " but now is on " << device;
   }
@@ -74,7 +74,7 @@ ColumnParallelQLinearExllamav2Impl::ColumnParallelQLinearExllamav2Impl(
                                 dtype,
                                 device) {
   const auto bits = quant_args.bits();
-  GCHECK(bits == 4) << "Only 4 bits are supported";
+  CHECK(bits == 4) << "Only 4 bits are supported";
 
   const auto group_size =
       quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
@@ -123,9 +123,9 @@ torch::Tensor ColumnParallelQLinearExllamav2Impl::quant_matmul(
     const torch::Tensor& scales) const {
   // lazy initialization
   if (q_matrix_ == 0) {
-    GCHECK(tl_temp_dq.defined()) << "tl_temp_dq is not defined. model "
-                                    "initialization and forward should be on "
-                                    "the same thread";
+    CHECK(tl_temp_dq.defined()) << "tl_temp_dq is not defined. model "
+                                   "initialization and forward should be on "
+                                   "the same thread";
     q_matrix_ = make_q_matrix(qweight,
                               q_perm_,
                               q_invperm_,
@@ -163,7 +163,7 @@ RowParallelQLinearExllamav2Impl::RowParallelQLinearExllamav2Impl(
                              dtype,
                              device) {
   const auto bits = quant_args.bits();
-  GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
+  CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
 
   const auto group_size =
@@ -212,9 +212,9 @@ torch::Tensor RowParallelQLinearExllamav2Impl::quant_matmul(
     const torch::Tensor& qzeros,
     const torch::Tensor& scales) const {
   if (q_matrix_ == 0) {
-    GCHECK(tl_temp_dq.defined()) << "tl_temp_dq is not defined. model "
-                                    "initialization and forward should be on "
-                                    "the same thread";
+    CHECK(tl_temp_dq.defined()) << "tl_temp_dq is not defined. model "
+                                   "initialization and forward should be on "
+                                   "the same thread";
     q_matrix_ = make_q_matrix(qweight,
                               q_perm_,
                               q_invperm_,

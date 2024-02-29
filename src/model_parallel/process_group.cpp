@@ -2,32 +2,31 @@
 
 #include <c10/core/Device.h>
 #include <cuda_runtime.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <memory>
 #include <vector>
 
-#include "common/logging.h"
-
 namespace llm {
 namespace {
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define NCCLCHECK(cmd)                                                \
-  do {                                                                \
-    ncclResult_t r = cmd;                                             \
-    if (r != ncclSuccess) {                                           \
-      GLOG(FATAL) << "Failed, NCCL error :" << ncclGetErrorString(r); \
-    }                                                                 \
+#define NCCLCHECK(cmd)                                               \
+  do {                                                               \
+    ncclResult_t r = cmd;                                            \
+    if (r != ncclSuccess) {                                          \
+      LOG(FATAL) << "Failed, NCCL error :" << ncclGetErrorString(r); \
+    }                                                                \
   } while (0)
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define CUDACHECK(cmd)                                                  \
-  do {                                                                  \
-    cudaError_t err = cmd;                                              \
-    if (err != cudaSuccess) {                                           \
-      GLOG(FATAL) << "Failed, Cuda error :" << cudaGetErrorString(err); \
-    }                                                                   \
+#define CUDACHECK(cmd)                                                 \
+  do {                                                                 \
+    cudaError_t err = cmd;                                             \
+    if (err != cudaSuccess) {                                          \
+      LOG(FATAL) << "Failed, Cuda error :" << cudaGetErrorString(err); \
+    }                                                                  \
   } while (0)
 
 at::Tensor flatten_for_scatter_gather(std::vector<at::Tensor>& tensors) {
@@ -64,19 +63,19 @@ ncclDataType_t to_nccl_data_type(const torch::Tensor& input) {
 }
 
 void check_input(torch::Tensor input) {
-  GCHECK(input.is_cuda()) << "input should be cuda tensor";
-  GCHECK(input.is_contiguous()) << "input should be contiguous";
-  GCHECK(!input.is_sparse()) << "input have to be cuda dense tensor";
+  CHECK(input.is_cuda()) << "input should be cuda tensor";
+  CHECK(input.is_contiguous()) << "input should be contiguous";
+  CHECK(!input.is_sparse()) << "input have to be cuda dense tensor";
 }
 
 }  // namespace
 
 std::vector<std::unique_ptr<ProcessGroup>> ProcessGroup::create_process_groups(
     const std::vector<torch::Device>& devices) {
-  GCHECK(!devices.empty()) << "devices should not be empty";
+  CHECK(!devices.empty()) << "devices should not be empty";
   // all devices should be cuda devices
   for (const auto& device : devices) {
-    GCHECK(device.is_cuda()) << "device should be cuda device";
+    CHECK(device.is_cuda()) << "device should be cuda device";
   }
 
   std::vector<int> device_idxs;
@@ -137,7 +136,7 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
 void ProcessGroupNCCL::allgather(torch::Tensor input,
                                  std::vector<torch::Tensor>& outputs) {
   check_input(input);
-  GCHECK(outputs.size() == world_size())
+  CHECK(outputs.size() == world_size())
       << "outputs should have the same size as world_size";
   DCHECK(input.device() == device())
       << "input should be on the same device as the process group";

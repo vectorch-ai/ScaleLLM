@@ -1,8 +1,7 @@
 #include "sampler.h"
 
+#include <glog/logging.h>
 #include <torch/torch.h>
-
-#include "common/logging.h"
 namespace llm {
 namespace {
 torch::Tensor greedy_sample(const torch::Tensor& probs) {

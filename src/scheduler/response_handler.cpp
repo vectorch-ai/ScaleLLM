@@ -1,9 +1,10 @@
 #include "response_handler.h"
 
+#include <glog/logging.h>
+
 #include <cstdint>
 #include <memory>
 
-#include "common/logging.h"
 #include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
@@ -15,8 +16,8 @@ DEFINE_int32(streaming_token_buffer_size,
              "number of tokens to buffer before streaming to client");
 
 ResponseHandler::ResponseHandler(BlockManager* block_manager,
-    Tokenizer* tokenizer)
-  : block_manager_(block_manager), tokenizer_(tokenizer) {}
+                                 Tokenizer* tokenizer)
+    : block_manager_(block_manager), tokenizer_(tokenizer) {}
 
 void ResponseHandler::on_request_finish(Request* request) {
   // release all blocks for the finished request

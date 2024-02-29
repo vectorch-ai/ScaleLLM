@@ -2,13 +2,13 @@
 
 #include <ATen/core/TensorBody.h>
 #include <caffe2/serialize/inline_container.h>
+#include <glog/logging.h>
 #include <torch/csrc/jit/serialization/import_read.h>
 #include <torch/csrc/jit/serialization/storage_context.h>
 #include <torch/torch.h>
 
 #include <memory>
 
-#include "common/logging.h"
 #include "safetensors/safetensors.h"
 
 namespace llm {
@@ -61,7 +61,7 @@ torch::ScalarType get_dtype(const Dtype& dtype) {
     case Dtype::U32:
     case Dtype::U64:
     default:
-      GLOG(FATAL) << "Unsupported dtype " << static_cast<int>(dtype);
+      LOG(FATAL) << "Unsupported dtype " << static_cast<int>(dtype);
   }
   __builtin_unreachable();
 }
@@ -81,7 +81,7 @@ std::unique_ptr<StateDict> StateDict::load_pickle_file(
     const std::string& weights_file,
     int shard_id,
     int num_shards) {
-  GCHECK(shard_id >= 0 && shard_id < num_shards)
+  CHECK(shard_id >= 0 && shard_id < num_shards)
       << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
 
   using caffe2::serialize::PyTorchStreamReader;
@@ -101,7 +101,7 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
     const std::string& weights_file,
     int shard_id,
     int num_shards) {
-  GCHECK(shard_id >= 0 && shard_id < num_shards)
+  CHECK(shard_id >= 0 && shard_id < num_shards)
       << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
   folly::MemoryMapping::Options options;
   options.setPrefault(true).setReadable(true);
@@ -120,19 +120,19 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
   std::unordered_map<std::string, torch::Tensor> dict;
   // safetensors
   Handle* handle = nullptr;
-  GCHECK(safetensors_deserialize(&handle, data, size) == Status::Ok)
+  CHECK(safetensors_deserialize(&handle, data, size) == Status::Ok)
       << "Failed to open safetensors file " << weights_file;
 
   const char* const* tensor_names = nullptr;
   size_t num_tensors = 0;
-  GCHECK(safetensors_names(handle, &tensor_names, &num_tensors) == Status::Ok)
+  CHECK(safetensors_names(handle, &tensor_names, &num_tensors) == Status::Ok)
       << "Failed to get tensor names from safetensors file " << weights_file;
 
   for (size_t i = 0; i < num_tensors; i++) {
     const char* tensor_name = tensor_names[i];
     View* tensor_view = nullptr;
-    GCHECK(safetensors_get_tensor(handle, &tensor_view, tensor_name) ==
-           Status::Ok)
+    CHECK(safetensors_get_tensor(handle, &tensor_view, tensor_name) ==
+          Status::Ok)
         << "Failed to get tensor " << tensor_name << " from safetensors file "
         << weights_file;
 
@@ -143,13 +143,13 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
     const auto tensor = at::from_blob(const_cast<void*>(tensor_data),
                                       tensor_sizes,
                                       torch::dtype(scalar_type));
-    GCHECK(safetensors_free_tensor(tensor_view) == Status::Ok)
+    CHECK(safetensors_free_tensor(tensor_view) == Status::Ok)
         << "Failed to free tensor view";
     dict[tensor_name] = tensor;
   }
-  GCHECK(safetensors_free_names(tensor_names, num_tensors) == Status::Ok)
+  CHECK(safetensors_free_names(tensor_names, num_tensors) == Status::Ok)
       << "Failed to free tensor names";
-  GCHECK(safetensors_destroy(handle) == Status::Ok)
+  CHECK(safetensors_destroy(handle) == Status::Ok)
       << "Failed to destroy safetensors handle";
 
   return std::make_unique<StateDict>(
@@ -160,7 +160,7 @@ StateDict::StateDict(std::unordered_map<std::string, torch::Tensor> dict,
                      int shard_id,
                      int num_shards)
     : dict_(std::move(dict)), shard_id_(shard_id), num_shards_(num_shards) {
-  GCHECK(shard_id_ >= 0 && shard_id_ < num_shards_)
+  CHECK(shard_id_ >= 0 && shard_id_ < num_shards_)
       << "Invalid shard id " << shard_id_ << " for " << num_shards_
       << " shards";
 }
@@ -173,7 +173,7 @@ StateDict::StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
       dict_(std::move(dict)),
       shard_id_(shard_id),
       num_shards_(num_shards) {
-  GCHECK(shard_id >= 0 && shard_id < num_shards)
+  CHECK(shard_id >= 0 && shard_id < num_shards)
       << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
 }
 
@@ -190,12 +190,12 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
                                             int64_t dim,
                                             int rank,
                                             int world_size) const {
-  GCHECK(dim == 0 || dim == 1) << "Only support 1D or 2D sharding";
-  GCHECK(rank >= 0 && rank < world_size)
+  CHECK(dim == 0 || dim == 1) << "Only support 1D or 2D sharding";
+  CHECK(rank >= 0 && rank < world_size)
       << "Invalid rank " << rank << " for " << world_size << " shards";
-  GCHECK(world_size >= num_shards_) << "Invalid world size " << world_size
-                                    << " for " << num_shards_ << " data shards";
-  GCHECK(world_size % num_shards_ == 0)
+  CHECK(world_size >= num_shards_) << "Invalid world size " << world_size
+                                   << " for " << num_shards_ << " data shards";
+  CHECK(world_size % num_shards_ == 0)
       << "Invalid world size " << world_size << " for " << num_shards_
       << " data shards";
   // check if the tensor contains the data for the given rank
@@ -207,7 +207,7 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
     return torch::Tensor{nullptr};
   }
 
-  GCHECK(rank >= start_rank && rank < end_rank);
+  CHECK(rank >= start_rank && rank < end_rank);
   const int64_t local_rank = rank - start_rank;
   auto tensor = get_tensor(tensor_name);
   if (!tensor.defined()) {
@@ -220,7 +220,7 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
     return tensor;
   }
 
-  GCHECK(dim_size % num_ranks_per_shard == 0)
+  CHECK(dim_size % num_ranks_per_shard == 0)
       << "can't devide tensor evenly on " << dim << " with dim: " << dim_size
       << " ranks_per_shard: " << num_ranks_per_shard;
   const auto chunks = tensor.chunk(num_ranks_per_shard, dim);

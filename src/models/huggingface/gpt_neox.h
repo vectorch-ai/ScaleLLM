@@ -28,7 +28,7 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
     const int64_t intermediate_size = args.intermediate_size();
 
     act_ = Activation::get_act_func(args.hidden_act(), device);
-    GCHECK(act_ != nullptr);
+    CHECK(act_ != nullptr);
 
     // register the weight parameter
     dense_h_to_4h_ =
@@ -165,7 +165,7 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
     // N.B. Fused qkv weights in GPT-NeoX has the shape of [n_heads * 3 *
     // head_dim, hidden_size], while the desired shape is [3 * n_heads *
     // head_dim, hidden_size].
-    GCHECK(tensor.dim() == 2 || tensor.dim() == 1)
+    CHECK(tensor.dim() == 2 || tensor.dim() == 1)
         << "unexpected tensor dim: " << tensor.dim();
     if (tensor.dim() == 2) {
       return tensor.view({-1, 3, head_dim_, hidden_size_})

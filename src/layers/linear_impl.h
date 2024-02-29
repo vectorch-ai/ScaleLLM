@@ -1,8 +1,8 @@
 #pragma once
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "common/logging.h"
 #include "linear.h"
 #include "model_loader/state_dict.h"
 #include "models/model_args.h"
@@ -48,9 +48,9 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix) const override {
-    GCHECK(weight_is_loaded_)
+    CHECK(weight_is_loaded_)
         << "weight is not loaded for " << prefix + "weight";
-    GCHECK(!bias_.defined() || bias_is_loaded_)
+    CHECK(!bias_.defined() || bias_is_loaded_)
         << "bias is not loaded for " << prefix + "bias";
   }
 
@@ -107,9 +107,9 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const override {
-    GCHECK(weight_is_loaded_)
+    CHECK(weight_is_loaded_)
         << "weight is not loaded for " << prefix + "weight";
-    GCHECK(!bias_.defined() || bias_is_loaded_)
+    CHECK(!bias_.defined() || bias_is_loaded_)
         << "bias is not loaded for " << prefix + "bias";
   }
 

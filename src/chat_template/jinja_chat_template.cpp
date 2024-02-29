@@ -1,12 +1,11 @@
 #include "jinja_chat_template.h"
 
+#include <glog/logging.h>
 #include <jinja2cpp/binding/nlohmann_json.h>
 #include <jinja2cpp/value.h>
 
 #include <optional>
 #include <string>
-
-#include "common/logging.h"
 
 namespace llm {
 
@@ -14,7 +13,7 @@ JinjaChatTemplate::JinjaChatTemplate(const std::string& template_str,
                                      bool add_generation_prompt)
     : add_generation_prompt_(add_generation_prompt) {
   if (!template_.Load(template_str)) {
-    GLOG(FATAL) << "Failed to load template: " << template_str;
+    LOG(FATAL) << "Failed to load template: " << template_str;
   }
 }
 

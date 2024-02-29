@@ -1,12 +1,11 @@
 #include "activation.h"
 
+#include <glog/logging.h>
 #include <kernels/activation_kernels.h>
 #include <torch/torch.h>
 
 #include <boost/algorithm/string.hpp>
 #include <cmath>
-
-#include "common/logging.h"
 
 DECLARE_bool(disable_custom_kernels);
 
@@ -80,7 +79,7 @@ torch::Tensor silu_with_mul(torch::Tensor x) {
 
 ActFunc Activation::get_act_func(const std::string& name,
                                  const torch::Device& device) {
-  GCHECK(!name.empty()) << "Activation function name cannot be empty";
+  CHECK(!name.empty()) << "Activation function name cannot be empty";
   using namespace detail;
   if (boost::iequals(name, "gelu")) {
     return gelu;
@@ -104,13 +103,13 @@ ActFunc Activation::get_act_func(const std::string& name,
                                                              : silu;
   }
 
-  GLOG(ERROR) << "Unsupported activation function: " << name;
+  LOG(ERROR) << "Unsupported activation function: " << name;
   return nullptr;
 }
 
 ActFunc Activation::get_act_with_mul_func(const std::string& name,
                                           const torch::Device& device) {
-  GCHECK(!name.empty()) << "Activation function name cannot be empty";
+  CHECK(!name.empty()) << "Activation function name cannot be empty";
   using namespace detail;
   if (boost::iequals(name, "gelu")) {
     return gelu_with_mul;
@@ -137,7 +136,7 @@ ActFunc Activation::get_act_with_mul_func(const std::string& name,
                : silu_with_mul;
   }
 
-  GLOG(ERROR) << "Unsupported activation function: " << name;
+  LOG(ERROR) << "Unsupported activation function: " << name;
   return nullptr;
 }
 

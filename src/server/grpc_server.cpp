@@ -1,13 +1,13 @@
 #include "grpc_server.h"
 
 #include <absl/strings/str_format.h>
+#include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 
 #include <memory>
 #include <thread>
 
 #include "handlers/call_data.h"
-#include "common/logging.h"
 
 namespace llm {
 
@@ -31,7 +31,7 @@ bool GrpcServer::start(const Options& options) {
   cq_ = builder.AddCompletionQueue();
   // Finally assemble the server.
   grpc_server_ = builder.BuildAndStart();
-  GLOG(INFO) << "Started grpc server on " << server_address;
+  LOG(INFO) << "Started grpc server on " << server_address;
 
   // Spawn a new CallData instance for complete request
   {

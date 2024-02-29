@@ -1,6 +1,7 @@
 #include "hf_tokenizer.h"
 
-#include "common/logging.h"
+#include <glog/logging.h>
+
 #include "tokenizers/tokenizers.h"
 
 namespace llm {
@@ -8,15 +9,15 @@ namespace llm {
 std::unique_ptr<HFTokenizer> HFTokenizer::from_file(
     const std::string& tokenizer_file_path) {
   TokenizerHandle handle = tokenizer_from_file(tokenizer_file_path.c_str());
-  GCHECK(handle != nullptr)
-      << "Failed to load tokenizer from file: " << tokenizer_file_path;
+  CHECK(handle != nullptr) << "Failed to load tokenizer from file: "
+                           << tokenizer_file_path;
   return std::make_unique<HFTokenizer>(tokenizer_file_path, handle);
 }
 
 HFTokenizer::HFTokenizer(const std::string& tokenizer_file_path,
                          TokenizerHandle handle)
     : tokenizer_file_path_(tokenizer_file_path), handle_(handle) {
-  GCHECK(handle_ != nullptr);
+  CHECK(handle_ != nullptr);
 }
 
 std::unique_ptr<Tokenizer> HFTokenizer::clone() const {

@@ -2,12 +2,12 @@
 
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
+#include <glog/logging.h>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include "common/logging.h"
 #include "sequence.h"
 
 namespace llm {
@@ -20,7 +20,7 @@ Request::Request(const std::string& id,
 
 void Request::add_sequence(OnStream on_stream) {
   if (stream) {
-    GCHECK(on_stream) << "on_stream should not be null if stream is true";
+    CHECK(on_stream) << "on_stream should not be null if stream is true";
   }
   sequences.emplace_back(this->sampling_param,
                          this->stopping_criteria,

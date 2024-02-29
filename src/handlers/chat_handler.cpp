@@ -1,5 +1,6 @@
 #include "chat_handler.h"
 
+#include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
 #include <uuid.h>
@@ -9,7 +10,6 @@
 #include <string>
 
 #include "chat_template/jinja_chat_template.h"
-#include "common/logging.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "request/request.h"
@@ -171,8 +171,8 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     call_data->finish_with_error(
         grpc::StatusCode::INVALID_ARGUMENT,
         "Chat template has not configured, please use /completion API");
-    GLOG(ERROR) << "Failed to get dialog factory for model type: "
-                << model_args.model_type();
+    LOG(ERROR) << "Failed to get dialog factory for model type: "
+               << model_args.model_type();
     return nullptr;
   }
 
@@ -180,7 +180,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   if (!prompt.has_value()) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Failed to construct prompt from messages");
-    GLOG(ERROR) << "Failed to construct prompt from messages";
+    LOG(ERROR) << "Failed to construct prompt from messages";
     return nullptr;
   }
 
@@ -188,13 +188,13 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   if (!tokenizer.encode(prompt.value(), &prompt_tokens)) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Failed to encode prompt");
-    GLOG(ERROR) << "Failed to encode prompt: " << prompt.value();
+    LOG(ERROR) << "Failed to encode prompt: " << prompt.value();
     return nullptr;
   }
   if (prompt_tokens.size() > max_context_len) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Prompt is too long");
-    GLOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
+    LOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
     return nullptr;
   }
 
@@ -252,7 +252,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     if (!tokenizer.encode(stop_seq, &token_ids)) {
       call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                    "Failed to encode stop sequence");
-      GLOG(ERROR) << "Failed to encode stop sequence: " << stop_seq;
+      LOG(ERROR) << "Failed to encode stop sequence: " << stop_seq;
       return nullptr;
     }
     stopping_criteria.stop_sequences.push_back(token_ids);
@@ -308,7 +308,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
 ChatHandler::ChatHandler(Scheduler* scheduler, const Engine* engine)
     : scheduler_(scheduler) {
-  GCHECK(scheduler_ != nullptr);
+  CHECK(scheduler_ != nullptr);
   tokenizer_ = engine->tokenizer();
   model_args_ = engine->model_args();
 
@@ -316,14 +316,14 @@ ChatHandler::ChatHandler(Scheduler* scheduler, const Engine* engine)
   auto factory = ModelRegistry::get_default_chat_template_factory(
       model_args_.model_type());
   if (!FLAGS_disable_default_chat_template && factory) {
-    GLOG(INFO) << "Use default chat template for model type: "
-               << model_args_.model_type();
+    LOG(INFO) << "Use default chat template for model type: "
+              << model_args_.model_type();
     chat_template_ = factory();
   } else {
     const auto& tokenizer_args = engine->tokenizer_args();
     if (!tokenizer_args.chat_template().empty()) {
-      GLOG(INFO) << "Use chat template from tokenizer args for model type: "
-                 << model_args_.model_type();
+      LOG(INFO) << "Use chat template from tokenizer args for model type: "
+                << model_args_.model_type();
       chat_template_ = std::make_unique<JinjaChatTemplate>(
           tokenizer_args.chat_template(), /*add_generation_prompt=*/true);
     }

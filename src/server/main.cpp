@@ -2,6 +2,7 @@
 #include <c10/core/Device.h>
 #include <folly/init/Init.h>
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <csignal>
@@ -10,7 +11,6 @@
 #include <nlohmann/json.hpp>
 #include <thread>
 
-#include "common/logging.h"
 #include "common/metrics.h"
 #include "engine/engine.h"
 #include "grpc_server.h"
@@ -37,7 +37,7 @@ DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 // NOLINTNEXTLINE
 static std::atomic<bool> running{true};
 void shutdown_handler(int signal) {
-  GLOG(WARNING) << "Received signal " << signal << ", stopping server...";
+  LOG(WARNING) << "Received signal " << signal << ", stopping server...";
   running.store(false, std::memory_order_relaxed);
 }
 
@@ -47,7 +47,7 @@ std::vector<torch::Device> parse_devices(const std::string& device_str) {
     // use all available gpus if any
     const auto num_gpus = torch::cuda::device_count();
     if (num_gpus == 0) {
-      GLOG(INFO) << "no gpus found, using cpu.";
+      LOG(INFO) << "no gpus found, using cpu.";
       return {torch::kCPU};
     }
     devices.reserve(num_gpus);
@@ -65,8 +65,8 @@ std::vector<torch::Device> parse_devices(const std::string& device_str) {
     devices.emplace_back(device_str);
     device_types.insert(devices.back().type());
   }
-  GCHECK(!devices.empty()) << "No devices specified.";
-  GCHECK(device_types.size() == 1)
+  CHECK(!devices.empty()) << "No devices specified.";
+  CHECK(device_types.size() == 1)
       << "All devices must be of the same type. Got: " << FLAGS_device;
   return devices;
 }
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
 
   // check if model path exists
   if (!std::filesystem::exists(FLAGS_model_path)) {
-    GLOG(FATAL) << "Model path " << FLAGS_model_path << " does not exist.";
+    LOG(FATAL) << "Model path " << FLAGS_model_path << " does not exist.";
   }
 
   if (FLAGS_model_id.empty()) {
@@ -132,11 +132,11 @@ int main(int argc, char** argv) {
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
-  GLOG(INFO) << "Using devices: " << to_string(devices);
+  LOG(INFO) << "Using devices: " << to_string(devices);
 
   // create engine
   auto engine = std::make_unique<Engine>(devices);
-  GCHECK(engine->init(FLAGS_model_path));
+  CHECK(engine->init(FLAGS_model_path));
 
   // create scheduler and grpc handlers
   auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
@@ -155,12 +155,12 @@ int main(int argc, char** argv) {
   options.port = FLAGS_grpc_port;
 
   if (!grpc_server.start(options)) {
-    GLOG(ERROR) << "failed to start grpc server on port " << FLAGS_grpc_port;
+    LOG(ERROR) << "failed to start grpc server on port " << FLAGS_grpc_port;
     return -1;
   }
 
   if (!http_server.start(FLAGS_http_port, /*num_threads=*/2)) {
-    GLOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
+    LOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
     return -1;
   }
 

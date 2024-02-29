@@ -2,11 +2,11 @@
 
 #include <ATen/cuda/CUDAContext.h>
 #include <gflags/gflags_declare.h>
+#include <glog/logging.h>
 
 #include <boost/algorithm/string.hpp>
 #include <memory>
 
-#include "common/logging.h"
 #include "common/pretty_print.h"
 #include "memory/memory.h"
 #include "model_loader/model_loader.h"
@@ -48,8 +48,7 @@ torch::ScalarType parse_dtype(const std::string& dtype_str,
   if (dtype_str.empty() || boost::iequals(dtype_str, "auto")) {
     return torch::kFloat16;
   }
-  GCHECK(false) << "Unsupported dtype: " << dtype_str << " on device "
-                << device;
+  CHECK(false) << "Unsupported dtype: " << dtype_str << " on device " << device;
 }
 }  // namespace
 
@@ -63,8 +62,7 @@ Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
       const auto* properties = at::cuda::getDeviceProperties(device.index());
       const bool is_sm8x = properties->major == 8 && properties->minor >= 0;
       const bool is_sm90 = properties->major == 9 && properties->minor == 0;
-      GCHECK(is_sm90 || is_sm8x)
-          << "Engine only supports Ampere GPUs or newer.";
+      CHECK(is_sm90 || is_sm8x) << "Engine only supports Ampere GPUs or newer.";
       // TODO: add Turing(sm75) support in the near future.
     }
   }
@@ -83,18 +81,18 @@ Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
   }
 
   if (FLAGS_disable_custom_kernels) {
-    GLOG(WARNING) << "Custom kernels are disabled, using generic kernels.";
+    LOG(WARNING) << "Custom kernels are disabled, using generic kernels.";
   }
 }
 
 bool Engine::init(const std::string& model_weights_path) {
   if (!init_model(model_weights_path)) {
-    GLOG(ERROR) << "Failed to initialize model from: " << model_weights_path;
+    LOG(ERROR) << "Failed to initialize model from: " << model_weights_path;
     return false;
   }
 
   if (!init_kv_cache()) {
-    GLOG(ERROR) << "Failed to initialize kv cache";
+    LOG(ERROR) << "Failed to initialize kv cache";
     return false;
   }
   return true;
@@ -102,34 +100,34 @@ bool Engine::init(const std::string& model_weights_path) {
 
 bool Engine::init_model(const std::string& model_weights_path) {
   auto model_loader = ModelLoader::create(model_weights_path);
-  GLOG(INFO) << "Initializing model from: " << model_weights_path;
+  LOG(INFO) << "Initializing model from: " << model_weights_path;
 
   tokenizer_ = model_loader->tokenizer();
-  GCHECK(tokenizer_ != nullptr);
+  CHECK(tokenizer_ != nullptr);
 
   args_ = model_loader->model_args();
   quant_args_ = model_loader->quant_args();
   tokenizer_args_ = model_loader->tokenizer_args();
   dtype_ = parse_dtype(args_.dtype(), devices_[0]);
-  GLOG(INFO) << "Initializing model with dtype: " << dtype_;
+  LOG(INFO) << "Initializing model with dtype: " << dtype_;
 
   if (tokenizer_->vocab_size() != args_.vocab_size()) {
     // use tokenizer vocab size if model vocab size is not set
     if (args_.vocab_size() <= 0) {
-      GLOG(WARNING) << "Model vocab size is not set, using tokenizer vocab "
-                       "size: "
-                    << tokenizer_->vocab_size();
+      LOG(WARNING) << "Model vocab size is not set, using tokenizer vocab "
+                      "size: "
+                   << tokenizer_->vocab_size();
       args_.vocab_size(tokenizer_->vocab_size());
     } else {
-      GLOG(WARNING) << "Vocab size mismatch: tokenizer: "
-                    << tokenizer_->vocab_size()
-                    << ", model: " << args_.vocab_size();
+      LOG(WARNING) << "Vocab size mismatch: tokenizer: "
+                   << tokenizer_->vocab_size()
+                   << ", model: " << args_.vocab_size();
     }
   }
 
-  GLOG(INFO) << "Initializing model with " << args_;
-  GLOG(INFO) << "Initializing model with quant args: " << quant_args_;
-  GLOG(INFO) << "Initializing model with tokenizer args: " << tokenizer_args_;
+  LOG(INFO) << "Initializing model with " << args_;
+  LOG(INFO) << "Initializing model with quant args: " << quant_args_;
+  LOG(INFO) << "Initializing model with tokenizer args: " << tokenizer_args_;
 
   if (workers_.size() == 1) {
     Worker* worker = workers_[0].get();
@@ -184,9 +182,9 @@ bool Engine::init_model(const std::string& model_weights_path) {
 }
 
 bool Engine::init_kv_cache() {
-  GLOG(INFO) << "Initializing kv cache with block size: " << FLAGS_block_size
-             << ", max cache size: " << readable_size(FLAGS_max_cache_size)
-             << ", max memory utilization: " << FLAGS_max_memory_utilization;
+  LOG(INFO) << "Initializing kv cache with block size: " << FLAGS_block_size
+            << ", max cache size: " << readable_size(FLAGS_max_cache_size)
+            << ", max memory utilization: " << FLAGS_max_memory_utilization;
 
   const int64_t block_size = FLAGS_block_size;
 
@@ -200,28 +198,28 @@ bool Engine::init_kv_cache() {
   // key + value for all layers
   const int64_t block_size_in_bytes = 2 * block_size * n_local_kv_heads *
                                       head_dim * args_.n_layers() * dtype_size;
-  GLOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
-             << ", block_size: " << block_size << ", head_dim: " << head_dim
-             << ", n_local_kv_heads: " << n_local_kv_heads
-             << ", n_layers: " << args_.n_layers()
-             << ", dtype_size: " << dtype_size;
+  LOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
+            << ", block_size: " << block_size << ", head_dim: " << head_dim
+            << ", n_local_kv_heads: " << n_local_kv_heads
+            << ", n_layers: " << args_.n_layers()
+            << ", dtype_size: " << dtype_size;
 
   int64_t num_blocks = 0;
   // use first device to profile memory usage
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
     // use max memory cache size for CPU
-    GLOG(INFO) << "Initializing CPU cache with max cache size: "
-               << readable_size(FLAGS_max_cache_size);
+    LOG(INFO) << "Initializing CPU cache with max cache size: "
+              << readable_size(FLAGS_max_cache_size);
     num_blocks = FLAGS_max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else if (device.is_cuda()) {
     torch::cuda::synchronize();
     const auto allocated_bytes = memory::max_memory_allocated(device);
     const auto total_memory = memory::total_memory(device);
-    GLOG(INFO) << device
-               << ": allocated GPU memory: " << readable_size(allocated_bytes)
-               << ", total GPU memory: " << readable_size(total_memory);
+    LOG(INFO) << device
+              << ": allocated GPU memory: " << readable_size(allocated_bytes)
+              << ", total GPU memory: " << readable_size(total_memory);
 
     int64_t max_cache_size =
         static_cast<int64_t>(static_cast<double>(total_memory) *
@@ -232,18 +230,18 @@ bool Engine::init_kv_cache() {
       max_cache_size = std::min(max_cache_size, FLAGS_max_cache_size);
     }
     CHECK_GT(max_cache_size, 0) << "Not enough memory for the cache";
-    GLOG(INFO) << "Initializing CUDA cache with max cache size: "
-               << readable_size(max_cache_size);
+    LOG(INFO) << "Initializing CUDA cache with max cache size: "
+              << readable_size(max_cache_size);
     num_blocks = max_cache_size / block_size_in_bytes;
     CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
   } else {
-    GCHECK(false) << "Only support CPU and CUDA device for now.";
+    CHECK(false) << "Only support CPU and CUDA device for now.";
   }
 
   // init kv cache for each worker
   const std::vector<int64_t> kv_cache_shape = {
       num_blocks, block_size, n_local_kv_heads, head_dim};
-  GLOG(INFO) << "Initializing kv cache with shape: [" << kv_cache_shape << "]";
+  LOG(INFO) << "Initializing kv cache with shape: [" << kv_cache_shape << "]";
 
   block_manager_ = std::make_unique<BlockManager>(num_blocks, block_size);
 
@@ -256,8 +254,7 @@ bool Engine::init_kv_cache() {
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(
-        worker->init_kv_cache_async(kv_cache_shape));
+    futures.push_back(worker->init_kv_cache_async(kv_cache_shape));
   }
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();

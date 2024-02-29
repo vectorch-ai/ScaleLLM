@@ -1,12 +1,12 @@
 #include "linear.h"
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <memory>
 
-#include "common/logging.h"
 #include "linear_impl.h"
 #include "model_loader/state_dict.h"
 #include "models/model_args.h"
@@ -156,7 +156,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
     return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearAWQImpl);
   }
   // not supported quant method
-  GLOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
+  LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
 }
 
 std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
@@ -193,7 +193,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
     return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearAWQImpl);
   }
   // not supported quant method
-  GLOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
+  LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
 }
 
 std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(

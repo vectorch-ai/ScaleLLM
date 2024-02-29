@@ -2,8 +2,8 @@
 
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
+#include <glog/logging.h>
 
-#include "common/logging.h"
 #include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
@@ -15,8 +15,9 @@ constexpr size_t kMaxBatchSize = 100;
 
 FCFSSchedulerPolicy::FCFSSchedulerPolicy(ResponseHandler* response_handler,
                                          BlockManager* block_manager)
-  : response_handler_(response_handler), block_manager_(block_manager),
-    waiting_queue_(kRequestQueueSize) {}
+    : response_handler_(response_handler),
+      block_manager_(block_manager),
+      waiting_queue_(kRequestQueueSize) {}
 
 FCFSSchedulerPolicy::~FCFSSchedulerPolicy() {
   // release all requests in the queue
@@ -41,7 +42,7 @@ FCFSSchedulerPolicy::~FCFSSchedulerPolicy() {
 }
 
 bool FCFSSchedulerPolicy::schedule(std::unique_ptr<Request>& request) {
-  GCHECK(request != nullptr);
+  CHECK(request != nullptr);
   if (waiting_queue_.write(request.get())) {
     // take over the ownership of the request
     request.release();
@@ -69,7 +70,7 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
   while (!waiting_queue_.isEmpty()) {
     Request* request = nullptr;
     waiting_queue_.read(request);
-    GCHECK(request != nullptr);
+    CHECK(request != nullptr);
     ready_queue.emplace_back(request);
   }
 
@@ -95,14 +96,13 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
       blocking_queue_.emplace_back(request);
     } else {
       running_queue_.emplace_back(request);
-      running_batch.insert(running_batch.end(),
-                            sequences.begin(),
-                            sequences.end());
+      running_batch.insert(
+          running_batch.end(), sequences.begin(), sequences.end());
     }
   }
-  
+
   if (running_batch.empty() && !blocking_queue_.empty()) {
-    GLOG(ERROR) << "Not enough memory to schedule one sequence";
+    LOG(ERROR) << "Not enough memory to schedule one sequence";
 
     Request* request = blocking_queue_.back();
     blocking_queue_.pop_back();
@@ -112,4 +112,4 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
   }
   return running_batch;
 }
-} // llm
+}  // namespace llm

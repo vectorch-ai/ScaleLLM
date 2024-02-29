@@ -2,10 +2,10 @@
 
 #include <c10/core/DeviceType.h>
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
 #include "models/model_args.h"
@@ -47,7 +47,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
                                 device),
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
-  GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
+  CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
 
   const auto group_size =
@@ -67,8 +67,8 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     vec_quant_matmul_func_ = vec_quant_matmul_64;
   }
   if (in_features % 64 != 0 || out_features % 64 != 0) {
-    GLOG(FATAL) << "in_features and out_features size is not supported: ["
-                << in_features << ", " << out_features << "]";
+    LOG(FATAL) << "in_features and out_features size is not supported: ["
+               << in_features << ", " << out_features << "]";
   }
 }
 
@@ -111,7 +111,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
                              device),
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
-  GCHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
+  CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
 
   const auto group_size =
@@ -131,8 +131,8 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     vec_quant_matmul_func_ = vec_quant_matmul_64;
   }
   if (in_features % 64 != 0 || out_features % 64 != 0) {
-    GLOG(FATAL) << "in_features and out_features size is not supported: ["
-                << in_features << ", " << out_features << "]";
+    LOG(FATAL) << "in_features and out_features size is not supported: ["
+               << in_features << ", " << out_features << "]";
   }
 }
 

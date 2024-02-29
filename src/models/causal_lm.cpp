@@ -1,9 +1,9 @@
 #include "causal_lm.h"
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "model_args.h"
-#include "common/logging.h"
 #include "models/model_registry.h"
 
 namespace llm {
@@ -19,7 +19,7 @@ std::unique_ptr<CausalLM> CausalLM::create(const ModelArgs& args,
     return factory(args, quant_args, parallel_args, dtype, device);
   }
 
-  GLOG(ERROR) << "Unsupported model type: " << args.model_type();
+  LOG(ERROR) << "Unsupported model type: " << args.model_type();
   return nullptr;
 }
 

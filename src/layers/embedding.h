@@ -1,10 +1,10 @@
 #pragma once
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <cstdint>
 
-#include "common/logging.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
 #include "models/model_args.h"
@@ -49,7 +49,7 @@ class EmbeddingImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix) const {
-    GCHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -78,7 +78,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
                         const torch::Device& device)
       : parallel_args_(parallel_args) {
     const auto world_size = parallel_args_.world_size();
-    GCHECK(embedding_dim % world_size == 0)
+    CHECK(embedding_dim % world_size == 0)
         << "out_features " << embedding_dim << " not divisible by world_size "
         << world_size;
     const int64_t embedding_dim_per_partition = embedding_dim / world_size;
@@ -119,7 +119,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix) const {
-    GCHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
   }
 
   void pretty_print(std::ostream& stream) const override {
@@ -200,7 +200,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const {
-    GCHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
   }
 
   void pretty_print(std::ostream& stream) const override {

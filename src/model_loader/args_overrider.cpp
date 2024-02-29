@@ -2,8 +2,8 @@
 
 #include <absl/strings/str_split.h>
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 
-#include "common/logging.h"
 #include "common/type_traits.h"  // IWYU pragma: keep
 #include "tokenizer/tokenizer_args.h"
 
@@ -109,7 +109,7 @@ std::optional<T> convert_from_string(const std::string& str) {
       for (const auto& part : parts) {
         int32_t value = 0;
         if (!absl::SimpleAtoi(part, &value)) {
-          GLOG(ERROR) << "invalid argument: " << str;
+          LOG(ERROR) << "invalid argument: " << str;
           return std::nullopt;
         }
         values.push_back(value);
@@ -120,7 +120,7 @@ std::optional<T> convert_from_string(const std::string& str) {
                     "unsupported type for convert_from_string");
     }
   } catch (const std::invalid_argument& e) {
-    GLOG(ERROR) << "invalid argument: " << str << ", " << e.what();
+    LOG(ERROR) << "invalid argument: " << str << ", " << e.what();
   }
   return std::nullopt;
 }
@@ -136,19 +136,19 @@ T extract_value(const std::optional<T>& t) {
   return t.value();
 }
 
-#define OVERRIDE_ARG_FROM_GFLAG(args, arg_name)                           \
-  if (!FLAGS_##arg_name.empty()) {                                        \
-    auto value = args.arg_name();                                         \
-    using value_type = remove_optional_t<decltype(value)>;                \
-    auto arg_val = convert_from_string<value_type>(FLAGS_##arg_name);     \
-    if (arg_val.has_value()) {                                            \
-      args.arg_name() = arg_val.value();                                  \
-      GLOG(WARNING) << "Overwriting " << #arg_name << " with "            \
-                    << FLAGS_##arg_name;                                  \
-    } else {                                                              \
-      GLOG(WARNING) << "Ignoring invalid value for " << #arg_name << ": " \
-                    << FLAGS_##arg_name;                                  \
-    }                                                                     \
+#define OVERRIDE_ARG_FROM_GFLAG(args, arg_name)                          \
+  if (!FLAGS_##arg_name.empty()) {                                       \
+    auto value = args.arg_name();                                        \
+    using value_type = remove_optional_t<decltype(value)>;               \
+    auto arg_val = convert_from_string<value_type>(FLAGS_##arg_name);    \
+    if (arg_val.has_value()) {                                           \
+      args.arg_name() = arg_val.value();                                 \
+      LOG(WARNING) << "Overwriting " << #arg_name << " with "            \
+                   << FLAGS_##arg_name;                                  \
+    } else {                                                             \
+      LOG(WARNING) << "Ignoring invalid value for " << #arg_name << ": " \
+                   << FLAGS_##arg_name;                                  \
+    }                                                                    \
   }
 
 namespace llm {

@@ -2,9 +2,9 @@
 
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_join.h>
+#include <glog/logging.h>
 #include <re2/re2.h>
 
-#include "common/logging.h"
 #include "sentencepiece.pb.h"
 #include "sentencepiece/sentencepiece_processor.h"
 
@@ -30,8 +30,8 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string_view& dir_path,
                        : absl::StrCat(dir_path_, "/", args.vocab_file());
   const auto status = sp_processor_.Load(vocab_file_path);
   if (!status.ok()) {
-    GLOG(FATAL) << "Failed to load SentencePiece model from " << vocab_file_path
-                << ": " << status.ToString() << ", error " << status.ToString();
+    LOG(FATAL) << "Failed to load SentencePiece model from " << vocab_file_path
+               << ": " << status.ToString() << ", error " << status.ToString();
   }
 
   // add special tokens and construct special token regex
@@ -50,9 +50,9 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string_view& dir_path,
       const auto token_id = token_to_id(token);
       if (token_id.has_value()) {
         prefix_token_ids_.push_back(token_id.value());
-        GLOG(INFO) << "Prefix token: " << token << ", id: " << token_id.value();
+        LOG(INFO) << "Prefix token: " << token << ", id: " << token_id.value();
       } else {
-        GLOG(ERROR) << "Failed to find prefix token: " << token;
+        LOG(ERROR) << "Failed to find prefix token: " << token;
       }
     }
   }
@@ -67,10 +67,10 @@ void SentencePieceTokenizer::load_special_tokens(
       continue;
     }
     if (!special_token_encoder_.try_emplace(token, next_id).second) {
-      GLOG(WARNING) << "Duplicate special token: " << token;
+      LOG(WARNING) << "Duplicate special token: " << token;
     }
     if (!special_token_decoder_.try_emplace(next_id, token).second) {
-      GLOG(WARNING) << "Duplicate special token id: " << next_id;
+      LOG(WARNING) << "Duplicate special token id: " << next_id;
     }
     ++next_id;
   }
@@ -165,7 +165,7 @@ void SentencePieceTokenizer::decode_internal(const std::vector<int32_t>& ids,
   for (size_t i = start; i < end; ++i) {
     const auto id = ids[i];
     if (id < 0 || id >= num_pieces) {
-      GLOG(ERROR) << "Invalid id: " << id;
+      LOG(ERROR) << "Invalid id: " << id;
       continue;
     }
     pieces.emplace_back(sp_processor_.IdToPiece(id));
@@ -206,7 +206,7 @@ std::optional<int32_t> SentencePieceTokenizer::token_to_id(
   // encode token
   const auto token_id = sp_processor_.PieceToId(token);
   if (sp_processor_.IsUnknown(token_id)) {
-    GLOG(ERROR) << "Failed to find token for token: " << token;
+    LOG(ERROR) << "Failed to find token for token: " << token;
     return std::nullopt;
   }
   return token_id;

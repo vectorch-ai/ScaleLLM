@@ -1,5 +1,6 @@
 #include <c10/core/Device.h>
 #include <c10/core/ScalarType.h>
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
@@ -9,7 +10,6 @@
 #include <torch/csrc/distributed/c10d/HashStore.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
 
-#include "common/logging.h"
 #include "linear_impl.h"
 #include "model_loader/state_dict.h"
 

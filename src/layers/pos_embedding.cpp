@@ -1,11 +1,11 @@
 #include "pos_embedding.h"
 
 #include <c10/core/ScalarType.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <memory>
 
-#include "common/logging.h"
 #include "kernels/pos_embedding_kernels.h"
 
 DECLARE_bool(disable_custom_kernels);
@@ -85,7 +85,7 @@ torch::Tensor compute_freqs(int64_t max_position_embeddings,
                             int64_t rotary_dim,
                             float scaling_factor,
                             float theta) {
-  GCHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
+  CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
   const auto slice = torch::arange(0, rotary_dim, 2, torch::kFloat32);
   const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
   auto t = torch::arange(0, max_position_embeddings, 1, torch::kFloat32);
@@ -132,7 +132,7 @@ RotaryEmbeddingGeneric::RotaryEmbeddingGeneric(int64_t rotary_dim,
                                                torch::ScalarType dtype,
                                                const torch::Device& device)
     : rotary_dim_(rotary_dim), interleaved_(interleaved) {
-  GCHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
+  CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
 
   const auto freqs = detail::compute_freqs(
       max_position_embeddings, rotary_dim, scaling_factor, theta);

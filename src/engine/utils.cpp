@@ -1,11 +1,11 @@
 #include "utils.h"
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
 #include <vector>
 
-#include "common/logging.h"
 #include "models/input_parameters.h"
 
 namespace llm {
@@ -77,8 +77,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   int32_t max_block_table_len = 0;
   for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
     const auto* sequence = batch[i];
-    GCHECK(!sequence->is_finished());
-    GCHECK(has_enough_cache_slots(*sequence, block_size));
+    CHECK(!sequence->is_finished());
+    CHECK(has_enough_cache_slots(*sequence, block_size));
 
     const auto& seq_token_ids = sequence->token_ids();
     const int32_t seq_len = static_cast<int32_t>(seq_token_ids.size());
@@ -181,7 +181,7 @@ void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,
 
   for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
     const auto* sequence = batch[i];
-    GCHECK(has_enough_cache_slots(*sequence, block_size));
+    CHECK(has_enough_cache_slots(*sequence, block_size));
 
     seq_idxes_vec[i] = static_cast<int32_t>(token_ids_vec.size());
 

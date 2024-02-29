@@ -1,13 +1,13 @@
 #include "http_server.h"
 
+#include <glog/logging.h>
+
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "common/logging.h"
 
 namespace llm {
 
@@ -27,16 +27,16 @@ void HttpServer::async_accept(tcp::acceptor& acceptor) {
       *socket, [this, &acceptor, socket](boost::system::error_code ec) {
         // loop to accept new incoming connections
         async_accept(acceptor);
-        
+
         if (!ec) {
           try {
             // handle the request
             handle_request(*socket);
           } catch (const std::exception& e) {
-            GLOG(ERROR) << "Exception in processing request: " << e.what();
+            LOG(ERROR) << "Exception in processing request: " << e.what();
           }
         } else {
-          GLOG(ERROR) << "Error in accepting connection: " << ec.message();
+          LOG(ERROR) << "Error in accepting connection: " << ec.message();
         }
       });
 }
@@ -76,7 +76,7 @@ bool HttpServer::start(uint16_t port, int32_t num_threads) {
     async_accept(acceptor);
     io_context_->run();
   });
-  GLOG(INFO) << "Started http server on 0.0.0.0:" << port;
+  LOG(INFO) << "Started http server on 0.0.0.0:" << port;
   return true;
 }
 

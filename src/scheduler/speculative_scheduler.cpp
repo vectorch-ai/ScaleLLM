@@ -1,6 +1,7 @@
 #include "speculative_scheduler.h"
 
-#include "common/logging.h"
+#include <glog/logging.h>
+
 #include "engine/engine.h"
 #include "memory/block_manager.h"
 #include "request/request.h"
@@ -14,18 +15,18 @@ SpeculativeScheduler::SpeculativeScheduler(const SchedulerConfig& config,
                                            Engine* llm_engine,
                                            Engine* ssm_engine)
     : config_(config), llm_engine_(llm_engine), ssm_engine_(ssm_engine) {
-  GCHECK(llm_engine_ != nullptr);
+  CHECK(llm_engine_ != nullptr);
   llm_block_manager_ = llm_engine_->block_manager();
-  GCHECK(ssm_engine_ != nullptr);
+  CHECK(ssm_engine_ != nullptr);
   ssm_block_manager_ = ssm_engine_->block_manager();
 
   tokenizer_ = llm_engine_->tokenizer();
-  GCHECK(llm_block_manager_ != nullptr);
-  GCHECK(ssm_block_manager_ != nullptr);
-  GCHECK(tokenizer_ != nullptr);
+  CHECK(llm_block_manager_ != nullptr);
+  CHECK(ssm_block_manager_ != nullptr);
+  CHECK(tokenizer_ != nullptr);
 
-  response_handler_ = std::make_unique<ResponseHandler>(
-      llm_block_manager_, tokenizer_.get());
+  response_handler_ =
+      std::make_unique<ResponseHandler>(llm_block_manager_, tokenizer_.get());
   scheduler_policy_ = std::make_unique<FCFSSchedulerPolicy>(
       response_handler_.get(), llm_block_manager_);
 }
@@ -60,12 +61,12 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
 
   const auto& next_tokens = output_parameters.next_tokens;
   const int64_t num_seqs = next_tokens.sizes()[0];
-  GCHECK(num_seqs == spec_sequences_batch.size());
+  CHECK(num_seqs == spec_sequences_batch.size());
 
   for (int64_t i = 0; i < num_seqs; ++i) {
     Sequence* seq = spec_sequences_batch[i];
-    auto seq_next_tokens = next_tokens.index_select(/*dim=*/ 0,
-        torch::tensor(i, torch::kInt64));
+    auto seq_next_tokens =
+        next_tokens.index_select(/*dim=*/0, torch::tensor(i, torch::kInt64));
     const int64_t* ids = seq_next_tokens.data_ptr<int64_t>();
     seq->update_valid_token_ids(ids);
     // stream delta to client if streaming is enabled
@@ -77,16 +78,16 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
 
 void SpeculativeScheduler::speculate_multiple_steps(
     std::vector<Sequence*>& sequences_batch) {
-  GCHECK(!sequences_batch.empty());
+  CHECK(!sequences_batch.empty());
 
-  //TODO: should not support beam search
+  // TODO: should not support beam search
   std::vector<Sequence*> spec_batch(sequences_batch);
   for (uint64_t i = 0; i < config_.speculative_steps_; ++i) {
     auto output_parameters = ssm_engine_->execute_model(spec_batch);
 
     const auto& next_tokens = output_parameters.next_tokens;
     const int64_t num_seqs = next_tokens.numel();
-    GCHECK(num_seqs == spec_batch.size());
+    CHECK(num_seqs == spec_batch.size());
 
     std::vector<Sequence*> next_spec_batch;
     next_spec_batch.reserve(spec_batch.size());

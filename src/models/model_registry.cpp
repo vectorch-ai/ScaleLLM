@@ -1,6 +1,6 @@
 #include "model_registry.h"
 
-#include "common/logging.h"
+#include <glog/logging.h>
 
 // list all registered models here
 #include "huggingface/aquila.h"    // IWYU pragma: keep
@@ -29,7 +29,7 @@ void ModelRegistry::register_causallm_factory(const std::string& name,
                                               CausalLMFactory factory) {
   ModelRegistry* instance = get_instance();
   if (instance->model_registry_[name].causal_lm_factory != nullptr) {
-    GLOG(WARNING) << "causal lm factory for " << name << "already registered.";
+    LOG(WARNING) << "causal lm factory for " << name << "already registered.";
   } else {
     instance->model_registry_[name].causal_lm_factory = factory;
   }
@@ -39,7 +39,7 @@ void ModelRegistry::register_model_args_loader(const std::string& name,
                                                ModelArgsLoader loader) {
   ModelRegistry* instance = get_instance();
   if (instance->model_registry_[name].model_args_loader != nullptr) {
-    GLOG(WARNING) << "model args loader for " << name << "already registered.";
+    LOG(WARNING) << "model args loader for " << name << "already registered.";
   } else {
     instance->model_registry_[name].model_args_loader = loader;
   }
@@ -49,7 +49,7 @@ void ModelRegistry::register_quant_args_loader(const std::string& name,
                                                QuantArgsLoader loader) {
   ModelRegistry* instance = get_instance();
   if (instance->model_registry_[name].quant_args_loader != nullptr) {
-    GLOG(WARNING) << "quant args loader for " << name << "already registered.";
+    LOG(WARNING) << "quant args loader for " << name << "already registered.";
   } else {
     instance->model_registry_[name].quant_args_loader = loader;
   }
@@ -59,8 +59,8 @@ void ModelRegistry::register_tokenizer_args_loader(const std::string& name,
                                                    TokenizerArgsLoader loader) {
   ModelRegistry* instance = get_instance();
   if (instance->model_registry_[name].tokenizer_args_loader != nullptr) {
-    GLOG(WARNING) << "tokenizer args loader for " << name
-                  << "already registered.";
+    LOG(WARNING) << "tokenizer args loader for " << name
+                 << "already registered.";
   } else {
     instance->model_registry_[name].tokenizer_args_loader = loader;
   }
@@ -71,8 +71,8 @@ void ModelRegistry::register_default_chat_template_factory(
     ChatTemplateFactory factory) {
   ModelRegistry* instance = get_instance();
   if (instance->model_registry_[name].chat_template_factory != nullptr) {
-    GLOG(WARNING) << "conversation template for " << name
-                  << "already registered.";
+    LOG(WARNING) << "conversation template for " << name
+                 << "already registered.";
   } else {
     instance->model_registry_[name].chat_template_factory = factory;
   }

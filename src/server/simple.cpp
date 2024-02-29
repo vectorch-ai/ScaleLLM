@@ -2,13 +2,13 @@
 #include <c10/core/Device.h>
 #include <c10/core/ScalarType.h>
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <pybind11/embed.h>
 
 #include <filesystem>
 #include <iostream>
 #include <string>
 
-#include "common/logging.h"
 #include "engine/engine.h"
 #include "request/sampling_parameter.h"
 #include "request/sequence.h"
@@ -61,7 +61,7 @@ std::vector<torch::Device> parse_devices(const std::string& device_str) {
     // use all available gpus if any
     const auto num_gpus = torch::cuda::device_count();
     if (num_gpus == 0) {
-      GLOG(INFO) << "no gpus found, using cpu.";
+      LOG(INFO) << "no gpus found, using cpu.";
       return {torch::kCPU};
     }
     devices.reserve(num_gpus);
@@ -79,8 +79,8 @@ std::vector<torch::Device> parse_devices(const std::string& device_str) {
     devices.emplace_back(device_str);
     device_types.insert(devices.back().type());
   }
-  GCHECK(!devices.empty()) << "No devices specified.";
-  GCHECK(device_types.size() == 1)
+  CHECK(!devices.empty()) << "No devices specified.";
+  CHECK(device_types.size() == 1)
       << "All devices must be of the same type. Got: " << FLAGS_device;
   return devices;
 }
@@ -112,10 +112,10 @@ int main(int argc, char* argv[]) {
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
-  GLOG(INFO) << "Using devices: " << to_string(devices);
+  LOG(INFO) << "Using devices: " << to_string(devices);
 
   llm::Engine engine(devices);
-  GCHECK(engine.init(model_path));
+  CHECK(engine.init(model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
 
@@ -159,7 +159,7 @@ int main(int argc, char* argv[]) {
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
       // allocate slots for the sequence
-      GCHECK(block_manager->allocate_slots_for_request(&request));
+      CHECK(block_manager->allocate_slots_for_request(&request));
 
       // run inference
       const auto output_params = engine.execute_model({&sequence});

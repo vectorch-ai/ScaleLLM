@@ -1,9 +1,10 @@
 #include "utils.h"
 
+#include <glog/logging.h>
+
 #include <string>
 
 #include "common.pb.h"
-#include "common/logging.h"
 #include "request/request.h"
 
 namespace llm {
@@ -19,7 +20,7 @@ RequestPriority grpc_priority_to_priority(Priority priority) {
     case Priority::HIGH:
       return RequestPriority::HIGH;
     default:
-      GLOG(WARNING) << "Unknown priority: " << static_cast<int>(priority);
+      LOG(WARNING) << "Unknown priority: " << static_cast<int>(priority);
   }
   return RequestPriority::MEDIUM;
 }
@@ -35,7 +36,7 @@ std::string finish_reason_to_string(FinishReason reason) {
     case FinishReason::FUNCTION_CALL:
       return "function_call";
     default:
-      GLOG(WARNING) << "Unknown finish reason: " << static_cast<int>(reason);
+      LOG(WARNING) << "Unknown finish reason: " << static_cast<int>(reason);
   }
   return "";
 }

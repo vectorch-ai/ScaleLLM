@@ -28,7 +28,7 @@ class ChatGLMMLPImpl : public torch::nn::Module {
     const int64_t intermediate_size = args.intermediate_size();
 
     act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
-    GCHECK(act_with_mul_ != nullptr);
+    CHECK(act_with_mul_ != nullptr);
 
     // register the weight parameter
     dense_h_to_4h_ =
