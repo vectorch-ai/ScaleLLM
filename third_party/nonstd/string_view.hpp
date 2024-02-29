@@ -12,7 +12,7 @@
 #define NONSTD_SV_LITE_H_INCLUDED
 
 #define string_view_lite_MAJOR  1
-#define string_view_lite_MINOR  6
+#define string_view_lite_MINOR  7
 #define string_view_lite_PATCH  0
 
 #define string_view_lite_VERSION  nssv_STRINGIFY(string_view_lite_MAJOR) "." nssv_STRINGIFY(string_view_lite_MINOR) "." nssv_STRINGIFY(string_view_lite_PATCH)
@@ -69,10 +69,14 @@
 # define nssv_CONFIG_NO_STREAM_INSERTION  0
 #endif
 
+#ifndef  nssv_CONFIG_CONSTEXPR11_STD_SEARCH
+# define nssv_CONFIG_CONSTEXPR11_STD_SEARCH  1
+#endif
+
 // Control presence of exception handling (try and auto discover):
 
 #ifndef nssv_CONFIG_NO_EXCEPTIONS
-# if _MSC_VER
+# if defined(_MSC_VER)
 #  include <cstddef>    // for _HAS_EXCEPTIONS
 # endif
 # if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS)
@@ -82,7 +86,7 @@
 # endif
 #endif
 
-// C++ language version detection (C++20 is speculative):
+// C++ language version detection (C++23 is speculative):
 // Note: VC14.0/1900 (VS2015) lacks too much from C++14.
 
 #ifndef   nssv_CPLUSPLUS
@@ -98,7 +102,8 @@
 #define nssv_CPP11_OR_GREATER_ ( nssv_CPLUSPLUS >= 201103L )
 #define nssv_CPP14_OR_GREATER  ( nssv_CPLUSPLUS >= 201402L )
 #define nssv_CPP17_OR_GREATER  ( nssv_CPLUSPLUS >= 201703L )
-#define nssv_CPP20_OR_GREATER  ( nssv_CPLUSPLUS >= 202000L )
+#define nssv_CPP20_OR_GREATER  ( nssv_CPLUSPLUS >= 202002L )
+#define nssv_CPP23_OR_GREATER  ( nssv_CPLUSPLUS >= 202300L )
 
 // use C++17 std::string_view if available and requested:
 
@@ -266,7 +271,7 @@ using std::operator<<;
 # define nssv_HAS_CPP0X  0
 #endif
 
-// Unless defined otherwise below, consider VC14 as C++11 for variant-lite:
+// Unless defined otherwise below, consider VC14 as C++11 for string-view-lite:
 
 #if nssv_COMPILER_MSVC_VER >= 1900
 # undef  nssv_CPP11_OR_GREATER
@@ -288,6 +293,8 @@ using std::operator<<;
 #define nssv_HAVE_CONSTEXPR_11          nssv_CPP11_140
 #define nssv_HAVE_EXPLICIT_CONVERSION   nssv_CPP11_140
 #define nssv_HAVE_INLINE_NAMESPACE      nssv_CPP11_140
+#define nssv_HAVE_IS_DEFAULT            nssv_CPP11_140
+#define nssv_HAVE_IS_DELETE             nssv_CPP11_140
 #define nssv_HAVE_NOEXCEPT              nssv_CPP11_140
 #define nssv_HAVE_NULLPTR               nssv_CPP11_100
 #define nssv_HAVE_REF_QUALIFIER         nssv_CPP11_140
@@ -431,9 +438,9 @@ using std::operator<<;
 # pragma clang diagnostic ignored "-Wreserved-user-defined-literal"
 # pragma clang diagnostic push
 # pragma clang diagnostic ignored "-Wuser-defined-literals"
-#elif defined(__GNUC__)
-# pragma  GCC  diagnostic push
-# pragma  GCC  diagnostic ignored "-Wliteral-suffix"
+#elif nssv_COMPILER_GNUC_VERSION >= 480
+#  pragma  GCC  diagnostic push
+#  pragma  GCC  diagnostic ignored "-Wliteral-suffix"
 #endif // __clang__
 
 #if nssv_COMPILER_MSVC_VERSION >= 140
@@ -448,8 +455,8 @@ using std::operator<<;
 
 #if defined(__clang__)
 # define nssv_RESTORE_WARNINGS()  _Pragma("clang diagnostic pop")
-#elif defined(__GNUC__)
-# define nssv_RESTORE_WARNINGS()  _Pragma("GCC diagnostic pop")
+#elif nssv_COMPILER_GNUC_VERSION >= 480
+#  define nssv_RESTORE_WARNINGS()  _Pragma("GCC diagnostic pop")
 #elif nssv_COMPILER_MSVC_VERSION >= 140
 # define nssv_RESTORE_WARNINGS()  __pragma(warning(pop ))
 #else
@@ -468,6 +475,17 @@ nssv_DISABLE_MSVC_WARNINGS( 4455 26481 26472 )
 //nssv_DISABLE_GNUC_WARNINGS( -Wliteral-suffix )
 
 namespace nonstd { namespace sv_lite {
+
+//
+// basic_string_view declaration:
+//
+
+template
+<
+    class CharT,
+    class Traits = std::char_traits<CharT>
+>
+class basic_string_view;
 
 namespace detail {
 
@@ -536,14 +554,52 @@ inline nssv_constexpr14 std::size_t length( CharT * s )
 
 #endif // OPTIMIZE
 
-} // namespace detail
+#if nssv_CPP11_OR_GREATER && ! nssv_CPP17_OR_GREATER
+#if defined(__OPTIMIZE__)
 
-template
-<
-    class CharT,
-    class Traits = std::char_traits<CharT>
->
-class basic_string_view;
+// gcc, clang provide __OPTIMIZE__
+// Expect tail call optimization to make search() non-recursive:
+
+template< class CharT, class Traits = std::char_traits<CharT> >
+constexpr const CharT* search( basic_string_view<CharT, Traits> haystack, basic_string_view<CharT, Traits> needle )
+{
+    return haystack.starts_with( needle ) ? haystack.begin() :
+        haystack.empty() ? haystack.end() : search( haystack.substr(1), needle );
+}
+
+#else // OPTIMIZE
+
+// non-recursive:
+
+#if nssv_CONFIG_CONSTEXPR11_STD_SEARCH
+
+template< class CharT, class Traits = std::char_traits<CharT> >
+constexpr const CharT* search( basic_string_view<CharT, Traits> haystack, basic_string_view<CharT, Traits> needle )
+{
+    return std::search( haystack.begin(), haystack.end(), needle.begin(), needle.end() );
+}
+
+#else // nssv_CONFIG_CONSTEXPR11_STD_SEARCH
+
+template< class CharT, class Traits = std::char_traits<CharT> >
+nssv_constexpr14 const CharT* search( basic_string_view<CharT, Traits> haystack, basic_string_view<CharT, Traits> needle )
+{
+    while ( needle.size() <= haystack.size() )
+    {
+        if  ( haystack.starts_with(needle) )
+        {
+            return haystack.cbegin();
+        }
+        haystack = basic_string_view<CharT, Traits>{ haystack.begin() + 1, haystack.size() - 1U };
+    }
+    return haystack.cend();
+}
+#endif // nssv_CONFIG_CONSTEXPR11_STD_SEARCH
+
+#endif // OPTIMIZE
+#endif // nssv_CPP11_OR_GREATER && ! nssv_CPP17_OR_GREATER
+
+} // namespace detail
 
 //
 // basic_string_view:
@@ -570,7 +626,7 @@ public:
     typedef const_pointer iterator;
     typedef const_pointer const_iterator;
     typedef std::reverse_iterator< const_iterator > reverse_iterator;
-    typedef	std::reverse_iterator< const_iterator > const_reverse_iterator;
+    typedef std::reverse_iterator< const_iterator > const_reverse_iterator;
 
     typedef std::size_t     size_type;
     typedef std::ptrdiff_t  difference_type;
@@ -606,6 +662,14 @@ public:
         , size_( Traits::length(s) )
 #endif
     {}
+
+#if  nssv_HAVE_NULLPTR
+# if nssv_HAVE_IS_DELETE
+    nssv_constexpr basic_string_view( std::nullptr_t ) nssv_noexcept = delete;
+# else
+    private: nssv_constexpr basic_string_view( std::nullptr_t ) nssv_noexcept; public:
+# endif
+#endif
 
     // Assignment:
 
@@ -808,21 +872,26 @@ public:
     {
         return assert( v.size() == 0 || v.data() != nssv_nullptr )
             , pos >= size()
-            ? npos
-            : to_pos( std::search( cbegin() + pos, cend(), v.cbegin(), v.cend(), Traits::eq ) );
+            ? npos : to_pos(
+#if nssv_CPP11_OR_GREATER && ! nssv_CPP17_OR_GREATER
+                detail::search( substr(pos), v )
+#else
+                std::search( cbegin() + pos, cend(), v.cbegin(), v.cend(), Traits::eq )
+#endif
+            );
     }
 
-    nssv_constexpr14 size_type find( CharT c, size_type pos = 0 ) const nssv_noexcept  // (2)
+    nssv_constexpr size_type find( CharT c, size_type pos = 0 ) const nssv_noexcept  // (2)
     {
         return find( basic_string_view( &c, 1 ), pos );
     }
 
-    nssv_constexpr14 size_type find( CharT const * s, size_type pos, size_type n ) const  // (3)
+    nssv_constexpr size_type find( CharT const * s, size_type pos, size_type n ) const  // (3)
     {
         return find( basic_string_view( s, n ), pos );
     }
 
-    nssv_constexpr14 size_type find( CharT const * s, size_type pos = 0 ) const  // (4)
+    nssv_constexpr size_type find( CharT const * s, size_type pos = 0 ) const  // (4)
     {
         return find( basic_string_view( s ), pos );
     }
@@ -1381,7 +1450,7 @@ Stream & write_to_stream( Stream & os, View const & sv )
 {
     typename Stream::sentry sentry( os );
 
-    if ( !os )
+    if ( !sentry )
         return os;
 
     const std::streamsize length = static_cast<std::streamsize>( sv.length() );
