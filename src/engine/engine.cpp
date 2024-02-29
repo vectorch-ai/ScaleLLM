@@ -240,9 +240,6 @@ bool Engine::init_kv_cache() {
     GCHECK(false) << "Only support CPU and CUDA device for now.";
   }
 
-  GLOG(INFO) << "Initializing kv cache with num blocks: " << num_blocks
-             << ", block size: " << block_size;
-
   // init kv cache for each worker
   const std::vector<int64_t> kv_cache_shape = {
       num_blocks, block_size, n_local_kv_heads, head_dim};

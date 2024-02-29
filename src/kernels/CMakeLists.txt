@@ -24,8 +24,6 @@ cc_library(
     torch
   DEFINES
     __CUDA_NO_HALF_OPERATORS__
-  COPTS
-    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
 cc_library(
@@ -36,8 +34,6 @@ cc_library(
     gptq/gptq_kernel.cu
   DEPS
     torch
-  COPTS
-    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
 cc_library(
@@ -48,8 +44,6 @@ cc_library(
     awq/gemm_cuda_gen.cu
   DEPS
     torch
-  COPTS
-    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
 cc_library(
@@ -63,8 +57,8 @@ cc_library(
     exllama/cuda_func/q4_matrix.cu
   DEPS
     torch
-  COPTS
-    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
+  LINKOPTS 
+    cublas
 )
 
 cc_library(
@@ -76,8 +70,6 @@ cc_library(
     exllamav2/cuda/q_gemm.cu
   DEPS
     torch
-  COPTS
-    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )
 
 cc_library(

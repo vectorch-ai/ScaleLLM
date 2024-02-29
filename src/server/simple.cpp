@@ -18,7 +18,9 @@ DEFINE_string(model_name_or_path,
               "THUDM/chatglm3-6b",
               "hf model name or path to the model file.");
 
-DEFINE_string(model_allow_patterns, "*", "Allow patterns for model files.");
+DEFINE_string(model_allow_patterns,
+              "*.json,*.tiktoken,*.model,*.safetensors",
+              "Allow patterns for model files.");
 
 DEFINE_string(device,
               "cuda",

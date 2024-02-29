@@ -8,6 +8,4 @@ cc_library(
   DEPS
     torch
     Python::Python
-  COPTS
-    # "$<$<COMPILE_LANGUAGE:CUDA>:-G>"
 )

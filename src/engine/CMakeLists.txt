@@ -25,6 +25,8 @@ cc_library(
     glog::glog
     Folly::folly
     absl::synchronization
+  LINKOPTS
+    atomic
 )
 
 cc_test(

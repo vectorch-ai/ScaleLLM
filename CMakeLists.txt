@@ -123,13 +123,13 @@ if (DEFINED ENV{LIBTORCH_ROOT})
 else()
   include(FetchContent)
   if (CUDA_VERSION VERSION_GREATER_EQUAL 12.1)
-    # download libtorch 2.1.2 with cuda 12.1 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu121.zip")
-    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1.2 for cuda ${CUDA_VERSION}")
+    # download libtorch 2.2.1 with cuda 12.1 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu121.zip")
+    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.2.1 for cuda ${CUDA_VERSION}")
   elseif(CUDA_VERSION VERSION_GREATER_EQUAL 11.8)
-    # download libtorch 2.1 with cuda 11.8 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu118.zip")
-    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.1.2 for cuda ${CUDA_VERSION}")
+    # download libtorch 2.2.1 with cuda 11.8 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu118.zip")
+    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.2.1 for cuda ${CUDA_VERSION}")
   else()
     # error out if cuda version is not supported
     message(FATAL_ERROR "Unsupported CUDA version: ${CUDA_VERSION}")
@@ -142,8 +142,9 @@ else()
 endif()
 
 # carry over torch flags to the rest of the project
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS} -DC10_USE_GLOG")
 message(STATUS "TORCH_CXX_FLAGS: ${TORCH_CXX_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 
 # enable testing in this directory so we can do a top-level `make test`.
 # this also includes the BUILD_TESTING option, which is on by default.
