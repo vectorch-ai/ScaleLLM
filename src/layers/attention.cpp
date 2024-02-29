@@ -194,6 +194,8 @@ void multiple_query_masked_self_attention(
     torch::Tensor& output) {
   if (query.is_cuda() && !FLAGS_disable_custom_kernels) {
     // use cuda kernel
+    // TODO: enable split once the core dump issue fixed
+    const int32_t num_splits = 1;
     auto [key_cache, value_cache] = kv_cache.get_kv_cache();
     return multiple_query_masked_self_attention_cuda(query,
                                                      key_cache,
@@ -206,7 +208,7 @@ void multiple_query_masked_self_attention(
                                                      k_max_seq_len,
                                                      scale,
                                                      output,
-                                                     /*num_splits=*/0);
+                                                     num_splits);
   }
   CHECK(false)
       << "multiple_query_masked_self_attention not implemented for CPU";

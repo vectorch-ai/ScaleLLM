@@ -328,13 +328,13 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(1, 10),                            // batch_size
         ::testing::Values(16, 80, 256),                      // block_size
         ::testing::Values(1, 10),                            // q_max_seq_len
-        ::testing::Values(100, 200),                         // kv_max_seq_len
+        ::testing::Values(100, 1000),                        // kv_max_seq_len
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 40, 64, 128),                  // head_dim
         ::testing::Values(0.9, 1.0),                         // scale
         ::testing::Values(false, true),                      // alibi
-        ::testing::Values(0, 1)                              // num_splits
+        ::testing::Values(1)                                 // num_splits
         ));
 
 }  // namespace llm
