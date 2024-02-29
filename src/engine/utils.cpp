@@ -52,7 +52,6 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
                            int32_t block_size,
                            torch::Tensor* flatten_token_ids,
                            torch::Tensor* flatten_positions,
-                           torch::Tensor* seq_idxes,
                            InputParameters* input_params,
                            SamplingParameters* sampling_params) {
   // flatten the token ids and positions
@@ -67,10 +66,6 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   std::vector<std::vector<int32_t>> token_counts_vec;
   size_t max_unique_tokens = 0;
 
-  // track the sequence indices in the batch
-  // from original sequence index to the new index in the batch
-  std::vector<int32_t> seq_idxes_vec(batch.size());
-
   // process prefill requests
   int32_t max_seq_len = 0;
   int32_t q_max_seq_len = 0;
@@ -84,9 +79,6 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     const auto* sequence = batch[i];
     GCHECK(!sequence->is_finished());
     GCHECK(has_enough_cache_slots(*sequence, block_size));
-
-    // original sequence index to the new index in the batch
-    seq_idxes_vec[i] = static_cast<int32_t>(token_ids_vec.size());
 
     const auto& seq_token_ids = sequence->token_ids();
     const int32_t seq_len = static_cast<int32_t>(seq_token_ids.size());
@@ -117,8 +109,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
 
     max_seq_len = std::max(max_seq_len, seq_len);
     q_max_seq_len = std::max(q_max_seq_len, q_seq_len);
-    cu_seq_lens.push_back(seq_len);
-    q_cu_seq_lens.push_back(q_seq_len);
+    cu_seq_lens.push_back(cu_seq_lens.back() + seq_len);
+    q_cu_seq_lens.push_back(q_cu_seq_lens.back() + q_seq_len);
 
     // add sampling parameters
     sampling_params->add(sequence->sampling_param());
@@ -149,7 +141,6 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
 
   *flatten_token_ids = torch::tensor(flatten_tokens_vec, torch::kInt);
   *flatten_positions = torch::tensor(flatten_positions_vec, torch::kInt);
-  *seq_idxes = torch::tensor(seq_idxes_vec, torch::kInt);
 
   input_params->kv_max_seq_len = max_seq_len;
   input_params->q_max_seq_len = q_max_seq_len;

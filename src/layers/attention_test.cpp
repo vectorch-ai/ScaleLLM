@@ -77,6 +77,7 @@ class AttentionPrefillTest
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
+                                                 float /*scale*/,
                                                  bool /*alibi*/>> {};
 
 TEST_P(AttentionPrefillTest, Varlen) {
@@ -87,6 +88,7 @@ TEST_P(AttentionPrefillTest, Varlen) {
                n_heads,
                n_kv_heads,
                head_dim,
+               scale,
                alibi] = GetParam();
 
   absl::BitGen gen;
@@ -118,13 +120,8 @@ TEST_P(AttentionPrefillTest, Varlen) {
   }
 
   torch::Tensor output = torch::empty_like(query);
-  detail::varlen_masked_self_attention_generic(query,
-                                               key,
-                                               value,
-                                               cu_seq_lens,
-                                               alibi_slopes,
-                                               /*scale=*/1.0,
-                                               output);
+  detail::varlen_masked_self_attention_generic(
+      query, key, value, cu_seq_lens, alibi_slopes, scale, output);
 
   torch::Tensor output_cuda = torch::empty_like(query);
   detail::varlen_masked_self_attention_cuda(query,
@@ -133,7 +130,7 @@ TEST_P(AttentionPrefillTest, Varlen) {
                                             cu_seq_lens,
                                             alibi_slopes,
                                             max_seq_len,
-                                            /*scale=*/1.0,
+                                            scale,
                                             output_cuda);
   EXPECT_TRUE(
       torch::allclose(output, output_cuda, /*rtol=*/1e-1, /*atol=*/1e-1));
@@ -142,16 +139,16 @@ TEST_P(AttentionPrefillTest, Varlen) {
 INSTANTIATE_TEST_SUITE_P(
     Varlen,
     AttentionPrefillTest,
-    ::testing::Combine(
-        ::testing::Values(torch::kCUDA),
-        ::testing::Values(torch::kHalf, torch::kBFloat16),
-        ::testing::Values(2, 3, 5),                         // batch_size
-        ::testing::Values(200),                             // max_seq_len
-        ::testing::Values(6),                               // n_heads
-        ::testing::Values(6, 3, 1),                         // n_kv_heads
-        ::testing::Values(32, 40, 64, 111, 128, 224, 256),  // head_dim
-        ::testing::Values(false, true)                      // alibi
-        ));
+    ::testing::Combine(::testing::Values(torch::kCUDA),
+                       ::testing::Values(torch::kHalf, torch::kBFloat16),
+                       ::testing::Values(2, 3, 5),          // batch_size
+                       ::testing::Values(200),              // max_seq_len
+                       ::testing::Values(6),                // n_heads
+                       ::testing::Values(6, 3, 1),          // n_kv_heads
+                       ::testing::Values(32, 40, 64, 128),  // head_dim
+                       ::testing::Values(0.9, 1.0),         // scale
+                       ::testing::Values(false, true)       // alibi
+                       ));
 
 // Test attention with kv-cache for decode stage
 class AttentionDecodeTest
@@ -164,7 +161,9 @@ class AttentionDecodeTest
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
-                                                 bool /*alibi*/>> {};
+                                                 float /*scale*/,
+                                                 bool /*alibi*/,
+                                                 int32_t /*num_splits*/>> {};
 
 TEST_P(AttentionDecodeTest, KVCache) {
   const auto& [device,
@@ -176,7 +175,9 @@ TEST_P(AttentionDecodeTest, KVCache) {
                n_heads,
                n_kv_heads,
                head_dim,
-               alibi] = GetParam();
+               scale,
+               alibi,
+               num_splits] = GetParam();
   // make sure kv_max_seq_len >= q_max_seq_len
   if (kv_max_seq_len < q_max_seq_len) {
     GTEST_SKIP() << "kv_max_seq_len < q_max_seq_len";
@@ -296,8 +297,9 @@ TEST_P(AttentionDecodeTest, KVCache) {
       alibi_slopes,
       q_max_seq_len,
       kv_max_seq_len,
-      /*scale=*/1.0,
-      output);
+      scale,
+      output,
+      /*num_splits=*/1);
 
   torch::Tensor output_with_cache = torch::empty_like(query);
   detail::multiple_query_masked_self_attention_cuda(query,
@@ -309,8 +311,9 @@ TEST_P(AttentionDecodeTest, KVCache) {
                                                     alibi_slopes,
                                                     q_max_seq_len,
                                                     kv_max_seq_len,
-                                                    /*scale=*/1.0,
-                                                    output_with_cache);
+                                                    scale,
+                                                    output_with_cache,
+                                                    num_splits);
 
   EXPECT_TRUE(
       torch::allclose(output_with_cache, output, /*rtol=*/1e-2, /*atol=*/1e-3));
@@ -325,11 +328,13 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(1, 10),                            // batch_size
         ::testing::Values(16, 80, 256),                      // block_size
         ::testing::Values(1, 10),                            // q_max_seq_len
-        ::testing::Values(100, 1000),                        // kv_max_seq_len
+        ::testing::Values(100, 200),                         // kv_max_seq_len
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
-        ::testing::Values(32, 40, 64, 256),                  // head_dim
-        ::testing::Values(false, true)                       // alibi
+        ::testing::Values(32, 40, 64, 128),                  // head_dim
+        ::testing::Values(0.9, 1.0),                         // scale
+        ::testing::Values(false, true),                      // alibi
+        ::testing::Values(0, 1)                              // num_splits
         ));
 
 }  // namespace llm

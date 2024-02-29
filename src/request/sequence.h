@@ -11,7 +11,6 @@
 #include "tokenizer/tokenizer.h"
 
 namespace llm {
-struct Request;
 
 // "stop" - the model hit a natural stop point or a provided stop sequence.
 // "length" - the maximum number of tokens specified in the request was reached.
@@ -31,7 +30,11 @@ using OnStream =
 // current position in generating tokens, etc.
 class Sequence final {
  public:
-  Sequence(const Request& request, OnStream on_stream);
+  Sequence(const SamplingParameter& sampling_param_,
+           const StoppingCriteria& stopping_criteria_,
+           const std::vector<int32_t>& token_ids,
+           bool echo,
+           OnStream on_stream);
 
   // get the id of the sequence
   int64_t id() const { return id_; }
@@ -135,8 +138,11 @@ class Sequence final {
   // global unique id for the sequence
   const int64_t id_;
 
-  // The request that the sequence belongs to.
-  const Request& request_;
+  // the sampling parameters
+  const SamplingParameter& sampling_param_;
+
+  // the stopping criteria
+  const StoppingCriteria& stopping_criteria_;
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;

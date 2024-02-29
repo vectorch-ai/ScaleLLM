@@ -143,7 +143,8 @@ void multiple_query_masked_self_attention_cuda(
     int32_t q_max_seq_len,  // maximum sequence length for Q
     int32_t k_max_seq_len,  // maximum sequence length for K/V
     float scale,
-    torch::Tensor& output);
+    torch::Tensor& output,
+    int32_t num_splits);
 
 }  // namespace detail
 
