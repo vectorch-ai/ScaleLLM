@@ -43,6 +43,20 @@ cc_binary(
 
 cc_binary(
   NAME 
+    benchmark_test
+  SRCS 
+    benchmark_test.cpp
+  DEPS
+    :engine
+    torch
+    absl::strings
+    gflags::gflags
+    glog::glog
+    Python::Python
+)
+
+cc_binary(
+  NAME 
     scalellm
   SRCS 
     main.cpp
