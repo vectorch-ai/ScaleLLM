@@ -3,7 +3,6 @@
 
 namespace llm::kernel {
 
-// [...(n_tokens), hidden_size]
 torch::Tensor gelu_new(torch::Tensor input);
 torch::Tensor gelu_fast(torch::Tensor input);
 torch::Tensor silu(torch::Tensor input);
