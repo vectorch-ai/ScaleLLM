@@ -146,6 +146,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS} -DC10_USE_GLOG")
 message(STATUS "TORCH_CXX_FLAGS: ${TORCH_CXX_FLAGS}")
 message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -O3)
+# The following definitions must be undefined since half-precision operation is required.
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}
+      -U__CUDA_NO_HALF_OPERATORS__
+      -U__CUDA_NO_HALF_CONVERSIONS__
+      -U__CUDA_NO_HALF2_OPERATORS__
+      -U__CUDA_NO_BFLOAT16_CONVERSIONS__)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} --use_fast_math)
+message(STATUS "CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
+
 # enable testing in this directory so we can do a top-level `make test`.
 # this also includes the BUILD_TESTING option, which is on by default.
 include(CTest)
