@@ -117,4 +117,5 @@ cc_library(
     torch
 )
 
+add_subdirectory(flashinfer)
 

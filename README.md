@@ -285,6 +285,7 @@ If you have any questions or want to contribute, please don't hesitate to ask in
 
 ## Acknowledgements
 The following open-source projects have been used in this project, either in their original form or modified to meet our needs:
+* [flashinfer](https://github.com/flashinfer-ai/flashinfer)
 * [pytorch](https://github.com/pytorch/pytorch)
 * [FasterTransformer](https://github.com/NVIDIA/FasterTransformer)
 * [vllm](https://github.com/vllm-project/vllm)

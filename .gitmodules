@@ -4,6 +4,3 @@
 [submodule "src/kernels/cutlass"]
 	path = src/kernels/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
-[submodule "third_party/flashinfer"]
-	path = third_party/flashinfer
-	url = https://github.com/flashinfer-ai/flashinfer.git
