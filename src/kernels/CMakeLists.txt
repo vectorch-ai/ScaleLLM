@@ -72,43 +72,30 @@ cc_library(
     torch
 )
 
+
+# copy the file to binary dir in order to force re-configuration when the file changes
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/flash_attn/generate_instantiation_cu.py
+  ${CMAKE_CURRENT_BINARY_DIR}/flash_attn/generate_instantiation_cu.py
+)
+
+# execute the script to generate the instantiation of the kernels
+execute_process(
+  COMMAND ${CMAKE_CURRENT_BINARY_DIR}/flash_attn/generate_instantiation_cu.py
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/flash_attn/
+)
+
+# globbing all generated files in sub directory "generated"
+file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/flash_attn/generated/*.cu")
+
 cc_library(
   NAME 
     flash-attn.kernels
+  HDRS
+    flash_attn/flash_api.h
   SRCS
     flash_attn/flash_api.cpp
-    flash_attn/src/flash_fwd_hdim32_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim32_bf16_sm80.cu
-    flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim64_bf16_sm80.cu
-    flash_attn/src/flash_fwd_hdim96_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim96_bf16_sm80.cu
-    flash_attn/src/flash_fwd_hdim128_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim128_bf16_sm80.cu
-    flash_attn/src/flash_fwd_hdim160_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim160_bf16_sm80.cu
-    flash_attn/src/flash_fwd_hdim192_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim192_bf16_sm80.cu
-    flash_attn/src/flash_fwd_hdim224_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim224_bf16_sm80.cu
-    flash_attn/src/flash_fwd_hdim256_fp16_sm80.cu
-    flash_attn/src/flash_fwd_hdim256_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim32_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim32_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim64_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim64_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim96_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim96_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim128_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim128_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim160_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim160_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim192_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim192_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim224_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim224_bf16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim256_fp16_sm80.cu
-    flash_attn/src/flash_fwd_split_hdim256_bf16_sm80.cu
+    ${GENERATED_SRC_FILES}
   INCLUDES
     flash_attn
     flash_attn/src
