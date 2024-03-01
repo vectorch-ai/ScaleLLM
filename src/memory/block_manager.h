@@ -24,6 +24,10 @@ class BlockManager final {
 
   void release_slots_for_sequence(Sequence* sequence);
 
+  bool allocate_slots_for_sequences(std::vector<Sequence*>& sequences);
+
+  void release_slots_for_sequences(std::vector<Sequence*>& sequences);
+
  private:
   // number of slots per block
   int32_t block_size_ = 0;

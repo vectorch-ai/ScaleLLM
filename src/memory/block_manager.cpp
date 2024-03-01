@@ -28,6 +28,7 @@ size_t num_blocks_to_allocate(const Sequence& sequence, int32_t block_size) {
   return num_blocks_needed - num_blocks;
 }
 }  // namespace
+
 BlockManager::BlockManager(uint32_t num_blocks, int32_t block_size)
     : block_size_(block_size), block_allocator_(num_blocks, block_size) {}
 
@@ -90,6 +91,25 @@ void BlockManager::release_slots_for_sequence(Sequence* sequence) {
   const auto block_ids = sequence->release_blocks();
   // add block ids back to the block allocator
   block_allocator_.free(block_ids);
+}
+
+
+bool BlockManager::allocate_slots_for_sequences(std::vector<Sequence*>& sequences) {
+  for (auto* sequence : sequences) {
+    DCHECK(sequence != nullptr);
+    if (!allocate_slots_for_sequence(sequence)) {
+      // not enough blocks for the sequence
+      return false;
+    }
+  }
+  return true;
+}
+
+void BlockManager::release_slots_for_sequences(std::vector<Sequence*>& sequences) {
+  for (auto* sequence : sequences) {
+    DCHECK(sequence != nullptr);
+    release_slots_for_sequence(sequence);
+  }
 }
 
 }  // namespace llm
