@@ -36,4 +36,16 @@ int64_t total_memory(const torch::Device& device) {
   return static_cast<int64_t>(prop.totalGlobalMem);
 }
 
+int64_t available_memory(const torch::Device& device) {
+  CHECK(device.is_cuda()) << "Only support CUDA device for now.";
+  const auto device_index =
+      device.has_index() ? device.index() : c10::cuda::current_device();
+  CHECK(cudaSetDevice(device_index) == cudaSuccess)
+      << "Failed to set device to " << device_index;
+  size_t free = 0;
+  size_t total = 0;
+  CHECK(cudaMemGetInfo(&free, &total) == cudaSuccess) << "Failed to get memory info for " << device;
+  return static_cast<int64_t>(free);
+}
+
 }  // namespace llm::memory

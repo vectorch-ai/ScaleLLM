@@ -14,14 +14,18 @@ struct InputParameters {
     params.q_max_seq_len = q_max_seq_len;
 
     // all tensors should be on the same device as model
-    params.kv_cu_seq_lens = kv_cu_seq_lens.to(device);
-    params.q_cu_seq_lens = q_cu_seq_lens.to(device);
-    params.new_cache_slots = new_cache_slots.to(device);
-    params.block_tables = block_tables.to(device);
-    params.last_token_idxes = last_token_idxes.to(device);
-    params.token_ids = token_ids.to(device);
-    params.token_counts = token_counts.to(device);
-    params.token_ids_lens = token_ids_lens.to(device);
+    auto safe_to = [](const torch::Tensor& t, const torch::Device& device) {
+      return t.defined() ? t.to(device) : t;
+    };
+    params.kv_cu_seq_lens = safe_to(kv_cu_seq_lens, device);
+    params.q_cu_seq_lens = safe_to(q_cu_seq_lens, device);
+
+    params.new_cache_slots = safe_to(new_cache_slots, device);
+    params.block_tables = safe_to(block_tables, device);
+    params.last_token_idxes = safe_to(last_token_idxes, device);
+    params.token_ids = safe_to(token_ids, device);
+    params.token_counts = safe_to(token_counts, device);
+    params.token_ids_lens = safe_to(token_ids_lens, device);
     return params;
   }
 

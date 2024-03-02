@@ -47,6 +47,12 @@ class Worker final {
   // verify if the model is loaded correctly
   void verify_loaded_weights() const;
 
+  // returns available memory and total memory
+  std::tuple<int64_t, int64_t> profile_device_memory(
+      torch::Tensor flatten_tokens,     // [num_tokens]
+      torch::Tensor flatten_positions,  // [num_tokens]
+      const InputParameters& params);
+
   // initialize kv cache. blocking call
   bool init_kv_cache(const std::vector<int64_t>& kv_cache_shape);
 
@@ -72,6 +78,11 @@ class Worker final {
   // the future returns a successfull status with no meaningful value
   folly::SemiFuture<folly::Unit> load_state_dict_async(
       const StateDict& state_dict);
+
+  folly::SemiFuture<std::tuple<int64_t, int64_t>> profile_device_memory_async(
+      torch::Tensor flatten_tokens,     // [num_tokens]
+      torch::Tensor flatten_positions,  // [num_tokens]
+      const InputParameters& params);
 
   // initialize kv cache. async call
   folly::SemiFuture<bool> init_kv_cache_async(

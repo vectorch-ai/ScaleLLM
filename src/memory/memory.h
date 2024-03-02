@@ -13,4 +13,7 @@ int64_t max_memory_allocated(const torch::Device& device);
 // Only support CUDA device for now.
 int64_t total_memory(const torch::Device& device);
 
+// returns the available memory in bytes of the device.
+int64_t available_memory(const torch::Device& device);
+
 } // namespace llm::memory

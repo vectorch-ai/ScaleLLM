@@ -11,6 +11,8 @@
 #include <utility>
 
 #include "common/threadpool.h"
+#include "memory/kv_cache.h"
+#include "memory/memory.h"
 #include "model_loader/state_dict.h"
 #include "models/input_parameters.h"
 #include "sampling/logits_processor.h"
@@ -33,6 +35,7 @@ bool Worker::init_model(torch::ScalarType dtype,
 }
 
 bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
+  CHECK(model_ != nullptr) << "Model is not initialized.";
   // create a KVCache for each layer
   const int64_t num_layers = args_.n_layers();
   kv_caches_.reserve(num_layers);
@@ -47,13 +50,44 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
 }
 
 void Worker::load_state_dict(const StateDict& state_dict) {
-  CHECK(model_ != nullptr);
+  CHECK(model_ != nullptr) << "Model is not initialized.";
   model_->load_state_dict(state_dict);
 }
 
 void Worker::verify_loaded_weights() const {
-  CHECK(model_ != nullptr);
+  CHECK(model_ != nullptr) << "Model is not initialized.";
   model_->verify_loaded_weights();
+}
+
+std::tuple<int64_t, int64_t> Worker::profile_device_memory(
+    torch::Tensor flatten_tokens,     // [num_tokens]
+    torch::Tensor flatten_positions,  // [num_tokens]
+    const InputParameters& params) {
+  CHECK(model_ != nullptr) << "Model is not initialized.";
+  CHECK(device_.is_cuda()) << "Memory profiling is only supported on GPU.";
+
+  torch::DeviceGuard device_guard(device_);
+
+  // initialize dummy kv caches for profiling
+  std::vector<KVCache> dummy_kv_caches(args_.n_layers());
+
+  // release all unocupied cached memory
+  // torch::cuda::empty_cache();
+  c10::cuda::CUDACachingAllocator::emptyCache();
+
+  // call model forward and discard the result
+  model_->forward(flatten_tokens.to(device_),
+                  flatten_positions.to(device_),
+                  dummy_kv_caches,
+                  params.to(device_));
+
+  // waits for all kernels in all streams to complete.
+  torch::cuda::synchronize();
+
+  const auto available_memory = memory::available_memory(device_);
+  const auto total_memory = memory::total_memory(device_);
+
+  return {available_memory, total_memory};
 }
 
 OutputParameters Worker::execute_model(
@@ -73,6 +107,9 @@ OutputParameters Worker::execute_model(
   // call model forward and return the result
   auto logits =
       model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
+
+  // waits for all kernels in all streams to complete.
+  torch::cuda::synchronize();
 
   // create and call logits processors
   auto logits_processor =
@@ -123,6 +160,25 @@ OutputParameters Worker::validate(torch::Tensor flatten_tokens,
   OutputParameters output_params;
   output_params.next_tokens = next_tokens.to(input_device);
   return output_params;
+}
+
+folly::SemiFuture<std::tuple<int64_t, int64_t>>
+Worker::profile_device_memory_async(
+    torch::Tensor flatten_tokens,     // [num_tokens]
+    torch::Tensor flatten_positions,  // [num_tokens]
+    const InputParameters& params) {
+  folly::Promise<std::tuple<int64_t, int64_t>> promise;
+  auto future = promise.getSemiFuture();
+  threadpool_.schedule([this,
+                        tokens = flatten_tokens,
+                        positions = flatten_positions,
+                        parameters = params,
+                        promise = std::move(promise)]() mutable {
+    const auto output =
+        this->profile_device_memory(tokens, positions, parameters);
+    promise.setValue(output);
+  });
+  return future;
 }
 
 folly::SemiFuture<OutputParameters> Worker::execute_model_async(

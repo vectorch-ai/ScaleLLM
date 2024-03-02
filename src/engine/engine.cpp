@@ -23,6 +23,15 @@ DEFINE_double(max_memory_utilization,
               0.9,
               "maximum memory utilization allowed, default 0.9");
 
+// following two parameters are used for profiling and warmup the engine.
+// the profiling result would be used to determine kv cache size.
+DEFINE_int64(max_num_tokens_per_batch,
+             1024,
+             "Maximum number of tokens per batch for profiling.");
+DEFINE_int64(max_num_seqs_per_batch,
+             32,
+             "Maximum number of sequences per batch for profiling.");
+
 DECLARE_bool(disable_custom_kernels);
 
 namespace llm {
@@ -55,8 +64,11 @@ torch::ScalarType parse_dtype(const std::string& dtype_str,
 Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
+  const auto device_type = devices[0].type();
   for (const auto device : devices) {
-    // all devices should be the same type
+    CHECK_EQ(device.type(), device_type)
+        << "All devices should be the same type";
+
     if (device.is_cuda()) {
       // check cuda compute capability
       const auto* properties = at::cuda::getDeviceProperties(device.index());
@@ -67,11 +79,13 @@ Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
     }
   }
 
+  // initialize process groups if there are multiple devices
   const int32_t world_size = static_cast<int32_t>(devices.size());
   if (world_size > 1) {
     // create a process group for each device if there are multiple gpus
     process_groups_ = ProcessGroup::create_process_groups(devices);
   }
+
   // create a worker for each device
   for (size_t i = 0; i < devices.size(); ++i) {
     const int32_t rank = static_cast<int32_t>(i);
@@ -81,7 +95,8 @@ Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
   }
 
   if (FLAGS_disable_custom_kernels) {
-    LOG(WARNING) << "Custom kernels are disabled, using generic kernels.";
+    LOG(WARNING) << "Custom kernels are disabled. You may experience "
+                    "performance degradation.";
   }
 }
 
@@ -91,7 +106,8 @@ bool Engine::init(const std::string& model_weights_path) {
     return false;
   }
 
-  if (!init_kv_cache()) {
+  const int64_t kv_cache_size_in_bytes = profile_memory_for_kv_cache();
+  if (!init_kv_cache(kv_cache_size_in_bytes)) {
     LOG(ERROR) << "Failed to initialize kv cache";
     return false;
   }
@@ -181,10 +197,75 @@ bool Engine::init_model(const std::string& model_weights_path) {
   return true;
 }
 
-bool Engine::init_kv_cache() {
-  LOG(INFO) << "Initializing kv cache with block size: " << FLAGS_block_size
-            << ", max cache size: " << readable_size(FLAGS_max_cache_size)
-            << ", max memory utilization: " << FLAGS_max_memory_utilization;
+int64_t Engine::profile_memory_for_kv_cache() {
+  // use first device to profile memory usage
+  const auto& device = workers_[0]->device();
+  if (device.is_cpu()) {
+    // use max memory cache size for CPU
+    LOG(INFO) << "Initializing CPU cache with max cache size: "
+              << readable_size(FLAGS_max_cache_size);
+    // TODO: add CPU memory profiling
+    return FLAGS_max_cache_size;
+  }
+  CHECK(device.is_cuda()) << "Only support CPU and CUDA device for now.";
+
+  // Prepare dummy inputs for memory profiling
+  torch::Tensor flatten_token_ids;
+  torch::Tensor flatten_positions;
+  InputParameters input_params;
+  Utils::prepare_profile_inputs(FLAGS_max_num_tokens_per_batch,
+                                FLAGS_max_num_seqs_per_batch,
+                                &flatten_token_ids,
+                                &flatten_positions,
+                                &input_params);
+  LOG(INFO) << "Warming up the engine with input shape: "
+            << flatten_token_ids.sizes();
+
+  // call worker to profile memory usage
+  std::vector<folly::SemiFuture<std::tuple<int64_t, int64_t>>> futures;
+  futures.reserve(workers_.size());
+  for (auto& worker : workers_) {
+    futures.push_back(worker->profile_device_memory_async(
+        flatten_token_ids, flatten_positions, input_params));
+  }
+
+  // pick smallest available memory from all devices
+  int64_t smallest_available_memory = std::numeric_limits<int64_t>::max();
+  // wait for all futures to complete
+  auto results = folly::collectAll(futures).get();
+  for (size_t i = 0; i < results.size(); ++i) {
+    const auto device = workers_[i]->device();
+    if (!results[i].hasValue()) {
+      LOG(ERROR) << "Failed to profile memory usage for device: " << device;
+      continue;
+    }
+    auto [available_memory, total_memory] = results[i].value();
+    LOG(INFO) << device
+              << ": available memory: " << readable_size(available_memory)
+              << ", total memory: " << readable_size(total_memory);
+
+    LOG(INFO) << "Using max_memory_utilization: "
+              << FLAGS_max_memory_utilization
+              << ", max_cache_size: " << readable_size(FLAGS_max_cache_size);
+    // apply memory cap from config if it is set
+    if (FLAGS_max_memory_utilization < 1.0) {
+      const int64_t buffer_memory =
+          total_memory * (1.0 - FLAGS_max_memory_utilization);
+      available_memory -= buffer_memory;
+    }
+    if (FLAGS_max_cache_size > 0) {
+      available_memory = std::min(available_memory, FLAGS_max_cache_size);
+    }
+    smallest_available_memory =
+        std::min(smallest_available_memory, available_memory);
+  }
+  return std::max(smallest_available_memory, int64_t(0));
+}
+
+bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
+  CHECK_GT(cache_size_in_bytes, 0);
+  LOG(INFO) << "Initializing kv cache with size: "
+            << readable_size(cache_size_in_bytes);
 
   const int64_t block_size = FLAGS_block_size;
 
@@ -204,46 +285,16 @@ bool Engine::init_kv_cache() {
             << ", n_layers: " << args_.n_layers()
             << ", dtype_size: " << dtype_size;
 
-  int64_t num_blocks = 0;
-  // use first device to profile memory usage
-  const auto& device = workers_[0]->device();
-  if (device.is_cpu()) {
-    // use max memory cache size for CPU
-    LOG(INFO) << "Initializing CPU cache with max cache size: "
-              << readable_size(FLAGS_max_cache_size);
-    num_blocks = FLAGS_max_cache_size / block_size_in_bytes;
-    CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
-  } else if (device.is_cuda()) {
-    torch::cuda::synchronize();
-    const auto allocated_bytes = memory::max_memory_allocated(device);
-    const auto total_memory = memory::total_memory(device);
-    LOG(INFO) << device
-              << ": allocated GPU memory: " << readable_size(allocated_bytes)
-              << ", total GPU memory: " << readable_size(total_memory);
-
-    int64_t max_cache_size =
-        static_cast<int64_t>(static_cast<double>(total_memory) *
-                             FLAGS_max_memory_utilization) -
-        allocated_bytes;
-    // apply memory cap from config if it is set
-    if (FLAGS_max_cache_size > 0) {
-      max_cache_size = std::min(max_cache_size, FLAGS_max_cache_size);
-    }
-    CHECK_GT(max_cache_size, 0) << "Not enough memory for the cache";
-    LOG(INFO) << "Initializing CUDA cache with max cache size: "
-              << readable_size(max_cache_size);
-    num_blocks = max_cache_size / block_size_in_bytes;
-    CHECK_GT(num_blocks, 0) << "Not enough memory for the cache";
-  } else {
-    CHECK(false) << "Only support CPU and CUDA device for now.";
-  }
+  const int64_t n_blocks = cache_size_in_bytes / block_size_in_bytes;
+  CHECK_GT(n_blocks, 0) << "Not enough memory for the kv cache";
 
   // init kv cache for each worker
   const std::vector<int64_t> kv_cache_shape = {
-      num_blocks, block_size, n_local_kv_heads, head_dim};
+      n_blocks, block_size, n_local_kv_heads, head_dim};
   LOG(INFO) << "Initializing kv cache with shape: [" << kv_cache_shape << "]";
 
-  block_manager_ = std::make_unique<BlockManager>(num_blocks, block_size);
+  // initialize block manager
+  block_manager_ = std::make_unique<BlockManager>(n_blocks, block_size);
 
   // init kv cache for each worker in parallel
   if (workers_.size() == 1) {
