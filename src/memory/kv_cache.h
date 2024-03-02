@@ -9,7 +9,13 @@ namespace llm {
 // the fixed memory is allocated in the constructor for each attention layer.
 class KVCache final {
  public:
+  KVCache() = default;
+
   KVCache(torch::Tensor key_cache, torch::Tensor value_cache);
+
+  bool empty() const {
+    return !key_cache_.defined() || !value_cache_.defined();
+  }
 
   // set key and value cache for the given slot_ids
   // the slot_ids are the indices of the key/value cache, [num_slots] IntTensor
@@ -47,9 +53,9 @@ class KVCache final {
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
       const std::vector<int>& slot_ids) const;
 
-  int64_t num_kv_heads_;
-  int64_t head_size_;
-  int64_t block_size_;
+  int64_t num_kv_heads_ = 0;
+  int64_t head_size_ = 0;
+  int64_t block_size_ = 0;
 
   // the contunuous memory region for key and value cache would be splited into
   // fixed size blocks. the blocks allocation would be managed by the

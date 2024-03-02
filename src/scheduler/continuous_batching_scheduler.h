@@ -14,6 +14,8 @@
 
 namespace llm {
 
+// TODO: add schedule config to control the max number of tokens per batch, max
+// number of seqs per batch and the time out value.
 class ContinuousBatchingScheduler final : public Scheduler {
  public:
   ContinuousBatchingScheduler(Engine* engine);

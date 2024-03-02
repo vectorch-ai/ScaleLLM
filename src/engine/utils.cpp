@@ -48,6 +48,43 @@ torch::Tensor create_2d_tensor(std::vector<std::vector<T>>& vec,
 
 }  // namespace
 
+void Utils::prepare_profile_inputs(int64_t max_num_tokens,
+                                   int64_t max_num_seqs,
+                                   torch::Tensor* flatten_token_ids,
+                                   torch::Tensor* flatten_positions,
+                                   InputParameters* input_params) {
+  const int64_t max_seq_len = max_num_tokens / max_num_seqs;
+  std::vector<int32_t> positions;
+  std::vector<int32_t> cu_lens = {0};
+  std::vector<int32_t> last_token_idxes;
+  for (int64_t i = 0; i < max_num_seqs; ++i) {
+    cu_lens.push_back(cu_lens.back() + max_seq_len);
+    for (int64_t j = 0; j < max_seq_len; ++j) {
+      positions.push_back(j);
+    }
+    last_token_idxes.push_back(positions.size() - 1);
+  }
+
+  // dummy tensor with shape [max_batch_size * max_seq_len]
+  *flatten_token_ids = torch::ones({max_num_seqs * max_seq_len}, torch::kInt32);
+  *flatten_positions = torch::tensor(positions, torch::kInt32);
+  torch::Tensor cu_seq_lens = torch::tensor(cu_lens, torch::kInt32);
+
+  InputParameters params;
+  input_params->q_max_seq_len = max_seq_len;
+  input_params->kv_max_seq_len = max_seq_len;
+  input_params->q_cu_seq_lens = cu_seq_lens;
+  input_params->kv_cu_seq_lens = cu_seq_lens;
+  input_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt32);
+
+  // following parameters can be empty
+  // input_params->token_ids = torch::empty({0, 0}, torch::kInt64);
+  // input_params->token_counts = torch::empty({0, 0}, torch::kInt);
+  // input_params->token_ids_lens = torch::empty({0}, torch::kInt);
+  // input_params->new_cache_slots = torch::empty({0}, torch::kInt);
+  // input_params->block_tables = torch::empty({0, 0}, torch::kInt);
+}
+
 void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
                            int32_t block_size,
                            torch::Tensor* flatten_token_ids,

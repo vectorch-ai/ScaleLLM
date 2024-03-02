@@ -5,6 +5,14 @@
 
 namespace llm {
 
+TEST(KVCacheTest, Empty) {
+  KVCache kv_cache;
+  EXPECT_TRUE(kv_cache.empty());
+  auto [kcache, vcache] = kv_cache.get_kv_cache();
+  EXPECT_FALSE(kcache.defined());
+  EXPECT_FALSE(vcache.defined());
+}
+
 TEST(KVCacheTest, Basic) {
   const int num_kv_heads = 32;
   const int head_dim = 128;

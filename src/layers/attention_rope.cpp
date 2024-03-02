@@ -54,20 +54,32 @@ torch::Tensor AttentionWithRoPEImpl::forward(
   // apply positional embedding
   std::tie(q, k) = pos_emb_(q, k, positions);
 
-  // store k/v into cache based on slots
-  kv_cache.set_kv_cache(input_params.new_cache_slots, k, v);
-
   auto output = torch::empty_like(q);
-  detail::multiple_query_masked_self_attention(q,
-                                               kv_cache,
-                                               input_params.q_cu_seq_lens,
-                                               input_params.kv_cu_seq_lens,
-                                               input_params.block_tables,
-                                               /*alibi_slopes=*/torch::nullopt,
-                                               input_params.q_max_seq_len,
-                                               input_params.kv_max_seq_len,
-                                               scale_,
-                                               output);
+  if (kv_cache.empty()) {
+    // empty kv_cache, it is a batch for memory profiling
+    detail::varlen_masked_self_attention(q,
+                                         k,
+                                         v,
+                                         input_params.q_cu_seq_lens,
+                                         /*alibi_slopes=*/torch::nullopt,
+                                         input_params.q_max_seq_len,
+                                         scale_,
+                                         output);
+  } else {
+    // store k/v into cache based on slots
+    kv_cache.set_kv_cache(input_params.new_cache_slots, k, v);
+    detail::multiple_query_masked_self_attention(
+        q,
+        kv_cache,
+        input_params.q_cu_seq_lens,
+        input_params.kv_cu_seq_lens,
+        input_params.block_tables,
+        /*alibi_slopes=*/torch::nullopt,
+        input_params.q_max_seq_len,
+        input_params.kv_max_seq_len,
+        scale_,
+        output);
+  }
   return output.view({num_tokens, -1});
 }
 

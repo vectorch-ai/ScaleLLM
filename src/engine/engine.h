@@ -49,9 +49,7 @@ class Engine {
     return tokenizer_->clone();
   }
 
-  virtual BlockManager* block_manager() const {
-    return block_manager_.get();
-  }
+  virtual BlockManager* block_manager() const { return block_manager_.get(); }
 
   const ModelArgs& model_args() const { return args_; }
 
@@ -62,13 +60,16 @@ class Engine {
  private:
   bool init_model(const std::string& model_weights_path);
 
-  bool init_kv_cache();
+  bool init_kv_cache(int64_t cache_size_in_bytes);
+
+  // returns the memory size for the kv cache
+  int64_t profile_memory_for_kv_cache();
+
+  // devices
+  const std::vector<torch::Device> devices_;
 
   // dtype
   torch::ScalarType dtype_;
-
-  // devices
-  std::vector<torch::Device> devices_;
 
   // model args
   ModelArgs args_;
