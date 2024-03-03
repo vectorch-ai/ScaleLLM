@@ -90,7 +90,7 @@ file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/flash_attn/generated/
 
 cc_library(
   NAME 
-    flash-attn.kernels
+    flash_attn.kernels
   HDRS
     flash_attn/flash_api.h
   SRCS

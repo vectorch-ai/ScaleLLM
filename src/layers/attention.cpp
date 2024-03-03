@@ -9,41 +9,6 @@
 
 DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
 
-DEFINE_bool(
-    force_use_paged_attention_v2,
-    false,
-    "force to use paged attention v2 for single_query_masked_self_attention");
-
-// ref to paged_attention_v1 in third_party/vllm
-extern void paged_attention_v1(
-    torch::Tensor& out,
-    torch::Tensor& query,
-    torch::Tensor& key_cache,
-    torch::Tensor& value_cache,
-    int num_kv_heads,
-    float scale,
-    torch::Tensor& block_tables,
-    torch::Tensor& context_lens,
-    int block_size,
-    int max_context_len,
-    const c10::optional<torch::Tensor>& alibi_slopes);
-
-extern void paged_attention_v2(
-    torch::Tensor& out,
-    torch::Tensor& exp_sums,
-    torch::Tensor& max_logits,
-    torch::Tensor& tmp_out,
-    torch::Tensor& query,
-    torch::Tensor& key_cache,
-    torch::Tensor& value_cache,
-    int num_kv_heads,
-    float scale,
-    torch::Tensor& block_tables,
-    torch::Tensor& context_lens,
-    int block_size,
-    int max_context_len,
-    const c10::optional<torch::Tensor>& alibi_slopes);
-
 namespace llm {
 AttentionImpl::AttentionImpl(int64_t n_heads,
                              int64_t n_kv_heads,
@@ -158,38 +123,6 @@ void varlen_masked_self_attention(
   }
   return varlen_masked_self_attention_generic(
       query, key, value, cu_seq_lens, alibi_slopes, scale, output);
-}
-
-void single_query_masked_self_attention(
-    const KVCache& kv_cache,  // where to get key and value
-    int32_t n_kv_heads,
-    const torch::Tensor& query,         // [n_tokens/n_seqs, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [n_tokens, num_blocks]
-    const torch::Tensor& context_lens,  // [n_tokens]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    int32_t max_context_len,                      // maximum context length
-    float scale,                                  // scale for softmax
-    torch::Tensor& output) {
-  if (query.is_cuda() && !FLAGS_disable_custom_kernels) {
-    // use cuda kernel
-    return single_query_masked_self_attention_cuda(kv_cache,
-                                                   n_kv_heads,
-                                                   query,
-                                                   block_tables,
-                                                   context_lens,
-                                                   alibi_slopes,
-                                                   max_context_len,
-                                                   scale,
-                                                   output);
-  }
-  return single_query_masked_self_attention_generic(kv_cache,
-                                                    query,
-                                                    block_tables,
-                                                    context_lens,
-                                                    alibi_slopes,
-                                                    max_context_len,
-                                                    scale,
-                                                    output);
 }
 
 void multiple_query_masked_self_attention(
@@ -313,124 +246,6 @@ void varlen_masked_self_attention_cuda(
                  /*window_size_left=*/-1,
                  /*window_size_right=*/0,
                  /*num_splits=*/1);
-}
-
-void single_query_masked_self_attention_generic(
-    const KVCache& kv_cache,            // where to get key and value
-    const torch::Tensor& query,         // [n_tokens/n_seqs, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [n_tokens, num_blocks]
-    const torch::Tensor& context_lens,  // [n_tokens]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    int32_t /*max_context_len*/,                  // maximum context length
-    float scale,                                  // scale for softmax
-    torch::Tensor& output) {
-  const auto n_seqs = query.size(0);
-  // process each sequence
-  // don't need attention mask for single token
-  for (int64_t i = 0; i < n_seqs; ++i) {
-    // [1, n_heads, head_dim]
-    const auto q = query[i].unsqueeze(0);
-    const auto block_table = block_tables[i];
-    const auto context_len = context_lens[i].item<int>();
-    // fetch keys/values from cache
-    auto [k, v] = kv_cache.get_kv_cache(block_table, context_len);
-
-    // repeat keys/values if num_heads != num_kv_heads
-    const auto n_heads = query.size(1);
-    const auto n_kv_heads = k.size(1);
-    if (n_heads != n_kv_heads) {
-      CHECK(n_heads % n_kv_heads == 0);
-      const auto n_goups = n_heads / n_kv_heads;
-      k = k.repeat_interleave(/*repeats=*/n_goups, /*dim=*/1);
-      v = v.repeat_interleave(/*repeats=*/n_goups, /*dim=*/1);
-    }
-
-    torch::Tensor alibi_bias;
-    if (alibi_slopes) {
-      torch::Tensor slopes = alibi_slopes.value();
-
-      // prepare alibi attention mask
-      auto bias = torch::arange(0, context_len, query.options());
-      bias -= (context_len - 1);
-      // => [n_heads, 1, context_len]
-      alibi_bias =
-          bias.view({1, 1, context_len}) * slopes.view({n_heads, 1, 1});
-    }
-
-    const auto attn = masked_self_attention(q, k, v, alibi_bias, scale);
-    output.index_put_({i, Slice(), Slice()}, attn);
-  }
-}
-
-void single_query_masked_self_attention_cuda(
-    const KVCache& kv_cache,  // where to get key and value
-    int32_t n_kv_heads,
-    const torch::Tensor& query,         // [n_tokens/n_seqs, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [n_tokens, num_blocks]
-    const torch::Tensor& context_lens,  // [n_tokens]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    int32_t max_context_len,                      // maximum context length
-    float scale,                                  // scale for softmax
-    torch::Tensor& output) {
-  auto [key_cache, value_cache] = kv_cache.get_kv_cache();
-  static constexpr int32_t kPartitionSize = 512;
-  const auto n_seqs = query.size(0);
-  const auto n_heads = query.size(1);
-  const auto head_dim = query.size(2);
-  const auto block_size = static_cast<int32_t>(key_cache.size(3));
-
-  // make a 'copy' of variable since the api is using non-const reference
-  torch::Tensor _query = query;
-  torch::Tensor _block_tables = block_tables;
-  torch::Tensor _context_lens = context_lens;
-
-  // Adapted from:
-  // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/layers/attention.py#L253
-  // round up partition number
-  const auto num_partitions =
-      (max_context_len + kPartitionSize - 1) / kPartitionSize;
-
-  // For context len > 8192, use V2 kernel to avoid shared memory shortage.
-  const bool use_v1 =
-      (max_context_len <= 8192) &&
-      (num_partitions == 1 || (n_seqs * n_heads) > kPartitionSize);
-  // Use the same simple heuristic as vllm to decide whether to use v1.
-  if (!FLAGS_force_use_paged_attention_v2 && use_v1) {
-    paged_attention_v1(output,
-                       _query,
-                       key_cache,
-                       value_cache,
-                       n_kv_heads,
-                       scale,
-                       _block_tables,
-                       _context_lens,
-                       block_size,
-                       max_context_len,
-                       alibi_slopes);
-  } else {
-    CHECK(kPartitionSize % block_size == 0);
-    auto tmp_out = torch::empty({n_seqs, n_heads, num_partitions, head_dim},
-                                output.options());
-    auto exp_sums =
-        torch::empty({n_seqs, n_heads, num_partitions},
-                     torch::dtype(torch::kFloat32).device(output.device()));
-    auto max_logits = torch::empty_like(exp_sums);
-
-    paged_attention_v2(output,
-                       exp_sums,
-                       max_logits,
-                       tmp_out,
-                       _query,
-                       key_cache,
-                       value_cache,
-                       n_kv_heads,
-                       scale,
-                       _block_tables,
-                       _context_lens,
-                       block_size,
-                       max_context_len,
-                       alibi_slopes);
-  }
 }
 
 void multiple_query_masked_self_attention_cuda(

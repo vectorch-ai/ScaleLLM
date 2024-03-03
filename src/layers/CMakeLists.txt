@@ -52,8 +52,7 @@ cc_library(
     :memory
     :pos_embedding
     :kernels
-    :vllm.kernels
-    :flash-attn.kernels
+    :flash_attn.kernels
     glog::glog
     gflags::gflags
     torch
@@ -75,8 +74,7 @@ cc_library(
     :pos_embedding
     :attention
     :kernels
-    :vllm.kernels
-    :flash-attn.kernels
+    :flash_attn.kernels
     glog::glog
     gflags::gflags
     torch

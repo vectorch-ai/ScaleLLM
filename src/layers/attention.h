@@ -58,19 +58,8 @@ void varlen_masked_self_attention(
     float scale,
     torch::Tensor& output);
 
-// self attention with single token as query
+// self attention with multiple tokens as query
 // used in decode stage
-void single_query_masked_self_attention(
-    const KVCache& kv_cache,            // kv cache
-    int32_t n_kv_heads,                 // number of kv heads
-    const torch::Tensor& query,         // [n_tokens/n_seq, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [n_tokens, max_num_blocks]
-    const torch::Tensor& context_lens,  // [n_tokens]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    int32_t max_context_len,                      // maximum context length
-    float scale,
-    torch::Tensor& output);
-
 void multiple_query_masked_self_attention(
     const torch::Tensor& query,           // [n_q_tokens, n_heads, head_dim]
     const KVCache& kv_cache,              // where to get key and value
@@ -102,30 +91,6 @@ void varlen_masked_self_attention_cuda(
     const torch::Tensor& cu_seq_lens,  // [n_seq + 1]
     torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     int32_t max_seq_len,                          // maximum sequence length
-    float scale,
-    torch::Tensor& output);
-
-// slow version of single_query_masked_self_attention
-// mainly used for testing
-void single_query_masked_self_attention_generic(
-    const KVCache& kv_cache,            // kv cache
-    const torch::Tensor& query,         // [n_tokens/n_seq, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [n_tokens, max_num_blocks]
-    const torch::Tensor& context_lens,  // [n_tokens]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    int32_t max_context_len,                      // maximum context length
-    float scale,
-    torch::Tensor& output);
-
-// fast version of single_query_masked_self_attention with CUDA kernel
-void single_query_masked_self_attention_cuda(
-    const KVCache& kv_cache,            // kv cache
-    int32_t n_kv_heads,                 // number of kv heads
-    const torch::Tensor& query,         // [n_tokens/n_seq, n_heads, head_dim]
-    const torch::Tensor& block_tables,  // [n_seq, max_n_blocks]
-    const torch::Tensor& context_lens,  // [n_tokens]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    int32_t max_context_len,                      // maximum context length
     float scale,
     torch::Tensor& output);
 
