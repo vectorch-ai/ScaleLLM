@@ -4,12 +4,16 @@
 #include <torch/torch.h>
 namespace llm {
 namespace {
+
 torch::Tensor greedy_sample(const torch::Tensor& probs) {
   return probs.argmax(/*dim=*/-1);
 }
 
 torch::Tensor multinomial_sample(const torch::Tensor& probs) {
-  return probs.multinomial(/*num_samples=*/1, /*replacement=*/false);
+  // return probs.multinomial(/*num_samples=*/1, /*replacement=*/false);
+  // Avoid the expensive GPU<->CPU sync done by torch::multinomial
+  auto q = torch::empty_like(probs).exponential_(/*lambd=*/1);
+  return probs.div_(q).argmax(/*dim=*/-1);
 }
 
 }  // namespace

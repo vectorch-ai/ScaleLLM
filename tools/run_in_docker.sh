@@ -60,6 +60,7 @@ RUN_OPTS+=(--rm -it --network=host)
 # output data that might be used by other scripts/binaries
 RUN_OPTS+=("-v $(pwd):$(pwd)")
 RUN_OPTS+=("-v /tmp:/tmp")
+RUN_OPTS+=("-v ${HOME}:${HOME}")
 CMD="bash -c 'cd $(pwd); VCPKG_DEFAULT_BINARY_CACHE=$(pwd)/.vcpkg/bincache $@'"
 
 [[ "${CMD}" = "" ]] && usage
