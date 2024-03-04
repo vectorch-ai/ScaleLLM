@@ -2,10 +2,6 @@
 
 #include "server/llm.h"
 
-int add(int i, int j) {
-  return i + j;
-}
-
 PYBIND11_MODULE(gen_py_wrappers, m) {
   // Add class LLM
   pybind11::class_<llm::LLM, std::shared_ptr<llm::LLM>>(m, "LLM")
@@ -16,5 +12,5 @@ PYBIND11_MODULE(gen_py_wrappers, m) {
     .def("generate", &llm::LLM::generate);
 
   // Add function add
-  m.def("add", &add, "A function which adds two numbers");
+  // m.def("add", &add, "A function which adds two numbers");
 }

@@ -21,6 +21,7 @@ LLM::LLM(const std::string& model_path,
 }
 
 LLM::LLM(const std::string& model_path) {
+  // simple test for python
 }
 
 void LLM::generate(const std::vector<std::string>& batched_prompt) {
