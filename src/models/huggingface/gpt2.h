@@ -3,7 +3,7 @@
 #include <torch/torch.h>
 
 #include "layers/activation.h"
-#include "layers/attention.h"
+#include "layers/attention/attention.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"

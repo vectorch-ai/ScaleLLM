@@ -6,7 +6,7 @@
 
 #include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
-#include "layers/attention_rope.h"
+#include "layers/attention/attention_rope.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
