@@ -4,6 +4,10 @@ include(cc_library)
 cmake_minimum_required(VERSION 3.5...3.26)
 project(gen_py_wrappers LANGUAGES CXX)
 
+find_package(Python3 COMPONENTS Interpreter Development)
+
+set(Python_EXECUTABLE ${Python3_EXECUTABLE})
+
 set(PYBIND_DIR ../../third_party/pybind11)
 
 add_subdirectory(${PYBIND_DIR} build)
