@@ -1,6 +1,5 @@
 #include <benchmark/benchmark.h>
 
-#include "layers/attention.h"
 
 static void BM_varlen_masked_self_attention(benchmark::State& state) {
   // Perform setup here

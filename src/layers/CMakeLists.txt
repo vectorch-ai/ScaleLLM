@@ -38,28 +38,6 @@ cc_library(
 
 cc_library(
   NAME 
-    attention
-  HDRS 
-    attention.h
-    attention_rope.h
-    attention_alibi.h
-  SRCS 
-    attention.cpp
-    attention_rope.cpp
-    attention_alibi.cpp
-  DEPS
-    :state_dict
-    :memory
-    :pos_embedding
-    :kernels
-    :flash_attn.kernels
-    glog::glog
-    gflags::gflags
-    torch
-)
-
-cc_library(
-  NAME 
     layers
   HDRS 
     normalization.h
@@ -85,7 +63,6 @@ cc_test(
     layers_test
   SRCS
     activation_test.cpp
-    attention_test.cpp
     layers_test.cpp
     pos_embedding_test.cpp
     normalization_test.cpp
@@ -95,3 +72,5 @@ cc_test(
     absl::random_random
     GTest::gtest_main
 )
+
+add_subdirectory(attention)

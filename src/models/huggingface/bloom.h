@@ -4,7 +4,7 @@
 #include <torch/types.h>
 
 #include "layers/activation.h"
-#include "layers/attention_alibi.h"
+#include "layers/attention/attention_alibi.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
