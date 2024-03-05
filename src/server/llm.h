@@ -12,9 +12,6 @@ class LLM {
       const StoppingCriteria& sc, int64_t max_seq_len,
       const std::string& device_str);
 
-  explicit LLM(const std::string& model_path);
-
-  
   void generate(const std::vector<std::string>& batched_prompt);
  
  private:

@@ -1,7 +1,6 @@
 #include "server/llm.h"
 
 #include <absl/strings/str_split.h>
-
 #include "request/sequence.h"
 
 namespace llm {
@@ -18,10 +17,6 @@ LLM::LLM(const std::string& model_path,
   CHECK(engine_->init(model_path));
   block_manager_ = engine_->block_manager();
   tokenizer_ = engine_->tokenizer();
-}
-
-LLM::LLM(const std::string& model_path) {
-  // simple test for python
 }
 
 void LLM::generate(const std::vector<std::string>& batched_prompt) {
