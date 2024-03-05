@@ -125,6 +125,11 @@ class CMakeBuild(build_ext):
 
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
+
+scalellm_package_data = [
+    "src/python/*.py"
+]
+
 setup(
     name="scalellm",
     version="0.0.5",
@@ -134,6 +139,9 @@ setup(
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
+    package_data={
+        "scalellm": scalellm_package_data,
+    },
     python_requires=">=3.10",
 )
 
