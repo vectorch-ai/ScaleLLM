@@ -166,12 +166,12 @@ setup(
     version="0.0.5",
     description="A high-performance inference system for large language models.",
     long_description="",
-    ext_modules=[CMakeExtension("scalellm")],
+    ext_modules=[CMakeExtension("gen_py_wrappers")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
     package_data={
-        "gen_py_wrappers": scalellm_package_data,
+        "scalellm": scalellm_package_data,
     },
     python_requires=">=3.10",
 )
