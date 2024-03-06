@@ -3,6 +3,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 
 option(USE_CCACHE "Attempt using CCache to wrap the compilation" OFF)
+option(ENABLE_CXX11_ABI "Use the new C++-11 ABI, which is not backwards compatible." OFF)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -18,6 +19,13 @@ if(NOT CMAKE_BUILD_TYPE)
       CACHE STRING "Choose the type of build from: Debug Release RelWithDebInfo MinSizeRel Coverage." 
       FORCE
   )
+endif()
+
+if(NOT ENABLE_CXX11_ABI)
+  add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
+  message(STATUS "Using the old C++-11 ABI, which is backwards compatible.")
+else()
+  message(STATUS "Using the new C++-11 ABI, which is not backwards compatible.")
 endif()
 
 if(USE_CCACHE)
@@ -57,10 +65,18 @@ if (DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   message(STATUS "VCPKG_ROOT found, using vcpkg at $ENV{VCPKG_ROOT}")
 else()
   include(FetchContent)
-  FetchContent_Declare(vcpkg
-    GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
-    GIT_TAG "2024.02.14"
-  )
+  if (ENABLE_CXX11_ABI)
+    FetchContent_Declare(vcpkg
+      GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
+      GIT_TAG "2024.02.14"
+    )
+  else()
+    FetchContent_Declare(vcpkg
+      GIT_REPOSITORY "https://github.com/vectorch-ai/vcpkg.git"
+      GIT_TAG "ffc42e97c866ce9692f5c441394832b86548422c" # disable cxx11_abi
+    )
+    message(STATUS "Using custom vcpkg with cxx11_abi disabled")
+  endif()
   FetchContent_MakeAvailable(vcpkg)
 
   message(STATUS "VCPKG_ROOT not found, downloading and using vcpkg at ${vcpkg_SOURCE_DIR}")
@@ -112,9 +128,11 @@ find_package(NCCL REQUIRED)
 # libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Development)
 
-find_package(Jemalloc)
-if(Jemalloc_FOUND)
-  link_libraries(Jemalloc::jemalloc)
+if (ENABLE_CXX11_ABI)
+  find_package(Jemalloc)
+  if(Jemalloc_FOUND)
+    link_libraries(Jemalloc::jemalloc)
+  endif()
 endif()
 
 # Important Note: Always invoke find_package for other dependencies
@@ -127,11 +145,19 @@ else()
   include(FetchContent)
   if (CUDA_VERSION VERSION_GREATER_EQUAL 12.1)
     # download libtorch 2.2.1 with cuda 12.1 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu121.zip")
+    if (ENABLE_CXX11_ABI)
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu121.zip")
+    else()
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.2.1%2Bcu121.zip")
+    endif()
     message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.2.1 for cuda ${CUDA_VERSION}")
   elseif(CUDA_VERSION VERSION_GREATER_EQUAL 11.8)
     # download libtorch 2.2.1 with cuda 11.8 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu118.zip")
+    if (ENABLE_CXX11_ABI)
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu118.zip")
+    else()
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-shared-with-deps-2.2.1%2Bcu118.zip")
+    endif()
     message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.2.1 for cuda ${CUDA_VERSION}")
   else()
     # error out if cuda version is not supported
