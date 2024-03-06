@@ -7,6 +7,20 @@ from pathlib import Path
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
+def use_cxx11_abi():
+    try:
+        import torch
+        return torch._C._GLIBCXX_USE_CXX11_ABI
+    except ImportError:
+        return False
+    
+def get_torch_root():
+    try:
+        import torch
+        return str(Path(torch.__file__).parent)
+    except ImportError:
+        return None
+
 # Convert distutils Windows platform specifiers to CMake -A arguments
 PLAT_TO_CMAKE = {
     "win32": "Win32",
@@ -99,6 +113,12 @@ class CMakeBuild(build_ext):
             archs = re.findall(r"-arch (\S+)", os.environ.get("ARCHFLAGS", ""))
             if archs:
                 cmake_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format(";".join(archs))]
+                
+        # check if torch binary is built with cxx11 abi
+        if use_cxx11_abi():
+            cmake_args += ["-DENABLE_CXX11_ABI=ON"]
+        else:
+            cmake_args += ["-DENABLE_CXX11_ABI=OFF"]
 
         # Set CMAKE_BUILD_PARALLEL_LEVEL to control the parallel build level
         # across all generators.
@@ -114,13 +134,23 @@ class CMakeBuild(build_ext):
         if not build_temp.exists():
             build_temp.mkdir(parents=True)
 
-        build_args += [f"-j32"]
+        # config based on cpu core
+        cpu_cores = os.cpu_count()
+        build_args += [f"-j{cpu_cores}"]
+        
+        env = os.environ.copy()
+        LIBTORCH_ROOT = get_torch_root()
+        if LIBTORCH_ROOT is not None:
+            env["LIBTORCH_ROOT"] = LIBTORCH_ROOT
 
         subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
+            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True, env=env
         )
+        
+        # add build target to speed up the build process
+        build_args += ["--target", ext.name]
         subprocess.run(
-            ["cmake", "--build", ".", *build_args], cwd=build_temp, check=True
+            ["cmake", "--build", ".", *build_args], cwd=build_temp, check=True, env=env
         )
 
 # The information here can also be placed in setup.cfg - better separation of
@@ -135,7 +165,7 @@ setup(
     version="0.0.5",
     description="A high-performance inference system for large language models.",
     long_description="",
-    ext_modules=[CMakeExtension("scalellm")],
+    ext_modules=[CMakeExtension("gen_py_wrappers")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},

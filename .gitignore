@@ -21,3 +21,17 @@
 
 # rust
 Cargo.lock
+
+
+# distribution / packaging
+.Python
+build/
+dist/
+eggs/
+.eggs/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
