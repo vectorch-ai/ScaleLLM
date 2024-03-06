@@ -23,9 +23,9 @@ endif()
 
 if(NOT ENABLE_CXX11_ABI)
   add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
-  message(STATUS "Using the old C++-11 ABI, which is backwards compatible.")
+  message(STATUS "Using the pre C++-11 ABI, which is backwards compatible.")
 else()
-  message(STATUS "Using the new C++-11 ABI, which is not backwards compatible.")
+  message(STATUS "Using the C++-11 ABI, which is not backwards compatible.")
 endif()
 
 if(USE_CCACHE)
