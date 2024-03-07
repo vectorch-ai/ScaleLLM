@@ -9,7 +9,7 @@ cc_library(
   SRCS 
     state_dict.cpp
   DEPS
-    safetensors
+    huggingface
     torch
     glog::glog
     Folly::folly
@@ -43,5 +43,3 @@ cc_library(
     :tokenizer
     torch
 )
-
-add_subdirectory(safetensors)

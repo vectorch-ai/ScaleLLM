@@ -18,7 +18,7 @@ cc_library(
     :sentencepiece
     absl::flat_hash_map
     absl::strings
-    tokenizers
+    huggingface
     glog::glog
     re2::re2
 )
@@ -31,12 +31,8 @@ cc_test(
     tiktoken_tokenizer_test.cpp
   DEPS
     :tokenizer
-    tokenizers
     GTest::gtest_main
   DATA 
     data/tokenizer.model
     data/test.tiktoken
 )
-
-# build huggingface tokenizers (rust)
-add_subdirectory(tokenizers)

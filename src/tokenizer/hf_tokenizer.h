@@ -1,8 +1,7 @@
 #pragma once
 
-#include "sentencepiece/sentencepiece_processor.h"
 #include "tokenizer.h"
-#include "tokenizers/tokenizers.h"
+#include "huggingface/tokenizers.h"
 
 namespace llm {
 

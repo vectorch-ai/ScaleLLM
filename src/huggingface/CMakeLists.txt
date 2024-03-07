@@ -1,7 +1,8 @@
 include(cargo_library)
 cargo_library(
   NAME 
-    tokenizers
+    huggingface
   HDRS
+    safetensors.h
     tokenizers.h
 )
