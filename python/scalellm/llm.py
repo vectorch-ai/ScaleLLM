@@ -1,7 +1,4 @@
-import sys
-sys.path.insert(0, "/data/scalellm_test/ScaleLLM/build/src/python/")
-
-import gen_py_wrappers as wrapper
+from . import wrapper
 
 class SamplingParameter:
   """

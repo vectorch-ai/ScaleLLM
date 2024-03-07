@@ -126,7 +126,7 @@ set(USE_STATIC_NCCL ON)
 find_package(NCCL REQUIRED)
 
 # libtorch requires python headers
-find_package(Python REQUIRED COMPONENTS Development)
+find_package(Python REQUIRED COMPONENTS Interpreter Development)
 
 if (ENABLE_CXX11_ABI)
   find_package(Jemalloc)
@@ -197,5 +197,6 @@ list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
 # add subdirectories
 add_subdirectory(proto)
+add_subdirectory(python)
 add_subdirectory(src)
 add_subdirectory(third_party)
