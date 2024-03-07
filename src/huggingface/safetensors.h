@@ -1,10 +1,7 @@
 #pragma once
 
-#include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
-#include <new>
-#include <ostream>
 
 /// The various available dtypes. They MUST be in increasing alignment order
 enum class Dtype {

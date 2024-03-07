@@ -9,7 +9,7 @@
 
 #include <memory>
 
-#include "safetensors/safetensors.h"
+#include "huggingface/safetensors.h"
 
 namespace llm {
 
