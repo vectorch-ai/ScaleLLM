@@ -1,5 +1,5 @@
 
-set(PYBIND_DIR ../../../third_party/pybind11)
+set(PYBIND_DIR ../../third_party/pybind11)
 add_subdirectory(${PYBIND_DIR} build)
 
 pybind11_add_module(wrapper csrc/scalellm.cpp)

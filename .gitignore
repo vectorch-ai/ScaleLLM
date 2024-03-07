@@ -35,3 +35,10 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Python module builds
+python/build/
+python/*.egg-info/
+python/scalellm/*.pyd
+python/scalellm/*.so
+**/__pycache__/*

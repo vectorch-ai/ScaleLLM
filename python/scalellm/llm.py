@@ -1,4 +1,4 @@
-from . import wrapper
+from scalellm import wrapper
 
 class SamplingParameter:
   """
