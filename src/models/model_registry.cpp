@@ -4,6 +4,7 @@
 
 // list all registered models here
 #include "huggingface/aquila.h"    // IWYU pragma: keep
+#include "huggingface/baichuan.h"  // IWYU pargma: keep
 #include "huggingface/bloom.h"     // IWYU pragma: keep
 #include "huggingface/chatglm.h"   // IWYU pragma: keep
 #include "huggingface/gpt2.h"      // IWYU pragma: keep
