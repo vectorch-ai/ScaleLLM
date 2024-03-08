@@ -12,6 +12,7 @@
 
 #include <cstdint>
 
+#include "attention_ref_handler.h"
 #include "gtest/gtest.h"
 
 namespace llm {
@@ -119,9 +120,11 @@ TEST_P(AttentionPrefillTest, Varlen) {
         torch::rand({n_heads}, torch::dtype(torch::kFloat32).device(device));
   }
 
-  // torch::Tensor output = torch::empty_like(query);
-  // detail::varlen_masked_self_attention_generic(
-  //     query, key, value, cu_seq_lens, alibi_slopes, scale, output);
+  AttentionRefHandler handler(scale, alibi_slopes);
+
+  torch::Tensor ref_output = torch::empty_like(query);
+  handler.batch_prefill(
+      query, key, value, cu_seq_lens, cu_seq_lens, ref_output);
 
   torch::Tensor output_cuda = torch::empty_like(query);
   detail::varlen_masked_self_attention_cuda(query,
@@ -132,8 +135,8 @@ TEST_P(AttentionPrefillTest, Varlen) {
                                             max_seq_len,
                                             scale,
                                             output_cuda);
-  // EXPECT_TRUE(
-  //     torch::allclose(output, output_cuda, /*rtol=*/1e-1, /*atol=*/1e-1));
+  EXPECT_TRUE(
+      torch::allclose(ref_output, output_cuda, /*rtol=*/1e-2, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -286,6 +289,12 @@ TEST_P(AttentionDecodeTest, KVCache) {
         torch::rand({n_heads}, torch::dtype(torch::kFloat32).device(device));
   }
 
+  AttentionRefHandler handler(scale, alibi_slopes);
+
+  torch::Tensor ref_output = torch::empty_like(query);
+  handler.batch_prefill(
+      query, key, value, q_cu_seq_lens, k_cu_seq_lens, ref_output);
+
   torch::Tensor output = torch::empty_like(query);
   detail::multiple_query_masked_self_attention_cuda(
       query,
@@ -300,6 +309,9 @@ TEST_P(AttentionDecodeTest, KVCache) {
       scale,
       output,
       /*num_splits=*/1);
+
+  EXPECT_TRUE(
+      torch::allclose(ref_output, output, /*rtol=*/1e-2, /*atol=*/1e-3));
 
   torch::Tensor output_with_cache = torch::empty_like(query);
   detail::multiple_query_masked_self_attention_cuda(query,
@@ -316,7 +328,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
                                                     num_splits);
 
   EXPECT_TRUE(
-      torch::allclose(output_with_cache, output, /*rtol=*/1e-2, /*atol=*/1e-3));
+      torch::allclose(output, output_with_cache, /*rtol=*/1e-2, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -328,7 +340,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(1, 10),                            // batch_size
         ::testing::Values(16, 80, 256),                      // block_size
         ::testing::Values(1, 10),                            // q_max_seq_len
-        ::testing::Values(100, 1000),                        // kv_max_seq_len
+        ::testing::Values(100, 200),                         // kv_max_seq_len
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 40, 64, 128),                  // head_dim

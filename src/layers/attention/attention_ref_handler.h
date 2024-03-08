@@ -38,6 +38,15 @@ class AttentionRefHandler : public AttentionHandler {
       const InputParameters& input_params,  // input paras used for attention
       torch::Tensor& output) override;
 
+  // expose this function for testing
+  void batch_prefill(
+      const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
+      const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
+      const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
+      const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
+      const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
+      torch::Tensor& output);
+
  private:
   // scale factor
   float scale_ = 0.0;

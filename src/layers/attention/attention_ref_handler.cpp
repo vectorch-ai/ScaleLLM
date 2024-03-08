@@ -19,14 +19,16 @@ torch::Tensor masked_self_attention(
     const torch::Tensor& mask,   // [n_heads, q_seq_len, k_seq_len]
     float scale) {
   // => [n_heads, q_seq_len, k_seq_len]
-  auto scores = torch::einsum("qhd,khd->hqk", {query * scale, key});
-  scores = scores.to(torch::kFloat);
+  auto scores = torch::einsum("qhd,khd->hqk",
+                              {query.to(torch::kFloat), key.to(torch::kFloat)});
+  scores *= scale;
   if (mask.defined()) {
     scores += mask;
   }
-  scores = torch::softmax(scores, /*dim=*/-1).type_as(query);
+  scores = torch::softmax(scores, /*dim=*/-1);
   // => [q_seq_len, n_heads, head_dim]
-  return torch::einsum("hqk,khd->qhd", {scores, value});
+  return torch::einsum("hqk,khd->qhd", {scores, value.to(torch::kFloat)})
+      .type_as(query);
 }
 
 // slow reference implementation for varlen_masked_self_attention
@@ -38,8 +40,8 @@ void varlen_masked_self_attention(
     const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
     const KVCache& kv_cache,              // where to get key and value
     const torch::Tensor& block_tables,    // [n_seqs, max_n_blocks]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    float scale,                                  // scale for softmax
+    const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
+    float scale,
     torch::Tensor& output) {
   // same length for key and value
   DCHECK(key.size(0) == value.size(0));
@@ -88,8 +90,9 @@ void varlen_masked_self_attention(
     }
 
     // causal mask
+    // [1, q_len, kv_len]
     torch::Tensor mask = torch::full({1, q_len, kv_len}, negative_infinity);
-    mask = torch::triu(mask, /*diagonal=*/kv_len - q_len).type_as(query);
+    mask = torch::triu(mask, /*diagonal=*/kv_len - q_len + 1).type_as(query);
 
     if (alibi_slopes) {
       torch::Tensor slopes = alibi_slopes.value();
@@ -97,7 +100,11 @@ void varlen_masked_self_attention(
 
       // calculate alibi attention mask
       auto bias = torch::arange(0, kv_len, query.options());
+      // [kv_len, kv_len]
       bias = bias.unsqueeze(/*dim=*/0) - bias.unsqueeze(/*dim=*/1);
+      // [q_len, kv_len]
+      bias = bias.slice(/*dim=*/0, /*start=*/kv_len - q_len, /*end=*/kv_len);
+      // [n_heads, q_len, kv_len]
       bias = bias.expand({n_heads, q_len, kv_len});
       bias = bias * slopes.view({n_heads, 1, 1});
       mask = mask + bias;
@@ -128,13 +135,28 @@ void AttentionRefHandler::batch_prefill(
   kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
 
   // don't use kv cache in prefill stage
+  batch_prefill(query,
+                key,
+                value,
+                input_params.q_cu_seq_lens,
+                input_params.kv_cu_seq_lens,
+                output);
+}
+
+void AttentionRefHandler::batch_prefill(
+    const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
+    const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
+    const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
+    torch::Tensor& output) {
   varlen_masked_self_attention(query,
                                key,
                                value,
-                               input_params.q_cu_seq_lens,
-                               input_params.kv_cu_seq_lens,
-                               kv_cache,
-                               input_params.block_tables,
+                               q_cu_seq_lens,
+                               kv_cu_seq_lens,
+                               /*kv_cache=*/{},
+                               /*block_tables=*/{},
                                alibi_slopes_,
                                scale_,
                                output);
