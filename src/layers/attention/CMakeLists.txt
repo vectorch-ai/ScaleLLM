@@ -6,10 +6,13 @@ cc_library(
   NAME 
     attention
   HDRS 
+    attention_handler.h
+    attention_ref_handler.h
     attention.h
     attention_rope.h
     attention_alibi.h
   SRCS 
+    attention_ref_handler.cpp
     attention.cpp
     attention_rope.cpp
     attention_alibi.cpp

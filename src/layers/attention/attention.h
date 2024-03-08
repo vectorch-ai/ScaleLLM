@@ -40,11 +40,6 @@ TORCH_MODULE(Attention);
 
 namespace detail {
 
-// returns IntTensor [n_heads], mapping from query head to kv head
-torch::Tensor prepare_kv_head_mapping(int64_t n_heads,
-                                      int64_t n_kv_heads,
-                                      const torch::Device& device);
-
 // expose the attention functions for testing
 // self attention with variable length sequence
 // used in prefill stage
@@ -69,17 +64,6 @@ void multiple_query_masked_self_attention(
     torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     int32_t q_max_seq_len,  // maximum sequence length for Q
     int32_t k_max_seq_len,  // maximum sequence length for K/V
-    float scale,
-    torch::Tensor& output);
-
-// different implementations start here
-// slow version of varlen_masked_self_attention
-void varlen_masked_self_attention_generic(
-    const torch::Tensor& query,        // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,          // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,        // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& cu_seq_lens,  // [n_seq + 1]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     float scale,
     torch::Tensor& output);
 

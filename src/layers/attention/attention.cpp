@@ -67,39 +67,6 @@ torch::Tensor AttentionImpl::forward(const torch::Tensor& query,
 }
 
 namespace detail {
-using torch::indexing::Slice;
-constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
-
-torch::Tensor masked_self_attention(
-    const torch::Tensor& query,  // [q_seq_len, n_heads, head_dim]
-    const torch::Tensor& key,    // [k_seq_len, n_heads, head_dim]
-    const torch::Tensor& value,  // [k_seq_len, n_heads, head_dim]
-    const torch::Tensor& mask,   // [n_heads, q_seq_len, k_seq_len]
-    float scale) {
-  // => [n_heads, q_seq_len, k_seq_len]
-  auto scores = torch::einsum("qhd,khd->hqk", {query * scale, key});
-  scores = scores.to(torch::kFloat);
-  if (mask.defined()) {
-    scores += mask;
-  }
-  scores = torch::softmax(scores, /*dim=*/-1).type_as(query);
-  // => [q_seq_len, n_heads, head_dim]
-  return torch::einsum("hqk,khd->qhd", {scores, value});
-}
-
-// returns IntTensor [n_heads], mapping from query head to kv head
-torch::Tensor prepare_kv_head_mapping(int64_t n_heads,
-                                      int64_t n_kv_heads,
-                                      const torch::Device& device) {
-  // prepare kv_head_mapping
-  auto kv_head_mapping =
-      torch::arange(0, n_kv_heads, torch::dtype(torch::kInt).device(device));
-  const auto num_group = n_heads / n_kv_heads;
-  if (num_group > 1) {
-    kv_head_mapping = kv_head_mapping.repeat_interleave(/*repeats=*/num_group);
-  }
-  return kv_head_mapping;
-}
 
 void varlen_masked_self_attention(
     const torch::Tensor& query,        // [n_tokens, n_heads, head_dim]
@@ -121,8 +88,8 @@ void varlen_masked_self_attention(
                                              scale,
                                              output);
   }
-  return varlen_masked_self_attention_generic(
-      query, key, value, cu_seq_lens, alibi_slopes, scale, output);
+  CHECK(false)
+      << "multiple_query_masked_self_attention not implemented for CPU";
 }
 
 void multiple_query_masked_self_attention(
@@ -157,70 +124,6 @@ void multiple_query_masked_self_attention(
   }
   CHECK(false)
       << "multiple_query_masked_self_attention not implemented for CPU";
-}
-
-void varlen_masked_self_attention_generic(
-    const torch::Tensor& query,        // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,          // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,        // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& cu_seq_lens,  // [n_seqs + 1]
-    torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    float scale,                                  // scale for softmax
-    torch::Tensor& output) {
-  DCHECK(query.size(0) == key.size(0));
-  DCHECK(query.size(0) == value.size(0));
-
-  const auto head_dim = query.size(-1);
-  torch::Tensor cu_seq_lens_cpu = cu_seq_lens.cpu();
-  const size_t n_seqs = cu_seq_lens_cpu.numel() - 1;
-  const int32_t* cu_lens = cu_seq_lens_cpu.data_ptr<int32_t>();
-
-  // repeat keys/values if num_heads != num_kv_heads
-  torch::Tensor _key = key;
-  torch::Tensor _value = value;
-  const auto n_heads = query.size(1);
-  const auto n_kv_heads = key.size(1);
-  if (n_heads != n_kv_heads) {
-    CHECK(n_heads % n_kv_heads == 0);
-    const auto num_goups = n_heads / n_kv_heads;
-    _key = _key.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
-    _value = _value.repeat_interleave(/*repeats=*/num_goups, /*dim=*/1);
-  }
-
-  for (int64_t i = 0; i < n_seqs; ++i) {
-    // calaculate attention for each sequence
-    const int32_t start_idx = cu_lens[i];
-    const int32_t end_idx = cu_lens[i + 1];
-    const int32_t seq_len = end_idx - start_idx;
-
-    // create attention mask based on sequence length
-    torch::Tensor mask;
-    if (seq_len > 1) {
-      mask = torch::full({1, seq_len, seq_len}, negative_infinity);
-      mask = torch::triu(mask, /*diagonal=*/1).type_as(query);
-
-      if (alibi_slopes) {
-        torch::Tensor slopes = alibi_slopes.value();
-        CHECK(slopes.size(0) == n_heads);
-
-        // calculate alibi attention mask
-        auto bias = torch::arange(0, seq_len, query.options());
-        bias = bias.unsqueeze(/*dim=*/0) - bias.unsqueeze(/*dim=*/1);
-        bias = bias.expand({n_heads, seq_len, seq_len});
-        bias = bias * slopes.view({n_heads, 1, 1});
-
-        mask = mask + bias;
-      }
-    }
-
-    const auto attn = masked_self_attention(
-        query.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
-        _key.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
-        _value.slice(/*dim=*/0, /*start=*/start_idx, /*end=*/end_idx),
-        mask,
-        scale);
-    output.index_put_({Slice(start_idx, end_idx), Slice(), Slice()}, attn);
-  }
 }
 
 void varlen_masked_self_attention_cuda(
