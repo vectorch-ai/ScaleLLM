@@ -13,18 +13,27 @@ namespace {
 constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
 
 torch::Tensor masked_self_attention(
-    const torch::Tensor& query,  // [q_seq_len, n_heads, head_dim]
-    const torch::Tensor& key,    // [k_seq_len, n_heads, head_dim]
-    const torch::Tensor& value,  // [k_seq_len, n_heads, head_dim]
-    const torch::Tensor& mask,   // [n_heads, q_seq_len, k_seq_len]
+    const torch::Tensor& query,         // [q_seq_len, n_heads, head_dim]
+    const torch::Tensor& key,           // [k_seq_len, n_heads, head_dim]
+    const torch::Tensor& value,         // [k_seq_len, n_heads, head_dim]
+    const torch::Tensor& alibi_biases,  // [n_heads, q_seq_len, k_seq_len]
+    const torch::Tensor& mask,          // [n_heads, q_seq_len, k_seq_len]
     float scale) {
   // => [n_heads, q_seq_len, k_seq_len]
   auto scores = torch::einsum("qhd,khd->hqk",
                               {query.to(torch::kFloat), key.to(torch::kFloat)});
+  // apply scale
   scores *= scale;
-  if (mask.defined()) {
-    scores += mask;
+
+  // add alibi biases to attention scores
+  if (alibi_biases.defined()) {
+    scores += alibi_biases;
   }
+  // apply causal mask
+  if (mask.defined()) {
+    scores = scores.masked_fill(mask == 0, negative_infinity);
+  }
+
   scores = torch::softmax(scores, /*dim=*/-1);
   // => [q_seq_len, n_heads, head_dim]
   return torch::einsum("hqk,khd->qhd", {scores, value.to(torch::kFloat)})
@@ -91,26 +100,24 @@ void varlen_masked_self_attention(
 
     // causal mask
     // [1, q_len, kv_len]
-    torch::Tensor mask = torch::full({1, q_len, kv_len}, negative_infinity);
-    mask = torch::triu(mask, /*diagonal=*/kv_len - q_len + 1).type_as(query);
+    torch::Tensor mask = torch::ones({1, q_len, kv_len}, torch::kBool);
+    // returns the lower triangular part of a matrix
+    mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(query);
 
+    torch::Tensor bias;
     if (alibi_slopes) {
-      torch::Tensor slopes = alibi_slopes.value();
+      const torch::Tensor& slopes = alibi_slopes.value();
       CHECK(slopes.size(0) == n_heads);
 
-      // calculate alibi attention mask
-      auto bias = torch::arange(0, kv_len, query.options());
-      // [kv_len, kv_len]
-      bias = bias.unsqueeze(/*dim=*/0) - bias.unsqueeze(/*dim=*/1);
-      // [q_len, kv_len]
-      bias = bias.slice(/*dim=*/0, /*start=*/kv_len - q_len, /*end=*/kv_len);
-      // [n_heads, q_len, kv_len]
-      bias = bias.expand({n_heads, q_len, kv_len});
-      bias = bias * slopes.view({n_heads, 1, 1});
-      mask = mask + bias;
+      // calculate alibi attention bias
+      // since it's causal mask, we can just use [0, 1, ...,, kv_len)
+      auto distance = torch::arange(0, kv_len, query.options());
+      // [n_heads, 1, kv_len]
+      bias = distance.view({1, 1, kv_len}) * slopes.view({n_heads, 1, 1});
     }
 
-    const auto attn = masked_self_attention(_query, _key, _value, mask, scale);
+    const auto attn =
+        masked_self_attention(_query, _key, _value, bias, mask, scale);
     output.index_put_({Slice(q_start, q_end), Slice(), Slice()}, attn);
   }
 }
