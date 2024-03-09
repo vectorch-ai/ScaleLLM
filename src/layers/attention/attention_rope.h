@@ -5,6 +5,7 @@
 #include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
+#include "handler.h"
 
 namespace llm {
 
@@ -16,14 +17,14 @@ class AttentionWithRoPEImpl : public torch::nn::Module {
   AttentionWithRoPEImpl(int64_t n_heads,
                         int64_t n_kv_heads,
                         int64_t head_dim,
-                        float scale,
                         int64_t rotary_dim,
                         float rope_sclaing,
                         float rope_theta,
                         int64_t max_position,
                         bool interleaved,
                         torch::ScalarType dtype,
-                        const torch::Device& device);
+                        const torch::Device& device,
+                        AttentionHandler* handler);
 
   // query: [num_tokens, n_heads, head_dim]
   // key/value: [num_tokens, n_kv_heads, head_dim]
@@ -42,8 +43,7 @@ class AttentionWithRoPEImpl : public torch::nn::Module {
   int64_t n_kv_heads_ = 0;
   int64_t head_dim_ = 0;
 
-  // scale factor
-  float scale_ = 0.0;
+  AttentionHandler* handler_ = nullptr;
 };
 TORCH_MODULE(AttentionWithRoPE);
 

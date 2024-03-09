@@ -1,4 +1,3 @@
-#include "attention.h"
 
 #include <ATen/ops/equal.h>
 #include <absl/random/random.h>
@@ -12,8 +11,10 @@
 
 #include <cstdint>
 
-#include "attention_ref_handler.h"
+#include "flash_attn_handler.h"
 #include "gtest/gtest.h"
+#include "models/input_parameters.h"
+#include "ref_handler.h"
 
 namespace llm {
 using torch::indexing::Slice;
@@ -120,23 +121,23 @@ TEST_P(AttentionPrefillTest, Varlen) {
         torch::rand({n_heads}, torch::dtype(torch::kFloat32).device(device));
   }
 
-  AttentionRefHandler handler(scale, alibi_slopes);
+  InputParameters input_params;
+  input_params.q_cu_seq_lens = cu_seq_lens;
+  input_params.kv_cu_seq_lens = cu_seq_lens;
+  input_params.q_max_seq_len = max_seq_len;
+  input_params.kv_max_seq_len = max_seq_len;
 
+  RefHandler ref_handler(scale, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
-  handler.batch_prefill(
-      query, key, value, cu_seq_lens, cu_seq_lens, ref_output);
+  ref_handler.batch_prefill(query, key, value, input_params, ref_output);
 
-  torch::Tensor output_cuda = torch::empty_like(query);
-  detail::varlen_masked_self_attention_cuda(query,
-                                            key,
-                                            value,
-                                            cu_seq_lens,
-                                            alibi_slopes,
-                                            max_seq_len,
-                                            scale,
-                                            output_cuda);
+  // flash attn handler
+  FlashAttnHandler flash_attn_handler(scale, alibi_slopes);
+  torch::Tensor output = torch::empty_like(query);
+  flash_attn_handler.batch_prefill(query, key, value, input_params, output);
+
   EXPECT_TRUE(
-      torch::allclose(ref_output, output_cuda, /*rtol=*/1e-2, /*atol=*/1e-3));
+      torch::allclose(ref_output, output, /*rtol=*/1e-2, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -289,43 +290,29 @@ TEST_P(AttentionDecodeTest, KVCache) {
         torch::rand({n_heads}, torch::dtype(torch::kFloat32).device(device));
   }
 
-  AttentionRefHandler handler(scale, alibi_slopes);
+  InputParameters input_params;
+  input_params.q_cu_seq_lens = q_cu_seq_lens;
+  input_params.kv_cu_seq_lens = k_cu_seq_lens;
+  input_params.q_max_seq_len = q_max_seq_len;
+  input_params.kv_max_seq_len = kv_max_seq_len;
 
+  RefHandler ref_handler(scale, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
-  handler.batch_prefill(
-      query, key, value, q_cu_seq_lens, k_cu_seq_lens, ref_output);
+  ref_handler.batch_prefill(query, key, value, input_params, ref_output);
 
+  // flash attn handler
+  FlashAttnHandler flash_attn_handler(scale, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
-  detail::multiple_query_masked_self_attention_cuda(
-      query,
-      key,
-      value,
-      q_cu_seq_lens,
-      k_cu_seq_lens,
-      /*block_tables=*/torch::nullopt,
-      alibi_slopes,
-      q_max_seq_len,
-      kv_max_seq_len,
-      scale,
-      output,
-      /*num_splits=*/1);
+  flash_attn_handler.batch_prefill(query, key, value, input_params, output);
 
   EXPECT_TRUE(
       torch::allclose(ref_output, output, /*rtol=*/1e-2, /*atol=*/1e-3));
 
   torch::Tensor output_with_cache = torch::empty_like(query);
-  detail::multiple_query_masked_self_attention_cuda(query,
-                                                    k_cache,
-                                                    v_cache,
-                                                    q_cu_seq_lens,
-                                                    k_cu_seq_lens,
-                                                    block_tables,
-                                                    alibi_slopes,
-                                                    q_max_seq_len,
-                                                    kv_max_seq_len,
-                                                    scale,
-                                                    output_with_cache,
-                                                    num_splits);
+
+  input_params.block_tables = block_tables;
+  flash_attn_handler.batch_decode(
+      query, {k_cache, v_cache}, input_params, output_with_cache);
 
   EXPECT_TRUE(
       torch::allclose(output, output_with_cache, /*rtol=*/1e-2, /*atol=*/1e-3));

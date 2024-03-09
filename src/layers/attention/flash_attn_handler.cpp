@@ -14,16 +14,11 @@ FlashAttnHandler::FlashAttnHandler(float scale,
 
 // batch prefill for attention, optimized for prefill stage
 void FlashAttnHandler::batch_prefill(
-    const torch::Tensor& query,  // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
-    KVCache& kv_cache,           // where to store and retrieval key and value
+    const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
+    const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
     const InputParameters& input_params,  // input paras used for attention
     torch::Tensor& output) {
-  // append key and value to kv_cache
-  // TODO: use a seperate steam since we don't need to wait for the result
-  kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
-
   // don't use kv cache in prefill stage
   mha_varlen_fwd(output,
                  query,
@@ -44,15 +39,10 @@ void FlashAttnHandler::batch_prefill(
 // batch decode for attention, optimized for decode stage
 // support multiple queries: one sequence with multiple query tokens
 void FlashAttnHandler::batch_decode(
-    const torch::Tensor& query,  // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
-    KVCache& kv_cache,           // where to store and retrieval key and value
+    const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
+    const KVCache& kv_cache,              // where to retrieval key and value
     const InputParameters& input_params,  // input paras used for attention
     torch::Tensor& output) {
-  // append key and value to kv_cache
-  kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
-
   // TODO: enable split once the core dump issue fixed
   const int32_t num_splits = 1;
   auto [key_cache, value_cache] = kv_cache.get_kv_cache();
@@ -71,6 +61,18 @@ void FlashAttnHandler::batch_decode(
                  /*window_size_left=*/-1,
                  /*window_size_right=*/0,
                  num_splits);
+}
+
+// append key and value to kv_cache
+void FlashAttnHandler::append_kv_cache(
+    KVCache& kv_cache,           // where to store key and value
+    const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
+    const InputParameters& input_params) {
+  // append key and value to kv_cache
+  if (!kv_cache.empty()) {
+    kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
+  }
 }
 
 }  // namespace llm

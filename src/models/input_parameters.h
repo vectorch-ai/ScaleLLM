@@ -10,6 +10,7 @@ namespace llm {
 struct InputParameters {
   InputParameters to(const torch::Device& device) const {
     InputParameters params;
+    params.all_prefill_sequences = all_prefill_sequences;
     params.kv_max_seq_len = kv_max_seq_len;
     params.q_max_seq_len = q_max_seq_len;
 
@@ -28,6 +29,12 @@ struct InputParameters {
     params.token_ids_lens = safe_to(token_ids_lens, device);
     return params;
   }
+
+  // whether all sequences are prefill sequences
+  bool all_prefill_sequences = true;
+
+  // total number of sequences in the batch
+  int32_t num_sequences = 0;
 
   // *******************************************************
   // ******       parameters for attention           *******

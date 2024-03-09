@@ -51,6 +51,10 @@ class KVCache final {
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
       const torch::Tensor& slot_ids) const;
 
+  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
+      const torch::Tensor& block_tables,
+      const torch::Tensor& kv_cu_seq_lens) const;
+
  private:
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
       const std::vector<int>& slot_ids) const;

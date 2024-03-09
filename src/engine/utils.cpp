@@ -71,13 +71,15 @@ void Utils::prepare_profile_inputs(int64_t max_num_tokens,
   torch::Tensor cu_seq_lens = torch::tensor(cu_lens, torch::kInt32);
 
   InputParameters params;
+  input_params->all_prefill_sequences = true;
+  input_params->num_sequences = 1;
   input_params->q_max_seq_len = max_seq_len;
   input_params->kv_max_seq_len = max_seq_len;
   input_params->q_cu_seq_lens = cu_seq_lens;
   input_params->kv_cu_seq_lens = cu_seq_lens;
   input_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt32);
 
-  // following parameters can be empty
+  // following parameters can be empty since we don't do sampling
   // input_params->token_ids = torch::empty({0, 0}, torch::kInt64);
   // input_params->token_counts = torch::empty({0, 0}, torch::kInt);
   // input_params->token_ids_lens = torch::empty({0}, torch::kInt);
@@ -104,6 +106,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   size_t max_unique_tokens = 0;
 
   // process prefill requests
+  bool all_prefill_sequences = true;
   int32_t max_seq_len = 0;
   int32_t q_max_seq_len = 0;
   std::vector<int32_t> cu_seq_lens = {0};
@@ -112,10 +115,13 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   std::vector<int32_t> new_token_slot_ids;
   std::vector<std::vector<int32_t>> block_tables_vec;
   int32_t max_block_table_len = 0;
-  for (int32_t i = 0; i < static_cast<int32_t>(batch.size()); ++i) {
+  const int32_t num_sequences = static_cast<int32_t>(batch.size());
+  for (int32_t i = 0; i < num_sequences; ++i) {
     const auto* sequence = batch[i];
     CHECK(!sequence->is_finished());
     CHECK(has_enough_cache_slots(*sequence, block_size));
+
+    all_prefill_sequences &= sequence->is_prefill();
 
     const auto& seq_token_ids = sequence->token_ids();
     const int32_t seq_len = static_cast<int32_t>(seq_token_ids.size());
@@ -179,6 +185,8 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   *flatten_token_ids = torch::tensor(flatten_tokens_vec, torch::kInt);
   *flatten_positions = torch::tensor(flatten_positions_vec, torch::kInt);
 
+  input_params->all_prefill_sequences = all_prefill_sequences;
+  input_params->num_sequences = num_sequences;
   input_params->kv_max_seq_len = max_seq_len;
   input_params->q_max_seq_len = q_max_seq_len;
   input_params->kv_cu_seq_lens = torch::tensor(cu_seq_lens, torch::kInt);

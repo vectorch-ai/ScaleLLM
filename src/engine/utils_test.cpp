@@ -89,6 +89,8 @@ TEST(UtilsTest, Basic) {
   EXPECT_TRUE(equal(flatten_positions, expected_pos));
 
   // check the input parameters
+  EXPECT_FALSE(input_params.all_prefill_sequences);
+  EXPECT_EQ(input_params.num_sequences, 3);
   EXPECT_EQ(input_params.q_max_seq_len, 9);
   EXPECT_EQ(input_params.kv_max_seq_len, 16);
 

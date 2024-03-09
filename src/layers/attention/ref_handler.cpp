@@ -1,4 +1,4 @@
-#include "attention_ref_handler.h"
+#include "ref_handler.h"
 
 #include <gflags/gflags.h>
 #include <torch/torch.h>
@@ -47,8 +47,6 @@ void varlen_masked_self_attention(
     const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
     const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
     const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
-    const KVCache& kv_cache,              // where to get key and value
-    const torch::Tensor& block_tables,    // [n_seqs, max_n_blocks]
     const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     float scale,
     torch::Tensor& output) {
@@ -83,12 +81,6 @@ void varlen_masked_self_attention(
         value.slice(/*dim=*/0, /*start=*/kv_start, /*end=*/kv_end);
 
     CHECK(kv_len >= q_len);
-    if (_key.size(0) < kv_len) {
-      // featch key and value from kv_cache
-      auto [k, v] = kv_cache.get_kv_cache(block_tables[i], kv_len);
-      _key = k;
-      _value = v;
-    }
 
     // repeat key and value if n_heads > n_kv_heads
     if (n_heads != n_kv_heads) {
@@ -124,46 +116,22 @@ void varlen_masked_self_attention(
 
 }  // namespace
 
-AttentionRefHandler::AttentionRefHandler(
-    float scale,
-    torch::optional<torch::Tensor> alibi_slopes)
+RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)
     : scale_(scale), alibi_slopes_(alibi_slopes) {}
 
 // batch prefill for attention, optimized for prefill stage
-void AttentionRefHandler::batch_prefill(
-    const torch::Tensor& query,  // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
-    KVCache& kv_cache,           // where to store and retrieval key and value
-    const InputParameters& input_params,  // input paras used for attention
-    torch::Tensor& output) {
-  // append key and value to kv_cache
-  // TODO: use a seperate steam since we don't need to wait for the result
-  kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
-
-  // don't use kv cache in prefill stage
-  batch_prefill(query,
-                key,
-                value,
-                input_params.q_cu_seq_lens,
-                input_params.kv_cu_seq_lens,
-                output);
-}
-
-void AttentionRefHandler::batch_prefill(
+void RefHandler::batch_prefill(
     const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
     const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
-    const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
+    const InputParameters& input_params,  // input paras used for attention
     torch::Tensor& output) {
+  // don't use kv cache in prefill stage
   varlen_masked_self_attention(query,
                                key,
                                value,
-                               q_cu_seq_lens,
-                               kv_cu_seq_lens,
-                               /*kv_cache=*/{},
-                               /*block_tables=*/{},
+                               input_params.q_cu_seq_lens,
+                               input_params.kv_cu_seq_lens,
                                alibi_slopes_,
                                scale_,
                                output);
@@ -171,26 +139,35 @@ void AttentionRefHandler::batch_prefill(
 
 // batch decode for attention, optimized for decode stage
 // support multiple queries: one sequence with multiple query tokens
-void AttentionRefHandler::batch_decode(
-    const torch::Tensor& query,  // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
-    KVCache& kv_cache,           // where to store and retrieval key and value
+void RefHandler::batch_decode(
+    const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
+    const KVCache& kv_cache,              // where to retrieval key and value
     const InputParameters& input_params,  // input paras used for attention
     torch::Tensor& output) {
-  // append key and value to kv_cache
-  kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
+  // retrieval key and value from kv_cache
+  auto [key, value] = kv_cache.get_kv_cache(input_params.block_tables,
+                                            input_params.kv_cu_seq_lens);
 
   varlen_masked_self_attention(query,
                                key,
                                value,
                                input_params.q_cu_seq_lens,
                                input_params.kv_cu_seq_lens,
-                               kv_cache,
-                               input_params.block_tables,
                                alibi_slopes_,
                                scale_,
                                output);
+}
+
+// append key and value to kv_cache
+void RefHandler::append_kv_cache(
+    KVCache& kv_cache,           // where to store key and value
+    const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
+    const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
+    const InputParameters& input_params) {
+  // append key and value to kv_cache
+  if (!kv_cache.empty()) {
+    kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
+  }
 }
 
 }  // namespace llm
