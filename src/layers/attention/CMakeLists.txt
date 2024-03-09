@@ -8,11 +8,13 @@ cc_library(
   HDRS 
     attention_handler.h
     attention_ref_handler.h
+    flash_attn_handler.h
     attention.h
     attention_rope.h
     attention_alibi.h
   SRCS 
     attention_ref_handler.cpp
+    flash_attn_handler.cpp
     attention.cpp
     attention_rope.cpp
     attention_alibi.cpp

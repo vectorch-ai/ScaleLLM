@@ -8,12 +8,12 @@
 
 namespace llm {
 
-// an pytorch implementation handler for attention operations
-class AttentionRefHandler : public AttentionHandler {
+// an flash attn implementation for attention operations
+class FlashAttnHandler : public AttentionHandler {
  public:
-  AttentionRefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
+  FlashAttnHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
 
-  virtual ~AttentionRefHandler() = default;
+  virtual ~FlashAttnHandler() = default;
 
   // set workspace for temporary storage before calling any attention operations
   void set_workspace(const torch::Tensor& workspace) override {}
