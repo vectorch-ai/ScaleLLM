@@ -4,10 +4,10 @@
 
 #include "layers/activation.h"
 #include "layers/attention/attention_rope.h"
+#include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
-#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 #include "models/model_args.h"
@@ -84,7 +84,8 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
-                       const torch::Device& device) {
+                       const torch::Device& device,
+                       AttentionHandler* handler) {
     const auto world_size = parallel_args.world_size();
     const int64_t n_local_heads = args.n_heads() / world_size;
     hidden_size_ = args.hidden_size();
@@ -121,14 +122,14 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                              AttentionWithRoPE(n_local_heads,
                                                n_local_heads,
                                                head_dim_,
-                                               scale,
                                                rotary_dim,
                                                args.rope_scaling(),
                                                args.rope_theta(),
                                                args.max_position_embeddings(),
                                                /*interleaved=*/false,
                                                dtype,
-                                               device));
+                                               device,
+                                               handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -195,12 +196,14 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    torch::ScalarType dtype,
-                   const torch::Device& device)
+                   const torch::Device& device,
+                   AttentionHandler* handler)
       : use_parallel_residual_(args.use_parallel_residual()) {
     // register submodules
     attention_ = register_module(
         "attention",
-        GPTNeoXAttention(args, quant_args, parallel_args, dtype, device));
+        GPTNeoXAttention(
+            args, quant_args, parallel_args, dtype, device, handler));
     mlp_ = register_module(
         "mlp", GPTNeoXMLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module("input_layernorm",
@@ -281,11 +284,14 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                                                   parallel_args,
                                                   dtype,
                                                   device));
+
+    handler_ = AttentionHandler::create(args, device);
+
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block =
-          GPTNeoXLayer(i, args, quant_args, parallel_args, dtype, device);
+      auto block = GPTNeoXLayer(
+          i, args, quant_args, parallel_args, dtype, device, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -304,6 +310,8 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
     auto h = embed_in_(tokens);
+
+    // TODO: set working space for attention handler
     for (size_t i = 0; i < layers_.size(); i++) {
       auto& layer = layers_[i];
       h = layer(h, positions, kv_caches[i], input_params);
@@ -334,6 +342,9 @@ class GPTNeoXModelImpl : public torch::nn::Module {
  private:
   // parameter members, must be registered
   ParallelEmbedding embed_in_{nullptr};
+
+  // attention handler
+  std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   torch::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast

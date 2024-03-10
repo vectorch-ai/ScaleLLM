@@ -7,6 +7,7 @@
 
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
+#include "models/model_args.h"
 
 namespace llm {
 
@@ -46,9 +47,10 @@ class AttentionHandler {
       const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
       const InputParameters& input_params) = 0;
 
-  // create an attention handler with alibi
-  static std::unique_ptr<AttentionHandler> create_handler(
-      float scale,
+  // create an attention handler
+  static std::unique_ptr<AttentionHandler> create(
+      const ModelArgs& args,
+      const torch::Device& device,
       torch::optional<torch::Tensor> alibi_slopes = torch::nullopt);
 };
 

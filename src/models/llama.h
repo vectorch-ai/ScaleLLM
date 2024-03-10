@@ -244,21 +244,17 @@ class LlamaTransformerImpl : public torch::nn::Module {
                        const ParallelArgs& parallel_args,
                        torch::ScalarType dtype,
                        const torch::Device& device) {
-    const int64_t hidden_size = args.hidden_size();
-    const int64_t n_heads = args.n_heads();
-    const int64_t head_dim = hidden_size / n_heads;
-
     // register submodules
-    tok_embeddings_ = register_module(
-        "tok_embeddings",
-        ParallelEmbedding(
-            args.vocab_size(), hidden_size, parallel_args, dtype, device));
+    tok_embeddings_ = register_module("tok_embeddings",
+                                      ParallelEmbedding(args.vocab_size(),
+                                                        args.hidden_size(),
+                                                        parallel_args,
+                                                        dtype,
+                                                        device));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
 
-    // scale
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
-    handler_ = AttentionHandler::create_handler(scale);
+    handler_ = AttentionHandler::create(args, device);
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = LlamaTransformerBlock(
           args, quant_args, parallel_args, dtype, device, handler_.get());
@@ -266,7 +262,8 @@ class LlamaTransformerImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm", RMSNorm(hidden_size, args.rms_norm_eps(), dtype, device));
+        "norm",
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
   }
 
   // tokens: [num_tokens]

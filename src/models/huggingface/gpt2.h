@@ -4,6 +4,7 @@
 
 #include "layers/activation.h"
 #include "layers/attention/attention.h"
+#include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
@@ -83,7 +84,8 @@ class GPT2AttentionImpl : public torch::nn::Module {
                     const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     torch::ScalarType dtype,
-                    const torch::Device& device) {
+                    const torch::Device& device,
+                    AttentionHandler* handler) {
     const auto world_size = parallel_args.world_size();
     const int64_t n_local_heads = args.n_heads() / world_size;
     hidden_size_ = args.hidden_size();
@@ -110,15 +112,9 @@ class GPT2AttentionImpl : public torch::nn::Module {
                                                 dtype,
                                                 device));
 
-    // initialize positional embedding
-    const int64_t rotary_dim =
-        static_cast<int64_t>(head_dim_ * args.rotary_pct());
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module(
-        "atten",
-        Attention(
-            n_local_heads, n_local_heads, head_dim_, scale, dtype, device));
+        "atten", Attention(n_local_heads, n_local_heads, head_dim_, handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -168,10 +164,12 @@ class GPT2BlockImpl : public torch::nn::Module {
                 const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 torch::ScalarType dtype,
-                const torch::Device& device) {
+                const torch::Device& device,
+                AttentionHandler* handler) {
     // register submodules
     attn_ = register_module(
-        "attn", GPT2Attention(args, quant_args, parallel_args, dtype, device));
+        "attn",
+        GPT2Attention(args, quant_args, parallel_args, dtype, device, handler));
     mlp_ = register_module(
         "mlp", GPT2MLP(args, quant_args, parallel_args, dtype, device));
     ln_1_ = register_module("ln_1",
@@ -244,10 +242,13 @@ class GPT2ModelImpl : public torch::nn::Module {
         Embedding(
             args.max_position_embeddings(), args.hidden_size(), dtype, device));
 
+    handler_ = AttentionHandler::create(args, device);
+
     blocks_ = register_module("h", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = GPT2Block(args, quant_args, parallel_args, dtype, device);
+      auto block = GPT2Block(
+          args, quant_args, parallel_args, dtype, device, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -266,6 +267,7 @@ class GPT2ModelImpl : public torch::nn::Module {
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
     auto h = wte_(tokens) + wpe_(positions);
+    // TODO: set working space for attention handler
     for (size_t i = 0; i < layers_.size(); i++) {
       auto& layer = layers_[i];
       h = layer(h, kv_caches[i], input_params);
@@ -300,6 +302,9 @@ class GPT2ModelImpl : public torch::nn::Module {
 
   // position Embedding
   Embedding wpe_{nullptr};
+
+  // attention handler
+  std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   torch::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
