@@ -11,10 +11,17 @@ class KVCache final {
  public:
   KVCache() = default;
 
+  // TODO: pass in kv_shape and options instead
   KVCache(torch::Tensor key_cache, torch::Tensor value_cache);
 
+  // check if the key and value cache is empty
   bool empty() const {
     return !key_cache_.defined() || !value_cache_.defined();
+  }
+
+  // get key and value cache tensors
+  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache() const {
+    return {key_cache_, value_cache_};
   }
 
   // set key and value cache for the given slot_ids
@@ -23,11 +30,6 @@ class KVCache final {
   void set_kv_cache(const torch::Tensor& slot_ids,
                     const torch::Tensor& keys,
                     const torch::Tensor& values);
-
-  // get key and value cache tensors
-  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache() const {
-    return {key_cache_, value_cache_};
-  }
 
   // get key and value cache for a sequence based on physical memory blocks
   // block_table: [num_blocks] IntTensor
@@ -48,6 +50,10 @@ class KVCache final {
 
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
       const torch::Tensor& slot_ids) const;
+
+  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
+      const torch::Tensor& block_tables,
+      const torch::Tensor& kv_cu_seq_lens) const;
 
  private:
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(

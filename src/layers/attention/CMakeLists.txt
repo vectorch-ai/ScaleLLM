@@ -6,13 +6,19 @@ cc_library(
   NAME 
     attention
   HDRS 
+    handler.h
+    ref_handler.h
+    flash_attn_handler.h
+    flash_infer_handler.h
     attention.h
     attention_rope.h
-    attention_alibi.h
   SRCS 
+    handler.cpp
+    ref_handler.cpp
+    flash_attn_handler.cpp
+    flash_infer_handler.cpp
     attention.cpp
     attention_rope.cpp
-    attention_alibi.cpp
   DEPS
     :state_dict
     :memory

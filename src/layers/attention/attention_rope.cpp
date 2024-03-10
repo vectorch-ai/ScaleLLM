@@ -11,18 +11,19 @@ namespace llm {
 AttentionWithRoPEImpl::AttentionWithRoPEImpl(int64_t n_heads,
                                              int64_t n_kv_heads,
                                              int64_t head_dim,
-                                             float scale,
                                              int64_t rotary_dim,
                                              float rope_sclaing,
                                              float rope_theta,
                                              int64_t max_position,
                                              bool interleaved,
                                              torch::ScalarType dtype,
-                                             const torch::Device& device)
+                                             const torch::Device& device,
+                                             AttentionHandler* handler)
     : n_heads_(n_heads),
       n_kv_heads_(n_kv_heads),
       head_dim_(head_dim),
-      scale_(scale) {
+      handler_(handler) {
+  CHECK(handler_ != nullptr);
   CHECK(n_heads % n_kv_heads == 0)
       << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
   // register rotary positional embedding
@@ -54,32 +55,16 @@ torch::Tensor AttentionWithRoPEImpl::forward(
   // apply positional embedding
   std::tie(q, k) = pos_emb_(q, k, positions);
 
+  // append key and value to kv_cache
+  handler_->append_kv_cache(kv_cache, k, v, input_params);
+
   auto output = torch::empty_like(q);
-  if (kv_cache.empty()) {
-    // empty kv_cache, it is a batch for memory profiling
-    detail::varlen_masked_self_attention(q,
-                                         k,
-                                         v,
-                                         input_params.q_cu_seq_lens,
-                                         /*alibi_slopes=*/torch::nullopt,
-                                         input_params.q_max_seq_len,
-                                         scale_,
-                                         output);
+  if (input_params.all_prefill_sequences) {
+    handler_->batch_prefill(q, k, v, input_params, output);
   } else {
-    // store k/v into cache based on slots
-    kv_cache.set_kv_cache(input_params.new_cache_slots, k, v);
-    detail::multiple_query_masked_self_attention(
-        q,
-        kv_cache,
-        input_params.q_cu_seq_lens,
-        input_params.kv_cu_seq_lens,
-        input_params.block_tables,
-        /*alibi_slopes=*/torch::nullopt,
-        input_params.q_max_seq_len,
-        input_params.kv_max_seq_len,
-        scale_,
-        output);
+    handler_->batch_decode(q, kv_cache, input_params, output);
   }
+
   return output.view({num_tokens, -1});
 }
 
