@@ -86,8 +86,8 @@ std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
   values.reserve(slot_ids.size());
 
   for (int slot_id : slot_ids) {
-    const auto block_id = slot_id / block_size_;
-    const auto block_offset = slot_id % block_size_;
+    const int64_t block_id = slot_id / block_size_;
+    const int64_t block_offset = slot_id % block_size_;
     // key = key_cache_[block_id, block_offset, :, :]
     const auto key =
         key_cache_.index({block_id, block_offset, Slice(), Slice()});
@@ -139,13 +139,13 @@ std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
       const int64_t block_id = block_ids[j / block_size_];
       const int64_t block_offset = j % block_size_;
 
-      // key = key_cache_[block_id, j, :, :]
+      // key = key_cache_[block_id, block_offset, :, :]
       const auto key =
-          key_cache_.index({block_id, j, Slice(), Slice()});
+          key_cache_.index({block_id, block_offset, Slice(), Slice()});
       keys.push_back(key.reshape({num_kv_heads_, head_size_}));
-      // value = value_cache_[block_id, j, :, :]
+      // value = value_cache_[block_id, block_offset, :, :]
       const auto value =
-          value_cache_.index({block_id, j, Slice(), Slice()});
+          value_cache_.index({block_id, block_offset, Slice(), Slice()});
       values.push_back(value);
     }
   }

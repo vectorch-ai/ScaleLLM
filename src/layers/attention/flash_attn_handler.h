@@ -45,7 +45,7 @@ class FlashAttnHandler : public AttentionHandler {
   // scale factor
   float scale_ = 0.0;
 
-  // alibi slops
+  // alibi slopes
   torch::optional<torch::Tensor> alibi_slopes_;
 };
 

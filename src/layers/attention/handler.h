@@ -11,7 +11,7 @@
 
 namespace llm {
 
-// an handler for attention operations
+// a handler for attention operations
 class AttentionHandler {
  public:
   virtual ~AttentionHandler() = default;

@@ -13,7 +13,7 @@
 // decide which attention implementation to use
 DEFINE_string(attention_handler,
               "auto",
-              "attention handler, e.g. auto, flash_attn, flash_infer");
+              "attention handler, e.g. auto, pytorch, flash_attn, flash_infer");
 
 namespace llm {
 
@@ -25,6 +25,9 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create(
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
   // check if the user specified the attention handler
+  if (boost::iequals(FLAGS_attention_handler, "pytorch")) {
+    return std::make_unique<RefHandler>(scale, alibi_slopes);
+  }
   if (boost::iequals(FLAGS_attention_handler, "flash_attn")) {
     CHECK(device.is_cuda()) << "flash_attn only supports cuda device";
     return std::make_unique<FlashAttnHandler>(scale, alibi_slopes);
@@ -34,6 +37,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create(
     return std::make_unique<FlashInferHandler>(scale, alibi_slopes);
   }
 
+  // choose the best handler based on device type
   if (device.is_cuda()) {
     // use flash_attn for cuda device
     return std::make_unique<FlashAttnHandler>(scale, alibi_slopes);
