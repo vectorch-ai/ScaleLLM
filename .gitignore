@@ -21,3 +21,24 @@
 
 # rust
 Cargo.lock
+
+
+# distribution / packaging
+.Python
+build/
+dist/
+eggs/
+.eggs/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Python module builds
+python/build/
+python/*.egg-info/
+python/scalellm/*.pyd
+python/scalellm/*.so
+**/__pycache__/*

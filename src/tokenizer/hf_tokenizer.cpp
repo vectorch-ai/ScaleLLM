@@ -2,7 +2,7 @@
 
 #include <glog/logging.h>
 
-#include "tokenizers/tokenizers.h"
+#include "huggingface/tokenizers.h"
 
 namespace llm {
 

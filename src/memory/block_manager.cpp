@@ -93,22 +93,32 @@ void BlockManager::release_slots_for_sequence(Sequence* sequence) {
   block_allocator_.free(block_ids);
 }
 
-
 bool BlockManager::allocate_slots_for_sequences(std::vector<Sequence*>& sequences) {
-  for (auto* sequence : sequences) {
+  for (auto sequence : sequences) {
     DCHECK(sequence != nullptr);
-    if (!allocate_slots_for_sequence(sequence)) {
-      // not enough blocks for the sequence
+    const uint32_t num_additional_blocks =
+        num_blocks_to_allocate(*sequence, block_size_);
+    if (num_additional_blocks == 0) {
+      // no need to allocate more blocks
+      continue;
+    }
+
+    if (num_additional_blocks > block_allocator_.free_block_count()) {
+      // not enough blocks
       return false;
     }
+    const auto block_ids = block_allocator_.allocate(num_additional_blocks);
+    sequence->append_blocks(block_ids);
   }
   return true;
 }
 
 void BlockManager::release_slots_for_sequences(std::vector<Sequence*>& sequences) {
-  for (auto* sequence : sequences) {
+  for (auto sequence : sequences) {
     DCHECK(sequence != nullptr);
-    release_slots_for_sequence(sequence);
+    const auto block_ids = sequence->release_blocks();
+    // add block ids back to the block allocator
+    block_allocator_.free(block_ids);
   }
 }
 

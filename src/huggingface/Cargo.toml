@@ -1,13 +1,18 @@
 [package]
-name = "tokenizers"
-version = "0.14.1"
-edition = "2018"
+name = "huggingface"
+version = "0.4.0"
+edition = "2021"
 
 [lib]
-name = "tokenizers"
+name = "huggingface"
 crate-type = ["staticlib"]
 
+[profile.release]
+lto = "fat"
+
 [dependencies]
+thiserror = "1.0"
+safetensors = "0.4.0"
 tokenizers = { version = "0.14.1", default-features = false, features = ["onig"] }
 serde = { version = "1.0", features = [ "derive" ] }
 serde_json = "1.0"

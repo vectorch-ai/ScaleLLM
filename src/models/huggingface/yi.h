@@ -6,7 +6,8 @@
 
 #include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
-#include "layers/attention_rope.h"
+#include "layers/attention/attention_rope.h"
+#include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
@@ -86,7 +87,8 @@ class YiAttentionImpl : public torch::nn::Module {
                   const QuantArgs& quant_args,
                   const ParallelArgs& parallel_args,
                   torch::ScalarType dtype,
-                  const torch::Device& device) {
+                  const torch::Device& device,
+                  AttentionHandler* handler) {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
@@ -123,19 +125,18 @@ class YiAttentionImpl : public torch::nn::Module {
                                                 device));
 
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     atten_ = register_module("atten",
                              AttentionWithRoPE(n_local_heads,
                                                n_local_kv_heads,
                                                head_dim,
-                                               scale,
                                                /*rotary_dim=*/head_dim,
                                                args.rope_scaling(),
                                                args.rope_theta(),
                                                args.max_position_embeddings(),
                                                /*interleaved=*/false,
                                                dtype,
-                                               device));
+                                               device,
+                                               handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -185,11 +186,12 @@ class YiDecoderLayerImpl : public torch::nn::Module {
                      const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
-                     const torch::Device& device) {
+                     const torch::Device& device,
+                     AttentionHandler* handler) {
     // register submodules
     self_attn_ = register_module(
         "self_attn",
-        YiAttention(args, quant_args, parallel_args, dtype, device));
+        YiAttention(args, quant_args, parallel_args, dtype, device, handler));
     mlp_ = register_module(
         "mlp", YiMLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module(
@@ -253,11 +255,14 @@ class YiModelImpl : public torch::nn::Module {
                                                       parallel_args,
                                                       dtype,
                                                       device));
+
+    handler_ = AttentionHandler::create(args, device);
+
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block =
-          YiDecoderLayer(args, quant_args, parallel_args, dtype, device);
+      auto block = YiDecoderLayer(
+          args, quant_args, parallel_args, dtype, device, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -273,6 +278,8 @@ class YiModelImpl : public torch::nn::Module {
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
     auto h = embed_tokens_(tokens);
+
+    // TODO: set working space for attention handler
     for (size_t i = 0; i < layers_.size(); i++) {
       auto& layer = layers_[i];
       h = layer(h, positions, kv_caches[i], input_params);
@@ -303,6 +310,9 @@ class YiModelImpl : public torch::nn::Module {
  private:
   // parameter members, must be registered
   ParallelEmbedding embed_tokens_{nullptr};
+
+  // attention handler
+  std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   torch::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast

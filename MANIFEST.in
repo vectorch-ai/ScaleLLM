@@ -1,0 +1,13 @@
+include MANIFEST.in
+include CMakeLists.txt
+include LICENSE
+include .gitmodules
+recursive-include src *.*
+recursive-include src/python *.py
+recursive-include third_party *
+recursive-include docs *.*
+recursive-include tools *.*
+recursive-include scripts *.*
+recursive-include proto *.*
+prune */__pycache__
+global-exclude *.o *.so *.dylib *.a .git *.pyc *.swp

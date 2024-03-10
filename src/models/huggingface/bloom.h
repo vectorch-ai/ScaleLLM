@@ -4,11 +4,11 @@
 #include <torch/types.h>
 
 #include "layers/activation.h"
-#include "layers/attention_alibi.h"
+#include "layers/attention/attention.h"
+#include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
-#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 #include "models/model_args.h"
@@ -85,7 +85,8 @@ class BloomAttentionImpl : public torch::nn::Module {
                      const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      torch::ScalarType dtype,
-                     const torch::Device& device) {
+                     const torch::Device& device,
+                     AttentionHandler* handler) {
     const auto world_size = parallel_args.world_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_local_heads = n_heads / world_size;
@@ -114,18 +115,9 @@ class BloomAttentionImpl : public torch::nn::Module {
                                                dtype,
                                                device));
 
-    // initialize positional embedding
-    const torch::Tensor alibi_slopes =
-        prepare_alibi_slopes(n_heads, parallel_args);
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
-    atten_ = register_module("atten",
-                             AttentionWithAlibi(n_local_heads,
-                                                n_local_heads,
-                                                head_dim_,
-                                                scale,
-                                                alibi_slopes,
-                                                dtype,
-                                                device));
+    // initialize attention module
+    atten_ = register_module(
+        "atten", Attention(n_local_heads, n_local_heads, head_dim_, handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -154,36 +146,6 @@ class BloomAttentionImpl : public torch::nn::Module {
   }
 
  private:
-  static torch::Tensor prepare_alibi_slopes(int64_t n_heads,
-                                            const ParallelArgs& parallel_args) {
-    // calculate alibi_slopes
-    const int64_t closest_power_of_2 =
-        std::pow(2, std::floor(std::log2(n_heads)));
-    const float base =
-        std::pow(2, -(std::pow(2, -(std::log2(closest_power_of_2) - 3))));
-    const torch::Tensor powers = torch::arange(
-        /*start=*/1, /*end=*/1 + closest_power_of_2, torch::kFloat32);
-    torch::Tensor slopes = torch::pow(base, powers);
-
-    if (closest_power_of_2 != n_heads) {
-      const float extra_base =
-          std::pow(2, -(std::pow(2, -(std::log2(2 * closest_power_of_2) - 3))));
-      const int64_t n_remaining_heads =
-          std::min(closest_power_of_2, n_heads - closest_power_of_2);
-      const torch::Tensor extra_powers =
-          torch::arange(/*start=*/1,
-                        /*end=*/1 + 2 * n_remaining_heads,
-                        /*step=*/2,
-                        torch::kFloat32);
-      const torch::Tensor extra_slopes = torch::pow(extra_base, extra_powers);
-      slopes = torch::cat({slopes, extra_slopes}, /*dim=*/0);
-    }
-    if (parallel_args.world_size() > 1) {
-      slopes = slopes.chunk(/*chunks=*/parallel_args.world_size(),
-                            /*dim=*/0)[parallel_args.rank()];
-    }
-    return slopes;
-  }
   // reshape qkv tensor from [n_heads, 3, ...] to [3, n_heads, ...]
   torch::Tensor reshape_qkv_tensor(const torch::Tensor& tensor) {
     CHECK(tensor.dim() == 2 || tensor.dim() == 1)
@@ -202,7 +164,7 @@ class BloomAttentionImpl : public torch::nn::Module {
   RowParallelLinear dense_{nullptr};
 
   // module members without parameters
-  AttentionWithAlibi atten_{nullptr};
+  Attention atten_{nullptr};
 
   int64_t hidden_size_ = 0;
   int64_t head_dim_ = 0;
@@ -215,12 +177,14 @@ class BloomBlockImpl : public torch::nn::Module {
                  const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
                  torch::ScalarType dtype,
-                 const torch::Device& device)
+                 const torch::Device& device,
+                 AttentionHandler* handler)
       : residual_post_layernorm_(args.residual_post_layernorm()) {
     // register submodules
     self_attention_ = register_module(
         "self_attention",
-        BloomAttention(args, quant_args, parallel_args, dtype, device));
+        BloomAttention(
+            args, quant_args, parallel_args, dtype, device, handler));
     mlp_ = register_module(
         "mlp", BloomMLP(args, quant_args, parallel_args, dtype, device));
     input_layernorm_ = register_module("input_layernorm",
@@ -305,10 +269,15 @@ class BloomModelImpl : public torch::nn::Module {
                                   dtype,
                                   device));
 
+    const torch::Tensor alibi_slopes =
+        prepare_alibi_slopes(args.n_heads(), parallel_args);
+    handler_ = AttentionHandler::create(args, device, alibi_slopes);
+
     blocks_ = register_module("h", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = BloomBlock(args, quant_args, parallel_args, dtype, device);
+      auto block = BloomBlock(
+          args, quant_args, parallel_args, dtype, device, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -326,6 +295,8 @@ class BloomModelImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     auto h = word_embeddings_(tokens);
     h = word_embeddings_layernorm_(h);
+
+    // TODO: set working space for attention handler
     for (size_t i = 0; i < layers_.size(); i++) {
       auto& layer = layers_[i];
       h = layer(h, kv_caches[i], input_params);
@@ -357,10 +328,45 @@ class BloomModelImpl : public torch::nn::Module {
   }
 
  private:
+  // returns alibi_slopes for attention handler [n_heads]
+  static torch::Tensor prepare_alibi_slopes(int64_t n_heads,
+                                            const ParallelArgs& parallel_args) {
+    // calculate alibi_slopes
+    const int64_t closest_power_of_2 =
+        std::pow(2, std::floor(std::log2(n_heads)));
+    const float base =
+        std::pow(2, -(std::pow(2, -(std::log2(closest_power_of_2) - 3))));
+    const torch::Tensor powers = torch::arange(
+        /*start=*/1, /*end=*/1 + closest_power_of_2, torch::kFloat32);
+    torch::Tensor slopes = torch::pow(base, powers);
+
+    if (closest_power_of_2 != n_heads) {
+      const float extra_base =
+          std::pow(2, -(std::pow(2, -(std::log2(2 * closest_power_of_2) - 3))));
+      const int64_t n_remaining_heads =
+          std::min(closest_power_of_2, n_heads - closest_power_of_2);
+      const torch::Tensor extra_powers =
+          torch::arange(/*start=*/1,
+                        /*end=*/1 + 2 * n_remaining_heads,
+                        /*step=*/2,
+                        torch::kFloat32);
+      const torch::Tensor extra_slopes = torch::pow(extra_base, extra_powers);
+      slopes = torch::cat({slopes, extra_slopes}, /*dim=*/0);
+    }
+    if (parallel_args.world_size() > 1) {
+      slopes = slopes.chunk(/*chunks=*/parallel_args.world_size(),
+                            /*dim=*/0)[parallel_args.rank()];
+    }
+    return slopes;
+  }
+
   // parameter members, must be registered
   ParallelEmbedding word_embeddings_{nullptr};
 
   LayerNorm word_embeddings_layernorm_{nullptr};
+
+  // attention handler
+  std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   torch::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
