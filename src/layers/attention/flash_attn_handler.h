@@ -1,5 +1,6 @@
 #pragma once
 
+#include <driver_types.h>
 #include <torch/torch.h>
 
 #include "handler.h"
@@ -13,7 +14,7 @@ class FlashAttnHandler : public AttentionHandler {
  public:
   FlashAttnHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
 
-  virtual ~FlashAttnHandler() = default;
+  ~FlashAttnHandler() override;
 
   // set workspace for temporary storage before calling any attention operations
   void set_workspace(const torch::Tensor& workspace) override {}
@@ -47,6 +48,9 @@ class FlashAttnHandler : public AttentionHandler {
 
   // alibi slopes
   torch::optional<torch::Tensor> alibi_slopes_;
+
+  // stream for kv cache
+  cudaStream_t stream_ = nullptr;
 };
 
 }  // namespace llm

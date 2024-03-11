@@ -108,7 +108,10 @@ ProcessGroupNCCL::ProcessGroupNCCL(int rank,
 }
 
 // Destructor.
-ProcessGroupNCCL::~ProcessGroupNCCL() { NCCLCHECK(ncclCommDestroy(comm_)); }
+ProcessGroupNCCL::~ProcessGroupNCCL() {
+  CUDACHECK(cudaStreamDestroy(stream_));
+  NCCLCHECK(ncclCommDestroy(comm_));
+}
 
 void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
   DCHECK(input.device() == device())
