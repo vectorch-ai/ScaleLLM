@@ -47,6 +47,8 @@ jobs:
         VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg/bincache
         # Tells ccache where to store its cache.
         CCACHE_DIR: ${{ github.workspace }}/.ccache
+        # LIBTORCH_ROOT
+        LIBTORCH_ROOT: ${{ github.workspace }}/../../../libtorch
 
     steps:
     - name: Install toolkits
