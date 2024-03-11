@@ -42,19 +42,16 @@ class LayerNormImpl : public torch::nn::Module {
   LayerNormImpl(int64_t dim,
                 float eps,
                 bool bias,
-                torch::ScalarType dtype,
-                const torch::Device& device)
+                const torch::TensorOptions& options)
       : eps_(eps) {
     normalized_shape_ = {dim};
-    weight_ = register_parameter(
-        "weight",
-        torch::empty(normalized_shape_, torch::dtype(dtype).device(device)),
-        /*requires_grad=*/false);
+    weight_ = register_parameter("weight",
+                                 torch::empty(normalized_shape_, options),
+                                 /*requires_grad=*/false);
     if (bias) {
-      bias_ = register_parameter(
-          "bias",
-          torch::zeros(normalized_shape_, torch::dtype(dtype).device(device)),
-          /*requires_grad=*/false);
+      bias_ = register_parameter("bias",
+                                 torch::zeros(normalized_shape_, options),
+                                 /*requires_grad=*/false);
     }
   }
 
@@ -120,15 +117,11 @@ TORCH_MODULE(LayerNorm);
 // Root mean square normalization
 class RMSNormImpl : public torch::nn::Module {
  public:
-  RMSNormImpl(int64_t dim,
-              float eps,
-              torch::ScalarType dtype,
-              const torch::Device& device)
+  RMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter(
-        "weight",
-        torch::empty({dim}, torch::dtype(dtype).device(device)),
-        /*requires_grad=*/false);
+    weight_ = register_parameter("weight",
+                                 torch::empty({dim}, options),
+                                 /*requires_grad=*/false);
   }
 
   torch::Tensor forward(torch::Tensor input) {
@@ -176,14 +169,12 @@ TORCH_MODULE(RMSNorm);
 class RMSNormResidualImpl : public torch::nn::Module {
  public:
   RMSNormResidualImpl(int64_t dim,
-              float eps,
-              torch::ScalarType dtype,
-              const torch::Device& device)
+                      float eps,
+                      const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter(
-        "weight",
-        torch::empty({dim}, torch::dtype(dtype).device(device)),
-        /*requires_grad=*/false);
+    weight_ = register_parameter("weight",
+                                 torch::empty({dim}, options),
+                                 /*requires_grad=*/false);
   }
 
   torch::Tensor forward(torch::Tensor input, torch::Tensor& residual) {

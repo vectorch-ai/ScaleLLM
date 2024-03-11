@@ -29,7 +29,8 @@ bool Worker::init_model(torch::ScalarType dtype,
   // initialize model
   args_ = args;
   dtype_ = dtype;
-  model_ = CausalLM::create(args, quant_args, parallel_args_, dtype_, device_);
+  const auto options = torch::dtype(dtype_).device(device_);
+  model_ = CausalLM::create(args, quant_args, parallel_args_, options);
   CHECK(model_ != nullptr) << "Failed to create model.";
   return true;
 }
@@ -112,8 +113,8 @@ OutputParameters Worker::execute_model(
   torch::cuda::synchronize();
 
   // create and call logits processors
-  auto logits_processor =
-      LogitsProcessor::create(sampling_params, dtype_, device_);
+  const auto options = torch::dtype(dtype_).device(device_);
+  auto logits_processor = LogitsProcessor::create(sampling_params, options);
   // apply logits processors to logits in-place
   logits_processor->forward(logits,
                             d_params.token_ids,
@@ -121,7 +122,7 @@ OutputParameters Worker::execute_model(
                             d_params.token_ids_lens);
 
   // create and call sampler
-  auto sampler = std::make_unique<Sampler>(sampling_params, dtype_, device_);
+  auto sampler = std::make_unique<Sampler>(sampling_params, options);
   auto next_tokens = sampler->forward(logits);
 
   // prepare output parameters
@@ -145,8 +146,8 @@ OutputParameters Worker::validate(torch::Tensor flatten_tokens,
   auto logits =
       model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
 
-  auto logits_processor =
-      LogitsProcessor::create(sampling_params, dtype_, device_);
+  const auto options = torch::dtype(dtype_).device(device_);
+  auto logits_processor = LogitsProcessor::create(sampling_params, options);
 
   // TODO: need to support validate multiple speculative steps
   logits_processor->forward(logits,
@@ -154,7 +155,7 @@ OutputParameters Worker::validate(torch::Tensor flatten_tokens,
                             d_params.token_counts,
                             d_params.token_ids_lens);
 
-  auto sampler = std::make_unique<Sampler>(sampling_params, dtype_, device_);
+  auto sampler = std::make_unique<Sampler>(sampling_params, options);
   auto next_tokens = sampler->forward(logits);
 
   OutputParameters output_params;

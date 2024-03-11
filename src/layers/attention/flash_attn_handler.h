@@ -20,8 +20,7 @@ class FlashAttnHandler : public AttentionHandler {
                    float rope_scaling,
                    float rope_theta,
                    bool interleaved,
-                   torch::ScalarType dtype,
-                   const torch::Device& device);
+                   const torch::TensorOptions& options);
 
   // create a flash attn handler with alibi slopes
   FlashAttnHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);

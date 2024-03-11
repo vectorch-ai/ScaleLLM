@@ -110,8 +110,7 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     int64_t qweight_pack_dim,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : bits_(quant_args.bits()),
       gather_output_(gather_output),
       parallel_args_(parallel_args) {
@@ -131,32 +130,32 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features / pack_factor, out_features_per_partition},
-                     torch::dtype(torch::kInt32).device(device)),
+                     options.dtype(torch::kInt32)),
         /*requires_grad=*/false);
   } else {
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features, out_features_per_partition / pack_factor},
-                     torch::dtype(torch::kInt32).device(device)),
+                     options.dtype(torch::kInt32)),
         /*requires_grad=*/false);
   }
   qzeros_ = register_parameter(
       "qzeros",
       torch::empty({round_up(in_features, group_size),
                     out_features_per_partition / pack_factor},
-                   torch::dtype(torch::kInt32).device(device)),
+                   options.dtype(torch::kInt32)),
       /*requires_grad=*/false);
 
   scales_ = register_parameter("scales",
                                torch::empty({round_up(in_features, group_size),
                                              out_features_per_partition},
-                                            torch::dtype(dtype).device(device)),
+                                            options),
                                /*requires_grad=*/false);
   if (bias) {
-    bias_ = register_parameter("bias",
-                               torch::empty({out_features_per_partition},
-                                            torch::dtype(dtype).device(device)),
-                               /*requires_grad=*/false);
+    bias_ =
+        register_parameter("bias",
+                           torch::empty({out_features_per_partition}, options),
+                           /*requires_grad=*/false);
   }
 }
 
@@ -342,8 +341,7 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
     int64_t qweight_pack_dim,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : bits_(quant_args.bits()),
       input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
@@ -363,34 +361,33 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features_per_partition / pack_factor, out_features},
-                     torch::dtype(torch::kInt32).device(device)),
+                     options.dtype(torch::kInt32)),
         /*requires_grad=*/false);
   } else {
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features_per_partition, out_features / pack_factor},
-                     torch::dtype(torch::kInt32).device(device)),
+                     options.dtype(torch::kInt32)),
         /*requires_grad=*/false);
   }
   qzeros_ = register_parameter(
       "qzeros",
       torch::empty({round_up(in_features_per_partition, group_size),
                     out_features / pack_factor},
-                   torch::dtype(torch::kInt32).device(device)),
+                   options.dtype(torch::kInt32)),
       /*requires_grad=*/false);
 
   scales_ = register_parameter(
       "scales",
       torch::empty(
           {round_up(in_features_per_partition, group_size), out_features},
-          torch::dtype(dtype).device(device)),
+          options),
       /*requires_grad=*/false);
 
   if (bias) {
-    bias_ = register_parameter(
-        "bias",
-        torch::empty({out_features}, torch::dtype(dtype).device(device)),
-        /*requires_grad=*/false);
+    bias_ = register_parameter("bias",
+                               torch::empty({out_features}, options),
+                               /*requires_grad=*/false);
   }
 }
 

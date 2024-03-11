@@ -30,13 +30,12 @@ class BaichuanMLPImpl : public torch::nn::Module {
   BaichuanMLPImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
                   const ParallelArgs& parallel_args,
-                  torch::ScalarType dtype,
-                  const torch::Device& device) {
+                  const torch::TensorOptions& options) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
     act_with_mul_ =
-        Activation::get_act_with_mul_func(args.hidden_act(), device);
+        Activation::get_act_with_mul_func(args.hidden_act(), options.device());
     CHECK(act_with_mul_ != nullptr);
 
     // register the weight parameter
@@ -48,8 +47,7 @@ class BaichuanMLPImpl : public torch::nn::Module {
                                              /*gather_output=*/false,
                                              quant_args,
                                              parallel_args,
-                                             dtype,
-                                             device));
+                                             options));
     down_proj_ =
         register_module("down_proj",
                         RowParallelLinear(intermediate_size,
@@ -58,8 +56,7 @@ class BaichuanMLPImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -93,8 +90,7 @@ class BaichuanAttentionImpl : public torch::nn::Module {
   BaichuanAttentionImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
                         const ParallelArgs& parallel_args,
-                        torch::ScalarType dtype,
-                        const torch::Device& device,
+                        const torch::TensorOptions& options,
                         BaichuanType baichuan_type,
                         AttentionHandler* handler)
       : baichuan_type_(baichuan_type) {
@@ -119,8 +115,7 @@ class BaichuanAttentionImpl : public torch::nn::Module {
                                                    /*gather_output=*/false,
                                                    quant_args,
                                                    parallel_args,
-                                                   dtype,
-                                                   device));
+                                                   options));
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(hidden_size,
@@ -129,8 +124,7 @@ class BaichuanAttentionImpl : public torch::nn::Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                                dtype,
-                                                device));
+                                               options));
 
     // initialize attention module
     atten_ = register_module(
@@ -185,8 +179,7 @@ class BaichuanDecoderLayerImpl : public torch::nn::Module {
   BaichuanDecoderLayerImpl(const ModelArgs& args,
                            const QuantArgs& quant_args,
                            const ParallelArgs& parallel_args,
-                           torch::ScalarType dtype,
-                           const torch::Device& device,
+                           const torch::TensorOptions& options,
                            BaichuanType baichuan_type,
                            AttentionHandler* handler) {
     // register submodules
@@ -194,21 +187,20 @@ class BaichuanDecoderLayerImpl : public torch::nn::Module {
                                  BaichuanAttention(args,
                                                    quant_args,
                                                    parallel_args,
-                                                   dtype,
-                                                   device,
+                                                   options,
                                                    baichuan_type,
                                                    handler));
     mlp_ = register_module(
-        "mlp", BaichuanMLP(args, quant_args, parallel_args, dtype, device));
+        "mlp", BaichuanMLP(args, quant_args, parallel_args, options));
 
     input_layernorm_ = register_module(
         "input_layernorm",
         RMSNormResidual(
-            args.hidden_size(), args.rms_norm_eps(), dtype, device));
+            args.hidden_size(), args.rms_norm_eps(), options));
     post_attention_layernorm_ = register_module(
         "post_attention_layernorm",
         RMSNormResidual(
-            args.hidden_size(), args.rms_norm_eps(), dtype, device));
+            args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -267,25 +259,23 @@ class BaichuanModelImpl : public torch::nn::Module {
   BaichuanModelImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
-                    torch::ScalarType dtype,
-                    const torch::Device& device,
+                    const torch::TensorOptions& options,
                     BaichuanType baichuan_type) {
     // register submodules
     embed_tokens_ = register_module("embed_tokens",
                                     ParallelEmbedding(args.vocab_size(),
                                                       args.hidden_size(),
                                                       parallel_args,
-                                                      dtype,
-                                                      device));
+                                                      options));
     if (baichuan_type == BaichuanType::Baichuan_7B &&
         baichuan_type == BaichuanType::Baichuan2_7B) {
       handler_ = AttentionHandler::create_handler_with_rope(
-          args, /*interleaved=*/true, dtype, device);
+          args, /*interleaved=*/true, options);
     } else {
       const torch::Tensor alibi_slopes =
           prepare_alibi_slopes(args.n_heads(), parallel_args);
       handler_ = AttentionHandler::create_handler_with_alibi(
-          args, device, alibi_slopes);
+          args, alibi_slopes, options);
     }
 
     blocks_ = register_module("layers", torch::nn::ModuleList());
@@ -294,8 +284,7 @@ class BaichuanModelImpl : public torch::nn::Module {
       auto block = BaichuanDecoderLayer(args,
                                         quant_args,
                                         parallel_args,
-                                        dtype,
-                                        device,
+                                        options,
                                         baichuan_type,
                                         handler_.get());
       layers_.push_back(block);
@@ -305,7 +294,7 @@ class BaichuanModelImpl : public torch::nn::Module {
     norm_ = register_module(
         "norm",
         RMSNormResidual(
-            args.hidden_size(), args.rms_norm_eps(), dtype, device));
+            args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]
@@ -399,8 +388,7 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
   BaichuanForCausalLMImpl(const ModelArgs& args,
                           const QuantArgs& quant_args,
                           const ParallelArgs& parallel_args,
-                          torch::ScalarType dtype,
-                          const torch::Device& device) {
+                          const torch::TensorOptions& options) {
     if (args.vocab_size() == 125696) {
       // Baichuan2
       if (args.hidden_size() == 4096) {
@@ -420,7 +408,7 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
     model_ = register_module(
         "model",
         BaichuanModel(
-            args, quant_args, parallel_args, dtype, device, baichuan_type_));
+            args, quant_args, parallel_args, options, baichuan_type_));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -428,8 +416,7 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
                                                     /*bias=*/false,
                                                     /*gather_output=*/true,
                                                     parallel_args,
-                                                    dtype,
-                                                    device));
+                                                    options));
   }
 
   // tokens: [num_tokens]

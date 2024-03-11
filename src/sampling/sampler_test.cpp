@@ -15,16 +15,16 @@ TEST(SamplerTest, Greedy) {
   // Test GreedySampler
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
+  const auto options = torch::dtype(dtype).device(device);
   SamplingParameters params;
   params.top_k = {0, 0};
   params.top_p = {1.0, 1.0};
   params.do_sample = {false, false};
-  Sampler sampler(params, dtype, device);
+  Sampler sampler(params, options);
 
   int64_t batch_size = 2;
   int64_t vocab_size = 32000;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
   auto output = sampler(logits);
   EXPECT_TRUE(
       torch::allclose(output, logits.argmax(/*dim=*/-1, /*keepdim=*/true)));
@@ -34,16 +34,17 @@ TEST(SamplerTest, ToppTopk) {
   // Test GreedySampler
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
+  const auto options = torch::dtype(dtype).device(device);
+
   SamplingParameters params;
   params.top_k = {10, 0};
   params.top_p = {0.9, 1.0};
   params.do_sample = {true, true};
-  Sampler sampler(params, dtype, device);
+  Sampler sampler(params, options);
 
   int64_t batch_size = 2;
   int64_t vocab_size = 30;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
   auto output = sampler(logits);
 
   // TODO: add unit test for top_k and top_p

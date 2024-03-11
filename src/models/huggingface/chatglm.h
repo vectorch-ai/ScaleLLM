@@ -23,12 +23,11 @@ class ChatGLMMLPImpl : public torch::nn::Module {
   ChatGLMMLPImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
-                 torch::ScalarType dtype,
-                 const torch::Device& device) {
+                 const torch::TensorOptions& options) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
+    act_with_mul_ = Activation::get_act_with_mul_func("silu", options.device());
     CHECK(act_with_mul_ != nullptr);
 
     // register the weight parameter
@@ -40,8 +39,7 @@ class ChatGLMMLPImpl : public torch::nn::Module {
                                              /*gather_output=*/false,
                                              quant_args,
                                              parallel_args,
-                                             dtype,
-                                             device));
+                                             options));
     dense_4h_to_h_ =
         register_module("dense_4h_to_h",
                         RowParallelLinear(intermediate_size,
@@ -50,8 +48,7 @@ class ChatGLMMLPImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -85,8 +82,7 @@ class ChatGLMAttentionImpl : public torch::nn::Module {
   ChatGLMAttentionImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device,
+                       const torch::TensorOptions& options,
                        AttentionHandler* handler) {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
@@ -110,8 +106,7 @@ class ChatGLMAttentionImpl : public torch::nn::Module {
                              /*gather_output=*/false,
                              quant_args,
                              parallel_args,
-                             dtype,
-                             device));
+                             options));
 
     dense_ = register_module("dense",
                              RowParallelLinear(hidden_size,
@@ -120,8 +115,7 @@ class ChatGLMAttentionImpl : public torch::nn::Module {
                                                /*input_is_parallelized=*/true,
                                                quant_args,
                                                parallel_args,
-                                               dtype,
-                                               device));
+                                               options));
 
     // initialize attention
     atten_ = register_module(
@@ -173,8 +167,7 @@ class ChatGLMBlockImpl : public torch::nn::Module {
   ChatGLMBlockImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   torch::ScalarType dtype,
-                   const torch::Device& device,
+                   const torch::TensorOptions& options,
                    AttentionHandler* handler)
       : residual_post_layernorm_(args.residual_post_layernorm()),
         use_rms_norm_(args.use_rms_norm()) {
@@ -182,31 +175,29 @@ class ChatGLMBlockImpl : public torch::nn::Module {
     self_attention_ = register_module(
         "self_attention",
         ChatGLMAttention(
-            args, quant_args, parallel_args, dtype, device, handler));
+            args, quant_args, parallel_args, options, handler));
     mlp_ = register_module(
-        "mlp", ChatGLMMLP(args, quant_args, parallel_args, dtype, device));
+        "mlp", ChatGLMMLP(args, quant_args, parallel_args, options));
 
     if (use_rms_norm_) {
       input_rmsnorm_ = register_module(
           "input_layernorm",
-          RMSNorm(args.hidden_size(), args.layer_norm_eps(), dtype, device));
+          RMSNorm(args.hidden_size(), args.layer_norm_eps(), options));
       post_attention_rmsnorm_ = register_module(
           "post_attention_layernorm",
-          RMSNorm(args.hidden_size(), args.layer_norm_eps(), dtype, device));
+          RMSNorm(args.hidden_size(), args.layer_norm_eps(), options));
     } else {
       input_layernorm_ = register_module("input_layernorm",
                                          LayerNorm(args.hidden_size(),
                                                    args.layer_norm_eps(),
                                                    /*bias=*/false,
-                                                   dtype,
-                                                   device));
+                                                   options));
       post_attention_layernorm_ =
           register_module("post_attention_layernorm",
                           LayerNorm(args.hidden_size(),
                                     args.layer_norm_eps(),
                                     /*bias=*/false,
-                                    dtype,
-                                    device));
+                                    options));
     }
   }
 
@@ -288,17 +279,16 @@ class ChatGLMModelImpl : public torch::nn::Module {
   ChatGLMModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   torch::ScalarType dtype,
-                   const torch::Device& device) {
+                   const torch::TensorOptions& options) {
     handler_ = AttentionHandler::create_handler_with_rope(
-        args, /*interleaved=*/true, dtype, device);
+        args, /*interleaved=*/true, options);
 
     // register submodules
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = ChatGLMBlock(
-          args, quant_args, parallel_args, dtype, device, handler_.get());
+          args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -306,8 +296,7 @@ class ChatGLMModelImpl : public torch::nn::Module {
                                        LayerNorm(args.hidden_size(),
                                                  args.layer_norm_eps(),
                                                  /*bias=*/false,
-                                                 dtype,
-                                                 device));
+                                                 options));
   }
 
   // tokens: [num_tokens]
@@ -360,18 +349,16 @@ class ChatGLMForCausalLMImpl : public torch::nn::Module {
   ChatGLMForCausalLMImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
                          const ParallelArgs& parallel_args,
-                         torch::ScalarType dtype,
-                         const torch::Device& device) {
+                         const torch::TensorOptions& options) {
     // register submodules
     word_embeddings_ = register_module("word_embeddings",
                                        ParallelEmbedding(args.vocab_size(),
                                                          args.hidden_size(),
                                                          parallel_args,
-                                                         dtype,
-                                                         device));
+                                                         options));
     model_ = register_module(
         "encoder",
-        ChatGLMModel(args, quant_args, parallel_args, dtype, device));
+        ChatGLMModel(args, quant_args, parallel_args, options));
 
     output_layer_ = register_module("output_layer",
                                     ColumnParallelLinear(args.hidden_size(),
@@ -379,8 +366,7 @@ class ChatGLMForCausalLMImpl : public torch::nn::Module {
                                                          /*bias=*/false,
                                                          /*gather_output=*/true,
                                                          parallel_args,
-                                                         dtype,
-                                                         device));
+                                                         options));
   }
 
   // tokens: [num_tokens]

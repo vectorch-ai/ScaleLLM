@@ -18,8 +18,7 @@ class FlashInferHandler : public AttentionHandler {
                     float rope_scaling,
                     float rope_theta,
                     bool interleaved,
-                    torch::ScalarType dtype,
-                    const torch::Device& device);
+                    const torch::TensorOptions& options);
 
   // constructor for attention with alibi
   FlashInferHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);

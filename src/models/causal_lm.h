@@ -34,8 +34,7 @@ class CausalLM : public torch::nn::Module {
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
                                           const QuantArgs& quant_args,
                                           const ParallelArgs& parallel_args,
-                                          torch::ScalarType dtype,
-                                          const torch::Device& device);
+                                          const torch::TensorOptions& options);
 };
 
 // an template class to hold different models without using virtual functions.

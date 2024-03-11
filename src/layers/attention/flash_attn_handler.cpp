@@ -17,17 +17,11 @@ FlashAttnHandler::FlashAttnHandler(float scale,
                                    float rope_scaling,
                                    float rope_theta,
                                    bool interleaved,
-                                   torch::ScalarType dtype,
-                                   const torch::Device& device)
+                                   const torch::TensorOptions& options)
     : scale_(scale) {
   // register rotary positional embedding
-  pos_emb_ = RotaryEmbedding(rotary_dim,
-                             max_position,
-                             rope_scaling,
-                             rope_theta,
-                             interleaved,
-                             dtype,
-                             device);
+  pos_emb_ = RotaryEmbedding(
+      rotary_dim, max_position, rope_scaling, rope_theta, interleaved, options);
 
   if (FLAGS_use_kv_cache_stream) {
     cudaStreamCreate(&stream_);

@@ -20,8 +20,7 @@ class ColumnParallelQLinearAWQImpl : public ColumnParallelQLinearImpl {
                                const QuantArgs& quant_args,
                                bool gather_output,
                                const ParallelArgs& parallel_args,
-                               torch::ScalarType dtype,
-                               const torch::Device& device);
+                               const torch::TensorOptions& options);
 
   torch::Tensor quant_matmul(const torch::Tensor& input,
                              const torch::Tensor& qweight,
@@ -51,8 +50,7 @@ class RowParallelQLinearAWQImpl : public RowParallelQLinearImpl {
                             const QuantArgs& quant_args,
                             bool input_is_parallelized,
                             const ParallelArgs& parallel_args,
-                            torch::ScalarType dtype,
-                            const torch::Device& device);
+                            const torch::TensorOptions& options);
 
   torch::Tensor quant_matmul(const torch::Tensor& input,
                              const torch::Tensor& qweight,

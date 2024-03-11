@@ -68,8 +68,7 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     bool bias,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : gather_output_(gather_output), parallel_args_(parallel_args) {
   const auto world_size = parallel_args_.world_size();
   CHECK(out_features % world_size == 0)
@@ -79,17 +78,16 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
 
   // Note: torch.nn.functional.linear performs XA^T + b and as a result
   // we allocate the transpose.
-  weight_ =
-      register_parameter("weight",
-                         torch::empty({out_features_per_partition, in_features},
-                                      torch::dtype(dtype).device(device)),
-                         /*requires_grad=*/false);
+  weight_ = register_parameter(
+      "weight",
+      torch::empty({out_features_per_partition, in_features}, options),
+      /*requires_grad=*/false);
 
   if (bias) {
-    bias_ = register_parameter("bias",
-                               torch::empty({out_features_per_partition},
-                                            torch::dtype(dtype).device(device)),
-                               /*requires_grad=*/false);
+    bias_ =
+        register_parameter("bias",
+                           torch::empty({out_features_per_partition}, options),
+                           /*requires_grad=*/false);
   }
 }
 
@@ -191,13 +189,13 @@ void ColumnParallelLinearImpl::load_state_dict(
 }
 
 // Linear layer with row parallelism.
-RowParallelLinearImpl::RowParallelLinearImpl(int64_t in_features,
-                                             int64_t out_features,
-                                             bool bias,
-                                             bool input_is_parallelized,
-                                             const ParallelArgs& parallel_args,
-                                             torch::ScalarType dtype,
-                                             const torch::Device& device)
+RowParallelLinearImpl::RowParallelLinearImpl(
+    int64_t in_features,
+    int64_t out_features,
+    bool bias,
+    bool input_is_parallelized,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options)
     : input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
   const auto world_size = parallel_args_.world_size();
@@ -206,17 +204,15 @@ RowParallelLinearImpl::RowParallelLinearImpl(int64_t in_features,
       << world_size;
   const int64_t in_features_per_partition = in_features / world_size;
   // Allocate the transpose since linear performs XA^T.
-  weight_ =
-      register_parameter("weight",
-                         torch::empty({out_features, in_features_per_partition},
-                                      torch::dtype(dtype).device(device)),
-                         /*requires_grad=*/false);
+  weight_ = register_parameter(
+      "weight",
+      torch::empty({out_features, in_features_per_partition}, options),
+      /*requires_grad=*/false);
 
   if (bias) {
-    bias_ = register_parameter(
-        "bias",
-        torch::empty({out_features}, torch::dtype(dtype).device(device)),
-        /*requires_grad=*/false);
+    bias_ = register_parameter("bias",
+                               torch::empty({out_features}, options),
+                               /*requires_grad=*/false);
   }
 }
 

@@ -30,8 +30,7 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
                            bool bias,
                            bool gather_output,
                            const ParallelArgs& parallel_args,
-                           torch::ScalarType dtype,
-                           const torch::Device& device);
+                           const torch::TensorOptions& options);
 
   torch::Tensor forward(torch::Tensor input) const override;
 
@@ -97,8 +96,7 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
                         bool bias,
                         bool input_is_parallelized,
                         const ParallelArgs& parallel_args,
-                        torch::ScalarType dtype,
-                        const torch::Device& device);
+                        const torch::TensorOptions& options);
 
   torch::Tensor forward(torch::Tensor input) const override;
 
