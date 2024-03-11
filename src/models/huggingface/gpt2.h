@@ -125,7 +125,12 @@ class GPT2AttentionImpl : public torch::nn::Module {
     auto qkv = c_attn_(x).chunk(/*chunks=*/3, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    auto output = atten_(qkv[0], qkv[1], qkv[2], kv_cache, input_params);
+    auto output = atten_(qkv[0],
+                         qkv[1],
+                         qkv[2],
+                         /*positions=*/torch::Tensor{},
+                         kv_cache,
+                         input_params);
     return c_proj_(output);
   }
 
@@ -242,7 +247,7 @@ class GPT2ModelImpl : public torch::nn::Module {
         Embedding(
             args.max_position_embeddings(), args.hidden_size(), dtype, device));
 
-    handler_ = AttentionHandler::create(args, device);
+    handler_ = AttentionHandler::create_handler(args, device);
 
     blocks_ = register_module("h", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());

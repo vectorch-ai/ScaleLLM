@@ -126,7 +126,12 @@ class BloomAttentionImpl : public torch::nn::Module {
     auto qkv = query_key_value_(x).chunk(/*chunks=*/3, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    auto output = atten_(qkv[0], qkv[1], qkv[2], kv_cache, input_params);
+    auto output = atten_(qkv[0],
+                         qkv[1],
+                         qkv[2],
+                         /*positions=*/torch::Tensor{},
+                         kv_cache,
+                         input_params);
     return dense_(output);
   }
 
@@ -271,7 +276,8 @@ class BloomModelImpl : public torch::nn::Module {
 
     const torch::Tensor alibi_slopes =
         prepare_alibi_slopes(args.n_heads(), parallel_args);
-    handler_ = AttentionHandler::create(args, device, alibi_slopes);
+    handler_ =
+        AttentionHandler::create_handler_with_alibi(args, device, alibi_slopes);
 
     blocks_ = register_module("h", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());

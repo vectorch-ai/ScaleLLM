@@ -20,10 +20,12 @@ class AttentionImpl : public torch::nn::Module {
 
   // query: [n_tokens, n_heads, head_dim]
   // key/value: [n_tokens, n_kv_heads, head_dim]
+  // positions: [n_tokens]
   // return: [n_tokens, n_heads, head_dim]
   torch::Tensor forward(const torch::Tensor& query,
                         const torch::Tensor& key,
                         const torch::Tensor& value,
+                        const torch::Tensor& positions,
                         KVCache& kv_cache,
                         const InputParameters& input_params);
 

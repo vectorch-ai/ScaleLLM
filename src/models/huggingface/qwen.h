@@ -7,7 +7,7 @@
 
 #include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
-#include "layers/attention/attention_rope.h"
+#include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -119,18 +119,8 @@ class QWenAttentionImpl : public torch::nn::Module {
                                                 device));
 
     // initialize attention
-    atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads,
-                                               n_local_heads,
-                                               head_dim,
-                                               /*rotary_dim=*/head_dim,
-                                               args.rope_scaling(),
-                                               args.rope_theta(),
-                                               args.max_position_embeddings(),
-                                               /*interleaved=*/false,
-                                               dtype,
-                                               device,
-                                               handler));
+    atten_ = register_module(
+        "atten", Attention(n_local_heads, n_local_heads, head_dim, handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -165,7 +155,7 @@ class QWenAttentionImpl : public torch::nn::Module {
   RowParallelLinear c_proj_{nullptr};
 
   // module members without parameters
-  AttentionWithRoPE atten_{nullptr};
+  Attention atten_{nullptr};
 };
 TORCH_MODULE(QWenAttention);
 
@@ -242,7 +232,8 @@ class QWenModelImpl : public torch::nn::Module {
                                              dtype,
                                              device));
 
-    handler_ = AttentionHandler::create(args, device);
+    handler_ = AttentionHandler::create_handler_with_rope(
+        args, /*interleaved=*/false, dtype, device);
 
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());

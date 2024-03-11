@@ -7,8 +7,8 @@
 #include <memory>
 
 #include "kernels/pos_embedding_kernels.h"
+DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
 
-DECLARE_bool(disable_custom_kernels);
 namespace llm {
 
 namespace {

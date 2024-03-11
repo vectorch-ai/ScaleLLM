@@ -7,6 +7,17 @@
 
 namespace llm {
 
+FlashInferHandler::FlashInferHandler(float scale,
+                                     int64_t rotary_dim,
+                                     int64_t max_position,
+                                     float rope_scaling,
+                                     float rope_theta,
+                                     bool interleaved,
+                                     torch::ScalarType dtype,
+                                     const torch::Device& device) {
+  LOG(FATAL) << "Not implemented yet";
+}
+
 FlashInferHandler::FlashInferHandler(
     float scale,
     torch::optional<torch::Tensor> alibi_slopes)

@@ -157,7 +157,8 @@ class MPTAttentionImpl : public torch::nn::Module {
       k = k_ln_(k);
     }
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    auto output = atten_(q, k, v, kv_cache, input_params);
+    auto output =
+        atten_(q, k, v, /*positions=*/torch::Tensor{}, kv_cache, input_params);
     return out_proj_(output);
   }
 
@@ -318,7 +319,8 @@ class MPTModelImpl : public torch::nn::Module {
     // calculate alibi_slopes
     torch::Tensor alibi_slopes = prepare_alibi_slopes(
         args.n_heads(), args.alibi_bias_max(), parallel_args);
-    handler_ = AttentionHandler::create(args, device, alibi_slopes);
+    handler_ =
+        AttentionHandler::create_handler_with_alibi(args, device, alibi_slopes);
 
     blocks_ = register_module("blocks", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
