@@ -227,11 +227,10 @@ class MistralModelImpl : public torch::nn::Module {
                    const ParallelArgs& parallel_args,
                    const torch::TensorOptions& options) {
     // register submodules
-    embed_tokens_ = register_module("embed_tokens",
-                                    ParallelEmbedding(args.vocab_size(),
-                                                      args.hidden_size(),
-                                                      parallel_args,
-                                                      options));
+    embed_tokens_ = register_module(
+        "embed_tokens",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);

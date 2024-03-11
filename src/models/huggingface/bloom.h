@@ -181,10 +181,9 @@ class BloomBlockImpl : public torch::nn::Module {
     // register submodules
     self_attention_ = register_module(
         "self_attention",
-        BloomAttention(
-            args, quant_args, parallel_args, options, handler));
-    mlp_ = register_module(
-        "mlp", BloomMLP(args, quant_args, parallel_args, options));
+        BloomAttention(args, quant_args, parallel_args, options, handler));
+    mlp_ = register_module("mlp",
+                           BloomMLP(args, quant_args, parallel_args, options));
     input_layernorm_ = register_module("input_layernorm",
                                        LayerNorm(args.hidden_size(),
                                                  args.layer_norm_eps(),
@@ -250,11 +249,10 @@ class BloomModelImpl : public torch::nn::Module {
                  const ParallelArgs& parallel_args,
                  const torch::TensorOptions& options) {
     // register submodules
-    word_embeddings_ = register_module("word_embeddings",
-                                       ParallelEmbedding(args.vocab_size(),
-                                                         args.hidden_size(),
-                                                         parallel_args,
-                                                         options));
+    word_embeddings_ = register_module(
+        "word_embeddings",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
     word_embeddings_layernorm_ =
         register_module("word_embeddings_layernorm",
                         LayerNorm(args.hidden_size(),
@@ -264,14 +262,14 @@ class BloomModelImpl : public torch::nn::Module {
 
     const torch::Tensor alibi_slopes =
         prepare_alibi_slopes(args.n_heads(), parallel_args);
-    handler_ =
-        AttentionHandler::create_handler_with_alibi(args, alibi_slopes, options);
+    handler_ = AttentionHandler::create_handler_with_alibi(
+        args, alibi_slopes, options);
 
     blocks_ = register_module("h", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = BloomBlock(
-          args, quant_args, parallel_args, options, handler_.get());
+      auto block =
+          BloomBlock(args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -378,8 +376,7 @@ class BloomForCausalLMImpl : public torch::nn::Module {
                        const torch::TensorOptions& options) {
     // register submodules
     model_ = register_module(
-        "transformer",
-        BloomModel(args, quant_args, parallel_args, options));
+        "transformer", BloomModel(args, quant_args, parallel_args, options));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),

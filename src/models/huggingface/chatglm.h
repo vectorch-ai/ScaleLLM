@@ -174,8 +174,7 @@ class ChatGLMBlockImpl : public torch::nn::Module {
     // register submodules
     self_attention_ = register_module(
         "self_attention",
-        ChatGLMAttention(
-            args, quant_args, parallel_args, options, handler));
+        ChatGLMAttention(args, quant_args, parallel_args, options, handler));
     mlp_ = register_module(
         "mlp", ChatGLMMLP(args, quant_args, parallel_args, options));
 
@@ -351,14 +350,12 @@ class ChatGLMForCausalLMImpl : public torch::nn::Module {
                          const ParallelArgs& parallel_args,
                          const torch::TensorOptions& options) {
     // register submodules
-    word_embeddings_ = register_module("word_embeddings",
-                                       ParallelEmbedding(args.vocab_size(),
-                                                         args.hidden_size(),
-                                                         parallel_args,
-                                                         options));
+    word_embeddings_ = register_module(
+        "word_embeddings",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
     model_ = register_module(
-        "encoder",
-        ChatGLMModel(args, quant_args, parallel_args, options));
+        "encoder", ChatGLMModel(args, quant_args, parallel_args, options));
 
     output_layer_ = register_module("output_layer",
                                     ColumnParallelLinear(args.hidden_size(),

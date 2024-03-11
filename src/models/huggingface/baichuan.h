@@ -124,7 +124,7 @@ class BaichuanAttentionImpl : public torch::nn::Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                               options));
+                                                options));
 
     // initialize attention module
     atten_ = register_module(
@@ -183,24 +183,19 @@ class BaichuanDecoderLayerImpl : public torch::nn::Module {
                            BaichuanType baichuan_type,
                            AttentionHandler* handler) {
     // register submodules
-    self_attn_ = register_module("self_attn",
-                                 BaichuanAttention(args,
-                                                   quant_args,
-                                                   parallel_args,
-                                                   options,
-                                                   baichuan_type,
-                                                   handler));
+    self_attn_ = register_module(
+        "self_attn",
+        BaichuanAttention(
+            args, quant_args, parallel_args, options, baichuan_type, handler));
     mlp_ = register_module(
         "mlp", BaichuanMLP(args, quant_args, parallel_args, options));
 
     input_layernorm_ = register_module(
         "input_layernorm",
-        RMSNormResidual(
-            args.hidden_size(), args.rms_norm_eps(), options));
+        RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
     post_attention_layernorm_ = register_module(
         "post_attention_layernorm",
-        RMSNormResidual(
-            args.hidden_size(), args.rms_norm_eps(), options));
+        RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -262,11 +257,10 @@ class BaichuanModelImpl : public torch::nn::Module {
                     const torch::TensorOptions& options,
                     BaichuanType baichuan_type) {
     // register submodules
-    embed_tokens_ = register_module("embed_tokens",
-                                    ParallelEmbedding(args.vocab_size(),
-                                                      args.hidden_size(),
-                                                      parallel_args,
-                                                      options));
+    embed_tokens_ = register_module(
+        "embed_tokens",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
     if (baichuan_type == BaichuanType::Baichuan_7B &&
         baichuan_type == BaichuanType::Baichuan2_7B) {
       handler_ = AttentionHandler::create_handler_with_rope(
@@ -293,8 +287,7 @@ class BaichuanModelImpl : public torch::nn::Module {
 
     norm_ = register_module(
         "norm",
-        RMSNormResidual(
-            args.hidden_size(), args.rms_norm_eps(), options));
+        RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]

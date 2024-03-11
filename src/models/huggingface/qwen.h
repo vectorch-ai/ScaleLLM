@@ -164,14 +164,12 @@ class QWenBlockImpl : public torch::nn::Module {
     attn_ = register_module(
         "attn",
         QWenAttention(args, quant_args, parallel_args, options, handler));
-    mlp_ = register_module(
-        "mlp", QWenMLP(args, quant_args, parallel_args, options));
+    mlp_ = register_module("mlp",
+                           QWenMLP(args, quant_args, parallel_args, options));
     ln_1_ = register_module(
-        "ln_1",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
+        "ln_1", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
     ln_2_ = register_module(
-        "ln_2",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
+        "ln_2", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -217,11 +215,10 @@ class QWenModelImpl : public torch::nn::Module {
                 const ParallelArgs& parallel_args,
                 const torch::TensorOptions& options) {
     // register submodules
-    wte_ = register_module("wte",
-                           ParallelEmbedding(args.vocab_size(),
-                                             args.hidden_size(),
-                                             parallel_args,
-                                             options));
+    wte_ = register_module(
+        "wte",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
@@ -229,14 +226,13 @@ class QWenModelImpl : public torch::nn::Module {
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = QWenBlock(
-          args, quant_args, parallel_args, options, handler_.get());
+      auto block =
+          QWenBlock(args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
     ln_f_ = register_module(
-        "ln_f",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
+        "ln_f", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]
@@ -298,8 +294,7 @@ class QWenForCausalLMImpl : public torch::nn::Module {
                       const torch::TensorOptions& options) {
     // register submodules
     transformer_ = register_module(
-        "transformer",
-        QWenModel(args, quant_args, parallel_args, options));
+        "transformer", QWenModel(args, quant_args, parallel_args, options));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
