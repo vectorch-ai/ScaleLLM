@@ -11,10 +11,28 @@ namespace llm {
 // an flash attn implementation for attention operations
 class FlashInferHandler : public AttentionHandler {
  public:
+  // create a flash attn handler with rope positional embedding
+  FlashInferHandler(float scale,
+                    int64_t rotary_dim,
+                    int64_t max_position,
+                    float rope_scaling,
+                    float rope_theta,
+                    bool interleaved,
+                    torch::ScalarType dtype,
+                    const torch::Device& device);
+
   // constructor for attention with alibi
   FlashInferHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
 
   virtual ~FlashInferHandler() = default;
+
+  std::tuple<torch::Tensor, torch::Tensor> apply_pos_emb(
+      const torch::Tensor& query,
+      const torch::Tensor& key,
+      const torch::Tensor& /*positions*/) override {
+    // no positional embedding since we will apply pos emb on the fly
+    return {query, key};
+  }
 
   // batch prefill for attention, optimized for prefill stage
   void batch_prefill(
