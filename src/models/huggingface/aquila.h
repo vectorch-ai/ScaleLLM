@@ -123,7 +123,6 @@ class AquilaAttentionImpl : public torch::nn::Module {
                                                 device));
 
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     atten_ = register_module("atten",
                              AttentionWithRoPE(n_local_heads,
                                                n_local_kv_heads,

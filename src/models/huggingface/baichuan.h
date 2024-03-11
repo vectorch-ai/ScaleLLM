@@ -137,7 +137,6 @@ class BaichuanAttentionImpl : public torch::nn::Module {
     if (baichuan_type == BaichuanType::Baichuan_7B &&
         baichuan_type == BaichuanType::Baichuan2_7B) {
       // initialize positional embedding and attention
-      const int64_t rotary_dim = head_dim;
       atten_rope_ = register_module(
           "atten",
           AttentionWithRoPE(n_local_heads,
