@@ -117,7 +117,6 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
     const int64_t rotary_dim =
         static_cast<int64_t>(head_dim_ * args.rotary_pct());
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     atten_ = register_module("atten",
                              AttentionWithRoPE(n_local_heads,
                                                n_local_heads,
