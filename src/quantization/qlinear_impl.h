@@ -46,8 +46,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
                             int64_t qweight_pack_dim,
                             bool gather_output,
                             const ParallelArgs& parallel_args,
-                            torch::ScalarType dtype,
-                            const torch::Device& device);
+                            const torch::TensorOptions& options);
 
   // verify if the weight is loaded correctly
   void verify_loaded_weights(const std::string& prefix = "") const override;
@@ -128,8 +127,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
                          int64_t qweight_pack_dim,
                          bool input_is_parallelized,
                          const ParallelArgs& parallel_args,
-                         torch::ScalarType dtype,
-                         const torch::Device& device);
+                         const torch::TensorOptions& options);
 
   // all subclasses must implement this function
   virtual torch::Tensor quant_matmul(const torch::Tensor& input,

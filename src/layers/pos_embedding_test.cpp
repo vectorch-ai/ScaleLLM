@@ -76,14 +76,14 @@ TEST(RotaryEmbeddingTest, Interleaved) {
   const int64_t max_position_embeddings = 128;
   torch::ScalarType dtype(torch::kFloat);
   torch::Device device(torch::kCPU);
+  const auto options = torch::dtype(dtype).device(device);
 
   RotaryEmbeddingGeneric rotary_embedding(head_dim,
                                           max_position_embeddings,
                                           /*scaling_factor*/ 0.0f,
                                           /*theta=*/10000.0f,
                                           /*interleaved=*/true,
-                                          dtype,
-                                          device);
+                                          options);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});
@@ -120,13 +120,13 @@ TEST(RotaryEmbeddingTest, HalfRotated) {
   const int64_t max_position_embeddings = 128;
   torch::ScalarType dtype(torch::kFloat);
   torch::Device device(torch::kCPU);
+  const auto options = torch::dtype(dtype).device(device);
   RotaryEmbeddingGeneric rotary_embedding(head_dim,
                                           max_position_embeddings,
                                           /*scaling_factor*/ 0.0f,
                                           /*theta=*/10000.0f,
                                           /*interleaved=*/false,
-                                          dtype,
-                                          device);
+                                          options);
 
   torch::Tensor query = torch::rand({num_tokens, n_heads, head_dim});
   torch::Tensor key = torch::rand({num_tokens, n_heads, head_dim});

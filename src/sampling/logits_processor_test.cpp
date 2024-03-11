@@ -12,7 +12,7 @@ namespace llm {
 torch::Tensor unique_randint(int64_t low,
                              int64_t high,
                              at::IntArrayRef size,
-                             at::TensorOptions options) {
+                             const at::TensorOptions& options) {
   auto tensor = torch::empty(size, options);
   for (int64_t i = 0; i < size[0]; ++i) {
     auto range_tensor = torch::arange(low, high, options);
@@ -30,13 +30,13 @@ TEST(LogitsProcessorTest, Temperature) {
   // Test TemperatureLogitsProcessor
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
+  auto options = torch::dtype(dtype).device(device);
   const std::vector<float> temperatures = {0.5, 1.5};
-  TemperatureLogitsProcessor processor(temperatures, dtype, device);
+  TemperatureLogitsProcessor processor(temperatures, options);
 
   int64_t batch_size = 2;
   int64_t vocab_size = 32000;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
   // calculate desired logits one by one
   auto desired_logits = logits.clone();
   for (int i = 0; i < batch_size; ++i) {
@@ -55,14 +55,13 @@ TEST(LogitsProcessorTest, TemperatureKernel) {
   // Test TemperatureLogitsProcessor
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
-  const auto temperatures = torch::tensor(std::vector<float>{0.5, 1.5},
-                                          torch::dtype(dtype).device(device))
-                                .unsqueeze(1);
+  auto options = torch::dtype(dtype).device(device);
+  const auto temperatures =
+      torch::tensor(std::vector<float>{0.5, 1.5}, options).unsqueeze(1);
 
   int64_t batch_size = 2;
   int64_t vocab_size = 32000;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
 
   torch::Tensor token_ids;
   torch::Tensor token_counts;
@@ -81,16 +80,16 @@ TEST(LogitsProcessorTest, FrequencyPresencePenalty) {
   // Test FrequencyPresencePenaltyLogitsProcessor
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
+  auto options = torch::dtype(dtype).device(device);
   std::vector<float> frequency_penalties = {0.01, 0.02};
   std::vector<float> presence_penalties = {0.1, 0.2};
   FrequencyPresencePenaltyLogitsProcessor processor(
-      frequency_penalties, presence_penalties, dtype, device);
+      frequency_penalties, presence_penalties, options);
 
   int64_t batch_size = 2;
   int64_t max_seq_len = 1023;
   int64_t vocab_size = 32000;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
   const torch::Tensor token_ids = unique_randint(
       /*low=*/1,
       /*high=*/vocab_size,
@@ -125,20 +124,16 @@ TEST(LogitsProcessorTest, FrequencyPresencePenaltyKernel) {
   // Test FrequencyPresencePenaltyLogitsProcessor
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
+  auto options = torch::dtype(dtype).device(device);
   const auto frequency_penalties =
-      torch::tensor(std::vector<float>{0.01, 0.02},
-                    torch::dtype(dtype).device(device))
-          .unsqueeze(1);
+      torch::tensor(std::vector<float>{0.01, 0.02}, options).unsqueeze(1);
   const auto presence_penalties =
-      torch::tensor(std::vector<float>{0.1, 0.2},
-                    torch::dtype(dtype).device(device))
-          .unsqueeze(1);
+      torch::tensor(std::vector<float>{0.1, 0.2}, options).unsqueeze(1);
 
   int32_t batch_size = 2;
   int32_t max_seq_len = 1023;
   int32_t vocab_size = 32000;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
   const torch::Tensor token_ids = unique_randint(
       /*low=*/1,
       /*high=*/vocab_size,
@@ -178,15 +173,14 @@ TEST(LogitsProcessorTest, RepetitionPenalty) {
   // Test RepetitionPenaltyLogitsProcessor
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
+  auto options = torch::dtype(dtype).device(device);
   const std::vector<float> repetition_penalties = {1.0, 2.0};
-  RepetitionPenaltyLogitsProcessor processor(
-      repetition_penalties, dtype, device);
+  RepetitionPenaltyLogitsProcessor processor(repetition_penalties, options);
 
   int64_t batch_size = 2;
   int64_t max_seq_len = 1023;
   int64_t vocab_size = 32000;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
   const torch::Tensor token_ids = unique_randint(
       /*low=*/1,
       /*high=*/vocab_size,
@@ -218,16 +212,14 @@ TEST(LogitsProcessorTest, RepetitionPenaltyKernel) {
   // Test RepetitionPenaltyLogitsProcessor
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
+  auto options = torch::dtype(dtype).device(device);
   const auto repetition_penalties =
-      torch::tensor(std::vector<float>{1.0, 2.0},
-                    torch::dtype(dtype).device(device))
-          .unsqueeze(1);
+      torch::tensor(std::vector<float>{1.0, 2.0}, options).unsqueeze(1);
 
   int32_t batch_size = 2;
   int32_t max_seq_len = 1023;
   int32_t vocab_size = 32000;
-  const auto logits = torch::randn({batch_size, vocab_size},
-                                   torch::dtype(dtype).device(device));
+  const auto logits = torch::randn({batch_size, vocab_size}, options);
   const torch::Tensor token_ids = unique_randint(
       /*low=*/1,
       /*high=*/vocab_size,

@@ -23,9 +23,8 @@ class MPTMLPImpl : public torch::nn::Module {
   MPTMLPImpl(const ModelArgs& args,
              const QuantArgs& quant_args,
              const ParallelArgs& parallel_args,
-             torch::ScalarType dtype,
-             const torch::Device& device) {
-    act_ = Activation::get_act_func("gelu", device);
+             const torch::TensorOptions& options) {
+    act_ = Activation::get_act_func("gelu", options.device());
     CHECK(act_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
@@ -39,8 +38,7 @@ class MPTMLPImpl : public torch::nn::Module {
                                                     /*gather_output=*/false,
                                                     quant_args,
                                                     parallel_args,
-                                                    dtype,
-                                                    device));
+                                                    options));
     down_proj_ =
         register_module("down_proj",
                         RowParallelLinear(intermediate_size,
@@ -49,8 +47,7 @@ class MPTMLPImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -83,8 +80,7 @@ class MPTAttentionImpl : public torch::nn::Module {
   MPTAttentionImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   torch::ScalarType dtype,
-                   const torch::Device& device,
+                   const torch::TensorOptions& options,
                    AttentionHandler* handler)
       : qk_layer_norm_(args.attn_qk_ln()),
         attn_qkv_clip_(args.attn_qkv_clip()) {
@@ -104,21 +100,18 @@ class MPTAttentionImpl : public torch::nn::Module {
                                                  /*gather_output=*/false,
                                                  quant_args,
                                                  parallel_args,
-                                                 dtype,
-                                                 device));
+                                                 options));
     if (args.attn_qk_ln()) {
       q_ln_ = register_module("q_ln",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
                                         /*bias=*/!args.no_bias(),
-                                        dtype,
-                                        device));
+                                        options));
       k_ln_ = register_module("k_ln",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
                                         /*bias=*/!args.no_bias(),
-                                        dtype,
-                                        device));
+                                        options));
     }
 
     out_proj_ =
@@ -129,8 +122,7 @@ class MPTAttentionImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
 
     CHECK(args.attn_alibi()) << "only support alibi attention";
 
@@ -243,27 +235,24 @@ class MPTBlockImpl : public torch::nn::Module {
   MPTBlockImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
-               torch::ScalarType dtype,
-               const torch::Device& device,
+               const torch::TensorOptions& options,
                AttentionHandler* handler) {
     // register submodules
     attn_ = register_module(
         "attn",
-        MPTAttention(args, quant_args, parallel_args, dtype, device, handler));
+        MPTAttention(args, quant_args, parallel_args, options, handler));
     norm_1_ = register_module("norm_1",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
                                         /*bias=*/!args.no_bias(),
-                                        dtype,
-                                        device));
+                                        options));
     norm_2_ = register_module("norm_2",
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
                                         /*bias=*/!args.no_bias(),
-                                        dtype,
-                                        device));
-    ffn_ = register_module(
-        "ffn", MPTMLP(args, quant_args, parallel_args, dtype, device));
+                                        options));
+    ffn_ = register_module("ffn",
+                           MPTMLP(args, quant_args, parallel_args, options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -306,27 +295,24 @@ class MPTModelImpl : public torch::nn::Module {
   MPTModelImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
-               torch::ScalarType dtype,
-               const torch::Device& device) {
+               const torch::TensorOptions& options) {
     // register submodules
-    wte_ = register_module("wte",
-                           ParallelEmbedding(args.vocab_size(),
-                                             args.hidden_size(),
-                                             parallel_args,
-                                             dtype,
-                                             device));
+    wte_ = register_module(
+        "wte",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
     // calculate alibi_slopes
     torch::Tensor alibi_slopes = prepare_alibi_slopes(
         args.n_heads(), args.alibi_bias_max(), parallel_args);
-    handler_ =
-        AttentionHandler::create_handler_with_alibi(args, device, alibi_slopes);
+    handler_ = AttentionHandler::create_handler_with_alibi(
+        args, alibi_slopes, options);
 
     blocks_ = register_module("blocks", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = MPTBlock(
-          args, quant_args, parallel_args, dtype, device, handler_.get());
+      auto block =
+          MPTBlock(args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -334,8 +320,7 @@ class MPTModelImpl : public torch::nn::Module {
                               LayerNorm(args.hidden_size(),
                                         args.layer_norm_eps(),
                                         /*bias=*/!args.no_bias(),
-                                        dtype,
-                                        device));
+                                        options));
   }
 
   // tokens: [num_tokens]
@@ -413,12 +398,10 @@ class MPTForCausalLMImpl : public torch::nn::Module {
   MPTForCausalLMImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
-                     torch::ScalarType dtype,
-                     const torch::Device& device) {
+                     const torch::TensorOptions& options) {
     // register submodules
     transformer_ = register_module(
-        "transformer",
-        MPTModel(args, quant_args, parallel_args, dtype, device));
+        "transformer", MPTModel(args, quant_args, parallel_args, options));
 
     // TODO: share weights between wte and lm_head to save memory
     lm_head_ = register_module("wte",
@@ -427,8 +410,7 @@ class MPTForCausalLMImpl : public torch::nn::Module {
                                                     /*bias=*/!args.no_bias(),
                                                     /*gather_output=*/true,
                                                     parallel_args,
-                                                    dtype,
-                                                    device));
+                                                    options));
   }
 
   // tokens: [num_tokens]

@@ -122,8 +122,7 @@ RefHandler::RefHandler(float scale,
                        float rope_scaling,
                        float rope_theta,
                        bool interleaved,
-                       torch::ScalarType dtype,
-                       const torch::Device& device)
+                       const torch::TensorOptions& options)
     : scale_(scale) {
   // register rotary positional embedding
   pos_emb_ = RotaryEmbedding(rotary_dim,
@@ -131,8 +130,7 @@ RefHandler::RefHandler(float scale,
                              rope_scaling,
                              rope_theta,
                              interleaved,
-                             dtype,
-                             device);
+                             options);
 }
 
 RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)

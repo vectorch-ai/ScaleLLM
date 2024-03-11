@@ -1,5 +1,6 @@
 #pragma once
 
+#include <c10/core/TensorOptions.h>
 #include <gflags/gflags.h>
 #include <torch/torch.h>
 
@@ -55,22 +56,21 @@ class AttentionHandler {
   // create an attention handler
   static std::unique_ptr<AttentionHandler> create_handler(
       const ModelArgs& args,
-      const torch::Device& device) {
-    return create_handler_with_alibi(args, device, torch::nullopt);
+      const torch::TensorOptions& options) {
+    return create_handler_with_alibi(args, torch::nullopt, options);
   }
 
   // create an attention handler with alibi slopes
   static std::unique_ptr<AttentionHandler> create_handler_with_alibi(
       const ModelArgs& args,
-      const torch::Device& device,
-      torch::optional<torch::Tensor> alibi_slopes);
+      torch::optional<torch::Tensor> alibi_slopes,
+      const torch::TensorOptions& options);
 
   // create an attention handler with ROPE
   static std::unique_ptr<AttentionHandler> create_handler_with_rope(
       const ModelArgs& args,
       bool interleaved,
-      torch::ScalarType dtype,
-      const torch::Device& device);
+      const torch::TensorOptions& options);
 };
 
 }  // namespace llm

@@ -19,14 +19,12 @@ torch::Tensor multinomial_sample(const torch::Tensor& probs) {
 }  // namespace
 
 Sampler::Sampler(const SamplingParameters& params,
-                 torch::ScalarType dtype,
-                 const torch::Device& device) {
+                 const torch::TensorOptions& options) {
   // initialize top_p if any of the values are not 1.0
   if (std::any_of(params.top_p.begin(), params.top_p.end(), [](float t) {
         return t != 1.0;
       })) {
-    top_p_ = torch::tensor(params.top_p, torch::dtype(dtype).device(device))
-                 .unsqueeze(1);
+    top_p_ = torch::tensor(params.top_p, options).unsqueeze(1);
   }
 
   // initialize top_k if any of the values are not 0
@@ -34,8 +32,7 @@ Sampler::Sampler(const SamplingParameters& params,
         return t != 0;
       })) {
     top_k_ =
-        torch::tensor(params.top_k, torch::dtype(torch::kLong).device(device))
-            .unsqueeze(1);
+        torch::tensor(params.top_k, options.dtype(torch::kLong)).unsqueeze(1);
     // Replace 0 with max_value to disable top_k
     const auto max_value = std::numeric_limits<int64_t>::max();
     top_k_ = torch::where(top_k_ == 0, torch::tensor(max_value), top_k_);

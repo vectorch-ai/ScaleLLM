@@ -1,4 +1,5 @@
 #pragma once
+#include <c10/core/TensorOptions.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
@@ -10,8 +11,7 @@ namespace llm {
 class Sampler final {
  public:
   Sampler(const SamplingParameters& params,
-          torch::ScalarType dtype,
-          const torch::Device& device);
+          const torch::TensorOptions& options);
 
   torch::Tensor forward(const torch::Tensor& logits) const;
 

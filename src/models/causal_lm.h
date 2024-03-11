@@ -4,12 +4,12 @@
 
 #include <vector>
 
-#include "model_args.h"
-#include "quantization/quant_args.h"
 #include "input_parameters.h"
 #include "memory/kv_cache.h"
+#include "model_args.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
+#include "quantization/quant_args.h"
 
 namespace llm {
 
@@ -34,8 +34,7 @@ class CausalLM : public torch::nn::Module {
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
                                           const QuantArgs& quant_args,
                                           const ParallelArgs& parallel_args,
-                                          torch::ScalarType dtype,
-                                          const torch::Device& device);
+                                          const torch::TensorOptions& options);
 };
 
 // an template class to hold different models without using virtual functions.

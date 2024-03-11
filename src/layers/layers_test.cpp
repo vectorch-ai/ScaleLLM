@@ -22,14 +22,14 @@ TEST(LayersTest, TestLoadStateDict) {
 
   torch::Device device(torch::kCPU);
   torch::ScalarType dtype(torch::kFloat);
+  const auto options = torch::dtype(dtype).device(device);
   ParallelArgs parallel_args(0, 1, nullptr);
   ColumnParallelLinearImpl linear(in_features,
                                   out_features,
                                   /*bias=*/false,
                                   /*gather_output=*/false,
                                   parallel_args,
-                                  dtype,
-                                  device);
+                                  options);
   std::unordered_map<std::string, torch::Tensor> state_dict_data;
   // Allocate transposed weight matrix
   state_dict_data["weight"] = torch::randn({out_features, in_features});

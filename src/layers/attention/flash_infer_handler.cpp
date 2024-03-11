@@ -13,8 +13,7 @@ FlashInferHandler::FlashInferHandler(float scale,
                                      float rope_scaling,
                                      float rope_theta,
                                      bool interleaved,
-                                     torch::ScalarType dtype,
-                                     const torch::Device& device) {
+                                     const torch::TensorOptions& options) {
   LOG(FATAL) << "Not implemented yet";
 }
 

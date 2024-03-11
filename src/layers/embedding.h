@@ -7,7 +7,6 @@
 
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
-#include "models/model_args.h"
 
 namespace llm {
 
@@ -19,14 +18,12 @@ class EmbeddingImpl : public torch::nn::Module {
  public:
   EmbeddingImpl(int64_t num_embeddings,
                 int64_t embedding_dim,
-                torch::ScalarType dtype,
-                const torch::Device& device) {
+                const torch::TensorOptions& options) {
     // register the weight parameter
-    weight_ =
-        register_parameter("weight",
-                           torch::empty({num_embeddings, embedding_dim},
-                                        torch::dtype(dtype).device(device)),
-                           /*requires_grad=*/false);
+    weight_ = register_parameter(
+        "weight",
+        torch::empty({num_embeddings, embedding_dim}, options),
+        /*requires_grad=*/false);
   }
 
   // The input to the module is a list of indices, and the output is the
@@ -74,8 +71,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
   ParallelEmbeddingImpl(int64_t num_embeddings,
                         int64_t embedding_dim,
                         const ParallelArgs& parallel_args,
-                        torch::ScalarType dtype,
-                        const torch::Device& device)
+                        const torch::TensorOptions& options)
       : parallel_args_(parallel_args) {
     const auto world_size = parallel_args_.world_size();
     CHECK(embedding_dim % world_size == 0)
@@ -86,8 +82,7 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings, embedding_dim_per_partition},
-                     torch::dtype(dtype).device(device)),
+        torch::empty({num_embeddings, embedding_dim_per_partition}, options),
         /*requires_grad=*/false);
   }
 
@@ -147,8 +142,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
   VocabParallelEmbeddingImpl(int64_t num_embeddings,
                              int64_t embedding_dim,
                              const ParallelArgs& parallel_args,
-                             torch::ScalarType dtype,
-                             const torch::Device& device)
+                             const torch::TensorOptions& options)
       : parallel_args_(parallel_args) {
     const int64_t num_embeddings_per_partition =
         num_embeddings / parallel_args_.world_size();
@@ -159,7 +153,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
     weight_ = register_parameter(
         "weight",
         torch::empty({num_embeddings_per_partition, embedding_dim},
-                     torch::dtype(dtype).device(device)),
+                     options),
         /*requires_grad=*/false);
   }
 

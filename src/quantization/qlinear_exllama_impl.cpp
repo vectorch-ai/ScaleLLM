@@ -32,8 +32,7 @@ ColumnParallelQLinearExllamaImpl::ColumnParallelQLinearExllamaImpl(
     const QuantArgs& quant_args,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
                                 bias,
@@ -41,8 +40,7 @@ ColumnParallelQLinearExllamaImpl::ColumnParallelQLinearExllamaImpl(
                                 /*qweight_pack_dim=*/0,
                                 gather_output,
                                 parallel_args,
-                                dtype,
-                                device) {
+                                options) {
   const auto bits = quant_args.bits();
   CHECK(bits == 4) << "Only 4 bits are supported";
   const auto group_size =
@@ -56,7 +54,7 @@ ColumnParallelQLinearExllamaImpl::ColumnParallelQLinearExllamaImpl(
   }
   g_idx_ = register_buffer(
       "g_idx",
-      torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
+      torch::tensor(g_idx_data, options.dtype(torch::kInt32)));
 }
 
 ColumnParallelQLinearExllamaImpl::~ColumnParallelQLinearExllamaImpl() {
@@ -89,8 +87,7 @@ RowParallelQLinearExllamaImpl::RowParallelQLinearExllamaImpl(
     const QuantArgs& quant_args,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : RowParallelQLinearImpl(in_features,
                              out_features,
                              bias,
@@ -98,8 +95,7 @@ RowParallelQLinearExllamaImpl::RowParallelQLinearExllamaImpl(
                              /*qweight_pack_dim=*/0,
                              input_is_parallelized,
                              parallel_args,
-                             dtype,
-                             device) {
+                             options) {
   const auto bits = quant_args.bits();
   CHECK(bits == 4) << "Only 4 bits are supported";
   const auto group_size =
@@ -112,7 +108,7 @@ RowParallelQLinearExllamaImpl::RowParallelQLinearExllamaImpl(
   }
   g_idx_ = register_buffer(
       "g_idx",
-      torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
+      torch::tensor(g_idx_data, options.dtype(torch::kInt32)));
 }
 
 RowParallelQLinearExllamaImpl::~RowParallelQLinearExllamaImpl() {

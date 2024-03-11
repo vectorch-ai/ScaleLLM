@@ -22,12 +22,11 @@ class GPTJMLPImpl : public torch::nn::Module {
   GPTJMLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
               const ParallelArgs& parallel_args,
-              torch::ScalarType dtype,
-              const torch::Device& device) {
+              const torch::TensorOptions& options) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_ = Activation::get_act_func(args.hidden_act(), device);
+    act_ = Activation::get_act_func(args.hidden_act(), options.device());
     CHECK(act_ != nullptr);
 
     // register the weight parameter
@@ -38,8 +37,7 @@ class GPTJMLPImpl : public torch::nn::Module {
                                                   /*gather_output=*/false,
                                                   quant_args,
                                                   parallel_args,
-                                                  dtype,
-                                                  device));
+                                                  options));
     fc_out_ = register_module("fc_out",
                               RowParallelLinear(intermediate_size,
                                                 hidden_size,
@@ -47,8 +45,7 @@ class GPTJMLPImpl : public torch::nn::Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                                dtype,
-                                                device));
+                                                options));
   }
 
   torch::Tensor forward(torch::Tensor x) { return fc_out_(act_(fc_in_(x))); }
@@ -79,8 +76,7 @@ class GPTJAttentionImpl : public torch::nn::Module {
   GPTJAttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
-                    torch::ScalarType dtype,
-                    const torch::Device& device,
+                    const torch::TensorOptions& options,
                     AttentionHandler* handler) {
     const int64_t n_local_heads = args.n_heads() / parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
@@ -94,8 +90,7 @@ class GPTJAttentionImpl : public torch::nn::Module {
                                                      /*gather_output=*/false,
                                                      quant_args,
                                                      parallel_args,
-                                                     dtype,
-                                                     device));
+                                                     options));
 
     out_proj_ =
         register_module("out_proj",
@@ -105,8 +100,7 @@ class GPTJAttentionImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
 
     // initialize attention
     atten_ = register_module(
@@ -154,21 +148,19 @@ class GPTJBlockImpl : public torch::nn::Module {
   GPTJBlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
-                torch::ScalarType dtype,
-                const torch::Device& device,
+                const torch::TensorOptions& options,
                 AttentionHandler* handler) {
     // register submodules
     attn_ = register_module(
         "attn",
-        GPTJAttention(args, quant_args, parallel_args, dtype, device, handler));
-    mlp_ = register_module(
-        "mlp", GPTJMLP(args, quant_args, parallel_args, dtype, device));
+        GPTJAttention(args, quant_args, parallel_args, options, handler));
+    mlp_ = register_module("mlp",
+                           GPTJMLP(args, quant_args, parallel_args, options));
     ln_1_ = register_module("ln_1",
                             LayerNorm(args.hidden_size(),
                                       args.layer_norm_eps(),
                                       /*bias=*/true,
-                                      dtype,
-                                      device));
+                                      options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -211,24 +203,21 @@ class GPTJModelImpl : public torch::nn::Module {
   GPTJModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
-                torch::ScalarType dtype,
-                const torch::Device& device) {
+                const torch::TensorOptions& options) {
     // register submodules
-    wte_ = register_module("wte",
-                           ParallelEmbedding(args.vocab_size(),
-                                             args.hidden_size(),
-                                             parallel_args,
-                                             dtype,
-                                             device));
+    wte_ = register_module(
+        "wte",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
     handler_ = AttentionHandler::create_handler_with_rope(
-        args, /*interleaved=*/true, dtype, device);
+        args, /*interleaved=*/true, options);
 
     blocks_ = register_module("h", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = GPTJBlock(
-          args, quant_args, parallel_args, dtype, device, handler_.get());
+      auto block =
+          GPTJBlock(args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -236,8 +225,7 @@ class GPTJModelImpl : public torch::nn::Module {
                             LayerNorm(args.hidden_size(),
                                       args.layer_norm_eps(),
                                       /*bias=*/true,
-                                      dtype,
-                                      device));
+                                      options));
   }
 
   // tokens: [num_tokens]
@@ -296,12 +284,10 @@ class GPTJForCausalLMImpl : public torch::nn::Module {
   GPTJForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
-                      torch::ScalarType dtype,
-                      const torch::Device& device) {
+                      const torch::TensorOptions& options) {
     // register submodules
     transformer_ = register_module(
-        "transformer",
-        GPTJModel(args, quant_args, parallel_args, dtype, device));
+        "transformer", GPTJModel(args, quant_args, parallel_args, options));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -309,8 +295,7 @@ class GPTJForCausalLMImpl : public torch::nn::Module {
                                                     /*bias=*/true,
                                                     /*gather_output=*/true,
                                                     parallel_args,
-                                                    dtype,
-                                                    device));
+                                                    options));
   }
 
   // tokens: [num_tokens]

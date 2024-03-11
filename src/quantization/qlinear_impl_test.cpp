@@ -3,7 +3,6 @@
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"
-#include "models/model_args.h"
 #include "qlinear_gptq_impl.h"
 
 namespace llm {
@@ -29,14 +28,14 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
   QuantArgs quant_args;
   quant_args.bits(4);
   quant_args.group_size(128);
+  const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
   ColumnParallelQLinearGPTQImpl qlinear(in_features,
                                         out_features,
                                         /*bias=*/false,
                                         quant_args,
                                         /*gather_output=*/false,
                                         ParallelArgs(0, 1, nullptr),
-                                        /*dtype=*/torch::kHalf,
-                                        /*device=*/torch::kCUDA);
+                                        options);
   auto state_dict = StateDict::load_safetensors(
       "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
@@ -48,8 +47,7 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
   qlinear.load_state_dict(*state_dict);
   qlinear.verify_loaded_weights();
 
-  auto input = torch::rand({40960, in_features},
-                           torch::dtype(torch::kHalf).device(torch::kCUDA));
+  auto input = torch::rand({40960, in_features}, options);
   auto output = qlinear.forward(input);
   auto desired_output = torch::matmul(input, weights);
   EXPECT_TRUE(torch::allclose(output,
@@ -64,14 +62,14 @@ TEST(QlinearTest, RowParallelQuantLinear) {
   QuantArgs quant_args;
   quant_args.bits(4);
   quant_args.group_size(128);
+  const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
   RowParallelQLinearGPTQImpl qlinear(in_features,
                                      out_features,
                                      /*bias=*/false,
                                      quant_args,
                                      /*input_is_parallelized=*/true,
                                      ParallelArgs(0, 1, nullptr),
-                                     /*dtype=*/torch::kHalf,
-                                     /*device=*/torch::kCUDA);
+                                     options);
   auto state_dict = StateDict::load_safetensors(
       "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
@@ -83,8 +81,7 @@ TEST(QlinearTest, RowParallelQuantLinear) {
   qlinear.load_state_dict(*state_dict);
   qlinear.verify_loaded_weights();
 
-  auto input = torch::rand({40960, in_features},
-                           torch::dtype(torch::kHalf).device(torch::kCUDA));
+  auto input = torch::rand({40960, in_features}, options);
   auto output = qlinear.forward(input);
   auto desired_output = torch::matmul(input, weights);
   EXPECT_TRUE(torch::allclose(output,

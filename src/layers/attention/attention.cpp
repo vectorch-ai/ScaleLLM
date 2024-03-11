@@ -2,10 +2,7 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
-
-#include "kernels/flash_attn/flash_api.h"
 
 namespace llm {
 AttentionImpl::AttentionImpl(int64_t n_heads,
