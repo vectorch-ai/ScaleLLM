@@ -105,9 +105,12 @@ OutputParameters Worker::execute_model(
   flatten_positions = flatten_positions.to(device_);
   InputParameters d_params = params.to(device_);
 
-  // call model forward and return the result
-  auto logits =
+  // call model forward to get hidden states
+  auto hidden_states =
       model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
+
+  // call model logits to get logits
+  auto logits = model_->logits(hidden_states, d_params.last_token_idxes);
 
   // waits for all kernels in all streams to complete.
   torch::cuda::synchronize();
@@ -143,8 +146,12 @@ OutputParameters Worker::validate(torch::Tensor flatten_tokens,
   flatten_positions = flatten_positions.to(device_);
   InputParameters d_params = params.to(device_);
 
-  auto logits =
+  // call model forward to get hidden states
+  auto hidden_states =
       model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
+
+  // call model logits to get logits
+  auto logits = model_->logits(hidden_states, d_params.last_token_idxes);
 
   const auto options = torch::dtype(dtype_).device(device_);
   auto logits_processor = LogitsProcessor::create(sampling_params, options);
