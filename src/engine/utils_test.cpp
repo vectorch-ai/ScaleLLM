@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-#include "request/sampling_parameter.h"
+#include "request/sampling_parameters.h"
 #include "request/stopping_criteria.h"
 
 namespace llm {
@@ -120,17 +120,17 @@ TEST(UtilsTest, Basic) {
     /*seq2*/ 100,  8,  6,  4,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
     /*seq3*/ 200,  19, 17, 1,  2,  15, 3,  4,  5,  6,  7,  8,  9, 10, 11, 13
     };
-  EXPECT_TRUE(equal(input_params.token_ids, unique_ids));
+  EXPECT_TRUE(equal(sampling_params.token_ids, unique_ids));
 
   const std::vector<int32_t> unique_counts = {
     /*seq1*/  1,  1,  1,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  
     /*seq2*/  1,  1,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  
     /*seq3*/  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1
   };
-  EXPECT_TRUE(equal(input_params.token_counts, unique_counts));
+  EXPECT_TRUE(equal(sampling_params.token_counts, unique_counts));
 
   const std::vector<int32_t> token_ids_lens = {6, 5, 16};
-  EXPECT_TRUE(equal(input_params.token_ids_lens, token_ids_lens));
+  EXPECT_TRUE(equal(sampling_params.token_ids_lens, token_ids_lens));
 
   // clang-format on
 }

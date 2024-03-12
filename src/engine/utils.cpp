@@ -77,12 +77,8 @@ void Utils::prepare_profile_inputs(int64_t max_num_tokens,
   input_params->kv_max_seq_len = max_seq_len;
   input_params->q_cu_seq_lens = cu_seq_lens;
   input_params->kv_cu_seq_lens = cu_seq_lens;
-  input_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt32);
 
-  // following parameters can be empty since we don't do sampling
-  // input_params->token_ids = torch::empty({0, 0}, torch::kInt64);
-  // input_params->token_counts = torch::empty({0, 0}, torch::kInt);
-  // input_params->token_ids_lens = torch::empty({0}, torch::kInt);
+  // following parameters can be empty since we don't use kv-cache
   // input_params->new_cache_slots = torch::empty({0}, torch::kInt);
   // input_params->block_tables = torch::empty({0, 0}, torch::kInt);
 }
@@ -194,10 +190,11 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   input_params->new_cache_slots =
       torch::tensor(new_token_slot_ids, torch::kInt);
   input_params->block_tables = block_tables;
-  input_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt);
-  input_params->token_ids = token_ids;
-  input_params->token_counts = token_counts;
-  input_params->token_ids_lens = torch::tensor(token_ids_lens_vec, torch::kInt);
+  
+  sampling_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt);
+  sampling_params->token_ids = token_ids;
+  sampling_params->token_counts = token_counts;
+  sampling_params->token_ids_lens = torch::tensor(token_ids_lens_vec, torch::kInt);
 }
 
 void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,

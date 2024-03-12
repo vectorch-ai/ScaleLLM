@@ -10,7 +10,7 @@
 #include <string>
 
 #include "engine/engine.h"
-#include "request/sampling_parameter.h"
+#include "request/sampling_parameters.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 
