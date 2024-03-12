@@ -62,6 +62,8 @@ class Engine {
 
   bool init_kv_cache(int64_t cache_size_in_bytes);
 
+  bool warmup_model();
+
   // returns the memory size for the kv cache
   int64_t profile_memory_for_kv_cache();
 

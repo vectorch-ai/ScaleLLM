@@ -22,6 +22,7 @@ DEFINE_int64(max_cache_size, 10 * GB, "max cache size in bytes, default 10GB");
 DEFINE_double(max_memory_utilization,
               0.9,
               "maximum memory utilization allowed, default 0.9");
+DEFINE_bool(enable_cudagraph, false, "Enable CUDAGraph to optimize model execution.");
 
 // following two parameters are used for profiling and warmup the engine.
 // the profiling result would be used to determine kv cache size.
@@ -111,6 +112,10 @@ bool Engine::init(const std::string& model_weights_path) {
     LOG(ERROR) << "Failed to initialize kv cache";
     return false;
   }
+  if (!warmup_model()) {
+    LOG(ERROR) << "Failed to warmup model.";
+    return false;
+  }
   return true;
 }
 
@@ -193,6 +198,29 @@ bool Engine::init_model(const std::string& model_weights_path) {
   // verify the weights are loaded correctly
   for (const auto& worker : workers_) {
     worker->verify_loaded_weights();
+  }
+  return true;
+}
+
+bool Engine::warmup_model() {
+  if (workers_.size() == 1) {
+    // only one worker, call blocking forward
+    return workers_[0]->warmup_model(FLAGS_enable_cudagraph);
+  }
+
+  // multiple workers, call async forward
+  std::vector<folly::SemiFuture<bool>> futures;
+  futures.reserve(workers_.size());
+  for (auto& worker : workers_) {
+    futures.emplace_back(
+        worker->warmup_model_async(FLAGS_enable_cudagraph));
+  }
+  // wait for the all future to complete
+  auto results = folly::collectAll(futures).get();
+  for (const auto& result : results) {
+    if (!result.value()) {
+      return false;
+    }
   }
   return true;
 }

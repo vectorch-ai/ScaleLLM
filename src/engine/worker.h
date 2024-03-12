@@ -29,6 +29,7 @@ struct OutputParameters {
   // torch::Tensor next_logprob;
 };
 
+class CudaGraphRunner;
 class Worker final {
  public:
   Worker(const ParallelArgs& parallel_args, const torch::Device& device);
@@ -62,6 +63,8 @@ class Worker final {
       torch::Tensor flatten_positions,  // [num_tokens]
       const InputParameters& params,
       const SamplingParameters& sampling_params);
+
+  bool warmup_model(bool enable_cudagraph);
 
   // TODO
   OutputParameters validate(torch::Tensor flatten_tokens,
@@ -102,9 +105,15 @@ class Worker final {
       const InputParameters& params,
       const SamplingParameters& sampling_params);
 
+  folly::SemiFuture<bool> warmup_model_async(
+      bool enable_cudagraph);
+
   const torch::Device& device() const { return device_; }
 
  private:
+  // capture cuda graph
+  void capture_graph();
+
   // working thread
   ThreadPool threadpool_;
 
@@ -125,6 +134,9 @@ class Worker final {
 
   // model
   std::unique_ptr<CausalLM> model_;
+
+  // graph runner
+  std::map<int64_t, CudaGraphRunner*> graph_runners_;
 };
 
 }  // namespace llm

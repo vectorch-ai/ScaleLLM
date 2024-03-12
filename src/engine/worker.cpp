@@ -1,5 +1,6 @@
 #include "worker.h"
 
+#include <ATen/cuda/CUDAGraph.h>
 #include <c10/core/Device.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <folly/Unit.h>
@@ -11,6 +12,7 @@
 #include <utility>
 
 #include "common/threadpool.h"
+#include "engine/utils.h"
 #include "memory/kv_cache.h"
 #include "memory/memory.h"
 #include "model_loader/state_dict.h"
@@ -19,6 +21,77 @@
 #include "sampling/sampler.h"
 
 namespace llm {
+
+const static std::vector<int> BatchSizeForCudaGraph = {1, 2, 4, 8, 16, 24, 32, 40, 48,
+  56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192,
+  200, 208, 216, 224, 232, 240, 248, 256};
+constexpr int MaxBatchSizeForCudaGraph = 256;
+constexpr int64_t max_seq_len = 1024;
+
+class CudaGraphRunner {
+ public:
+  explicit CudaGraphRunner(CausalLM* model) : model_(model) {}
+  ~CudaGraphRunner() = default;
+
+  void capture(torch::Tensor flatten_tokens,
+               torch::Tensor flatten_positions,
+               const InputParameters& params,
+               std::vector<KVCache>& kv_cache) {
+    // run model once to avoid captured graph does not include initial benchmarking
+    model_->forward(flatten_tokens,
+                    flatten_positions,
+                    kv_cache,
+                    params);
+    torch::cuda::synchronize();
+
+    // create cudagraph and capture
+    graph_ = std::make_unique<at::cuda::CUDAGraph>();
+    // TODO: optimize could share memorypool between different CUDAGraph
+    graph_->capture_begin();
+    auto hidden_states = model_->forward(flatten_tokens,
+                                         flatten_positions,
+                                         kv_cache,
+                                         params);
+    graph_->capture_end();
+    torch::cuda::synchronize();
+
+    // save buffers
+    flatten_tokens_buffer_ = flatten_tokens;
+    flatten_positions_buffer_ = flatten_positions;
+    hidden_states_buffer_ = hidden_states;
+    new_cache_slots_buffer_ = params.new_cache_slots;
+    block_tables_buffer_ = params.block_tables;
+    q_cu_seq_lens_buffer_ = params.q_cu_seq_lens;
+    kv_cu_seq_lens_buffer_ = params.kv_cu_seq_lens;
+  }
+
+  torch::Tensor forward(torch::Tensor flatten_tokens,
+                        torch::Tensor flatten_positions,
+                        const InputParameters& params,
+                        std::vector<KVCache>& kv_cache) {
+    flatten_tokens_buffer_.copy_(flatten_tokens, false);
+    flatten_positions_buffer_.copy_(flatten_positions, false);
+    new_cache_slots_buffer_.copy_(params.new_cache_slots, false);
+    block_tables_buffer_.copy_(params.block_tables, false);
+    q_cu_seq_lens_buffer_.copy_(params.q_cu_seq_lens, false);
+    kv_cu_seq_lens_buffer_.copy_(params.kv_cu_seq_lens, false);
+    graph_->replay();
+    return hidden_states_buffer_;
+  }
+
+ private:
+  CausalLM* model_;
+  std::unique_ptr<at::cuda::CUDAGraph> graph_;
+  // inputs buffer
+  torch::Tensor flatten_tokens_buffer_;
+  torch::Tensor flatten_positions_buffer_;
+  torch::Tensor new_cache_slots_buffer_;
+  torch::Tensor block_tables_buffer_;
+  torch::Tensor q_cu_seq_lens_buffer_;
+  torch::Tensor kv_cu_seq_lens_buffer_;
+  // outputs buffer
+  torch::Tensor hidden_states_buffer_;
+};
 
 Worker::Worker(const ParallelArgs& parallel_args, const torch::Device& device)
     : parallel_args_(parallel_args), device_(device) {}
@@ -46,6 +119,14 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
     auto value_cache =
         torch::empty(kv_cache_shape, torch::dtype(dtype_).device(device_));
     kv_caches_.emplace_back(key_cache, value_cache);
+  }
+  return true;
+}
+
+bool Worker::warmup_model(bool enable_cudagraph) {
+  if (enable_cudagraph) {
+    LOG(INFO) << "CUDAGraph is enabled.";
+    capture_graph();
   }
   return true;
 }
@@ -263,6 +344,17 @@ folly::SemiFuture<bool> Worker::init_kv_cache_async(
   return future;
 }
 
+folly::SemiFuture<bool> Worker::warmup_model_async(bool enable_cudagraph) {
+  folly::Promise<bool> promise;
+  auto future = promise.getSemiFuture();
+  threadpool_.schedule(
+      [this, enable_cudagraph, promise = std::move(promise)]() mutable {
+        const bool success = this->warmup_model(enable_cudagraph);
+        promise.setValue(success);
+      });
+  return future;
+}
+
 folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
     const StateDict& state_dict) {
   folly::Promise<folly::Unit> promise;
@@ -274,6 +366,32 @@ folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
         promise.setValue();
       });
   return future;
+}
+
+// Only support decode in CUDAGraph
+void Worker::capture_graph() {
+  const int64_t max_seq_len = 1024; // TODO: need to optimize
+  for (auto batch_size : BatchSizeForCudaGraph) {
+    torch::Tensor flatten_token_ids;
+    torch::Tensor flatten_positions;
+    InputParameters input_params;
+    Utils::prepare_capture_inputs(max_seq_len,
+                                  batch_size,
+                                  &flatten_token_ids,
+                                  &flatten_positions,
+                                  &input_params);
+    auto graph_runner = new CudaGraphRunner(model_.get());
+    using namespace torch::indexing;
+    graph_runner->capture(
+        flatten_token_ids,
+        flatten_positions,
+        input_params,
+        // TODO: if use shared buffer, we need to share
+        // memory pool between different cudagraph
+        kv_caches_);
+    // TODO graph_memory_pool = graph_runner.graph.pool()
+    graph_runners_[batch_size] = graph_runner;
+  }
 }
 
 }  // namespace llm
