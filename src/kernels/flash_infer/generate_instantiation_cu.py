@@ -53,7 +53,7 @@ def generate_instantiation_cu(group_sizes, head_dims, enable_bf16, causal_option
         fname = f"paged_batch_prefill_group{group_size}_head{head_dim}_causal{causal}_fp16qk{allow_fp16_qk_reduction}_layout{layout}_rotary{rotary_mode}_{dtype}.cu"
         if not (root / prefix / fname).exists():
             with open(root / prefix / fname, "w") as f:
-                f.write('#include "../flashinfer_decl.h"\n\n')
+                f.write('#include "flashinfer_decl.h"\n\n')
                 f.write(f"#include <flashinfer.cuh>\n\n")
                 f.write(f"using namespace flashinfer;\n\n")
                 f.write(
@@ -72,7 +72,7 @@ def generate_instantiation_cu(group_sizes, head_dims, enable_bf16, causal_option
         # fname = f"ragged_batch_prefill_group{group_size}_head{head_dim}_causal{causal}_fp16qk{allow_fp16_qk_reduction}_layout{layout}_rotary{rotary_mode}_{dtype}.cu"
         # if not (root / prefix / fname).exists():
         #     with open(root / prefix / fname, "w") as f:
-        #         f.write('#include "../flashinfer_decl.h"\n\n')
+        #         f.write('#include "flashinfer_decl.h"\n\n')
         #         f.write(f"#include <flashinfer.cuh>\n\n")
         #         f.write(f"using namespace flashinfer;\n\n")
         #         f.write(
@@ -91,7 +91,7 @@ def generate_instantiation_cu(group_sizes, head_dims, enable_bf16, causal_option
         fname = f"single_prefill_group{group_size}_head{head_dim}_causal{causal}_fp16qk{allow_fp16_qk_reduction}_layout{layout}_rotary{rotary_mode}_{dtype}.cu"
         if not (root / prefix / fname).exists():
             with open(root / prefix / fname, "w") as f:
-                f.write('#include "../flashinfer_decl.h"\n\n')
+                f.write('#include "flashinfer_decl.h"\n\n')
                 f.write(f"#include <flashinfer.cuh>\n\n")
                 f.write(f"using namespace flashinfer;\n\n")
                 f.write(

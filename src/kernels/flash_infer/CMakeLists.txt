@@ -8,17 +8,19 @@ configure_file(
 
 # execute the script to generate the instantiation of the kernels
 execute_process(
-  COMMAND ${CMAKE_CURRENT_BINARY_DIR}/generate_instantiation_cu.py
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiation_cu.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 # globbing all generated files in sub directory "generated"
 file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/*.cu")
 
-
 cc_library(
   NAME 
-    flashinfer.kernels
+    flash_infer.kernels
+  HDRS
+    flashinfer_ops.h
+    flashinfer_decl.h
   SRCS
     single_decode.cu
     single_prefill.cu
@@ -26,9 +28,10 @@ cc_library(
     batch_prefill.cu
     cascade.cu
     page.cu
-    ${GENERATED_SRC_FILES}    
+    ${GENERATED_SRC_FILES}
   INCLUDES
     include
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
   DEFINES
     FLASHINFER_ENABLE_BF16
