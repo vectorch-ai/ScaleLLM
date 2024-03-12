@@ -23,6 +23,7 @@ cc_library(
     :pos_embedding
     :kernels
     :flash_attn.kernels
+    :flash_infer.kernels
     glog::glog
     gflags::gflags
     torch

@@ -15,7 +15,8 @@
  */
 #pragma once
 #include <torch/torch.h>
-#include <flashinfer/attention/handler.cuh>
+
+#include <flashinfer/handler.cuh>
 #include <flashinfer/layout.cuh>
 
 namespace flashinfer {
