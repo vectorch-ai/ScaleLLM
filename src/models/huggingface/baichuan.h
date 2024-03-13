@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
@@ -261,15 +262,18 @@ class BaichuanModelImpl : public torch::nn::Module {
         "embed_tokens",
         ParallelEmbedding(
             args.vocab_size(), args.hidden_size(), parallel_args, options));
-    if (baichuan_type == BaichuanType::Baichuan_7B &&
+    if (baichuan_type == BaichuanType::Baichuan_7B ||
         baichuan_type == BaichuanType::Baichuan2_7B) {
       handler_ = AttentionHandler::create_handler_with_rope(
-          args, /*interleaved=*/true, options);
+          args, /*interleaved=*/false, options);
+      LOG(INFO) << "Using rope attention handler";
     } else {
       const torch::Tensor alibi_slopes =
           prepare_alibi_slopes(args.n_heads(), parallel_args);
+
       handler_ = AttentionHandler::create_handler_with_alibi(
           args, alibi_slopes, options);
+      LOG(INFO) << "Using alibi attention handler";
     }
 
     blocks_ = register_module("layers", torch::nn::ModuleList());
@@ -386,15 +390,19 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
       // Baichuan2
       if (args.hidden_size() == 4096) {
         baichuan_type_ = BaichuanType::Baichuan2_7B;
+        LOG(INFO) << "Detected the model as Baichuan2 7B";
       } else {
         baichuan_type_ = BaichuanType::Baichuan2_13B;
+        LOG(INFO) << "Detected the model as Baichuan2 13B";
       }
     } else {
       // Baichuan
       if (args.hidden_size() == 4096) {
         baichuan_type_ = BaichuanType::Baichuan_7B;
+        LOG(INFO) << "Detected the model as Baichuan 7B";
       } else {
         baichuan_type_ = BaichuanType::Baichuan_13B;
+        LOG(INFO) << "Detected the model as Baichuan 13B";
       }
     }
     // register submodules
@@ -438,11 +446,17 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     model_->load_state_dict(state_dict.select("model."));
-    // lm_head_->load_state_dict(state_dict.select("lm_head."));
-    lm_head_->load_state_dict(
-        state_dict.select_with_transform("lm_head.", [](torch::Tensor tensor) {
-          return torch::nn::functional::normalize(tensor);
-        }));
+    if (baichuan_type_ == BaichuanType::Baichuan2_13B ||
+        baichuan_type_ == BaichuanType::Baichuan2_7B) {
+      // Baichuan2 normalizes the head weights:
+      // https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat/blob/main/modeling_baichuan.py#L508
+      lm_head_->load_state_dict(state_dict.select_with_transform(
+          "lm_head.", [](torch::Tensor tensor) {
+            return torch::nn::functional::normalize(tensor);
+          }));
+    } else {
+      lm_head_->load_state_dict(state_dict.select("lm_head."));
+    }
   }
 
   void verify_loaded_weights() const {
