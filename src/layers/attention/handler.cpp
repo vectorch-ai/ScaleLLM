@@ -26,6 +26,11 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_alibi(
   const int64_t head_dim = args.hidden_size() / args.n_heads();
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
+  if (alibi_slopes.has_value()) {
+    // move alibi slopes to the same device as the model
+    alibi_slopes = alibi_slopes.value().to(options.device());
+  }
+
   // check if the user specified the attention handler
   if (boost::iequals(FLAGS_attention_handler, "pytorch")) {
     return std::make_unique<RefHandler>(scale, alibi_slopes);
