@@ -12,7 +12,7 @@
 
 #include "common/time.h"
 #include "engine/engine.h"
-#include "request/sampling_parameter.h"
+#include "request/sampling_parameters.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 
@@ -74,9 +74,14 @@ class LLM {
       : sampling_param_(sp), stopping_criteria_(sc) {
     auto devices = parse_devices(device_str);
     engine_ = new llm::Engine(devices);
+
     CHECK(engine_->init(FLAGS_model_name_or_path));
     block_manager_ = engine_->block_manager();
     tokenizer_ = engine_->tokenizer();
+
+    const auto& args = engine_->model_args();
+    stopping_criteria_.eos_token_id = args.eos_token_id();
+    stopping_criteria_.stop_token_ids = args.stop_token_ids();
   }
 
   void generate(const std::vector<std::string>& batched_prompt) {
