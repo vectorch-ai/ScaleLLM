@@ -118,6 +118,7 @@ int main(int argc, char* argv[]) {
   CHECK(engine.init(model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
+  const auto& model_args = engine.model_args();
 
   llm::SamplingParameter sampling_param;
   sampling_param.temperature = FLAGS_temperature;
@@ -130,7 +131,8 @@ int main(int argc, char* argv[]) {
   llm::StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = FLAGS_max_seq_len;
   stopping_criteria.ignore_eos_token = false;
-  // stopping_criteria.eos_token_id = tokenizer->eos_id();
+  stopping_criteria.eos_token_id = model_args.eos_token_id();
+  stopping_criteria.stop_token_ids = model_args.stop_token_ids();
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
