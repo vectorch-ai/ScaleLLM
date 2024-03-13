@@ -51,8 +51,7 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
                   float scaling_factor,
                   float rope_theta,
                   bool interleaved,
-                  torch::ScalarType dtype,
-                  const torch::Device& device);
+                  const torch::TensorOptions& options);
 };
 
 // ============= Rotary positional embedding implementations =============
@@ -68,8 +67,7 @@ class RotaryEmbeddingGeneric : public RotaryEmbeddingImpl {
                          float scaling_factor,
                          float theta,
                          bool interleaved,
-                         torch::ScalarType dtype,
-                         const torch::Device& device);
+                         const torch::TensorOptions& options);
 
   // inplace rotary positional embedding
   std::tuple<torch::Tensor, torch::Tensor> forward(
@@ -93,8 +91,7 @@ class RotaryEmbeddingKernel : public RotaryEmbeddingImpl {
                         float scaling_factor,
                         float theta,
                         bool interleaved,
-                        torch::ScalarType dtype,
-                        const torch::Device& device);
+                        const torch::TensorOptions& options);
 
   // inplace rotary positional embedding
   std::tuple<torch::Tensor, torch::Tensor> forward(

@@ -62,8 +62,7 @@ ColumnParallelQLinearExllamav2Impl::ColumnParallelQLinearExllamav2Impl(
     const QuantArgs& quant_args,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
                                 bias,
@@ -71,8 +70,7 @@ ColumnParallelQLinearExllamav2Impl::ColumnParallelQLinearExllamav2Impl(
                                 /*qweight_pack_dim=*/0,
                                 gather_output,
                                 parallel_args,
-                                dtype,
-                                device) {
+                                options) {
   const auto bits = quant_args.bits();
   CHECK(bits == 4) << "Only 4 bits are supported";
 
@@ -93,13 +91,9 @@ ColumnParallelQLinearExllamav2Impl::ColumnParallelQLinearExllamav2Impl(
         torch::tensor(g_idx_data,
                       torch::dtype(torch::kInt32).device(torch::kCPU)));
     q_perm_ = register_buffer(
-        "q_perm",
-        torch::empty({in_features},
-                     torch::dtype(torch::kShort).device(device)));
+        "q_perm", torch::empty({in_features}, options.dtype(torch::kShort)));
     q_invperm_ = register_buffer(
-        "q_invperm",
-        torch::empty({in_features},
-                     torch::dtype(torch::kShort).device(device)));
+        "q_invperm", torch::empty({in_features}, options.dtype(torch::kShort)));
   } else {
     g_idx_ = none_tensor;
     q_perm_ = none_tensor;
@@ -107,7 +101,7 @@ ColumnParallelQLinearExllamav2Impl::ColumnParallelQLinearExllamav2Impl(
   }
 
   const int64_t temp_dq_size = in_features * out_features * 2 + 128;
-  allocate_temp_dq(temp_dq_size, device);
+  allocate_temp_dq(temp_dq_size, options.device());
 }
 
 ColumnParallelQLinearExllamav2Impl::~ColumnParallelQLinearExllamav2Impl() {
@@ -151,8 +145,7 @@ RowParallelQLinearExllamav2Impl::RowParallelQLinearExllamav2Impl(
     const QuantArgs& quant_args,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : RowParallelQLinearImpl(in_features,
                              out_features,
                              bias,
@@ -160,8 +153,7 @@ RowParallelQLinearExllamav2Impl::RowParallelQLinearExllamav2Impl(
                              /*qweight_pack_dim=*/0,
                              input_is_parallelized,
                              parallel_args,
-                             dtype,
-                             device) {
+                             options) {
   const auto bits = quant_args.bits();
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
       << "Only 2,3,4,8 bits are supported";
@@ -183,13 +175,9 @@ RowParallelQLinearExllamav2Impl::RowParallelQLinearExllamav2Impl(
         torch::tensor(g_idx_data,
                       torch::dtype(torch::kInt32).device(torch::kCPU)));
     q_perm_ = register_buffer(
-        "q_perm",
-        torch::empty({in_features},
-                     torch::dtype(torch::kShort).device(device)));
+        "q_perm", torch::empty({in_features}, options.dtype(torch::kShort)));
     q_invperm_ = register_buffer(
-        "q_invperm",
-        torch::empty({in_features},
-                     torch::dtype(torch::kShort).device(device)));
+        "q_invperm", torch::empty({in_features}, options.dtype(torch::kShort)));
   } else {
     g_idx_ = none_tensor;
     q_perm_ = none_tensor;
@@ -197,7 +185,7 @@ RowParallelQLinearExllamav2Impl::RowParallelQLinearExllamav2Impl(
   }
 
   const int64_t temp_dq_size = in_features * out_features * 2 + 128;
-  allocate_temp_dq(temp_dq_size, device);
+  allocate_temp_dq(temp_dq_size, options.device());
 }
 
 RowParallelQLinearExllamav2Impl::~RowParallelQLinearExllamav2Impl() {

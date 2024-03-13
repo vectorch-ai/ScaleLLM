@@ -18,8 +18,7 @@ class ColumnParallelQLinearExllamaImpl : public ColumnParallelQLinearImpl {
                                    const QuantArgs& quant_args,
                                    bool gather_output,
                                    const ParallelArgs& parallel_args,
-                                   torch::ScalarType dtype,
-                                   const torch::Device& device);
+                                   const torch::TensorOptions& options);
 
   ~ColumnParallelQLinearExllamaImpl() override;
 
@@ -45,8 +44,7 @@ class RowParallelQLinearExllamaImpl : public RowParallelQLinearImpl {
                                 const QuantArgs& quant_args,
                                 bool input_is_parallelized,
                                 const ParallelArgs& parallel_args,
-                                torch::ScalarType dtype,
-                                const torch::Device& device);
+                                const torch::TensorOptions& options);
 
   ~RowParallelQLinearExllamaImpl() override;
 

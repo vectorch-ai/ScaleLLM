@@ -23,12 +23,11 @@ class BloomMLPImpl : public torch::nn::Module {
   BloomMLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
-               torch::ScalarType dtype,
-               const torch::Device& device) {
+               const torch::TensorOptions& options) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_ = Activation::get_act_func("gelu", device);
+    act_ = Activation::get_act_func("gelu", options.device());
     CHECK(act_ != nullptr);
 
     // register the weight parameter
@@ -40,8 +39,7 @@ class BloomMLPImpl : public torch::nn::Module {
                                              /*gather_output=*/false,
                                              quant_args,
                                              parallel_args,
-                                             dtype,
-                                             device));
+                                             options));
     dense_4h_to_h_ =
         register_module("dense_4h_to_h",
                         RowParallelLinear(intermediate_size,
@@ -50,8 +48,7 @@ class BloomMLPImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -84,8 +81,7 @@ class BloomAttentionImpl : public torch::nn::Module {
   BloomAttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
-                     torch::ScalarType dtype,
-                     const torch::Device& device,
+                     const torch::TensorOptions& options,
                      AttentionHandler* handler) {
     const auto world_size = parallel_args.world_size();
     const int64_t n_heads = args.n_heads();
@@ -102,8 +98,7 @@ class BloomAttentionImpl : public torch::nn::Module {
                                              /*gather_output=*/false,
                                              quant_args,
                                              parallel_args,
-                                             dtype,
-                                             device));
+                                             options));
 
     dense_ = register_module("dense",
                              RowParallelLinear(hidden_size_,
@@ -112,8 +107,7 @@ class BloomAttentionImpl : public torch::nn::Module {
                                                /*input_is_parallelized=*/true,
                                                quant_args,
                                                parallel_args,
-                                               dtype,
-                                               device));
+                                               options));
 
     // initialize attention module
     atten_ = register_module(
@@ -126,7 +120,12 @@ class BloomAttentionImpl : public torch::nn::Module {
     auto qkv = query_key_value_(x).chunk(/*chunks=*/3, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    auto output = atten_(qkv[0], qkv[1], qkv[2], kv_cache, input_params);
+    auto output = atten_(qkv[0],
+                         qkv[1],
+                         qkv[2],
+                         /*positions=*/torch::Tensor{},
+                         kv_cache,
+                         input_params);
     return dense_(output);
   }
 
@@ -176,29 +175,25 @@ class BloomBlockImpl : public torch::nn::Module {
   BloomBlockImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
-                 torch::ScalarType dtype,
-                 const torch::Device& device,
+                 const torch::TensorOptions& options,
                  AttentionHandler* handler)
       : residual_post_layernorm_(args.residual_post_layernorm()) {
     // register submodules
     self_attention_ = register_module(
         "self_attention",
-        BloomAttention(
-            args, quant_args, parallel_args, dtype, device, handler));
-    mlp_ = register_module(
-        "mlp", BloomMLP(args, quant_args, parallel_args, dtype, device));
+        BloomAttention(args, quant_args, parallel_args, options, handler));
+    mlp_ = register_module("mlp",
+                           BloomMLP(args, quant_args, parallel_args, options));
     input_layernorm_ = register_module("input_layernorm",
                                        LayerNorm(args.hidden_size(),
                                                  args.layer_norm_eps(),
                                                  /*bias=*/true,
-                                                 dtype,
-                                                 device));
+                                                 options));
     post_attention_layernorm_ = register_module("post_attention_layernorm",
                                                 LayerNorm(args.hidden_size(),
                                                           args.layer_norm_eps(),
                                                           /*bias=*/true,
-                                                          dtype,
-                                                          device));
+                                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -252,32 +247,29 @@ class BloomModelImpl : public torch::nn::Module {
   BloomModelImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
-                 torch::ScalarType dtype,
-                 const torch::Device& device) {
+                 const torch::TensorOptions& options) {
     // register submodules
-    word_embeddings_ = register_module("word_embeddings",
-                                       ParallelEmbedding(args.vocab_size(),
-                                                         args.hidden_size(),
-                                                         parallel_args,
-                                                         dtype,
-                                                         device));
+    word_embeddings_ = register_module(
+        "word_embeddings",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
     word_embeddings_layernorm_ =
         register_module("word_embeddings_layernorm",
                         LayerNorm(args.hidden_size(),
                                   args.layer_norm_eps(),
                                   /*bias=*/true,
-                                  dtype,
-                                  device));
+                                  options));
 
     const torch::Tensor alibi_slopes =
         prepare_alibi_slopes(args.n_heads(), parallel_args);
-    handler_ = AttentionHandler::create(args, device, alibi_slopes);
+    handler_ = AttentionHandler::create_handler_with_alibi(
+        args, alibi_slopes, options);
 
     blocks_ = register_module("h", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = BloomBlock(
-          args, quant_args, parallel_args, dtype, device, handler_.get());
+      auto block =
+          BloomBlock(args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -285,8 +277,7 @@ class BloomModelImpl : public torch::nn::Module {
                             LayerNorm(args.hidden_size(),
                                       args.layer_norm_eps(),
                                       /*bias=*/true,
-                                      dtype,
-                                      device));
+                                      options));
   }
 
   // tokens: [num_tokens]
@@ -382,12 +373,10 @@ class BloomForCausalLMImpl : public torch::nn::Module {
   BloomForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device) {
+                       const torch::TensorOptions& options) {
     // register submodules
     model_ = register_module(
-        "transformer",
-        BloomModel(args, quant_args, parallel_args, dtype, device));
+        "transformer", BloomModel(args, quant_args, parallel_args, options));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -395,19 +384,29 @@ class BloomForCausalLMImpl : public torch::nn::Module {
                                                     /*bias=*/false,
                                                     /*gather_output=*/true,
                                                     parallel_args,
-                                                    dtype,
-                                                    device));
+                                                    options));
   }
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor /*positions*/,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& /*positions*/,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = model_(tokens, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return model_(tokens, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 

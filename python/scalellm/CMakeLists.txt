@@ -1,6 +1,5 @@
 
-set(PYBIND_DIR ../../third_party/pybind11)
-add_subdirectory(${PYBIND_DIR} build)
+add_subdirectory(pybind11)
 
 pybind11_add_module(wrapper csrc/scalellm.cpp)
 target_link_libraries(wrapper PUBLIC llm)

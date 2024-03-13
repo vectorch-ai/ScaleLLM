@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "kernels/sampling/sampling_kernels.h"
-#include "request/sampling_parameter.h"
+#include "request/sampling_parameters.h"
 
 namespace llm {
 namespace detail {
@@ -87,8 +87,7 @@ class LogitsProcessor {
   // factory method to create a logits processor
   static std::unique_ptr<LogitsProcessor> create(
       const SamplingParameters& params,
-      torch::ScalarType dtype,
-      const torch::Device& device);
+      const torch::TensorOptions& options);
 };
 
 class LogitsProcessorList : public LogitsProcessor {
@@ -120,14 +119,11 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
   FrequencyPresencePenaltyLogitsProcessor(
       const std::vector<float>& frequency_penalties,
       const std::vector<float>& presence_penalties,
-      torch::ScalarType dtype,
-      const torch::Device& device) {
+      const torch::TensorOptions& options) {
     frequency_penalties_ =
-        torch::tensor(frequency_penalties, torch::dtype(dtype).device(device))
-            .unsqueeze(1);
+        torch::tensor(frequency_penalties, options).unsqueeze(1);
     presence_penalties_ =
-        torch::tensor(presence_penalties, torch::dtype(dtype).device(device))
-            .unsqueeze(1);
+        torch::tensor(presence_penalties, options).unsqueeze(1);
   }
 
   void forward(torch::Tensor& logits,
@@ -160,10 +156,8 @@ class FrequencyPresencePenaltyLogitsProcessor : public LogitsProcessor {
 class RepetitionPenaltyLogitsProcessor : public LogitsProcessor {
  public:
   RepetitionPenaltyLogitsProcessor(const std::vector<float>& penalties,
-                                   torch::ScalarType dtype,
-                                   const torch::Device& device) {
-    penalties_ = torch::tensor(penalties, torch::dtype(dtype).device(device))
-                     .unsqueeze(1);
+                                   const torch::TensorOptions& options) {
+    penalties_ = torch::tensor(penalties, options).unsqueeze(1);
   }
 
   // token_ids, [num_seqs, max_num_tokens] LongTensor
@@ -190,12 +184,9 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
   // Constructor
   // Constructor
   TemperatureLogitsProcessor(const std::vector<float>& temperatures,
-                             const torch::Dtype& dtype = torch::kFloat32,
-                             const torch::Device& device = torch::kCPU) {
+                             const torch::TensorOptions& options) {
     // Convert temperature to a tensor and unsqueeze it for broadcasting
-    temperatures_ =
-        torch::tensor(temperatures, torch::dtype(dtype).device(device))
-            .unsqueeze(1);
+    temperatures_ = torch::tensor(temperatures, options).unsqueeze(1);
 
     // Replace 0. with 1. to avoid division by 0
     temperatures_ =

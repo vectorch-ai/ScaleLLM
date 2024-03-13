@@ -1,6 +1,9 @@
-[submodule "src/kernels/cutlass"]
-	path = src/kernels/cutlass
-	url = https://github.com/NVIDIA/cutlass.git
 [submodule "third_party/pybind11"]
 	path = third_party/pybind11
-	url = https://github.com/pybind/pybind11.git
+	url = git@github.com:pybind/pybind11.git
+[submodule "third_party/flashinfer"]
+	path = third_party/flashinfer
+	url = git@github.com:vectorch-ai/flashinfer.git
+[submodule "third_party/cutlass"]
+	path = third_party/cutlass
+	url = git@github.com:NVIDIA/cutlass.git

@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "sampling_parameter.h"
+#include "sampling_parameters.h"
 #include "stopping_criteria.h"
 #include "tokenizer/tokenizer.h"
 

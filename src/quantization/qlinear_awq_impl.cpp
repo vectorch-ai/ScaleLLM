@@ -23,8 +23,7 @@ ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
     const QuantArgs& quant_args,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
                                 bias,
@@ -32,8 +31,7 @@ ColumnParallelQLinearAWQImpl::ColumnParallelQLinearAWQImpl(
                                 /*qweight_pack_dim=*/1,
                                 gather_output,
                                 parallel_args,
-                                dtype,
-                                device) {
+                                options) {
   const auto bits = quant_args.bits();
   const auto group_size = quant_args.group_size();
   CHECK(bits == 4) << "Only 4 bits are supported for AWQ";
@@ -59,8 +57,7 @@ RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
     const QuantArgs& quant_args,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : RowParallelQLinearImpl(in_features,
                              out_features,
                              bias,
@@ -68,8 +65,7 @@ RowParallelQLinearAWQImpl::RowParallelQLinearAWQImpl(
                              /*qweight_pack_dim=*/1,
                              input_is_parallelized,
                              parallel_args,
-                             dtype,
-                             device) {
+                             options) {
   const auto bits = quant_args.bits();
   CHECK(bits == 4) << "Only 4 bits are supported for AWQ";
   pack_factor_ = 32 / bits;

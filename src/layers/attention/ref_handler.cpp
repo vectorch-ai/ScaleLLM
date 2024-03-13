@@ -116,8 +116,36 @@ void varlen_masked_self_attention(
 
 }  // namespace
 
+RefHandler::RefHandler(float scale,
+                       int64_t rotary_dim,
+                       int64_t max_position,
+                       float rope_scaling,
+                       float rope_theta,
+                       bool interleaved,
+                       const torch::TensorOptions& options)
+    : scale_(scale) {
+  // register rotary positional embedding
+  pos_emb_ = RotaryEmbedding(rotary_dim,
+                             max_position,
+                             rope_scaling,
+                             rope_theta,
+                             interleaved,
+                             options);
+}
+
 RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)
     : scale_(scale), alibi_slopes_(alibi_slopes) {}
+
+std::tuple<torch::Tensor, torch::Tensor> RefHandler::apply_pos_emb(
+    const torch::Tensor& query,
+    const torch::Tensor& key,
+    const torch::Tensor& positions) {
+  // for alibi scenarios, the pos_emb_ is not defined
+  if (positions.defined() && pos_emb_) {
+    return pos_emb_(query, key, positions);
+  }
+  return {query, key};
+}
 
 // batch prefill for attention, optimized for prefill stage
 void RefHandler::batch_prefill(

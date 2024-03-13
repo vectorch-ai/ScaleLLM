@@ -5,7 +5,7 @@ cc_library(
   NAME 
     request
   HDRS 
-    sampling_parameter.h 
+    sampling_parameters.h 
     stopping_criteria.h
     sequence.h
     status.h
@@ -17,6 +17,7 @@ cc_library(
     glog::glog
     absl::strings
     absl::time
+    torch
 )
 
 

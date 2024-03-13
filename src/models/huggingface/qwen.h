@@ -7,7 +7,7 @@
 
 #include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
-#include "layers/attention/attention_rope.h"
+#include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -25,9 +25,8 @@ class QWenMLPImpl : public torch::nn::Module {
   QWenMLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
               const ParallelArgs& parallel_args,
-              torch::ScalarType dtype,
-              const torch::Device& device) {
-    act_ = Activation::get_act_func("silu", device);
+              const torch::TensorOptions& options) {
+    act_ = Activation::get_act_func("silu", options.device());
     CHECK(act_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
@@ -43,8 +42,7 @@ class QWenMLPImpl : public torch::nn::Module {
                                                        /*gather_output=*/false,
                                                        quant_args,
                                                        parallel_args,
-                                                       dtype,
-                                                       device));
+                                                       options));
     c_proj_ = register_module("c_proj",
                               RowParallelLinear(intermediate_size,
                                                 hidden_size,
@@ -52,8 +50,7 @@ class QWenMLPImpl : public torch::nn::Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                                dtype,
-                                                device));
+                                                options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -88,8 +85,7 @@ class QWenAttentionImpl : public torch::nn::Module {
   QWenAttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
-                    torch::ScalarType dtype,
-                    const torch::Device& device,
+                    const torch::TensorOptions& options,
                     AttentionHandler* handler) {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
@@ -105,8 +101,7 @@ class QWenAttentionImpl : public torch::nn::Module {
                                                    /*gather_output=*/false,
                                                    quant_args,
                                                    parallel_args,
-                                                   dtype,
-                                                   device));
+                                                   options));
 
     c_proj_ = register_module("c_proj",
                               RowParallelLinear(hidden_size,
@@ -115,22 +110,11 @@ class QWenAttentionImpl : public torch::nn::Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                                dtype,
-                                                device));
+                                                options));
 
     // initialize attention
-    atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads,
-                                               n_local_heads,
-                                               head_dim,
-                                               /*rotary_dim=*/head_dim,
-                                               args.rope_scaling(),
-                                               args.rope_theta(),
-                                               args.max_position_embeddings(),
-                                               /*interleaved=*/false,
-                                               dtype,
-                                               device,
-                                               handler));
+    atten_ = register_module(
+        "atten", Attention(n_local_heads, n_local_heads, head_dim, handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -165,7 +149,7 @@ class QWenAttentionImpl : public torch::nn::Module {
   RowParallelLinear c_proj_{nullptr};
 
   // module members without parameters
-  AttentionWithRoPE atten_{nullptr};
+  Attention atten_{nullptr};
 };
 TORCH_MODULE(QWenAttention);
 
@@ -174,21 +158,18 @@ class QWenBlockImpl : public torch::nn::Module {
   QWenBlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
-                torch::ScalarType dtype,
-                const torch::Device& device,
+                const torch::TensorOptions& options,
                 AttentionHandler* handler) {
     // register submodules
     attn_ = register_module(
         "attn",
-        QWenAttention(args, quant_args, parallel_args, dtype, device, handler));
-    mlp_ = register_module(
-        "mlp", QWenMLP(args, quant_args, parallel_args, dtype, device));
+        QWenAttention(args, quant_args, parallel_args, options, handler));
+    mlp_ = register_module("mlp",
+                           QWenMLP(args, quant_args, parallel_args, options));
     ln_1_ = register_module(
-        "ln_1",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        "ln_1", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
     ln_2_ = register_module(
-        "ln_2",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        "ln_2", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -232,29 +213,26 @@ class QWenModelImpl : public torch::nn::Module {
   QWenModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
-                torch::ScalarType dtype,
-                const torch::Device& device) {
+                const torch::TensorOptions& options) {
     // register submodules
-    wte_ = register_module("wte",
-                           ParallelEmbedding(args.vocab_size(),
-                                             args.hidden_size(),
-                                             parallel_args,
-                                             dtype,
-                                             device));
+    wte_ = register_module(
+        "wte",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
-    handler_ = AttentionHandler::create(args, device);
+    handler_ = AttentionHandler::create_handler_with_rope(
+        args, /*interleaved=*/false, options);
 
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = QWenBlock(
-          args, quant_args, parallel_args, dtype, device, handler_.get());
+      auto block =
+          QWenBlock(args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
     ln_f_ = register_module(
-        "ln_f",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        "ln_f", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]
@@ -313,12 +291,10 @@ class QWenForCausalLMImpl : public torch::nn::Module {
   QWenForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
-                      torch::ScalarType dtype,
-                      const torch::Device& device) {
+                      const torch::TensorOptions& options) {
     // register submodules
     transformer_ = register_module(
-        "transformer",
-        QWenModel(args, quant_args, parallel_args, dtype, device));
+        "transformer", QWenModel(args, quant_args, parallel_args, options));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -326,19 +302,29 @@ class QWenForCausalLMImpl : public torch::nn::Module {
                                                     /*bias=*/false,
                                                     /*gather_output=*/true,
                                                     parallel_args,
-                                                    dtype,
-                                                    device));
+                                                    options));
   }
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = transformer_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return transformer_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 

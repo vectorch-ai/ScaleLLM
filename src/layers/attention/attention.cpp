@@ -2,12 +2,7 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
-
-#include "kernels/flash_attn/flash_api.h"
-
-DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
 
 namespace llm {
 AttentionImpl::AttentionImpl(int64_t n_heads,
@@ -26,13 +21,18 @@ AttentionImpl::AttentionImpl(int64_t n_heads,
 torch::Tensor AttentionImpl::forward(const torch::Tensor& query,
                                      const torch::Tensor& key,
                                      const torch::Tensor& value,
+                                     const torch::Tensor& positions,
                                      KVCache& kv_cache,
                                      const InputParameters& input_params) {
   const int64_t n_tokens = query.size(0);
-  // (n_tokens, n_heads, head_dim)
+  // [n_tokens, hidden_dim] => [n_tokens, n_heads, head_dim]
   auto q = query.view({n_tokens, n_heads_, head_dim_});
   auto k = key.view({n_tokens, n_kv_heads_, head_dim_});
   auto v = value.view({n_tokens, n_kv_heads_, head_dim_});
+
+  // apply positional embedding
+  // it is an non-op if the handler does not support ROPE
+  std::tie(q, k) = handler_->apply_pos_emb(q, k, positions);
 
   // append key and value to kv_cache
   handler_->append_kv_cache(kv_cache, k, v, input_params);

@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "request.h"
-#include "request/sampling_parameter.h"
+#include "request/sampling_parameters.h"
 #include "request/stopping_criteria.h"
 
 namespace llm {
@@ -55,7 +55,7 @@ TEST(SequenceTest, EosTokenId) {
                     prompt_tokens,
                     /*echo=*/false,
                     /*on_stream=*/nullptr);
-                    
+
   EXPECT_FALSE(sequence.append_new_token_id(eos_token_id));
 
   EXPECT_TRUE(sequence.is_finished());

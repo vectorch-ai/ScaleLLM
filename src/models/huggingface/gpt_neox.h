@@ -3,7 +3,7 @@
 #include <torch/torch.h>
 
 #include "layers/activation.h"
-#include "layers/attention/attention_rope.h"
+#include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -22,12 +22,11 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
   GPTNeoXMLPImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
-                 torch::ScalarType dtype,
-                 const torch::Device& device) {
+                 const torch::TensorOptions& options) {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_ = Activation::get_act_func(args.hidden_act(), device);
+    act_ = Activation::get_act_func(args.hidden_act(), options.device());
     CHECK(act_ != nullptr);
 
     // register the weight parameter
@@ -39,8 +38,7 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
                                              /*gather_output=*/false,
                                              quant_args,
                                              parallel_args,
-                                             dtype,
-                                             device));
+                                             options));
     dense_4h_to_h_ =
         register_module("dense_4h_to_h",
                         RowParallelLinear(intermediate_size,
@@ -49,8 +47,7 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -83,8 +80,7 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   GPTNeoXAttentionImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device,
+                       const torch::TensorOptions& options,
                        AttentionHandler* handler) {
     const auto world_size = parallel_args.world_size();
     const int64_t n_local_heads = args.n_heads() / world_size;
@@ -100,8 +96,7 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                                              /*gather_output=*/false,
                                              quant_args,
                                              parallel_args,
-                                             dtype,
-                                             device));
+                                             options));
 
     dense_ = register_module("dense",
                              RowParallelLinear(hidden_size_,
@@ -110,26 +105,11 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
                                                /*input_is_parallelized=*/true,
                                                quant_args,
                                                parallel_args,
-                                               dtype,
-                                               device));
+                                               options));
 
-    // initialize positional embedding
-    const int64_t rotary_dim =
-        static_cast<int64_t>(head_dim_ * args.rotary_pct());
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim_));
-    atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads,
-                                               n_local_heads,
-                                               head_dim_,
-                                               rotary_dim,
-                                               args.rope_scaling(),
-                                               args.rope_theta(),
-                                               args.max_position_embeddings(),
-                                               /*interleaved=*/false,
-                                               dtype,
-                                               device,
-                                               handler));
+    atten_ = register_module(
+        "atten", Attention(n_local_heads, n_local_heads, head_dim_, handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -182,7 +162,7 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   RowParallelLinear dense_{nullptr};
 
   // module members without parameters
-  AttentionWithRoPE atten_{nullptr};
+  Attention atten_{nullptr};
 
   int64_t hidden_size_ = 0;
   int64_t head_dim_ = 0;
@@ -195,29 +175,25 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
                    const ModelArgs& args,
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   torch::ScalarType dtype,
-                   const torch::Device& device,
+                   const torch::TensorOptions& options,
                    AttentionHandler* handler)
       : use_parallel_residual_(args.use_parallel_residual()) {
     // register submodules
     attention_ = register_module(
         "attention",
-        GPTNeoXAttention(
-            args, quant_args, parallel_args, dtype, device, handler));
+        GPTNeoXAttention(args, quant_args, parallel_args, options, handler));
     mlp_ = register_module(
-        "mlp", GPTNeoXMLP(args, quant_args, parallel_args, dtype, device));
+        "mlp", GPTNeoXMLP(args, quant_args, parallel_args, options));
     input_layernorm_ = register_module("input_layernorm",
                                        LayerNorm(args.hidden_size(),
                                                  args.layer_norm_eps(),
                                                  /*bias=*/true,
-                                                 dtype,
-                                                 device));
+                                                 options));
     post_attention_layernorm_ = register_module("post_attention_layernorm",
                                                 LayerNorm(args.hidden_size(),
                                                           args.layer_norm_eps(),
                                                           /*bias=*/true,
-                                                          dtype,
-                                                          device));
+                                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -275,23 +251,21 @@ class GPTNeoXModelImpl : public torch::nn::Module {
   GPTNeoXModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   torch::ScalarType dtype,
-                   const torch::Device& device) {
+                   const torch::TensorOptions& options) {
     // register submodules
-    embed_in_ = register_module("embed_in",
-                                ParallelEmbedding(args.vocab_size(),
-                                                  args.hidden_size(),
-                                                  parallel_args,
-                                                  dtype,
-                                                  device));
+    embed_in_ = register_module(
+        "embed_in",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
-    handler_ = AttentionHandler::create(args, device);
+    handler_ = AttentionHandler::create_handler_with_rope(
+        args, /*interleaved=*/false, options);
 
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = GPTNeoXLayer(
-          i, args, quant_args, parallel_args, dtype, device, handler_.get());
+          i, args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -299,8 +273,7 @@ class GPTNeoXModelImpl : public torch::nn::Module {
                                         LayerNorm(args.hidden_size(),
                                                   args.layer_norm_eps(),
                                                   /*bias=*/true,
-                                                  dtype,
-                                                  device));
+                                                  options));
   }
 
   // tokens: [num_tokens]
@@ -359,12 +332,10 @@ class GPTNeoXForCausalLMImpl : public torch::nn::Module {
   GPTNeoXForCausalLMImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
                          const ParallelArgs& parallel_args,
-                         torch::ScalarType dtype,
-                         const torch::Device& device) {
+                         const torch::TensorOptions& options) {
     // register submodules
     gpt_neox_ = register_module(
-        "gpt_neox",
-        GPTNeoXModel(args, quant_args, parallel_args, dtype, device));
+        "gpt_neox", GPTNeoXModel(args, quant_args, parallel_args, options));
 
     embed_out_ = register_module("embed_out",
                                  ColumnParallelLinear(args.hidden_size(),
@@ -372,19 +343,29 @@ class GPTNeoXForCausalLMImpl : public torch::nn::Module {
                                                       /*bias=*/false,
                                                       /*gather_output=*/true,
                                                       parallel_args,
-                                                      dtype,
-                                                      device));
+                                                      options));
   }
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = gpt_neox_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return gpt_neox_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return embed_out_(h);
   }
 

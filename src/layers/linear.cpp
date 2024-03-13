@@ -29,8 +29,7 @@ namespace {
                                       quant_args,            \
                                       input_is_parallelized, \
                                       parallel_args,         \
-                                      dtype,                 \
-                                      device);
+                                      options);
 
 #define MAKE_COLUMN_PARALLEL_QLINEAR(QLinearlImplClass) \
   std::make_shared<QLinearlImplClass>(in_features,      \
@@ -39,8 +38,7 @@ namespace {
                                       quant_args,       \
                                       gather_output,    \
                                       parallel_args,    \
-                                      dtype,            \
-                                      device);
+                                      options);
 
 #define MAKE_ROW_PARALLEL_LINEAR(LinearlImplClass)          \
   std::make_shared<LinearlImplClass>(in_features,           \
@@ -48,17 +46,11 @@ namespace {
                                      bias,                  \
                                      input_is_parallelized, \
                                      parallel_args,         \
-                                     dtype,                 \
-                                     device);
+                                     options);
 
 #define MAKE_COLUMN_PARALLEL_LINEAR(LinearlImplClass) \
-  std::make_shared<LinearlImplClass>(in_features,     \
-                                     out_features,    \
-                                     bias,            \
-                                     gather_output,   \
-                                     parallel_args,   \
-                                     dtype,           \
-                                     device);
+  std::make_shared<LinearlImplClass>(                 \
+      in_features, out_features, bias, gather_output, parallel_args, options);
 
 std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
     int64_t in_features,
@@ -67,8 +59,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
     bool gather_output,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::TensorOptions& options) {
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "slow")) {
     return std::make_shared<ColumnParallelQLinearImpl>(in_features,
                                                        out_features,
@@ -77,8 +68,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
                                                        /*qweight_pack_dim=*/0,
                                                        gather_output,
                                                        parallel_args,
-                                                       dtype,
-                                                       device);
+                                                       options);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "cuda")) {
     return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearGPTQImpl);
@@ -99,8 +89,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear_by_impl(
     bool input_is_parallelized,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::TensorOptions& options) {
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "slow")) {
     return std::make_shared<RowParallelQLinearImpl>(in_features,
                                                     out_features,
@@ -109,8 +98,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear_by_impl(
                                                     /*qweight_pack_dim=*/0,
                                                     input_is_parallelized,
                                                     parallel_args,
-                                                    dtype,
-                                                    device);
+                                                    options);
   }
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "cuda")) {
     return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearGPTQImpl);
@@ -131,16 +119,14 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
     bool gather_output,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::TensorOptions& options) {
   if (auto qlinear = create_column_parallel_qlinear_by_impl(in_features,
                                                             out_features,
                                                             bias,
                                                             gather_output,
                                                             quant_args,
                                                             parallel_args,
-                                                            dtype,
-                                                            device)) {
+                                                            options)) {
     return qlinear;
   }
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
@@ -166,16 +152,14 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
     bool input_is_parallelized,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::TensorOptions& options) {
   if (auto qlinear = create_row_parallel_qlinear_by_impl(in_features,
                                                          out_features,
                                                          bias,
                                                          input_is_parallelized,
                                                          quant_args,
                                                          parallel_args,
-                                                         dtype,
-                                                         device)) {
+                                                         options)) {
     return qlinear;
   }
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
@@ -203,8 +187,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
     bool gather_output,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::TensorOptions& options) {
   if (!quant_args.quant_method().empty()) {
     return create_column_parallel_qlinear(in_features,
                                           out_features,
@@ -212,8 +195,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
                                           gather_output,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device);
+                                          options);
   }
   return MAKE_COLUMN_PARALLEL_LINEAR(ColumnParallelLinearImpl);
 }
@@ -225,8 +207,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
     bool input_is_parallelized,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::TensorOptions& options) {
   if (!quant_args.quant_method().empty()) {
     return create_row_parallel_qlinear(in_features,
                                        out_features,
@@ -234,8 +215,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
                                        input_is_parallelized,
                                        quant_args,
                                        parallel_args,
-                                       dtype,
-                                       device);
+                                       options);
   }
   return MAKE_ROW_PARALLEL_LINEAR(RowParallelLinearImpl);
 }
@@ -249,32 +229,28 @@ ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                            bool gather_output,
                                            const QuantArgs& quant_args,
                                            const ParallelArgs& parallel_args,
-                                           torch::ScalarType dtype,
-                                           const torch::Device& device)
+                                           const torch::TensorOptions& options)
     : ModuleHolder(create_column_parallel_linear(in_features,
                                                  out_features,
                                                  bias,
                                                  gather_output,
                                                  quant_args,
                                                  parallel_args,
-                                                 dtype,
-                                                 device)) {}
+                                                 options)) {}
 
 ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                            int64_t out_features,
                                            bool bias,
                                            bool gather_output,
                                            const ParallelArgs& parallel_args,
-                                           torch::ScalarType dtype,
-                                           const torch::Device& device)
+                                           const torch::TensorOptions& options)
     : ModuleHolder(create_column_parallel_linear(in_features,
                                                  out_features,
                                                  bias,
                                                  gather_output,
                                                  {}, /*quant_args*/
                                                  parallel_args,
-                                                 dtype,
-                                                 device)) {}
+                                                 options)) {}
 
 // construct a rotary positional embedding.
 // chose right implementation based on the args.
@@ -284,14 +260,12 @@ RowParallelLinear::RowParallelLinear(int64_t in_features,
                                      bool input_is_parallelized,
                                      const QuantArgs& quant_args,
                                      const ParallelArgs& parallel_args,
-                                     torch::ScalarType dtype,
-                                     const torch::Device& device)
+                                     const torch::TensorOptions& options)
     : ModuleHolder(create_row_parallel_linear(in_features,
                                               out_features,
                                               bias,
                                               input_is_parallelized,
                                               quant_args,
                                               parallel_args,
-                                              dtype,
-                                              device)) {}
+                                              options)) {}
 }  // namespace llm

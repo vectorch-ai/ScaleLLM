@@ -1,4 +1,5 @@
 #pragma once
+#include <driver_types.h>
 #include <torch/torch.h>
 
 #include <cstdint>
@@ -29,7 +30,8 @@ class KVCache final {
   // keys/values: [num_slots, num_heads, head_dim]
   void set_kv_cache(const torch::Tensor& slot_ids,
                     const torch::Tensor& keys,
-                    const torch::Tensor& values);
+                    const torch::Tensor& values,
+                    cudaStream_t stream = nullptr);
 
   // get key and value cache for a sequence based on physical memory blocks
   // block_table: [num_blocks] IntTensor
@@ -46,7 +48,8 @@ class KVCache final {
 
   void set_kv_cache_cuda(const torch::Tensor& slot_ids,
                          const torch::Tensor& keys,
-                         const torch::Tensor& values);
+                         const torch::Tensor& values,
+                         cudaStream_t stream = nullptr);
 
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
       const torch::Tensor& slot_ids) const;

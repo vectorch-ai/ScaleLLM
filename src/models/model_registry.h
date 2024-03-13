@@ -15,12 +15,11 @@
 
 namespace llm {
 
-using CausalLMFactory =
-    std::function<std::unique_ptr<CausalLM>(const ModelArgs& args,
-                                            const QuantArgs& quant_args,
-                                            const ParallelArgs& parallel_args,
-                                            torch::ScalarType dtype,
-                                            const torch::Device& device)>;
+using CausalLMFactory = std::function<std::unique_ptr<CausalLM>(
+    const ModelArgs& args,
+    const QuantArgs& quant_args,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options)>;
 
 using ChatTemplateFactory = std::function<std::unique_ptr<ChatTemplate>()>;
 
@@ -80,21 +79,20 @@ class ModelRegistry {
 };
 
 // Macro to register a model with the ModelRegistry
-#define REGISTER_CAUSAL_MODEL_WITH_VARNAME(VarName, ModelType, ModelClass)  \
-  const bool VarName##_registered = []() {                                  \
-    ModelRegistry::register_causallm_factory(                               \
-        #ModelType,                                                         \
-        [](const ModelArgs& args,                                           \
-           const QuantArgs& quant_args,                                     \
-           const ParallelArgs& parallel_args,                               \
-           torch::ScalarType dtype,                                         \
-           const torch::Device& device) {                                   \
-          ModelClass model(args, quant_args, parallel_args, dtype, device); \
-          model->eval();                                                    \
-          return std::make_unique<llm::CausalLMImpl<ModelClass>>(           \
-              std::move(model));                                            \
-        });                                                                 \
-    return true;                                                            \
+#define REGISTER_CAUSAL_MODEL_WITH_VARNAME(VarName, ModelType, ModelClass) \
+  const bool VarName##_registered = []() {                                 \
+    ModelRegistry::register_causallm_factory(                              \
+        #ModelType,                                                        \
+        [](const ModelArgs& args,                                          \
+           const QuantArgs& quant_args,                                    \
+           const ParallelArgs& parallel_args,                              \
+           const torch::TensorOptions& options) {                          \
+          ModelClass model(args, quant_args, parallel_args, options);      \
+          model->eval();                                                   \
+          return std::make_unique<llm::CausalLMImpl<ModelClass>>(          \
+              std::move(model));                                           \
+        });                                                                \
+    return true;                                                           \
   }()
 
 #define REGISTER_CAUSAL_MODEL(ModelType, ModelClass) \

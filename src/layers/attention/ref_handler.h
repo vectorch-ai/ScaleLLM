@@ -3,6 +3,7 @@
 #include <torch/torch.h>
 
 #include "handler.h"
+#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 
@@ -11,9 +12,28 @@ namespace llm {
 // an pytorch implementation handler for attention operations, used for testing
 class RefHandler : public AttentionHandler {
  public:
+  // create a flash attn handler with rope positional embedding
+  RefHandler(float scale,
+             int64_t rotary_dim,
+             int64_t max_position,
+             float rope_scaling,
+             float rope_theta,
+             bool interleaved,
+             const torch::TensorOptions& options);
+
+  // create a flash attn handler with alibi slopes
   RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
 
   virtual ~RefHandler() = default;
+
+  // set workspace for temporary storage before calling any attention operations
+  void set_workspace(const torch::Tensor& workspace) override {}
+
+  // apply positional embedding to query and key if needed
+  std::tuple<torch::Tensor, torch::Tensor> apply_pos_emb(
+      const torch::Tensor& query,
+      const torch::Tensor& key,
+      const torch::Tensor& positions) override;
 
   // batch prefill for attention, optimized for prefill stage
   void batch_prefill(
@@ -41,6 +61,9 @@ class RefHandler : public AttentionHandler {
  private:
   // scale factor
   float scale_ = 0.0;
+
+  // ROPE positional embedding
+  RotaryEmbedding pos_emb_{nullptr};
 
   // alibi slops
   torch::optional<torch::Tensor> alibi_slopes_;

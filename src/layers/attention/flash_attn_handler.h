@@ -1,8 +1,10 @@
 #pragma once
 
+#include <driver_types.h>
 #include <torch/torch.h>
 
 #include "handler.h"
+#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/input_parameters.h"
 
@@ -11,12 +13,28 @@ namespace llm {
 // an flash attn implementation for attention operations
 class FlashAttnHandler : public AttentionHandler {
  public:
+  // create a flash attn handler with rope positional embedding
+  FlashAttnHandler(float scale,
+                   int64_t rotary_dim,
+                   int64_t max_position,
+                   float rope_scaling,
+                   float rope_theta,
+                   bool interleaved,
+                   const torch::TensorOptions& options);
+
+  // create a flash attn handler with alibi slopes
   FlashAttnHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
 
-  virtual ~FlashAttnHandler() = default;
+  ~FlashAttnHandler() override;
 
   // set workspace for temporary storage before calling any attention operations
   void set_workspace(const torch::Tensor& workspace) override {}
+
+  // apply positional embedding to query and key if needed
+  std::tuple<torch::Tensor, torch::Tensor> apply_pos_emb(
+      const torch::Tensor& query,
+      const torch::Tensor& key,
+      const torch::Tensor& positions) override;
 
   // batch prefill for attention, optimized for prefill stage
   void batch_prefill(
@@ -45,8 +63,14 @@ class FlashAttnHandler : public AttentionHandler {
   // scale factor
   float scale_ = 0.0;
 
+  // ROPE positional embedding
+  RotaryEmbedding pos_emb_{nullptr};
+
   // alibi slopes
   torch::optional<torch::Tensor> alibi_slopes_;
+
+  // stream for kv cache
+  cudaStream_t stream_ = nullptr;
 };
 
 }  // namespace llm

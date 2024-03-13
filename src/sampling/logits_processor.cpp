@@ -8,8 +8,7 @@
 namespace llm {
 std::unique_ptr<LogitsProcessor> LogitsProcessor::create(
     const SamplingParameters& params,
-    torch::ScalarType dtype,
-    const torch::Device& device) {
+    const torch::TensorOptions& options) {
   std::vector<std::unique_ptr<LogitsProcessor>> processors;
 
   // construct logits processors based on the given parameters
@@ -22,22 +21,19 @@ std::unique_ptr<LogitsProcessor> LogitsProcessor::create(
                   [](float t) { return t != 0.0; })) {
     processors.push_back(
         std::make_unique<FrequencyPresencePenaltyLogitsProcessor>(
-            params.frequency_penalties,
-            params.presence_penalties,
-            dtype,
-            device));
+            params.frequency_penalties, params.presence_penalties, options));
   }
   if (std::any_of(params.repetition_penalties.begin(),
                   params.repetition_penalties.end(),
                   [](float t) { return t != 1.0; })) {
     processors.push_back(std::make_unique<RepetitionPenaltyLogitsProcessor>(
-        params.repetition_penalties, dtype, device));
+        params.repetition_penalties, options));
   }
   if (std::any_of(params.temperatures.begin(),
                   params.temperatures.end(),
                   [](float t) { return t != 1.0; })) {
     processors.push_back(std::make_unique<TemperatureLogitsProcessor>(
-        params.temperatures, dtype, device));
+        params.temperatures, options));
   }
 
   return std::make_unique<LogitsProcessorList>(std::move(processors));

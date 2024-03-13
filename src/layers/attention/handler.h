@@ -1,5 +1,6 @@
 #pragma once
 
+#include <c10/core/TensorOptions.h>
 #include <gflags/gflags.h>
 #include <torch/torch.h>
 
@@ -21,6 +22,12 @@ class AttentionHandler {
 
   // set workspace for temporary storage before calling any attention operations
   virtual void set_workspace(const torch::Tensor& workspace) {}
+
+  // apply positional embedding to query and key if needed
+  virtual std::tuple<torch::Tensor, torch::Tensor> apply_pos_emb(
+      const torch::Tensor& query,
+      const torch::Tensor& key,
+      const torch::Tensor& /*positions*/) = 0;
 
   // batch prefill for attention, optimized for prefill stage
   // common optimizations include: 1> leverage tensor-core 2> contuguous memory
@@ -46,12 +53,24 @@ class AttentionHandler {
       const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
       const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
       const InputParameters& input_params) = 0;
-
   // create an attention handler
-  static std::unique_ptr<AttentionHandler> create(
+  static std::unique_ptr<AttentionHandler> create_handler(
       const ModelArgs& args,
-      const torch::Device& device,
-      torch::optional<torch::Tensor> alibi_slopes = torch::nullopt);
+      const torch::TensorOptions& options) {
+    return create_handler_with_alibi(args, torch::nullopt, options);
+  }
+
+  // create an attention handler with alibi slopes
+  static std::unique_ptr<AttentionHandler> create_handler_with_alibi(
+      const ModelArgs& args,
+      torch::optional<torch::Tensor> alibi_slopes,
+      const torch::TensorOptions& options);
+
+  // create an attention handler with ROPE
+  static std::unique_ptr<AttentionHandler> create_handler_with_rope(
+      const ModelArgs& args,
+      bool interleaved,
+      const torch::TensorOptions& options);
 };
 
 }  // namespace llm

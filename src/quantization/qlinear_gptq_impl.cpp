@@ -34,8 +34,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     const QuantArgs& quant_args,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : ColumnParallelQLinearImpl(in_features,
                                 out_features,
                                 bias,
@@ -43,8 +42,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
                                 /*qweight_pack_dim=*/0,
                                 gather_output,
                                 parallel_args,
-                                dtype,
-                                device),
+                                options),
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
@@ -59,8 +57,7 @@ ColumnParallelQLinearGPTQImpl::ColumnParallelQLinearGPTQImpl(
     g_idx_data.push_back(i / group_size);
   }
   g_idx_ = register_buffer(
-      "g_idx",
-      torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
+      "g_idx", torch::tensor(g_idx_data, options.dtype(torch::kInt32)));
 
   vec_quant_matmul_func_ = vec_quant_matmul_256;
   if (in_features % 256 != 0 || out_features % 256 != 0) {
@@ -98,8 +95,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     const QuantArgs& quant_args,
     bool input_is_parallelized,
     const ParallelArgs& parallel_args,
-    torch::ScalarType dtype,
-    const torch::Device& device)
+    const torch::TensorOptions& options)
     : RowParallelQLinearImpl(in_features,
                              out_features,
                              bias,
@@ -107,8 +103,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
                              /*qweight_pack_dim=*/0,
                              input_is_parallelized,
                              parallel_args,
-                             dtype,
-                             device),
+                             options),
       bits_(quant_args.bits()) {
   const auto bits = quant_args.bits();
   CHECK(bits == 2 || bits == 3 || bits == 4 || bits == 8)
@@ -123,8 +118,7 @@ RowParallelQLinearGPTQImpl::RowParallelQLinearGPTQImpl(
     g_idx_data.push_back(i / group_size);
   }
   g_idx_ = register_buffer(
-      "g_idx",
-      torch::tensor(g_idx_data, torch::dtype(torch::kInt32).device(device)));
+      "g_idx", torch::tensor(g_idx_data, options.dtype(torch::kInt32)));
 
   vec_quant_matmul_func_ = vec_quant_matmul_256;
   if (in_features % 256 != 0 || out_features % 256 != 0) {

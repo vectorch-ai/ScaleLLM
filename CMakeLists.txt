@@ -128,12 +128,12 @@ find_package(NCCL REQUIRED)
 # libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 
-if (ENABLE_CXX11_ABI)
-  find_package(Jemalloc)
-  if(Jemalloc_FOUND)
-    link_libraries(Jemalloc::jemalloc)
-  endif()
-endif()
+# if (NOT ENABLE_CXX11_ABI)
+#   find_package(Jemalloc)
+#   if(Jemalloc_FOUND)
+#     link_libraries(Jemalloc::jemalloc)
+#   endif()
+# endif()
 
 # Important Note: Always invoke find_package for other dependencies
 # before including libtorch, as doing so afterwards may lead to

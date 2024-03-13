@@ -42,19 +42,16 @@ class LayerNormImpl : public torch::nn::Module {
   LayerNormImpl(int64_t dim,
                 float eps,
                 bool bias,
-                torch::ScalarType dtype,
-                const torch::Device& device)
+                const torch::TensorOptions& options)
       : eps_(eps) {
     normalized_shape_ = {dim};
-    weight_ = register_parameter(
-        "weight",
-        torch::empty(normalized_shape_, torch::dtype(dtype).device(device)),
-        /*requires_grad=*/false);
+    weight_ = register_parameter("weight",
+                                 torch::empty(normalized_shape_, options),
+                                 /*requires_grad=*/false);
     if (bias) {
-      bias_ = register_parameter(
-          "bias",
-          torch::zeros(normalized_shape_, torch::dtype(dtype).device(device)),
-          /*requires_grad=*/false);
+      bias_ = register_parameter("bias",
+                                 torch::zeros(normalized_shape_, options),
+                                 /*requires_grad=*/false);
     }
   }
 
@@ -120,15 +117,11 @@ TORCH_MODULE(LayerNorm);
 // Root mean square normalization
 class RMSNormImpl : public torch::nn::Module {
  public:
-  RMSNormImpl(int64_t dim,
-              float eps,
-              torch::ScalarType dtype,
-              const torch::Device& device)
+  RMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter(
-        "weight",
-        torch::empty({dim}, torch::dtype(dtype).device(device)),
-        /*requires_grad=*/false);
+    weight_ = register_parameter("weight",
+                                 torch::empty({dim}, options),
+                                 /*requires_grad=*/false);
   }
 
   torch::Tensor forward(torch::Tensor input) {
@@ -171,5 +164,66 @@ class RMSNormImpl : public torch::nn::Module {
   float eps_;
 };
 TORCH_MODULE(RMSNorm);
+
+// Root mean square normalization
+class RMSNormResidualImpl : public torch::nn::Module {
+ public:
+  RMSNormResidualImpl(int64_t dim,
+                      float eps,
+                      const torch::TensorOptions& options)
+      : eps_(eps) {
+    weight_ = register_parameter("weight",
+                                 torch::empty({dim}, options),
+                                 /*requires_grad=*/false);
+  }
+
+  torch::Tensor forward(torch::Tensor input, torch::Tensor& residual) {
+    if (input.is_cuda() && !FLAGS_disable_custom_kernels) {
+      auto output = torch::empty_like(input);
+      if (residual.defined()) {
+        input = input + residual;
+        residual = input;
+      }
+      kernel::rms_norm(output, input, weight_, eps_);
+      return output;
+    }
+    if (residual.defined()) {
+      input = input + residual;
+      residual = input;
+    }
+    return detail::rms_norm(input, weight_, eps_);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    const auto weight = state_dict.get_tensor("weight");
+    if (weight.defined()) {
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
+      weight_.copy_(weight);
+      is_loaded_ = true;
+    }
+  }
+
+  // whether the weight is loaded
+  void verify_loaded_weights(const std::string& prefix = "") const {
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
+  }
+
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes() << " " << weight_.device();
+  }
+
+ private:
+  // parameter members, must be registered
+  torch::Tensor weight_{nullptr};
+
+  // whether the weight is loaded
+  bool is_loaded_ = false;
+
+  // configs
+  float eps_;
+};
+TORCH_MODULE(RMSNormResidual);
 
 }  // namespace llm

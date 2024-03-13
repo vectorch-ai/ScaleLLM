@@ -4,7 +4,7 @@
 
 #include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
-#include "layers/attention/attention_rope.h"
+#include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -22,9 +22,8 @@ class AquilaMLPImpl : public torch::nn::Module {
   AquilaMLPImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
-                torch::ScalarType dtype,
-                const torch::Device& device) {
-    act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
+                const torch::TensorOptions& options) {
+    act_with_mul_ = Activation::get_act_with_mul_func("silu", options.device());
     CHECK(act_with_mul_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
@@ -39,8 +38,7 @@ class AquilaMLPImpl : public torch::nn::Module {
                                              /*gather_output=*/false,
                                              quant_args,
                                              parallel_args,
-                                             dtype,
-                                             device));
+                                             options));
     down_proj_ =
         register_module("down_proj",
                         RowParallelLinear(intermediate_size,
@@ -49,8 +47,7 @@ class AquilaMLPImpl : public torch::nn::Module {
                                           /*input_is_parallelized=*/true,
                                           quant_args,
                                           parallel_args,
-                                          dtype,
-                                          device));
+                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -84,8 +81,7 @@ class AquilaAttentionImpl : public torch::nn::Module {
   AquilaAttentionImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
-                      torch::ScalarType dtype,
-                      const torch::Device& device,
+                      const torch::TensorOptions& options,
                       AttentionHandler* handler) {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
@@ -109,8 +105,7 @@ class AquilaAttentionImpl : public torch::nn::Module {
                              /*gather_output=*/false,
                              quant_args,
                              parallel_args,
-                             dtype,
-                             device));
+                             options));
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(hidden_size,
@@ -119,23 +114,12 @@ class AquilaAttentionImpl : public torch::nn::Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                                dtype,
-                                                device));
+                                                options));
 
     // initialize attention
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
-    atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads,
-                                               n_local_kv_heads,
-                                               head_dim,
-                                               /*rotary_dim=*/head_dim,
-                                               args.rope_scaling(),
-                                               args.rope_theta(),
-                                               args.max_position_embeddings(),
-                                               /*interleaved=*/false,
-                                               dtype,
-                                               device,
-                                               handler));
+    atten_ = register_module(
+        "atten", Attention(n_local_heads, n_local_kv_heads, head_dim, handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -172,7 +156,7 @@ class AquilaAttentionImpl : public torch::nn::Module {
   RowParallelLinear o_proj_{nullptr};
 
   // module members without parameters
-  AttentionWithRoPE atten_{nullptr};
+  Attention atten_{nullptr};
 
   // size for q, k, v
   std::vector<int64_t> qkv_sizes_;
@@ -184,22 +168,20 @@ class AquilaDecoderLayerImpl : public torch::nn::Module {
   AquilaDecoderLayerImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
                          const ParallelArgs& parallel_args,
-                         torch::ScalarType dtype,
-                         const torch::Device& device,
+                         const torch::TensorOptions& options,
                          AttentionHandler* handler) {
     // register submodules
     self_attn_ = register_module(
         "self_attn",
-        AquilaAttention(
-            args, quant_args, parallel_args, dtype, device, handler));
-    mlp_ = register_module(
-        "mlp", AquilaMLP(args, quant_args, parallel_args, dtype, device));
+        AquilaAttention(args, quant_args, parallel_args, options, handler));
+    mlp_ = register_module("mlp",
+                           AquilaMLP(args, quant_args, parallel_args, options));
     input_layernorm_ = register_module(
         "input_layernorm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
     post_attention_layernorm_ = register_module(
         "post_attention_layernorm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -246,29 +228,26 @@ class AquilaModelImpl : public torch::nn::Module {
   AquilaModelImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
                   const ParallelArgs& parallel_args,
-                  torch::ScalarType dtype,
-                  const torch::Device& device) {
+                  const torch::TensorOptions& options) {
     // register submodules
-    embed_tokens_ = register_module("embed_tokens",
-                                    ParallelEmbedding(args.vocab_size(),
-                                                      args.hidden_size(),
-                                                      parallel_args,
-                                                      dtype,
-                                                      device));
+    embed_tokens_ = register_module(
+        "embed_tokens",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
-    handler_ = AttentionHandler::create(args, device);
+    handler_ = AttentionHandler::create_handler_with_rope(
+        args, /*interleaved=*/false, options);
 
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = AquilaDecoderLayer(
-          args, quant_args, parallel_args, dtype, device, handler_.get());
+          args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        "norm", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]
@@ -326,11 +305,10 @@ class AquilaForCausalLMImpl : public torch::nn::Module {
   AquilaForCausalLMImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
                         const ParallelArgs& parallel_args,
-                        torch::ScalarType dtype,
-                        const torch::Device& device) {
+                        const torch::TensorOptions& options) {
     // register submodules
     model_ = register_module(
-        "model", AquilaModel(args, quant_args, parallel_args, dtype, device));
+        "model", AquilaModel(args, quant_args, parallel_args, options));
 
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
@@ -338,19 +316,29 @@ class AquilaForCausalLMImpl : public torch::nn::Module {
                                                     /*bias=*/false,
                                                     /*gather_output=*/true,
                                                     parallel_args,
-                                                    dtype,
-                                                    device));
+                                                    options));
   }
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = model_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return model_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 

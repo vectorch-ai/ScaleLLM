@@ -53,7 +53,8 @@ void set_kv_cache(
     const torch::Tensor& keys,      // [n_tokens, n_kv_heads, head_dim]
     const torch::Tensor& values,    // [n_tokens, n_kv_heads, head_dim]
     torch::Tensor& key_cache,       // [n_blocks, block_size, n_heads, head_dim]
-    torch::Tensor& value_cache) {
+    torch::Tensor& value_cache,
+    cudaStream_t stream) {
   const int n_tokens = keys.size(0);
   const int n_kv_heads = keys.size(-2);
   const int head_dim = keys.size(-1);
@@ -63,18 +64,20 @@ void set_kv_cache(
 
   dim3 grid(n_tokens);
   dim3 block(std::min(n, 1024));
+  if (stream == nullptr) {
+    stream = at::cuda::getCurrentCUDAStream();
+  }
   DISPATCH_FLOATING_TYPES(keys.scalar_type(), "set_kv_cache_kernel", [&] {
     set_kv_cache_kernel<scalar_t>
-        <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
-            slot_ids.data_ptr<int>(),
-            keys.data_ptr<scalar_t>(),
-            values.data_ptr<scalar_t>(),
-            key_cache.data_ptr<scalar_t>(),
-            value_cache.data_ptr<scalar_t>(),
-            kv_stride,
-            n_kv_heads,
-            head_dim,
-            block_size);
+        <<<grid, block, 0, stream>>>(slot_ids.data_ptr<int>(),
+                                     keys.data_ptr<scalar_t>(),
+                                     values.data_ptr<scalar_t>(),
+                                     key_cache.data_ptr<scalar_t>(),
+                                     value_cache.data_ptr<scalar_t>(),
+                                     kv_stride,
+                                     n_kv_heads,
+                                     head_dim,
+                                     block_size);
   });
 }
 

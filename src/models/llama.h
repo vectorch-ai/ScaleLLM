@@ -5,7 +5,7 @@
 
 #include "chat_template/common_chat_template.h"
 #include "layers/activation.h"
-#include "layers/attention/attention_rope.h"
+#include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
@@ -23,9 +23,8 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
   LlamaFeedForwardImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device) {
-    act_with_mul_ = Activation::get_act_with_mul_func("silu", device);
+                       const torch::TensorOptions& options) {
+    act_with_mul_ = Activation::get_act_with_mul_func("silu", options.device());
     CHECK(act_with_mul_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
@@ -39,8 +38,7 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
                                                   /*gather_output=*/false,
                                                   quant_args,
                                                   parallel_args,
-                                                  dtype,
-                                                  device));
+                                                  options));
     w2_ = register_module("w2",
                           RowParallelLinear(intermediate_size,
                                             hidden_size,
@@ -48,8 +46,7 @@ class LlamaFeedForwardImpl : public torch::nn::Module {
                                             /*input_is_parallelized=*/true,
                                             quant_args,
                                             parallel_args,
-                                            dtype,
-                                            device));
+                                            options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -83,8 +80,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
   LlamaAttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
-                     torch::ScalarType dtype,
-                     const torch::Device& device,
+                     const torch::TensorOptions& options,
                      AttentionHandler* handler) {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
@@ -108,8 +104,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
                              /*gather_output=*/false,
                              quant_args,
                              parallel_args,
-                             dtype,
-                             device));
+                             options));
     wo_ = register_module("wo",
                           RowParallelLinear(hidden_size,
                                             hidden_size,
@@ -117,22 +112,11 @@ class LlamaAttentionImpl : public torch::nn::Module {
                                             /*input_is_parallelized=*/true,
                                             quant_args,
                                             parallel_args,
-                                            dtype,
-                                            device));
+                                            options));
 
     // initialize attention
-    atten_ = register_module("atten",
-                             AttentionWithRoPE(n_local_heads,
-                                               n_local_kv_heads,
-                                               head_dim,
-                                               /*rotary_dim=*/head_dim,
-                                               args.rope_scaling(),
-                                               args.rope_theta(),
-                                               args.max_position_embeddings(),
-                                               /*interleaved=*/true,
-                                               dtype,
-                                               device,
-                                               handler));
+    atten_ = register_module(
+        "atten", Attention(n_local_heads, n_local_kv_heads, head_dim, handler));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -169,7 +153,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
   RowParallelLinear wo_{nullptr};
 
   // module members without parameters
-  AttentionWithRoPE atten_{nullptr};
+  Attention atten_{nullptr};
 
   // size for q, k, v
   std::vector<int64_t> qkv_sizes_;
@@ -181,23 +165,20 @@ class LlamaTransformerBlockImpl : public torch::nn::Module {
   LlamaTransformerBlockImpl(const ModelArgs& args,
                             const QuantArgs& quant_args,
                             const ParallelArgs& parallel_args,
-                            torch::ScalarType dtype,
-                            const torch::Device& device,
+                            const torch::TensorOptions& options,
                             AttentionHandler* handler) {
     // register submodules
     attention_ = register_module(
         "attention",
-        LlamaAttention(
-            args, quant_args, parallel_args, dtype, device, handler));
+        LlamaAttention(args, quant_args, parallel_args, options, handler));
     feed_forward_ = register_module(
         "feed_forward",
-        LlamaFeedForward(args, quant_args, parallel_args, dtype, device));
+        LlamaFeedForward(args, quant_args, parallel_args, options));
     attention_norm_ = register_module(
         "attention_norm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
     ffn_norm_ = register_module(
-        "ffn_norm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        "ffn_norm", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -242,28 +223,25 @@ class LlamaTransformerImpl : public torch::nn::Module {
   LlamaTransformerImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device) {
+                       const torch::TensorOptions& options) {
     // register submodules
-    tok_embeddings_ = register_module("tok_embeddings",
-                                      ParallelEmbedding(args.vocab_size(),
-                                                        args.hidden_size(),
-                                                        parallel_args,
-                                                        dtype,
-                                                        device));
+    tok_embeddings_ = register_module(
+        "tok_embeddings",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
 
-    handler_ = AttentionHandler::create(args, device);
+    handler_ = AttentionHandler::create_handler_with_rope(
+        args, /*interleaved=*/true, options);
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = LlamaTransformerBlock(
-          args, quant_args, parallel_args, dtype, device, handler_.get());
+          args, quant_args, parallel_args, options, handler_.get());
       layers_.push_back(block);
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), dtype, device));
+        "norm", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]
@@ -320,12 +298,10 @@ class LlamaForCausalLMImpl : public torch::nn::Module {
   LlamaForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
-                       torch::ScalarType dtype,
-                       const torch::Device& device) {
+                       const torch::TensorOptions& options) {
     // register submodules
     transformer_ = register_module(
-        "model",
-        LlamaTransformer(args, quant_args, parallel_args, dtype, device));
+        "model", LlamaTransformer(args, quant_args, parallel_args, options));
 
     output_ = register_module("output",
                               ColumnParallelLinear(args.hidden_size(),
@@ -333,19 +309,29 @@ class LlamaForCausalLMImpl : public torch::nn::Module {
                                                    /*bias=*/false,
                                                    /*gather_output=*/true,
                                                    parallel_args,
-                                                   dtype,
-                                                   device));
+                                                   options));
   }
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = transformer_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return transformer_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return output_(h);
   }
 

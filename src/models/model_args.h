@@ -95,6 +95,9 @@ struct ModelArgs {
   // whether to apply residual connection post layernorm
   DEFINE_ARG(bool, residual_post_layernorm) = false;
 
+  // whether to use layer norm on final layer.
+  DEFINE_ARG(bool, post_layernorm) = false;
+
   // Stop token ids for decoding.
   DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
 };
