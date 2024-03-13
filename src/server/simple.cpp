@@ -132,6 +132,7 @@ int main(int argc, char* argv[]) {
   stopping_criteria.max_tokens = FLAGS_max_seq_len;
   stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
+  stopping_criteria.stop_token_ids = model_args.stop_token_ids();
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;

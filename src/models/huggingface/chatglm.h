@@ -524,11 +524,11 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
   LOAD_ARG_OR_FUNC(rotary_dim, "rotary_dim", [&] {
     // set rotary dim by following the original implementation
     // https://huggingface.co/THUDM/chatglm3-6b/blob/main/modeling_chatglm.py#L751
-    const int64_t hidden_size = json.value_or<int64_t>("hidden_size", 4096);
     const auto kv_channels = json.value<int64_t>("kv_channels");
     if (kv_channels.has_value()) {
-      return hidden_size / kv_channels.value();
+      return kv_channels.value();
     }
+    const int64_t hidden_size = json.value_or<int64_t>("hidden_size", 4096);
     const int64_t n_heads = json.value_or<int64_t>("num_attention_heads", 32);
     return hidden_size / n_heads;
   });
