@@ -17,8 +17,8 @@
 
 static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
-DEFINE_int32(block_size, 16, "slots per block, value must be multiple of 16");
-DEFINE_int64(max_cache_size, 5 * GB, "max cache size in bytes, default 5GB");
+DEFINE_int32(block_size, 256, "slots per block, value must be multiple of 256");
+DEFINE_int64(max_cache_size, 10 * GB, "max cache size in bytes, default 10GB");
 DEFINE_double(max_memory_utilization,
               0.9,
               "maximum memory utilization allowed, default 0.9");
@@ -266,6 +266,7 @@ bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
   CHECK_GT(cache_size_in_bytes, 0);
   LOG(INFO) << "Initializing kv cache with size: "
             << readable_size(cache_size_in_bytes);
+  CHECK(FLAGS_block_size % 256 == 0) << "cache block size must be divisible by 256";
 
   const int64_t block_size = FLAGS_block_size;
 

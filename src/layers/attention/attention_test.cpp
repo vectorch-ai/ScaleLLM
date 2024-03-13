@@ -325,7 +325,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(torch::kCUDA),
         ::testing::Values(torch::kHalf, torch::kBFloat16),
         ::testing::Values(1, 10),                            // batch_size
-        ::testing::Values(16, 80, 256),                      // block_size
+        ::testing::Values(256),                              // block_size
         ::testing::Values(1, 10),                            // q_max_seq_len
         ::testing::Values(100, 200),                         // kv_max_seq_len
         ::testing::Values(6),                                // n_heads
