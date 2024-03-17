@@ -182,7 +182,7 @@ set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}
       -U__CUDA_NO_HALF_CONVERSIONS__
       -U__CUDA_NO_HALF2_OPERATORS__
       -U__CUDA_NO_BFLOAT16_CONVERSIONS__)
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} --use_fast_math)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} --use_fast_math -Xfatbin -compress-all)
 message(STATUS "CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
 
 # enable testing in this directory so we can do a top-level `make test`.
