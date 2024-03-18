@@ -27,9 +27,10 @@ class BlockAllocator final {
   // get number of free blocks
   size_t free_block_count() const { return free_block_count_; }
 
-  // N.B. should not be used by the user. Only Block should call this method.
-  void free(int32_t block_id);
  private:
+  friend class Block;
+  void free(int32_t block_id);
+  
   // free block count
   size_t free_block_count_ = 0;
 
