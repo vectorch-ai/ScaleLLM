@@ -27,6 +27,19 @@ class Slice final {
   // get the data pointer
   const T* data() const { return data_; }
 
+  // index operator
+  const T& operator[](size_t i) const { return data_[i]; }
+
+  // get a sub slice
+  Slice<T> sub(size_t start) const {
+    return Slice<T>(data_ + start, size_ - start);
+  }
+
+  // convert to vector
+  std::vector<T> to_vector() const {
+    return std::vector<T>(data_, data_ + size_);
+  }
+
  private:
   const T* data_ = nullptr;
   size_t size_ = 0;

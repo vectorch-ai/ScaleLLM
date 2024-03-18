@@ -62,6 +62,7 @@ TEST(BlockAllocatorTest, Basic) {
       EXPECT_EQ(block.is_shared(), true);
       EXPECT_EQ(block2.ref_count(), 2);
       EXPECT_EQ(block2.is_shared(), true);
+      EXPECT_EQ(block2, block);
     }
     EXPECT_EQ(block.ref_count(), 1);
     EXPECT_EQ(block.is_shared(), false);
@@ -74,7 +75,18 @@ TEST(BlockAllocatorTest, Basic) {
       EXPECT_EQ(block.is_shared(), true);
       EXPECT_EQ(block4.ref_count(), 2);
       EXPECT_EQ(block4.is_shared(), true);
+      EXPECT_EQ(block4, block);
+
+      Block invalid_block;
+      invalid_block = block;
+      EXPECT_EQ(block.ref_count(), 3);
+      EXPECT_EQ(block.is_shared(), true);
+      EXPECT_EQ(invalid_block.ref_count(), 3);
+      EXPECT_EQ(invalid_block.is_shared(), true);
+      EXPECT_EQ(invalid_block, block);
     }
+    EXPECT_EQ(block.ref_count(), 1);
+    EXPECT_EQ(block.is_shared(), false);
 
     // test move constructor
     {
@@ -83,7 +95,9 @@ TEST(BlockAllocatorTest, Basic) {
 
       EXPECT_EQ(block3.ref_count(), 1);
       EXPECT_EQ(block3.is_shared(), false);
+      EXPECT_FALSE(block3 == block);
     }
+    EXPECT_FALSE(block.is_valid());
   }
 }
 

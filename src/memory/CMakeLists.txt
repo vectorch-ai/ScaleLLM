@@ -10,12 +10,14 @@ cc_library(
     block.h
     block_allocator.h
     block_manager.h
+    prefix_cache.h
   SRCS 
     memory.cpp
     kv_cache.cpp
     block.cpp
     block_allocator.cpp
     block_manager.cpp
+    prefix_cache.cpp
   DEPS
     :kernels
     :request

@@ -14,6 +14,9 @@ class Block final {
  public:
   ~Block();
 
+  // add reference count to allow using with std::vector
+  Block() = default;
+
   // used for testing
   Block(int32_t id);
 
@@ -41,6 +44,12 @@ class Block final {
 
   // check if the block is valid
   bool is_valid() const { return id_ >= 0 && ref_count_ != nullptr; }
+
+  // equeal operator
+  bool operator==(const Block& other) const {
+    return id_ == other.id_ && ref_count_ == other.ref_count_ &&
+           allocator_ == other.allocator_;
+  }
 
  private:
   // increase reference count
