@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#include "memory/block.h"
 #include "request/sampling_parameters.h"
 #include "request/stopping_criteria.h"
 
@@ -37,7 +38,7 @@ TEST(UtilsTest, Basic) {
                 /*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
                 /*echo=*/false,
                 /*on_stream=*/nullptr);
-  seq1.append_blocks({1, 2, 3});
+  seq1.append_blocks(std::vector<Block>{1, 2, 3});
 
   // seq in decode phase
   Sequence seq2(sampling_param,
@@ -45,7 +46,7 @@ TEST(UtilsTest, Basic) {
                 /*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
                 /*echo=*/false,
                 /*on_stream=*/nullptr);
-  seq2.append_blocks({4, 5, 6, 7});
+  seq2.append_blocks(std::vector<Block>{4, 5, 6, 7});
   seq2.append_new_token_id(100);
 
   // seq in decode phase
@@ -55,7 +56,7 @@ TEST(UtilsTest, Basic) {
       /*token_ids=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19},
       /*echo=*/false,
       /*on_stream=*/nullptr);
-  seq3.append_blocks({8, 9, 10, 11, 12});
+  seq3.append_blocks(std::vector<Block>{8, 9, 10, 11, 12});
   seq3.append_new_token_id(200);
 
   std::vector<Sequence*> batch = {&seq1, &seq2, &seq3};

@@ -11,14 +11,14 @@
 namespace llm {
 namespace {
 
-std::vector<int32_t> cache_slots_for_pos(const std::vector<int32_t>& blocks,
+std::vector<int32_t> cache_slots_for_pos(const std::vector<Block>& blocks,
                                          int32_t block_size,
                                          int32_t start,
                                          int32_t end) {
   std::vector<int32_t> slots;
   slots.reserve(end - start);
   for (int32_t i = start; i < end; ++i) {
-    const int32_t block_id = blocks[i / block_size];
+    const int32_t block_id = blocks[i / block_size].id();
     const int32_t block_offset = i % block_size;
     slots.push_back(block_id * block_size + block_offset);
   }
@@ -78,7 +78,8 @@ void Utils::prepare_capture_inputs(int64_t max_seq_len,
   input_params->kv_cu_seq_lens = cu_seq_lens;
 
   input_params->new_cache_slots = torch::ones({batch_size}, torch::kInt);
-  input_params->block_tables = torch::empty({batch_size, max_seq_len}, torch::kInt);
+  input_params->block_tables =
+      torch::empty({batch_size, max_seq_len}, torch::kInt);
 }
 
 void Utils::prepare_profile_inputs(int64_t max_num_tokens,
@@ -189,12 +190,19 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
 
     // assign slot ids for new tokens [n_tokens_in_kvcache, total_tokens)
     const auto& blocks = sequence->blocks();
-    const auto slot_ids = cache_slots_for_pos(
-        sequence->blocks(), block_size, kvcache_seq_len, seq_len);
+    const auto slot_ids =
+        cache_slots_for_pos(blocks, block_size, kvcache_seq_len, seq_len);
     new_token_slot_ids.insert(
         new_token_slot_ids.end(), slot_ids.begin(), slot_ids.end());
 
-    block_tables_vec.push_back(blocks);
+    // construct block ids for each sequence
+    std::vector<int32_t> block_ids;
+    block_ids.reserve(blocks.size());
+    for (const auto& block : blocks) {
+      block_ids.push_back(block.id());
+    }
+    block_tables_vec.push_back(block_ids);
+
     max_block_table_len =
         std::max(max_block_table_len, static_cast<int32_t>(blocks.size()));
   }
@@ -223,11 +231,13 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
   input_params->new_cache_slots =
       torch::tensor(new_token_slot_ids, torch::kInt);
   input_params->block_tables = block_tables;
-  
-  sampling_params->last_token_idxes = torch::tensor(last_token_idxes, torch::kInt);
+
+  sampling_params->last_token_idxes =
+      torch::tensor(last_token_idxes, torch::kInt);
   sampling_params->token_ids = token_ids;
   sampling_params->token_counts = token_counts;
-  sampling_params->token_ids_lens = torch::tensor(token_ids_lens_vec, torch::kInt);
+  sampling_params->token_ids_lens =
+      torch::tensor(token_ids_lens_vec, torch::kInt);
 }
 
 void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,

@@ -73,7 +73,7 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
   }
 
   // all tokens before pos should be processed and cached.
-  cache_pos_ = token_ids_.size();
+  kv_cache_pos_ = token_ids_.size();
   token_ids_.push_back(next_token_id);
   token_to_count_map_[next_token_id]++;
 
