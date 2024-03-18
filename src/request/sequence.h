@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "memory/block.h"
 #include "sampling_parameters.h"
 #include "stopping_criteria.h"
 #include "tokenizer/tokenizer.h"
@@ -59,13 +60,13 @@ class Sequence final {
   }
 
   // get the number of tokens in the kvcache
-  size_t num_tokens_in_cache() const { return cache_pos_; }
+  size_t num_tokens_in_cache() const { return kv_cache_pos_; }
 
   // get the sampling parameters
   const SamplingParameter& sampling_param() const;
 
   // whether the sequence is in prefill stage, no kv cache has been generated
-  bool is_prefill() const { return cache_pos_ == 0; }
+  bool is_prefill() const { return kv_cache_pos_ == 0; }
 
   // add a new token id to the sequence and check if the sequence is finished.
   // returns false if the sequence is finished.
@@ -78,19 +79,19 @@ class Sequence final {
   void update_valid_token_ids(const int64_t* ids);
 
   // add new cache blocks
-  void append_blocks(const std::vector<int32_t>& new_blocks) {
+  void append_blocks(const std::vector<Block>& new_blocks) {
     blocks_.insert(blocks_.end(), new_blocks.begin(), new_blocks.end());
   }
 
   // release all cache blocks
-  std::vector<int32_t> release_blocks() {
+  std::vector<Block> release_blocks() {
     // reset the current pos to 0 so that the cache can be recomputed next time
-    cache_pos_ = 0;
+    kv_cache_pos_ = 0;
     return std::move(blocks_);
   }
 
   // returns allocated cache blocks
-  const std::vector<int32_t>& blocks() const { return blocks_; }
+  const std::vector<Block>& blocks() const { return blocks_; }
 
   // get the number of blocks
   size_t num_blocks() const { return blocks_.size(); }
@@ -155,10 +156,10 @@ class Sequence final {
 
   // the cache position.
   // all tokens before pos should be processed and cached.
-  size_t cache_pos_ = 0;
+  size_t kv_cache_pos_ = 0;
 
-  // physical block ids that hold the keys and values cache.
-  std::vector<int32_t> blocks_;
+  // physical blocks that hold the kv cache.
+  std::vector<Block> blocks_;
 
   // has the sequence been finished
   bool is_finished_ = false;

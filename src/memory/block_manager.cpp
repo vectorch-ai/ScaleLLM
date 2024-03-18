@@ -45,26 +45,16 @@ bool BlockManager::allocate_slots_for_request(Request* request) {
   }
 
   if (num_additional_blocks > block_allocator_.free_block_count()) {
-    // not enough blocks
+    // not enough blocks in the block allocator
+    // TODO: evict some blocks from the prefix cache then retry
     return false;
   }
   for (auto& sequence : request->sequences) {
-    const uint32_t num_blocks = num_blocks_to_allocate(sequence, block_size_);
-    const auto block_ids = block_allocator_.allocate(num_blocks);
+    const uint32_t n_blocks = num_blocks_to_allocate(sequence, block_size_);
+    const auto block_ids = block_allocator_.allocate(n_blocks);
     sequence.append_blocks(block_ids);
   }
   return true;
-}
-
-// preempt a request to release allocated blocks for other high priority
-// requests.
-void BlockManager::release_slots_for_request(Request* request) {
-  DCHECK(request != nullptr);
-  for (auto& sequence : request->sequences) {
-    const auto block_ids = sequence.release_blocks();
-    // add block ids back to the block allocator
-    block_allocator_.free(block_ids);
-  }
 }
 
 bool BlockManager::allocate_slots_for_sequence(Sequence* sequence) {
@@ -85,40 +75,35 @@ bool BlockManager::allocate_slots_for_sequence(Sequence* sequence) {
   return true;
 }
 
-void BlockManager::release_slots_for_sequence(Sequence* sequence) {
-  DCHECK(sequence != nullptr);
-  const auto block_ids = sequence->release_blocks();
-  // add block ids back to the block allocator
-  block_allocator_.free(block_ids);
-}
-
 bool BlockManager::allocate_slots_for_sequences(std::vector<Sequence*>& sequences) {
-  for (auto sequence : sequences) {
+  for (auto* sequence : sequences) {
     DCHECK(sequence != nullptr);
-    const uint32_t num_additional_blocks =
-        num_blocks_to_allocate(*sequence, block_size_);
-    if (num_additional_blocks == 0) {
-      // no need to allocate more blocks
-      continue;
-    }
-
-    if (num_additional_blocks > block_allocator_.free_block_count()) {
-      // not enough blocks
+    if (!allocate_slots_for_sequence(sequence)) {
+      // should we gurantee the atomicity of the allocation? all or nothing?
       return false;
     }
-    const auto block_ids = block_allocator_.allocate(num_additional_blocks);
-    sequence->append_blocks(block_ids);
   }
   return true;
 }
 
-void BlockManager::release_slots_for_sequences(std::vector<Sequence*>& sequences) {
-  for (auto sequence : sequences) {
-    DCHECK(sequence != nullptr);
-    const auto block_ids = sequence->release_blocks();
-    // add block ids back to the block allocator
-    block_allocator_.free(block_ids);
+void BlockManager::release_slots_for_request(Request* request) {
+  DCHECK(request != nullptr);
+  for (auto& sequence : request->sequences) {
+    release_slots_for_sequence(&sequence);
   }
+}
+
+void BlockManager::release_slots_for_sequences(std::vector<Sequence*>& sequences) {
+  for (auto* sequence : sequences) {
+    DCHECK(sequence != nullptr);
+    release_slots_for_sequence(sequence);
+  }
+}
+
+void BlockManager::release_slots_for_sequence(Sequence* sequence) {
+  DCHECK(sequence != nullptr);
+  const auto block_ids = sequence->release_blocks();
+  // TODO: add the block to prefix cache
 }
 
 }  // namespace llm

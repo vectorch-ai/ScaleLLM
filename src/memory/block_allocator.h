@@ -1,5 +1,5 @@
 #pragma once
-
+#include "block.h"
 #include <glog/logging.h>
 
 #include <cstdint>
@@ -8,61 +8,33 @@
 namespace llm {
 
 // BlockAllocator is used to track memory blocks. It is not thread safe.
-// Please note: The actual memory has been allocated outside of this class. This
-// class only manages the allocation and deallocation of block ids.
+// Please note: The actual memory has been allocated outside of this class. 
+// This class only manages the allocation and deallocation of block ids.
 class BlockAllocator final {
  public:
   // block_size: number of slots per block
-  BlockAllocator(uint32_t num_blocks, uint32_t slots_per_block)
-      : free_block_count_(num_blocks), slots_per_block_(slots_per_block) {
-    free_blocks_.reserve(free_block_count_);
-    for (int32_t i = 0; i < free_block_count_; ++i) {
-      // push smaller block ids to the back of the vector
-      free_blocks_.push_back(free_block_count_ - i - 1);
-    }
-  }
+  BlockAllocator(uint32_t total_blocks, uint32_t block_size);
 
-  // allocate a list of block ids
-  std::vector<int32_t> allocate(uint32_t num_blocks) {
-    std::vector<int32_t> block_ids;
-    block_ids.reserve(num_blocks);
-    for (uint32_t i = 0; i < num_blocks; ++i) {
-      block_ids.push_back(allocate());
-    }
-    return block_ids;
-  }
+  // allocate a list of blocks
+  std::vector<Block> allocate(uint32_t n_blocks);
 
-  // free a list of block ids
-  void free(const std::vector<int32_t>& block_ids) {
-    for (int32_t block_id : block_ids) {
-      free(block_id);
-    }
-  }
-
-  // allocate a block id
-  int32_t allocate() {
-    CHECK(free_block_count_ > 0) << "No more CPU memory blocks available";
-    return free_blocks_[--free_block_count_];
-  }
-
-  // caller should make sure the block_id is valid
-  void free(int32_t block_id) {
-    CHECK(free_block_count_ < free_blocks_.size());
-    free_blocks_[free_block_count_++] = block_id;
-  }
+  // allocate a block
+  Block allocate();
 
   // get number of slots per block
-  int32_t slots_per_block() const { return slots_per_block_; }
+  size_t block_size() const { return block_size_; }
 
   // get number of free blocks
-  int32_t free_block_count() const { return free_block_count_; }
+  size_t free_block_count() const { return free_block_count_; }
 
+  // N.B. should not be used by the user. Only Block should call this method.
+  void free(int32_t block_id);
  private:
   // free block count
-  int32_t free_block_count_ = 0;
+  size_t free_block_count_ = 0;
 
   // number of slots per block
-  int32_t slots_per_block_ = 0;
+  size_t block_size_ = 0;
 
   // free block list
   std::vector<int32_t> free_blocks_;

@@ -14,6 +14,7 @@ cc_library(
     sequence.cpp
     request.cpp
   DEPS
+    :memory
     glog::glog
     absl::strings
     absl::time
