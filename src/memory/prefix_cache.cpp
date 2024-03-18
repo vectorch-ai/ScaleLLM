@@ -45,6 +45,7 @@ size_t PrefixCache::match(const std::vector<int32_t>& token_ids,
   auto tokens_slice = Slice(token_ids, n_tokens);
 
   size_t matched_tokens = 0;
+  // start from the root node
   Node* next_node = &root_;
   while (next_node != nullptr && !tokens_slice.empty()) {
     Node* curr = next_node;
@@ -96,6 +97,7 @@ size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
   auto blocks_slice = Slice(blocks, n_blocks);
 
   size_t new_inserted_tokens = 0;
+  // start from the root node
   Node* next_node = &root_;
   while (next_node != nullptr && !tokens_slice.empty()) {
     Node* curr = next_node;
@@ -137,46 +139,80 @@ size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
 }
 
 // release the blocks hold by the prefix cache
-size_t PrefixCache::evict(size_t n_blocks) {
+size_t PrefixCache::evict(size_t n_blocks_to_evict) {
+  size_t total_evicted = 0;
+  // loop until no blocks to evict
+  while (total_evicted < n_blocks_to_evict) {
+    // conduct multiple round scaning to avoid invalidating leaf_nodes_ iterator
+    const size_t evicted = evict_helper(n_blocks_to_evict - total_evicted);
+    if (evicted == 0) {
+      // no more cache to evict, just return
+      break;
+    }
+    total_evicted += evicted;
+  }
+  return total_evicted;
+}
+
+size_t PrefixCache::evict_helper(size_t n_blocks_to_evict) {
   // evict the least recently used blocks
-  size_t n_released_blocks = 0;
-  std::vector<Node*> nodes_to_release;
+  size_t total_evicted = 0;
+  int64_t last_access_time = 0;
+  // evict nodes at the end to avoid invaliding iterator
+  std::vector<Node*> nodes_to_evict;
   for (auto it = leaf_nodes_.begin();
-       n_released_blocks < n_blocks && it != leaf_nodes_.end();
+       total_evicted < n_blocks_to_evict && it != leaf_nodes_.end();
        ++it) {
     auto* leaf_node = *it;
-    CHECK(leaf_node->children.empty()) << "Leaf node should not have children";
+    DCHECK(leaf_node->last_access_time >= last_access_time);
+    last_access_time = leaf_node->last_access_time;
 
-    // check if any of the blocks in the node is still in use
-    const bool has_shared_block =
-        std::any_of(leaf_node->blocks.begin(),
-                    leaf_node->blocks.end(),
-                    [](const Block& block) { return block.is_shared(); });
-    // can't release node if any block is still in use
-    if (has_shared_block) {
-      continue;
+    // find first non-shared block to evict
+    const auto& blocks = leaf_node->blocks;
+    const size_t n_blocks = blocks.size();
+    size_t non_shared_start = 0;
+    for (; non_shared_start < blocks.size(); ++non_shared_start) {
+      if (!blocks[non_shared_start].is_shared()) {
+        break;
+      }
     }
 
-    // evict all blocks in the node
-    n_released_blocks += leaf_node->blocks.size();
-    nodes_to_release.push_back(leaf_node);
+    // try to only evict minimal number of blocks
+    const size_t n_to_evict = std::min(n_blocks_to_evict - total_evicted,
+                                       n_blocks - non_shared_start);
+    total_evicted += n_to_evict;
+    if (n_to_evict == blocks.size()) {
+      // mark the node as to be evicted
+      nodes_to_evict.push_back(leaf_node);
+    } else if (n_to_evict > 0) {
+      // partially evict non-shared blocks
+      const size_t n_blocks_left = n_blocks - n_to_evict;
+      DCHECK(n_blocks_left >= non_shared_start);
+      leaf_node->token_ids.resize(n_blocks_left * block_size_);
+      leaf_node->blocks.resize(n_blocks_left);
+    }
   }
 
-  std::for_each(nodes_to_release.begin(),
-                nodes_to_release.end(),
-                [this](Node* node) { release_node(node); });
+  // release leaf nodes and update leaf_nodes_ set
+  for (Node* node : nodes_to_evict) {
+    release_node(node);
+  }
 
-  num_blocks_ -= n_released_blocks;
-  return n_released_blocks;
+  // update the number of blocks
+  num_blocks_ -= total_evicted;
+  return total_evicted;
 }
 
 void PrefixCache::release_node(Node* node) {
+  DCHECK(node != &root_);
+  DCHECK(node->children.empty()) << "should only release leaf node";
   // remove the node from the leaf nodes
   leaf_nodes_.erase(node);
   // remove the node from the parent's children
   auto* parent = node->parent;
+  DCHECK(parent->children.count(node) > 0);
   parent->children.erase(node);
-  if (parent->children.empty()) {
+  if (is_leaf_node(parent)) {
     // the parent becomes a leaf node
     leaf_nodes_.insert(parent);
   }
@@ -195,7 +231,7 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
         node->blocks.size() > n_blocks)
       << "The common prefix length should be less than the token ids length";
 
-  const bool is_leaf_node = node != &root_ && node->children.empty();
+  const bool was_leaf = is_leaf_node(node);
   // split the node at the common prefix
   Node* child = new Node();
   ++num_nodes_;
@@ -210,6 +246,9 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
   child->parent = node;
   // take over children
   child->children = std::move(node->children);
+  for (Node* grand_child : child->children) {
+    grand_child->parent = child;
+  }
 
   // truncate token_ids and blocks to the common prefix length
   node->token_ids.resize(common_prefix_length);
@@ -218,7 +257,7 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
   node->children.insert(child);
 
   // remove the old leaf and add new leaf
-  if (is_leaf_node) {
+  if (was_leaf) {
     leaf_nodes_.erase(node);
     leaf_nodes_.insert(child);
   }
@@ -232,12 +271,12 @@ void PrefixCache::create_child(Node* node,
       << "The number of tokens "
          "should be equal to the number of blocks times block size";
 
-  const bool is_leaf_node = node != &root_ && node->children.empty();
+  const bool was_leaf = is_leaf_node(node);
 
   Node* child = new Node();
   ++num_nodes_;
   num_blocks_ += blocks.size();
-  
+
   child->token_ids = tokens.to_vector();
   child->blocks = blocks.to_vector();
   child->last_access_time = now;
@@ -247,9 +286,14 @@ void PrefixCache::create_child(Node* node,
 
   node->children.insert(child);
   // after adding one child, the node is not leaf anymore
-  if (is_leaf_node) {
+  if (was_leaf) {
     leaf_nodes_.erase(node);
   }
+}
+
+bool PrefixCache::is_leaf_node(Node* node) const {
+  // exclude root_ node to avoid adding root into leaf_nodes_ set
+  return node != &root_ && node->children.empty();
 }
 
 }  // namespace llm

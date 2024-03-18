@@ -71,6 +71,10 @@ class PrefixCache final {
                     const Slice<Block>& blocks,
                     int64_t now);
 
+  size_t evict_helper(size_t n_blocks);
+
+  bool is_leaf_node(Node* node) const;
+
   // the leaf nodes in the prefix tree, used to evict blocks
   // sorted by last_access_time in ascending order
   std::multiset<Node*, Less> leaf_nodes_;

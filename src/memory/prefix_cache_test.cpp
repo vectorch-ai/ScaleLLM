@@ -108,14 +108,43 @@ TEST(PrefixCacheTest, Basic) {
     EXPECT_EQ(blocks, desired_blocks);
   }
 
-  // // Test evict
-  // {
-  //   uint32_t n_blocks = cache.evict(1);
-  //   EXPECT_EQ(n_blocks, 1);
-  //   EXPECT_EQ(cache.num_blocks(), block_size);
-  //   EXPECT_EQ(cache.num_leaf_nodes(), 5);
-  //   EXPECT_EQ(cache.num_nodes(), 4);
-  // }
+  // Test evict
+  //   tokens: [1, 2] -> [5, 6, 7, 8, 9, 10]*
+  //                  -> [3, 4] -> [5, 6]*
+  //                            -> [50, 60, 70, 80, 90, 100]*
+  //   blocks: [0] -> [5, 15, 25]*
+  //               -> [1] -> [2]*
+  //                      -> [20, 30, 40]*
+  {
+    // Hold sequence to prevent evicting
+    std::vector<int32_t> token_ids = {1, 2, 5, 6};
+    std::vector<Block> blocks;
+    uint32_t len = cache.match(token_ids, &blocks);
+    EXPECT_EQ(len, 4);
+    std::vector<Block> desired_blocks = {0, 5};
+    EXPECT_EQ(blocks, desired_blocks);
+
+    // evict 2 blocks to test partial eviction
+    uint32_t evicted = cache.evict(2);
+    EXPECT_EQ(evicted, 2);
+    EXPECT_EQ(cache.num_blocks(), 7);
+
+    // try to evict all blocks, ending with 2 hold blocks left
+    const size_t total_blocks = cache.num_blocks();
+    evicted = cache.evict(total_blocks);
+    EXPECT_EQ(evicted, 5);
+    EXPECT_EQ(cache.num_blocks(), 2);
+    EXPECT_EQ(cache.num_leaf_nodes(), 1);
+    EXPECT_EQ(cache.num_nodes(), 2);
+
+    // release blocks then evict all
+    blocks.clear();
+    evicted = cache.evict(total_blocks);
+    EXPECT_EQ(evicted, 2);
+    EXPECT_EQ(cache.num_blocks(), 0);
+    EXPECT_EQ(cache.num_leaf_nodes(), 0);
+    EXPECT_EQ(cache.num_nodes(), 0);
+  }
 }
 
 }  // namespace llm
