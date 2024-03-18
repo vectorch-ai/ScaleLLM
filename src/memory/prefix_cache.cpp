@@ -25,24 +25,29 @@ uint32_t common_prefix_length(const VectorA& token_ids1,
 }
 }  // namespace
 
-PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {}
+PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {
+  CHECK(block_size_ > 0) << "Block size should be greater than 0";
+}
 
-// match the token ids with the prefix tree and return matched block length
+// match the token ids with the prefix tree
+// return the length of matched tokens
 uint32_t PrefixCache::match(const std::vector<int32_t>& token_ids,
                             std::vector<Block>* blocks) {
-  int64_t now = absl::ToUnixMicros(absl::Now());
-  auto tokens = Slice(token_ids);
+  const int64_t now = absl::ToUnixMicros(absl::Now());
 
-  uint32_t matched_length = 0;
+  // allign tokens to block boundary
+  auto tokens_slice = Slice(token_ids).align_to(block_size_);
+  uint32_t matched_tokens = 0;
   Node* next_node = &root_;
-  while (next_node != nullptr) {
+  while (next_node != nullptr && !tokens_slice.empty()) {
     Node* curr = next_node;
     next_node = nullptr;
 
     // match with children
     for (Node* child : curr->children) {
-      uint32_t prefix_length = common_prefix_length(tokens, child->token_ids);
-      // we only cache a whole block, truncate the prefix length
+      uint32_t prefix_length =
+          common_prefix_length(tokens_slice, child->token_ids);
+      // truncate the prefix length at block boundary
       prefix_length = prefix_length / block_size_ * block_size_;
 
       if (prefix_length == 0) {
@@ -54,13 +59,13 @@ uint32_t PrefixCache::match(const std::vector<int32_t>& token_ids,
 
       // find a match, update the last access time
       child->last_access_time = now;
-      matched_length += prefix_length;
+      matched_tokens += prefix_length;
 
       if (prefix_length == child->token_ids.size()) {
         // full match, continue to grand children
         blocks->insert(
             blocks->end(), child->blocks.begin(), child->blocks.end());
-        tokens = tokens.sub(prefix_length);
+        tokens_slice = tokens_slice.sub(prefix_length);
         next_node = child;
       } else {
         // partial match, add the blocks to the result
@@ -73,19 +78,24 @@ uint32_t PrefixCache::match(const std::vector<int32_t>& token_ids,
     }
   }
 
-  return matched_length;
+  return matched_tokens;
 }
 
-// insert the token ids and block ids into the prefix tree
-// return the length of blocks inserted
-void PrefixCache::insert(const std::vector<int32_t>& token_ids,
-                         const std::vector<Block>& blocks) {
-  int64_t now = absl::ToUnixMicros(absl::Now());
-  auto tokens_slice = Slice(token_ids);
-  auto blocks_slice = Slice(blocks);
+// insert the token ids and blocks into the prefix tree
+// return the length of shared tokens
+uint32_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
+                             const std::vector<Block>& blocks) {
+  CHECK(blocks.size() * block_size_ >= token_ids.size())
+      << "The number of blocks should be greater than or equal to the number "
+         "of tokens";
 
+  const int64_t now = absl::ToUnixMicros(absl::Now());
+  // allign tokens to block boundary
+  auto tokens_slice = Slice(token_ids).align_to(block_size_);
+  auto blocks_slice = Slice(blocks);
+  uint32_t shared_tokens = 0;
   Node* next_node = &root_;
-  while (next_node != nullptr) {
+  while (next_node != nullptr && !tokens_slice.empty()) {
     Node* curr = next_node;
     next_node = nullptr;
 
@@ -100,23 +110,27 @@ void PrefixCache::insert(const std::vector<int32_t>& token_ids,
         // no common prefix, continue to the next child
         continue;
       }
+
+      // find a match, update the last access time
+      child->last_access_time = now;
+      shared_tokens += prefix_length;
+
       CHECK(prefix_length % block_size_ == 0)
           << "The prefix length should be multiple of block size";
       const uint32_t n_blocks = prefix_length / block_size_;
 
-      // find a match, update the last access time
-      child->last_access_time = now;
       // advance the token and block slices
       tokens_slice = tokens_slice.sub(prefix_length);
       blocks_slice = blocks_slice.sub(n_blocks);
 
-      // a full match, continue to grand children
       if (prefix_length == child->token_ids.size()) {
+        // a full match, continue to grand children
         next_node = child;
-      } else {
-        // partial match, split the child node on the common prefix
+      } else if (!tokens_slice.empty()) {
+        // partial match, and still have tokens left
+        // split the child node on the common prefix
         split_node(child, prefix_length);
-        // create new child node with the remaining token ids
+        // create new child with the remaining token ids
         create_child(child, tokens_slice, blocks_slice, now);
       }
       break;
@@ -125,57 +139,64 @@ void PrefixCache::insert(const std::vector<int32_t>& token_ids,
     // no match at all, create a new child node
     create_child(curr, tokens_slice, blocks_slice, now);
   }
+  return shared_tokens;
 }
 
 // release the blocks hold by the prefix cache
-uint32_t PrefixCache::release(uint32_t n_blocks, std::vector<Block>* blocks) {
+uint32_t PrefixCache::evict(uint32_t n_blocks) {
   // evict the least recently used blocks
   uint32_t n_released_blocks = 0;
   std::vector<Node*> nodes_to_release;
-  for (auto it = leaf_nodes_.begin(); it != leaf_nodes_.end(); ++it) {
-    CHECK((*it)->children.empty()) << "Leaf node should not have children";
+  for (auto it = leaf_nodes_.begin();
+       n_released_blocks < n_blocks && it != leaf_nodes_.end();
+       ++it) {
+    auto* leaf_node = *it;
+    CHECK(leaf_node->children.empty()) << "Leaf node should not have children";
 
     // check if any of the blocks in the node is still in use
-    for (const auto& block : (*it)->blocks) {
-      // can't release node if any block is in still in use
-      if (block.is_shared()) {
-        continue;
-      }
+    const bool has_shared_block =
+        std::any_of(leaf_node->blocks.begin(),
+                    leaf_node->blocks.end(),
+                    [](const Block& block) { return block.is_shared(); });
+    // can't release node if any block is still in use
+    if (has_shared_block) {
+      continue;
     }
-    // TODO: release partial blocks if the node has more blocks than needed
 
-    // release all blocks in the node
-    n_released_blocks += (*it)->blocks.size();
-    nodes_to_release.push_back(*it);
-
-    if (n_released_blocks >= n_blocks) {
-      break;
-    }
+    // evict all blocks in the node
+    n_released_blocks += leaf_node->blocks.size();
+    nodes_to_release.push_back(leaf_node);
   }
 
-  for (auto* node : nodes_to_release) {
-    blocks->insert(blocks->end(), node->blocks.begin(), node->blocks.end());
-    leaf_nodes_.erase(node);
-    release_node(node);
-  }
+  std::for_each(nodes_to_release.begin(),
+                nodes_to_release.end(),
+                [this](Node* node) { release_node(node); });
+
   return n_released_blocks;
 }
 
 void PrefixCache::release_node(Node* node) {
-  auto* parent = node->parent;
+  // remove the node from the leaf nodes
+  leaf_nodes_.erase(node);
   // remove the node from the parent's children
+  auto* parent = node->parent;
   parent->children.erase(node);
   if (parent->children.empty()) {
     // the parent becomes a leaf node
     leaf_nodes_.insert(parent);
   }
-  // release the node
+
+  // delete the node
   delete node;
+  CHECK(num_nodes_ > 0) << "The number of nodes should be greater than 0";
+  --num_nodes_;
 }
 
 void PrefixCache::split_node(Node* node, uint32_t common_prefix_length) {
   // split the node at the common prefix
   Node* child = new Node();
+  ++num_nodes_;
+
   const uint32_t n_blocks = common_prefix_length / block_size_;
   CHECK(node->token_ids.size() > common_prefix_length)
       << "The common prefix length should be less than the token ids length";
@@ -210,6 +231,8 @@ void PrefixCache::create_child(Node* node,
                                const Slice<Block>& blocks,
                                int64_t now) {
   Node* child = new Node();
+  ++num_nodes_;
+
   child->token_ids = tokens.to_vector();
   child->blocks = blocks.to_vector();
   child->last_access_time = now;

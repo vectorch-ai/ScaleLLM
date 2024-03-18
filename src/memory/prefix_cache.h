@@ -14,17 +14,19 @@ class PrefixCache final {
  public:
   PrefixCache(uint32_t block_size);
 
-  // match the token ids with the prefix tree and return matched block length
+  // match the token ids with the prefix tree
+  // return the length of matched tokens
   uint32_t match(const std::vector<int32_t>& token_ids,
                  std::vector<Block>* blocks);
 
-  // insert the token ids and block ids into the prefix tree
-  // return the length of blocks inserted
-  void insert(const std::vector<int32_t>& token_ids,
-              const std::vector<Block>& blocks);
+  // insert the token ids and blocks into the prefix tree
+  // return the length of shared tokens
+  uint32_t insert(const std::vector<int32_t>& token_ids,
+                  const std::vector<Block>& blocks);
 
-  // release the blocks hold by the prefix cache
-  uint32_t release(uint32_t n_blocks, std::vector<Block>* blocks);
+  // evict blocks hold by the prefix cache
+  // return the actual number of blocks evicted
+  uint32_t evict(uint32_t n_blocks);
 
   // get the number of blocks in the prefix cache
   uint32_t num_blocks() const { return num_nodes() * block_size_; }
@@ -51,9 +53,9 @@ class PrefixCache final {
   };
 
   // Define comparison operator for sorting in set
-  struct Greater {
+  struct Less {
     bool operator()(const Node* lhs, const Node* rhs) const {
-      return lhs->last_access_time > rhs->last_access_time;
+      return lhs->last_access_time < rhs->last_access_time;
     }
   };
 
@@ -70,8 +72,8 @@ class PrefixCache final {
                     int64_t now);
 
   // the leaf nodes in the prefix tree, used to evict blocks
-  // sorted by last_access_time
-  std::set<Node*, Greater> leaf_nodes_;
+  // sorted by last_access_time in ascending order
+  std::set<Node*, Less> leaf_nodes_;
 
   // the root node of the prefix tree
   Node root_;

@@ -24,6 +24,9 @@ class Slice final {
   // get the size of the slice
   size_t size() const { return size_; }
 
+  // check if the slice is empty
+  bool empty() const { return size_ == 0; }
+
   // get the data pointer
   const T* data() const { return data_; }
 
@@ -33,6 +36,12 @@ class Slice final {
   // get a sub slice
   Slice<T> sub(size_t start) const {
     return Slice<T>(data_ + start, size_ - start);
+  }
+
+  // align the slice to allignment
+  Slice<T> align_to(size_t alignment) const {
+    const size_t alligned_size = size_ / alignment * alignment;
+    return Slice<T>(data_, alligned_size);
   }
 
   // convert to vector

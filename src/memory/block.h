@@ -14,7 +14,7 @@ class Block final {
  public:
   ~Block();
 
-  // add reference count to allow using with std::vector
+  // add default constructor to allow resizing with std::vector
   Block() = default;
 
   // used for testing
