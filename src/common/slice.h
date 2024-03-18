@@ -1,8 +1,7 @@
 #pragma once
 
-#include <cstdint>
-#include <memory>
-#include <string>
+#include <glog/logging.h>
+
 #include <vector>
 
 namespace llm {
@@ -14,8 +13,17 @@ class Slice final {
 
   Slice(const T* data, size_t size) : data_(data), size_(size) {}
 
-  Slice(const std::vector<T>& data, size_t stat_pos = 0)
-      : data_(data.data() + stat_pos), size_(data.size() - stat_pos) {}
+  Slice(const std::vector<T>& data) : data_(data.data()), size_(data.size()) {}
+
+  Slice(const std::vector<T>& data, size_t size)
+      : data_(data.data()), size_(size) {
+    CHECK(size <= data.size());
+  }
+
+  Slice(const std::vector<T>& data, size_t start, size_t end)
+      : data_(data.data() + start), size_(end - start) {
+    CHECK(start < end && (start + size_) <= data.size());
+  }
 
   // iterator for the slice
   const T* begin() const { return data_; }
@@ -35,13 +43,13 @@ class Slice final {
 
   // get a sub slice
   Slice<T> sub(size_t start) const {
+    CHECK(start <= size_);
     return Slice<T>(data_ + start, size_ - start);
   }
 
-  // align the slice to allignment
-  Slice<T> align_to(size_t alignment) const {
-    const size_t alligned_size = size_ / alignment * alignment;
-    return Slice<T>(data_, alligned_size);
+  Slice<T> sub(size_t start, size_t end) const {
+    CHECK(start < end && end <= size_);
+    return Slice<T>(data_ + start, end - start);
   }
 
   // convert to vector

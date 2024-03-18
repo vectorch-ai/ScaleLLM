@@ -16,26 +16,26 @@ class PrefixCache final {
 
   // match the token ids with the prefix tree
   // return the length of matched tokens
-  uint32_t match(const std::vector<int32_t>& token_ids,
-                 std::vector<Block>* blocks);
+  size_t match(const std::vector<int32_t>& token_ids,
+               std::vector<Block>* blocks);
 
   // insert the token ids and blocks into the prefix tree
-  // return the length of shared tokens
-  uint32_t insert(const std::vector<int32_t>& token_ids,
-                  const std::vector<Block>& blocks);
+  // return the length of new inserted tokens
+  size_t insert(const std::vector<int32_t>& token_ids,
+                const std::vector<Block>& blocks);
 
   // evict blocks hold by the prefix cache
   // return the actual number of blocks evicted
-  uint32_t evict(uint32_t n_blocks);
+  size_t evict(size_t n_blocks);
 
   // get the number of blocks in the prefix cache
-  uint32_t num_blocks() const { return num_nodes() * block_size_; }
+  size_t num_blocks() const { return num_blocks_; }
 
   // get the number of leaf nodes in the prefix tree
-  uint32_t num_leaf_nodes() const { return leaf_nodes_.size(); }
+  size_t num_leaf_nodes() const { return leaf_nodes_.size(); }
 
   // get the total number of nodes in the prefix tree
-  uint32_t num_nodes() const { return num_nodes_; }
+  size_t num_nodes() const { return num_nodes_; }
 
  private:
   struct Node {
@@ -63,7 +63,7 @@ class PrefixCache final {
   void release_node(Node* node);
 
   // split the node on the common prefix
-  void split_node(Node* node, uint32_t common_prefix_length);
+  void split_node(Node* node, size_t common_prefix_length);
 
   // create a new child node under the node
   void create_child(Node* node,
@@ -73,7 +73,7 @@ class PrefixCache final {
 
   // the leaf nodes in the prefix tree, used to evict blocks
   // sorted by last_access_time in ascending order
-  std::set<Node*, Less> leaf_nodes_;
+  std::multiset<Node*, Less> leaf_nodes_;
 
   // the root node of the prefix tree
   Node root_;
@@ -82,7 +82,10 @@ class PrefixCache final {
   uint32_t block_size_;
 
   // the number of nodes in the prefix tree, excluding the root node
-  uint32_t num_nodes_ = 0;
+  size_t num_nodes_ = 0;
+
+  // the total number of blocks in the prefix cache
+  size_t num_blocks_ = 0;
 };
 
 }  // namespace llm
