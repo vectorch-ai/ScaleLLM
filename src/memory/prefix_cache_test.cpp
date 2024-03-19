@@ -30,7 +30,6 @@ TEST(PrefixCacheTest, Basic) {
     // truncate at block boundary
     EXPECT_EQ(len, 6);
     EXPECT_EQ(cache.num_blocks(), 3);  // [0, 1, 2]
-    EXPECT_EQ(cache.num_leaf_nodes(), 1);
     EXPECT_EQ(cache.num_nodes(), 1);
 
     // insert sequence: [1, 2, 3, 4] -> new [50, 60, 70, 80, 90, 100]
@@ -45,7 +44,6 @@ TEST(PrefixCacheTest, Basic) {
     // truncate at block boundary
     EXPECT_EQ(len, 6);                 // [50, 60, 70, 80, 90, 100]
     EXPECT_EQ(cache.num_blocks(), 6);  // [0, 1] -> [2] | [20, 30, 40]
-    EXPECT_EQ(cache.num_leaf_nodes(), 2);
     EXPECT_EQ(cache.num_nodes(), 3);
 
     // insert sequence [1, 2, 5, 6, 7, 8, 9, 10]
@@ -62,7 +60,6 @@ TEST(PrefixCacheTest, Basic) {
     // truncate at block boundary
     EXPECT_EQ(len, 6);  // [5, 6, 7, 8, 9, 10]
     EXPECT_EQ(cache.num_blocks(), 9);
-    EXPECT_EQ(cache.num_leaf_nodes(), 3);
     EXPECT_EQ(cache.num_nodes(), 5);
   }
 
@@ -122,7 +119,6 @@ TEST(PrefixCacheTest, Basic) {
     evicted = cache.evict(total_blocks);
     EXPECT_EQ(evicted, 5);
     EXPECT_EQ(cache.num_blocks(), 2);
-    EXPECT_EQ(cache.num_leaf_nodes(), 1);
     EXPECT_EQ(cache.num_nodes(), 2);
 
     // release blocks then evict all
@@ -130,7 +126,6 @@ TEST(PrefixCacheTest, Basic) {
     evicted = cache.evict(total_blocks);
     EXPECT_EQ(evicted, 2);
     EXPECT_EQ(cache.num_blocks(), 0);
-    EXPECT_EQ(cache.num_leaf_nodes(), 0);
     EXPECT_EQ(cache.num_nodes(), 0);
   }
 }

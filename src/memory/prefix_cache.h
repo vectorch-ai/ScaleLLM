@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <set>
 #include <unordered_set>
 #include <vector>
 
@@ -13,6 +12,8 @@ namespace llm {
 class PrefixCache final {
  public:
   PrefixCache(uint32_t block_size);
+
+  ~PrefixCache();
 
   // match the token ids with the prefix tree
   // return matched blocks
@@ -36,11 +37,8 @@ class PrefixCache final {
   // get the number of blocks in the prefix cache
   size_t num_blocks() const { return num_blocks_; }
 
-  // get the number of leaf nodes in the prefix tree
-  size_t num_leaf_nodes() const { return leaf_nodes_.size(); }
-
   // get the total number of nodes in the prefix tree
-  size_t num_nodes() const { return num_nodes_; }
+  size_t num_nodes() const { return nodes_.size(); }
 
  private:
   struct Node {
@@ -71,20 +69,14 @@ class PrefixCache final {
 
   size_t evict_helper(size_t n_blocks);
 
-  bool is_leaf_node(Node* node) const;
-
-  // the leaf nodes in the prefix tree, used to evict blocks
   // TODO: add a LRU policy to evict blocks based on the last access time
-  std::set<Node*> leaf_nodes_;
+  std::unordered_set<Node*> nodes_;
 
   // the root node of the prefix tree
   Node root_;
 
   // the block size of the memory blocks
   uint32_t block_size_;
-
-  // the number of nodes in the prefix tree, excluding the root node
-  size_t num_nodes_ = 0;
 
   // the total number of blocks in the prefix cache
   size_t num_blocks_ = 0;

@@ -20,11 +20,6 @@ class Slice final {
     CHECK(size <= data.size());
   }
 
-  Slice(const std::vector<T>& data, size_t start, size_t end)
-      : data_(data.data() + start), size_(end - start) {
-    CHECK(start < end && (start + size_) <= data.size());
-  }
-
   // iterator for the slice
   const T* begin() const { return data_; }
   const T* end() const { return data_ + size_; }
@@ -48,7 +43,7 @@ class Slice final {
   }
 
   Slice<T> slice(size_t start, size_t end) const {
-    CHECK(start < end && end <= size_);
+    CHECK(start <= end && end <= size_);
     return Slice<T>(data_ + start, end - start);
   }
 
