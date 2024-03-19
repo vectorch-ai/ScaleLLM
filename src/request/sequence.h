@@ -44,11 +44,6 @@ class Sequence final {
   // get token ids
   Slice<int32_t> token_ids() const { return {token_ids_}; }
 
-  // get token ids in kv cache
-  Slice<int32_t> token_ids_in_kv_cache() const {
-    return {token_ids_, kv_cache_pos_};
-  }
-
   // get token ids to count map
   const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
     return token_to_count_map_;
@@ -64,8 +59,13 @@ class Sequence final {
   // returns 0 if still in prefill stage
   size_t num_generated_tokens() const;
 
+  // get token ids in kv cache
+  Slice<int32_t> tokens_in_kv_cache() const {
+    return {token_ids_, kv_cache_pos_};
+  }
+
   // get the number of tokens in the kvcache
-  size_t num_tokens_in_cache() const { return kv_cache_pos_; }
+  size_t num_tokens_in_kv_cache() const { return kv_cache_pos_; }
 
   // whether the sequence is in prefill stage, no kv cache has been generated
   bool is_prefill() const { return kv_cache_pos_ == 0; }
@@ -87,7 +87,7 @@ class Sequence final {
   void append_shared_blocks(const std::vector<Block>& shared_blocks);
 
   // release all cache blocks
-  std::vector<Block> release_blocks();
+  void release_blocks();
 
   // returns allocated cache blocks
   Slice<Block> blocks() const { return {blocks_}; }

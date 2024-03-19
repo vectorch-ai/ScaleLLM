@@ -170,10 +170,10 @@ void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
 }
 
 // release all cache blocks
-std::vector<Block> Sequence::release_blocks() {
+void Sequence::release_blocks() {
   // reset the current pos to 0
   kv_cache_pos_ = 0;
-  return std::move(blocks_);
+  blocks_.clear();
 }
 
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {

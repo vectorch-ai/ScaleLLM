@@ -153,9 +153,9 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
 
     all_prefill_sequences &= sequence->is_prefill();
 
-    const auto& seq_token_ids = sequence->token_ids();
+    const auto seq_token_ids = sequence->token_ids();
     const int32_t seq_len = static_cast<int32_t>(seq_token_ids.size());
-    const int32_t kvcache_seq_len = sequence->num_tokens_in_cache();
+    const int32_t kvcache_seq_len = sequence->num_tokens_in_kv_cache();
     const int32_t q_seq_len = seq_len - kvcache_seq_len;
     // pack the token ids and positions into one-dimensional tensors
     for (int32_t i = kvcache_seq_len; i < seq_len; ++i) {
@@ -269,7 +269,7 @@ void Utils::prepare_validate_inputs(const std::vector<Sequence*>& batch,
 
     seq_idxes_vec[i] = static_cast<int32_t>(token_ids_vec.size());
 
-    const auto& seq_token_ids = sequence->token_ids();
+    const auto seq_token_ids = sequence->token_ids();
     const int32_t num_tokens = static_cast<int32_t>(seq_token_ids.size());
     for (int32_t i = 0; i < num_tokens; ++i) {
       flatten_tokens_vec.emplace_back(seq_token_ids[i]);
