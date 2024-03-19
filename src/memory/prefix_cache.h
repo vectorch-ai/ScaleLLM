@@ -44,7 +44,7 @@ class PrefixCache final {
   size_t num_blocks() const { return num_blocks_; }
 
   // get the total number of nodes in the prefix tree
-  size_t num_nodes() const { return nodes_.size(); }
+  size_t num_nodes() const { return num_nodes_; }
 
  private:
   struct Node {
@@ -81,7 +81,7 @@ class PrefixCache final {
 
   size_t evict_helper(size_t n_blocks);
 
-  // delete the node from the LRU list
+  // remove the node from the LRU list
   static void remove_node_from_lru(Node* node);
 
   // add a new node to the back of the LRU list
@@ -90,13 +90,11 @@ class PrefixCache final {
   // move the node to the back of the LRU list
   void move_node_to_lru_back(Node* node);
 
-  std::unordered_set<Node*> nodes_;
-
   // the root node of the prefix tree
   Node root_;
 
   // the front and back nodes of the LRU list
-  // the back node is the least recently used node
+  // the front node is the least recently used node
   // sorted by the last access time in ascending order
   Node lru_front_;
   Node lru_back_;
@@ -106,6 +104,9 @@ class PrefixCache final {
 
   // the total number of blocks in the prefix cache
   size_t num_blocks_ = 0;
+
+  // the total number of nodes in the prefix tree
+  size_t num_nodes_ = 0;
 };
 
 }  // namespace llm

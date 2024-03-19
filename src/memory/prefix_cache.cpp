@@ -5,7 +5,6 @@
 #include <glog/logging.h>
 
 #include <cstdint>
-#include <set>
 #include <vector>
 
 #include "common/slice.h"
@@ -39,11 +38,13 @@ PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {
 }
 
 PrefixCache::~PrefixCache() {
-  for (Node* node : nodes_) {
-    remove_node_from_lru(node);
+  // iterator the lru list to release nodes
+  size_t num_nodes = 0;
+  for (Node* node = lru_front_.next; node != &lru_back_; node = node->next) {
+    ++num_nodes;
     delete node;
   }
-  nodes_.clear();
+  CHECK(num_nodes_ == num_nodes) << "detected memory leak";
 }
 
 // match the token ids with the prefix tree
@@ -234,9 +235,9 @@ void PrefixCache::release_node(Node* node) {
   parent->children.erase(node);
 
   // delete the node
-  nodes_.erase(node);
   remove_node_from_lru(node);
   delete node;
+  --num_nodes_;
 }
 
 void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
@@ -249,8 +250,8 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
 
   // split the node at the common prefix
   Node* child = new Node();
-  nodes_.insert(child);
   add_node_to_lru_back(child);
+  ++num_nodes_;
 
   Slice<int32_t> token_ids(node->token_ids);
   Slice<Block> blocks(node->blocks);
@@ -282,8 +283,8 @@ void PrefixCache::create_child(Node* node,
          "should be equal to the number of blocks times block size";
 
   Node* child = new Node();
-  nodes_.insert(child);
   add_node_to_lru_back(child);
+  ++num_nodes_;
 
   num_blocks_ += blocks.size();
 

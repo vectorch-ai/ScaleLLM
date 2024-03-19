@@ -136,7 +136,14 @@ class PrefixCacheRandomTest
 
 TEST_P(PrefixCacheRandomTest, Random) {
   const auto& [block_size, max_seq_len] = GetParam();
-  EXPECT_TRUE(true);
+  // sample which existing sequence to share the prefix
+  // sample the length of the prefix
+  // generate the sequence and blocks
+  // insert the sequence and blocks into prefix cache
+  // match the sequence and blocks from the prefix cache
+  // save the sequence and blocks into a vector
+
+  // randomly query the prefix cache and compare the result with the saved vector
 }
 
 INSTANTIATE_TEST_SUITE_P(
