@@ -80,14 +80,14 @@ TEST(KVCacheTest, Random) {
   KVCache kv_cache(key_cache, value_cache);
 
   for (int32_t i = 0; i < 10000; ++i) {
-    using torch::indexing::Slice;
+    using ISlice = torch::indexing::Slice;
 
     const int sample_size = std::min(num_blocks * block_size, 10);
     const int num_slots = i % sample_size + 1;
     torch::Tensor slot_ids =
         torch::randperm(num_blocks * block_size,
                         torch::dtype(torch::kInt).device(device))
-            .index({Slice(0, num_slots)});
+            .index({ISlice(0, num_slots)});
 
     torch::Tensor keys =
         torch::rand({num_slots, num_kv_heads, head_dim}, torch::device(device));

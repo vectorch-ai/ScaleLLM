@@ -17,7 +17,7 @@
 #include "ref_handler.h"
 
 namespace llm {
-using torch::indexing::Slice;
+using ISlice = torch::indexing::Slice;
 
 // helper functions to get and set key-value cache based on slot_ids
 void set_kv_cache(
@@ -39,9 +39,8 @@ void set_kv_cache(
     const auto block_offset = slot_id % block_size;
 
     // [block_id, block_offset, n_kv_heads, head_dim]
-    key_cache.index_put_({block_id, block_offset, Slice(), Slice()}, keys[i]);
-    value_cache.index_put_({block_id, block_offset, Slice(), Slice()},
-                           values[i]);
+    key_cache.index_put_({block_id, block_offset, ISlice(), ISlice()}, keys[i]);
+    value_cache.index_put_({block_id, block_offset, ISlice(), ISlice()}, values[i]);
   }
 }
 
@@ -59,12 +58,11 @@ std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
     const auto block_id = slot_id / block_size;
     const auto block_offset = slot_id % block_size;
     // key = key_cache_[block_id, :, :, block_offset, :]
-    const auto key =
-        key_cache.index({block_id, block_offset, Slice(), Slice()});
+    const auto key = key_cache.index({block_id, block_offset, ISlice(), ISlice()});
     keys.push_back(key);
     // value = value_cache_[block_id, :, :, block_offset]
     const auto value =
-        value_cache.index({block_id, block_offset, Slice(), Slice()});
+        value_cache.index({block_id, block_offset, ISlice(), ISlice()});
     values.push_back(value);
   }
   return std::make_tuple(torch::stack(keys), torch::stack(values));
@@ -280,7 +278,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
       {static_cast<int32_t>(block_tables_vec.size()), max_n_blocks_per_seq},
       torch::dtype(torch::kInt32).device(device));
   for (int64_t i = 0; i < block_tables_vec.size(); ++i) {
-    block_tables.index_put_({i, Slice()},
+    block_tables.index_put_({i, ISlice()},
                             torch::tensor(block_tables_vec[i], torch::kInt));
   }
 

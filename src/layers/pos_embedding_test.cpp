@@ -8,7 +8,7 @@
 namespace llm {
 namespace {
 using torch::indexing::None;
-using torch::indexing::Slice;
+using ISlice = torch::indexing::Slice;
 
 // Rotary code ported from llama repo, which is used as disired output
 torch::Tensor precompute_freqs_cis(int64_t dim,
@@ -55,8 +55,8 @@ std::tuple<torch::Tensor, torch::Tensor> apply_rotary_emb(
 
 // [1, 2, 3, 4, 5, 6] => [1, 3, 5, 2, 4, 6]
 inline torch::Tensor interleaved_to_half(const torch::Tensor& x) {
-  auto x1 = x.index({Slice(), Slice(), Slice(0, None, 2)});
-  auto x2 = x.index({Slice(), Slice(), Slice(1, None, 2)});
+  auto x1 = x.index({ISlice(), ISlice(), ISlice(0, None, 2)});
+  auto x2 = x.index({ISlice(), ISlice(), ISlice(1, None, 2)});
   return torch::cat({x1, x2}, /*dim=*/-1);
 }
 
