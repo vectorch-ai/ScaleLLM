@@ -30,8 +30,9 @@ cc_test(
     memory_test
   SRCS
     kv_cache_test.cpp
-    block_allocator_test.cpp
     prefix_cache_test.cpp
+    block_allocator_test.cpp
+    block_manager_test.cpp
   DEPS
     :memory
     GTest::gtest_main

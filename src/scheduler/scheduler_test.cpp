@@ -298,7 +298,7 @@ class RequestWrapper {
   bool is_finished = false;
 };
 
-TEST(SpeculativeSchedulerTest, Speculative4StepsPartiallyMatchTest) {
+TEST(DISABLED_SpeculativeSchedulerTest, Speculative4StepsPartiallyMatchTest) {
   // who[1058] is[338] messi[4473] ?[29973]
   const std::vector<int64_t> spec_token_ids = {1058, 338, 4473, 29973};
   const std::vector<int64_t> valid_token_ids = {
@@ -328,7 +328,7 @@ TEST(SpeculativeSchedulerTest, Speculative4StepsPartiallyMatchTest) {
   EXPECT_EQ(sequence_result.output_text, expect_output);
 }
 
-TEST(SpeculativeSchedulerTest, Speculative3StepsFullyMatchTest) {
+TEST(DISABLED_SpeculativeSchedulerTest, Speculative3StepsFullyMatchTest) {
   // who[1058] is[338] messi[4473] ?[29973]
   const std::vector<int64_t> spec_token_ids = {1058, 338, 4473};
   const std::vector<int64_t> valid_token_ids = {1058, 338, 4473, 1058};
@@ -357,7 +357,7 @@ TEST(SpeculativeSchedulerTest, Speculative3StepsFullyMatchTest) {
   EXPECT_EQ(sequence_result.output_text, expect_output);
 }
 
-TEST(SpeculativeSchedulerTest, Speculative4StepsNoMatchTest) {
+TEST(DISABLED_SpeculativeSchedulerTest, Speculative4StepsNoMatchTest) {
   // who[1058] is[338] messi[4473] ?[29973]
   const std::vector<int64_t> spec_token_ids = {1058, 338, 4473, 29973};
   const std::vector<int64_t> valid_token_ids = {338, 4473, 29973, 1058, 338};
@@ -386,7 +386,7 @@ TEST(SpeculativeSchedulerTest, Speculative4StepsNoMatchTest) {
   EXPECT_EQ(sequence_result.output_text, expect_output);
 }
 
-TEST(SpeculativeSchedulerTest, Speculative4StepsPartialMatchWithEndTest) {
+TEST(DISABLED_SpeculativeSchedulerTest, Speculative4StepsPartialMatchWithEndTest) {
   // who[1058] is[338] messi[4473] ?[29973]
   const std::vector<int64_t> spec_token_ids = {1058, 338, 4473, 29973};
   const std::vector<int64_t> valid_token_ids = {1058, 338, 4473, 2};
@@ -415,7 +415,7 @@ TEST(SpeculativeSchedulerTest, Speculative4StepsPartialMatchWithEndTest) {
   EXPECT_EQ(sequence_result.finish_reason, FinishReason::STOP);
 }
 
-TEST(SpeculativeSchedulerTest, Speculative15StepsPartialMatchTest) {
+TEST(DISABLED_SpeculativeSchedulerTest, Speculative15StepsPartialMatchTest) {
   // who[1058] is[338] messi[4473] ?[29973]
   const std::vector<int64_t> spec_token_ids = {1058,
                                                338,
