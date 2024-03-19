@@ -235,8 +235,8 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
   Node* child = new Node();
   nodes_.insert(child);
 
-  Slice<int32_t> token_ids = node->token_ids;
-  Slice<Block> blocks = node->blocks;
+  Slice<int32_t> token_ids(node->token_ids);
+  Slice<Block> blocks(node->blocks);
 
   child->token_ids = token_ids.slice(common_prefix_length).to_vector();
   child->blocks = blocks.slice(n_blocks).to_vector();

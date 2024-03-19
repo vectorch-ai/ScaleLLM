@@ -13,7 +13,8 @@ class Slice final {
 
   Slice(const T* data, size_t size) : data_(data), size_(size) {}
 
-  Slice(const std::vector<T>& data) : data_(data.data()), size_(data.size()) {}
+  explicit Slice(const std::vector<T>& data)
+      : data_(data.data()), size_(data.size()) {}
 
   Slice(const std::vector<T>& data, size_t size)
       : data_(data.data()), size_(size) {
