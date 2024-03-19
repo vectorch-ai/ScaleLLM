@@ -13,12 +13,12 @@ namespace llm {
 
 namespace {
 using torch::indexing::None;
-using torch::indexing::Slice;
+using ISlice = torch::indexing::Slice;
 
 // [1, 2, 3, 4] => [-2, 1, -4, 3]
 inline torch::Tensor rotate_every_two(const torch::Tensor& x) {
-  auto x1 = x.index({Slice(), Slice(), Slice(0, None, 2)});
-  auto x2 = x.index({Slice(), Slice(), Slice(1, None, 2)});
+  auto x1 = x.index({ISlice(), ISlice(), ISlice(0, None, 2)});
+  auto x2 = x.index({ISlice(), ISlice(), ISlice(1, None, 2)});
   return torch::stack({-x2, x1}, /*dim=*/-1).flatten(/*start_dim=*/-2);
 }
 
@@ -153,10 +153,10 @@ std::tuple<torch::Tensor, torch::Tensor> RotaryEmbeddingGeneric::forward(
     const torch::Tensor& positions  // [num_tokens]
 ) const {
   DCHECK_GE(query.size(-1), rotary_dim_);
-  auto query_rotary = query.index({"...", Slice(0, rotary_dim_)});
-  auto query_pass = query.index({"...", Slice(rotary_dim_, None)});
-  auto key_rotary = key.index({"...", Slice(0, rotary_dim_)});
-  auto key_pass = key.index({"...", Slice(rotary_dim_, None)});
+  auto query_rotary = query.index({"...", ISlice(0, rotary_dim_)});
+  auto query_pass = query.index({"...", ISlice(rotary_dim_, None)});
+  auto key_rotary = key.index({"...", ISlice(0, rotary_dim_)});
+  auto key_pass = key.index({"...", ISlice(rotary_dim_, None)});
 
   namespace F = torch::nn::functional;
   auto cos_sin = F::embedding(positions, cos_sin_cache_);

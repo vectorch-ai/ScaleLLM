@@ -381,7 +381,6 @@ void Worker::capture_graph() {
                                   &flatten_positions,
                                   &input_params);
     auto graph_runner = new CudaGraphRunner(model_.get());
-    using namespace torch::indexing;
     graph_runner->capture(
         flatten_token_ids,
         flatten_positions,

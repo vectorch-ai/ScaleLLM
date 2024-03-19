@@ -207,7 +207,6 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
         std::max(max_block_table_len, static_cast<int32_t>(blocks.size()));
   }
 
-  using torch::indexing::Slice;
   // construct two-dimensional tensors for token ids and counts
   auto token_ids = create_2d_tensor(token_ids_vec,
                                     max_unique_tokens,
