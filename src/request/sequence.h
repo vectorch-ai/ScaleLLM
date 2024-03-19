@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "common/slice.h"
 #include "memory/block.h"
 #include "sampling_parameters.h"
 #include "stopping_criteria.h"
@@ -41,7 +42,7 @@ class Sequence final {
   int64_t id() const { return id_; }
 
   // get token ids
-  const std::vector<int32_t>& token_ids() const { return token_ids_; }
+  Slice<int32_t> token_ids() const { return Slice<int32_t>{token_ids_}; }
 
   // get token ids to count map
   const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
@@ -91,7 +92,7 @@ class Sequence final {
   }
 
   // returns allocated cache blocks
-  const std::vector<Block>& blocks() const { return blocks_; }
+  Slice<Block> blocks() const { return Slice<Block>{blocks_}; }
 
   // get the number of blocks
   size_t num_blocks() const { return blocks_.size(); }

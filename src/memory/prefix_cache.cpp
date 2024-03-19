@@ -34,15 +34,22 @@ PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {
   CHECK(block_size_ > 0) << "Block size should be greater than 0";
 }
 
+PrefixCache::~PrefixCache() {
+  for (Node* node : nodes_) {
+    delete node;
+  }
+  nodes_.clear();
+}
+
 // match the token ids with the prefix tree
 // return the length of matched tokens
-size_t PrefixCache::match(const std::vector<int32_t>& token_ids,
-                          std::vector<Block>* blocks) {
+std::vector<Block> PrefixCache::match(const Slice<int32_t>& token_ids) {
   const int64_t now = absl::ToUnixMicros(absl::Now());
+  std::vector<Block> blocks;
 
   // allign tokens to block boundary
   const size_t n_tokens = round_down(token_ids.size(), block_size_);
-  auto tokens_slice = Slice(token_ids, n_tokens);
+  auto tokens_slice = token_ids.slice(0, n_tokens);
 
   size_t matched_tokens = 0;
   // start from the root node
@@ -65,10 +72,10 @@ size_t PrefixCache::match(const std::vector<int32_t>& token_ids,
 
         // append the blocks to the result
         const size_t n_blocks = prefix_length / block_size_;
-        blocks->insert(blocks->end(),
-                       child->blocks.begin(),
-                       child->blocks.begin() + n_blocks);
-        tokens_slice = tokens_slice.sub(prefix_length);
+        blocks.insert(blocks.end(),
+                      child->blocks.begin(),
+                      child->blocks.begin() + n_blocks);
+        tokens_slice = tokens_slice.slice(prefix_length);
 
         if (prefix_length == child->token_ids.size()) {
           // full match, continue to grand children
@@ -79,13 +86,13 @@ size_t PrefixCache::match(const std::vector<int32_t>& token_ids,
     }
   }
 
-  return matched_tokens;
+  return blocks;
 }
 
 // insert the token ids and blocks into the prefix tree
 // return the length of new inserted tokens
-size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
-                           const std::vector<Block>& blocks) {
+size_t PrefixCache::insert(const Slice<int32_t>& token_ids,
+                           const Slice<Block>& blocks) {
   const int64_t now = absl::ToUnixMicros(absl::Now());
   // allign tokens to block boundary
   const size_t n_blocks =
@@ -93,8 +100,8 @@ size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
   const size_t n_tokens = n_blocks * block_size_;
 
   // truncate the token ids and blocks to boundary
-  auto tokens_slice = Slice(token_ids, n_tokens);
-  auto blocks_slice = Slice(blocks, n_blocks);
+  auto tokens_slice = token_ids.slice(0, n_tokens);
+  auto blocks_slice = blocks.slice(0, n_blocks);
 
   size_t new_inserted_tokens = 0;
   // start from the root node
@@ -117,8 +124,8 @@ size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
             << "The prefix length should be multiple of block size";
         const size_t n_blocks = prefix_length / block_size_;
         // advance the token and block slices
-        tokens_slice = tokens_slice.sub(prefix_length);
-        blocks_slice = blocks_slice.sub(n_blocks);
+        tokens_slice = tokens_slice.slice(prefix_length);
+        blocks_slice = blocks_slice.slice(n_blocks);
 
         if (prefix_length < child->token_ids.size()) {
           // partial match, split the child node on the common prefix
@@ -158,13 +165,17 @@ size_t PrefixCache::evict_helper(size_t n_blocks_to_evict) {
   size_t total_evicted = 0;
   // evict nodes at the end to avoid invaliding iterator
   std::vector<Node*> nodes_to_evict;
-  for (auto it = leaf_nodes_.begin();
-       total_evicted < n_blocks_to_evict && it != leaf_nodes_.end();
+  for (auto it = nodes_.begin();
+       total_evicted < n_blocks_to_evict && it != nodes_.end();
        ++it) {
-    auto* leaf_node = *it;
+    auto* node = *it;
+    if (!node->children.empty()) {
+      // skip non-leaf nodes
+      continue;
+    }
 
     // find first non-shared block to evict
-    const auto& blocks = leaf_node->blocks;
+    const auto& blocks = node->blocks;
     const size_t n_blocks = blocks.size();
     size_t non_shared_start = 0;
     for (; non_shared_start < n_blocks; ++non_shared_start) {
@@ -177,15 +188,15 @@ size_t PrefixCache::evict_helper(size_t n_blocks_to_evict) {
     const size_t n_to_evict = std::min(n_blocks_to_evict - total_evicted,
                                        n_blocks - non_shared_start);
     total_evicted += n_to_evict;
-    if (n_to_evict == blocks.size()) {
+    if (n_to_evict == n_blocks) {
       // mark the node as to be evicted
-      nodes_to_evict.push_back(leaf_node);
+      nodes_to_evict.push_back(node);
     } else if (n_to_evict > 0) {
       // partially evict non-shared blocks
       const size_t n_blocks_left = n_blocks - n_to_evict;
       DCHECK(n_blocks_left >= non_shared_start);
-      leaf_node->token_ids.resize(n_blocks_left * block_size_);
-      leaf_node->blocks.resize(n_blocks_left);
+      node->token_ids.resize(n_blocks_left * block_size_);
+      node->blocks.resize(n_blocks_left);
     }
   }
 
@@ -202,21 +213,14 @@ size_t PrefixCache::evict_helper(size_t n_blocks_to_evict) {
 void PrefixCache::release_node(Node* node) {
   DCHECK(node != &root_);
   DCHECK(node->children.empty()) << "should only release leaf node";
-  // remove the node from the leaf nodes
-  leaf_nodes_.erase(node);
   // remove the node from the parent's children
   auto* parent = node->parent;
   DCHECK(parent->children.count(node) > 0);
   parent->children.erase(node);
-  if (is_leaf_node(parent)) {
-    // the parent becomes a leaf node
-    leaf_nodes_.insert(parent);
-  }
 
   // delete the node
+  nodes_.erase(node);
   delete node;
-  CHECK(num_nodes_ > 0) << "The number of nodes should be greater than 0";
-  --num_nodes_;
 }
 
 void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
@@ -227,16 +231,15 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
         node->blocks.size() > n_blocks)
       << "The common prefix length should be less than the token ids length";
 
-  const bool was_leaf = is_leaf_node(node);
   // split the node at the common prefix
   Node* child = new Node();
-  ++num_nodes_;
+  nodes_.insert(child);
 
-  Slice<int32_t> token_ids = node->token_ids;
-  Slice<Block> blocks = node->blocks;
+  Slice<int32_t> token_ids(node->token_ids);
+  Slice<Block> blocks(node->blocks);
 
-  child->token_ids = token_ids.sub(common_prefix_length).to_vector();
-  child->blocks = blocks.sub(n_blocks).to_vector();
+  child->token_ids = token_ids.slice(common_prefix_length).to_vector();
+  child->blocks = blocks.slice(n_blocks).to_vector();
   child->last_access_time = node->last_access_time;
   // point to parent
   child->parent = node;
@@ -251,12 +254,6 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
   node->blocks.resize(n_blocks);
   // put the new child into the children set
   node->children.insert(child);
-
-  // remove the old leaf and add new leaf
-  if (was_leaf) {
-    leaf_nodes_.erase(node);
-    leaf_nodes_.insert(child);
-  }
 }
 
 void PrefixCache::create_child(Node* node,
@@ -267,29 +264,16 @@ void PrefixCache::create_child(Node* node,
       << "The number of tokens "
          "should be equal to the number of blocks times block size";
 
-  const bool was_leaf = is_leaf_node(node);
-
   Node* child = new Node();
-  ++num_nodes_;
+  nodes_.insert(child);
+
   num_blocks_ += blocks.size();
 
   child->token_ids = tokens.to_vector();
   child->blocks = blocks.to_vector();
   child->last_access_time = now;
   child->parent = node;
-  // add new child into the leaf nodes
-  leaf_nodes_.insert(child);
-
   node->children.insert(child);
-  // after adding one child, the node is not leaf anymore
-  if (was_leaf) {
-    leaf_nodes_.erase(node);
-  }
-}
-
-bool PrefixCache::is_leaf_node(Node* node) const {
-  // exclude root_ node to avoid adding root into leaf_nodes_ set
-  return node != &root_ && node->children.empty();
 }
 
 }  // namespace llm

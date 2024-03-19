@@ -11,9 +11,7 @@ TEST(PrefixCacheTest, Basic) {
   // Test match with empty cache
   {
     std::vector<int32_t> token_ids = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-    std::vector<Block> blocks;
-    uint32_t len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 0);
+    std::vector<Block> blocks = cache.match(token_ids);
     EXPECT_EQ(blocks.size(), 0);
   }
 
@@ -32,7 +30,6 @@ TEST(PrefixCacheTest, Basic) {
     // truncate at block boundary
     EXPECT_EQ(len, 6);
     EXPECT_EQ(cache.num_blocks(), 3);  // [0, 1, 2]
-    EXPECT_EQ(cache.num_leaf_nodes(), 1);
     EXPECT_EQ(cache.num_nodes(), 1);
 
     // insert sequence: [1, 2, 3, 4] -> new [50, 60, 70, 80, 90, 100]
@@ -47,7 +44,6 @@ TEST(PrefixCacheTest, Basic) {
     // truncate at block boundary
     EXPECT_EQ(len, 6);                 // [50, 60, 70, 80, 90, 100]
     EXPECT_EQ(cache.num_blocks(), 6);  // [0, 1] -> [2] | [20, 30, 40]
-    EXPECT_EQ(cache.num_leaf_nodes(), 2);
     EXPECT_EQ(cache.num_nodes(), 3);
 
     // insert sequence [1, 2, 5, 6, 7, 8, 9, 10]
@@ -64,7 +60,6 @@ TEST(PrefixCacheTest, Basic) {
     // truncate at block boundary
     EXPECT_EQ(len, 6);  // [5, 6, 7, 8, 9, 10]
     EXPECT_EQ(cache.num_blocks(), 9);
-    EXPECT_EQ(cache.num_leaf_nodes(), 3);
     EXPECT_EQ(cache.num_nodes(), 5);
   }
 
@@ -78,32 +73,24 @@ TEST(PrefixCacheTest, Basic) {
   {
     // no match
     std::vector<int32_t> token_ids = {3, 4, 5, 6, 7, 8, 9, 10};
-    std::vector<Block> blocks;
-    uint32_t len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 0);
+    std::vector<Block> blocks = cache.match(token_ids);
     EXPECT_TRUE(blocks.empty());
 
     // match first sequence partially
     token_ids = {1, 2, 5, 6, 8};
-    blocks.clear();
-    len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 4);  // [1, 2, 56]
+    blocks = cache.match(token_ids);
     std::vector<Block> desired_blocks = {0, 5};
     EXPECT_EQ(blocks, desired_blocks);
 
     // match second sequence fully
     token_ids = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    blocks.clear();
-    len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 6);
+    blocks = cache.match(token_ids);
     desired_blocks = {0, 1, 2};
     EXPECT_EQ(blocks, desired_blocks);
 
     // match third sequence partially
     token_ids = {1, 2, 3, 4, 50, 60, 70, 80, 90};
-    blocks.clear();
-    len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 8);  // [1, 2, 3, 4, 50, 60, 70, 80]
+    blocks = cache.match(token_ids);
     desired_blocks = {0, 1, 20, 30};
     EXPECT_EQ(blocks, desired_blocks);
   }
@@ -118,9 +105,7 @@ TEST(PrefixCacheTest, Basic) {
   {
     // Hold sequence to prevent evicting
     std::vector<int32_t> token_ids = {1, 2, 5, 6};
-    std::vector<Block> blocks;
-    uint32_t len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 4);
+    std::vector<Block> blocks = cache.match(token_ids);
     std::vector<Block> desired_blocks = {0, 5};
     EXPECT_EQ(blocks, desired_blocks);
 
@@ -134,7 +119,6 @@ TEST(PrefixCacheTest, Basic) {
     evicted = cache.evict(total_blocks);
     EXPECT_EQ(evicted, 5);
     EXPECT_EQ(cache.num_blocks(), 2);
-    EXPECT_EQ(cache.num_leaf_nodes(), 1);
     EXPECT_EQ(cache.num_nodes(), 2);
 
     // release blocks then evict all
@@ -142,7 +126,6 @@ TEST(PrefixCacheTest, Basic) {
     evicted = cache.evict(total_blocks);
     EXPECT_EQ(evicted, 2);
     EXPECT_EQ(cache.num_blocks(), 0);
-    EXPECT_EQ(cache.num_leaf_nodes(), 0);
     EXPECT_EQ(cache.num_nodes(), 0);
   }
 }

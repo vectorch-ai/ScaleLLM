@@ -13,16 +13,12 @@ class Slice final {
 
   Slice(const T* data, size_t size) : data_(data), size_(size) {}
 
-  Slice(const std::vector<T>& data) : data_(data.data()), size_(data.size()) {}
+  explicit Slice(const std::vector<T>& data)
+      : data_(data.data()), size_(data.size()) {}
 
   Slice(const std::vector<T>& data, size_t size)
       : data_(data.data()), size_(size) {
     CHECK(size <= data.size());
-  }
-
-  Slice(const std::vector<T>& data, size_t start, size_t end)
-      : data_(data.data() + start), size_(end - start) {
-    CHECK(start < end && (start + size_) <= data.size());
   }
 
   // iterator for the slice
@@ -42,13 +38,13 @@ class Slice final {
   const T& operator[](size_t i) const { return data_[i]; }
 
   // get a sub slice
-  Slice<T> sub(size_t start) const {
+  Slice<T> slice(size_t start) const {
     CHECK(start <= size_);
     return Slice<T>(data_ + start, size_ - start);
   }
 
-  Slice<T> sub(size_t start, size_t end) const {
-    CHECK(start < end && end <= size_);
+  Slice<T> slice(size_t start, size_t end) const {
+    CHECK(start <= end && end <= size_);
     return Slice<T>(data_ + start, end - start);
   }
 
