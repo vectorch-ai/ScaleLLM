@@ -15,6 +15,8 @@ class BlockAllocator final {
   // block_size: number of slots per block
   BlockAllocator(uint32_t total_blocks, uint32_t block_size);
 
+  ~BlockAllocator();
+
   // allocate a list of blocks
   std::vector<Block> allocate(uint32_t n_blocks);
 
