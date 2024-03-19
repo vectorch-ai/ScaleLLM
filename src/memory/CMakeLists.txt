@@ -10,12 +10,14 @@ cc_library(
     block.h
     block_allocator.h
     block_manager.h
+    prefix_cache.h
   SRCS 
     memory.cpp
     kv_cache.cpp
     block.cpp
     block_allocator.cpp
     block_manager.cpp
+    prefix_cache.cpp
   DEPS
     :kernels
     :request
@@ -29,6 +31,7 @@ cc_test(
   SRCS
     kv_cache_test.cpp
     block_allocator_test.cpp
+    prefix_cache_test.cpp
   DEPS
     :memory
     GTest::gtest_main

@@ -14,6 +14,9 @@ class Block final {
  public:
   ~Block();
 
+  // add default constructor to allow resizing with std::vector
+  Block() = default;
+
   // used for testing
   Block(int32_t id);
 
@@ -56,5 +59,10 @@ class Block final {
   // allocator that manages this block
   BlockAllocator* allocator_ = nullptr;
 };
+
+// equeal operator, mainly used for testing
+inline bool operator==(const Block& lhs, const Block& rhs) {
+  return lhs.id() == rhs.id();
+}
 
 }  // namespace llm
