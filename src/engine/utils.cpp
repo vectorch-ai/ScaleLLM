@@ -11,7 +11,7 @@
 namespace llm {
 namespace {
 
-std::vector<int32_t> cache_slots_for_pos(const std::vector<Block>& blocks,
+std::vector<int32_t> cache_slots_for_pos(const Slice<Block>& blocks,
                                          int32_t block_size,
                                          int32_t start,
                                          int32_t end) {
@@ -189,7 +189,7 @@ void Utils::prepare_inputs(const std::vector<Sequence*>& batch,
     sampling_params->add(sequence->sampling_param());
 
     // assign slot ids for new tokens [n_tokens_in_kvcache, total_tokens)
-    const auto& blocks = sequence->blocks();
+    const auto blocks = sequence->blocks();
     const auto slot_ids =
         cache_slots_for_pos(blocks, block_size, kvcache_seq_len, seq_len);
     new_token_slot_ids.insert(

@@ -36,13 +36,13 @@ PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {
 
 // match the token ids with the prefix tree
 // return the length of matched tokens
-size_t PrefixCache::match(const std::vector<int32_t>& token_ids,
-                          std::vector<Block>* blocks) {
+std::vector<Block> PrefixCache::match(const Slice<int32_t>& token_ids) {
   const int64_t now = absl::ToUnixMicros(absl::Now());
+  std::vector<Block> blocks;
 
   // allign tokens to block boundary
   const size_t n_tokens = round_down(token_ids.size(), block_size_);
-  auto tokens_slice = Slice(token_ids, n_tokens);
+  auto tokens_slice = token_ids.slice(n_tokens);
 
   size_t matched_tokens = 0;
   // start from the root node
@@ -65,10 +65,10 @@ size_t PrefixCache::match(const std::vector<int32_t>& token_ids,
 
         // append the blocks to the result
         const size_t n_blocks = prefix_length / block_size_;
-        blocks->insert(blocks->end(),
-                       child->blocks.begin(),
-                       child->blocks.begin() + n_blocks);
-        tokens_slice = tokens_slice.sub(prefix_length);
+        blocks.insert(blocks.end(),
+                      child->blocks.begin(),
+                      child->blocks.begin() + n_blocks);
+        tokens_slice = tokens_slice.slice(prefix_length);
 
         if (prefix_length == child->token_ids.size()) {
           // full match, continue to grand children
@@ -79,13 +79,13 @@ size_t PrefixCache::match(const std::vector<int32_t>& token_ids,
     }
   }
 
-  return matched_tokens;
+  return blocks;
 }
 
 // insert the token ids and blocks into the prefix tree
 // return the length of new inserted tokens
-size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
-                           const std::vector<Block>& blocks) {
+size_t PrefixCache::insert(const Slice<int32_t>& token_ids,
+                           const Slice<Block>& blocks) {
   const int64_t now = absl::ToUnixMicros(absl::Now());
   // allign tokens to block boundary
   const size_t n_blocks =
@@ -93,8 +93,8 @@ size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
   const size_t n_tokens = n_blocks * block_size_;
 
   // truncate the token ids and blocks to boundary
-  auto tokens_slice = Slice(token_ids, n_tokens);
-  auto blocks_slice = Slice(blocks, n_blocks);
+  auto tokens_slice = token_ids.slice(n_tokens);
+  auto blocks_slice = blocks.slice(n_blocks);
 
   size_t new_inserted_tokens = 0;
   // start from the root node
@@ -117,8 +117,8 @@ size_t PrefixCache::insert(const std::vector<int32_t>& token_ids,
             << "The prefix length should be multiple of block size";
         const size_t n_blocks = prefix_length / block_size_;
         // advance the token and block slices
-        tokens_slice = tokens_slice.sub(prefix_length);
-        blocks_slice = blocks_slice.sub(n_blocks);
+        tokens_slice = tokens_slice.slice(prefix_length);
+        blocks_slice = blocks_slice.slice(n_blocks);
 
         if (prefix_length < child->token_ids.size()) {
           // partial match, split the child node on the common prefix
@@ -235,8 +235,8 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
   Slice<int32_t> token_ids = node->token_ids;
   Slice<Block> blocks = node->blocks;
 
-  child->token_ids = token_ids.sub(common_prefix_length).to_vector();
-  child->blocks = blocks.sub(n_blocks).to_vector();
+  child->token_ids = token_ids.slice(common_prefix_length).to_vector();
+  child->blocks = blocks.slice(n_blocks).to_vector();
   child->last_access_time = node->last_access_time;
   // point to parent
   child->parent = node;

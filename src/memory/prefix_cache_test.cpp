@@ -11,9 +11,7 @@ TEST(PrefixCacheTest, Basic) {
   // Test match with empty cache
   {
     std::vector<int32_t> token_ids = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-    std::vector<Block> blocks;
-    uint32_t len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 0);
+    std::vector<Block> blocks = cache.match(token_ids);
     EXPECT_EQ(blocks.size(), 0);
   }
 
@@ -78,32 +76,24 @@ TEST(PrefixCacheTest, Basic) {
   {
     // no match
     std::vector<int32_t> token_ids = {3, 4, 5, 6, 7, 8, 9, 10};
-    std::vector<Block> blocks;
-    uint32_t len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 0);
+    std::vector<Block> blocks = cache.match(token_ids);
     EXPECT_TRUE(blocks.empty());
 
     // match first sequence partially
     token_ids = {1, 2, 5, 6, 8};
-    blocks.clear();
-    len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 4);  // [1, 2, 56]
+    blocks = cache.match(token_ids);
     std::vector<Block> desired_blocks = {0, 5};
     EXPECT_EQ(blocks, desired_blocks);
 
     // match second sequence fully
     token_ids = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    blocks.clear();
-    len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 6);
+    blocks = cache.match(token_ids);
     desired_blocks = {0, 1, 2};
     EXPECT_EQ(blocks, desired_blocks);
 
     // match third sequence partially
     token_ids = {1, 2, 3, 4, 50, 60, 70, 80, 90};
-    blocks.clear();
-    len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 8);  // [1, 2, 3, 4, 50, 60, 70, 80]
+    blocks = cache.match(token_ids);
     desired_blocks = {0, 1, 20, 30};
     EXPECT_EQ(blocks, desired_blocks);
   }
@@ -118,9 +108,7 @@ TEST(PrefixCacheTest, Basic) {
   {
     // Hold sequence to prevent evicting
     std::vector<int32_t> token_ids = {1, 2, 5, 6};
-    std::vector<Block> blocks;
-    uint32_t len = cache.match(token_ids, &blocks);
-    EXPECT_EQ(len, 4);
+    std::vector<Block> blocks = cache.match(token_ids);
     std::vector<Block> desired_blocks = {0, 5};
     EXPECT_EQ(blocks, desired_blocks);
 

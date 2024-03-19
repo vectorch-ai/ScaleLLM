@@ -42,12 +42,12 @@ class Slice final {
   const T& operator[](size_t i) const { return data_[i]; }
 
   // get a sub slice
-  Slice<T> sub(size_t start) const {
+  Slice<T> slice(size_t start) const {
     CHECK(start <= size_);
     return Slice<T>(data_ + start, size_ - start);
   }
 
-  Slice<T> sub(size_t start, size_t end) const {
+  Slice<T> slice(size_t start, size_t end) const {
     CHECK(start < end && end <= size_);
     return Slice<T>(data_ + start, end - start);
   }

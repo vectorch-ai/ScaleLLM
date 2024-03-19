@@ -146,8 +146,43 @@ std::string Sequence::decode_delta_text(size_t end,
   return "";
 }
 
-const SamplingParameter& Sequence::sampling_param() const {
-  return sampling_param_;
+size_t Sequence::num_generated_tokens() const {
+  const size_t n_tokens = num_tokens();
+  const size_t n_prompt_tokens = num_prompt_tokens();
+  return (n_tokens <= n_prompt_tokens) ? 0 : n_tokens - n_prompt_tokens;
+}
+
+void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
+  blocks_.insert(blocks_.end(), new_blocks.begin(), new_blocks.end());
+}
+
+// append shared cache blocks from prefix cache
+void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
+  CHECK(blocks_.empty()) << "shared blocks should be appended before any "
+                            "other blocks";
+  if (shared_blocks.empty()) {
+    return;
+  }
+  // update the kv cache position
+  const size_t block_size = shared_blocks[0].size();
+  kv_cache_pos_ = shared_blocks.size() * block_size;
+  blocks_.insert(blocks_.end(), shared_blocks.begin(), shared_blocks.end());
+}
+
+// release all cache blocks
+std::vector<Block> Sequence::release_blocks() {
+  // reset the current pos to 0
+  kv_cache_pos_ = 0;
+  return std::move(blocks_);
+}
+
+void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
+  if (on_stream_) {
+    if (!on_stream_(delta, reason)) {
+      // failed to stream the delta, cancel the sequence
+      set_cancelled();
+    }
+  }
 }
 
 }  // namespace llm

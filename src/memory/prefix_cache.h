@@ -15,17 +15,22 @@ class PrefixCache final {
   PrefixCache(uint32_t block_size);
 
   // match the token ids with the prefix tree
-  // return the length of matched tokens
-  size_t match(const std::vector<int32_t>& token_ids,
-               std::vector<Block>* blocks);
+  // return matched blocks
+  std::vector<Block> match(const std::vector<int32_t>& token_ids) {
+    return match(Slice<int32_t>(token_ids));
+  }
+  std::vector<Block> match(const Slice<int32_t>& token_ids);
 
   // insert the token ids and blocks into the prefix tree
   // return the length of new inserted tokens
   size_t insert(const std::vector<int32_t>& token_ids,
-                const std::vector<Block>& blocks);
+                const std::vector<Block>& blocks) {
+    return insert(Slice<int32_t>(token_ids), Slice<Block>(blocks));
+  }
+  size_t insert(const Slice<int32_t>& token_ids, const Slice<Block>& blocks);
 
   // evict blocks hold by the prefix cache
-  // return the actual number of blocks evicted
+  // return the actual number of evicted blocks
   size_t evict(size_t n_blocks);
 
   // get the number of blocks in the prefix cache
@@ -69,7 +74,7 @@ class PrefixCache final {
   bool is_leaf_node(Node* node) const;
 
   // the leaf nodes in the prefix tree, used to evict blocks
-  // TODO: add a LRU policy to evict blocks
+  // TODO: add a LRU policy to evict blocks based on the last access time
   std::set<Node*> leaf_nodes_;
 
   // the root node of the prefix tree
