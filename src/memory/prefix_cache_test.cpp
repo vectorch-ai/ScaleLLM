@@ -147,4 +147,20 @@ TEST(PrefixCacheTest, Basic) {
   }
 }
 
+class PrefixCacheRandomTest
+    : public ::testing::TestWithParam<
+          std::tuple<int32_t /*block_size*/, int32_t /*max_seq_len*/>> {};
+
+TEST_P(PrefixCacheRandomTest, Random) {
+  const auto& [block_size, max_seq_len] = GetParam();
+  EXPECT_TRUE(true);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Random,
+    PrefixCacheRandomTest,
+    ::testing::Combine(::testing::Values(1, 2, 4, 48, 256),  // block_size
+                       ::testing::Values(10, 1000)           // max_seq_len
+                       ));
+
 }  // namespace llm

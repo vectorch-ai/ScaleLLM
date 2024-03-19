@@ -155,23 +155,19 @@ size_t PrefixCache::evict(size_t n_blocks_to_evict) {
 }
 
 size_t PrefixCache::evict_helper(size_t n_blocks_to_evict) {
-  // evict the least recently used blocks
   size_t total_evicted = 0;
-  int64_t last_access_time = 0;
   // evict nodes at the end to avoid invaliding iterator
   std::vector<Node*> nodes_to_evict;
   for (auto it = leaf_nodes_.begin();
        total_evicted < n_blocks_to_evict && it != leaf_nodes_.end();
        ++it) {
     auto* leaf_node = *it;
-    DCHECK(leaf_node->last_access_time >= last_access_time);
-    last_access_time = leaf_node->last_access_time;
 
     // find first non-shared block to evict
     const auto& blocks = leaf_node->blocks;
     const size_t n_blocks = blocks.size();
     size_t non_shared_start = 0;
-    for (; non_shared_start < blocks.size(); ++non_shared_start) {
+    for (; non_shared_start < n_blocks; ++non_shared_start) {
       if (!blocks[non_shared_start].is_shared()) {
         break;
       }

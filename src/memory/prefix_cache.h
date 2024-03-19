@@ -52,13 +52,6 @@ class PrefixCache final {
     int64_t last_access_time = 0;
   };
 
-  // Define comparison operator for sorting in set
-  struct Less {
-    bool operator()(const Node* lhs, const Node* rhs) const {
-      return lhs->last_access_time < rhs->last_access_time;
-    }
-  };
-
   // release the node and update leaf_nodes_
   void release_node(Node* node);
 
@@ -76,8 +69,8 @@ class PrefixCache final {
   bool is_leaf_node(Node* node) const;
 
   // the leaf nodes in the prefix tree, used to evict blocks
-  // sorted by last_access_time in ascending order
-  std::multiset<Node*, Less> leaf_nodes_;
+  // TODO: add a LRU policy to evict blocks
+  std::set<Node*> leaf_nodes_;
 
   // the root node of the prefix tree
   Node root_;
