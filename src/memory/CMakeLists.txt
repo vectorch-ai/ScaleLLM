@@ -35,5 +35,6 @@ cc_test(
     block_manager_test.cpp
   DEPS
     :memory
+    absl::random_random
     GTest::gtest_main
 )
