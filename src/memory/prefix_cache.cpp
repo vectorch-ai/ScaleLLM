@@ -5,7 +5,6 @@
 #include <glog/logging.h>
 
 #include <cstdint>
-#include <set>
 #include <vector>
 
 #include "common/slice.h"
@@ -32,17 +31,24 @@ size_t round_down(size_t n, size_t multiple) {
 
 PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {
   CHECK(block_size_ > 0) << "Block size should be greater than 0";
+
+  // initialize the lru list
+  lru_front_.next = &lru_back_;
+  lru_back_.prev = &lru_front_;
 }
 
 PrefixCache::~PrefixCache() {
-  for (Node* node : nodes_) {
+  // iterator the lru list to release nodes
+  size_t num_nodes = 0;
+  for (Node* node = lru_front_.next; node != &lru_back_; node = node->next) {
+    ++num_nodes;
     delete node;
   }
-  nodes_.clear();
+  CHECK(num_nodes_ == num_nodes) << "detected memory leak";
 }
 
 // match the token ids with the prefix tree
-// return the length of matched tokens
+// return matched blocks
 std::vector<Block> PrefixCache::match(const Slice<int32_t>& token_ids) {
   const int64_t now = absl::ToUnixMicros(absl::Now());
   std::vector<Block> blocks;
@@ -65,9 +71,12 @@ std::vector<Block> PrefixCache::match(const Slice<int32_t>& token_ids) {
       // truncate the prefix length at block boundary
       prefix_length = round_down(prefix_length, block_size_);
 
+      // find a match
       if (prefix_length > 0) {
-        // find a match, update the last access time
+        // update the last access time and move the node to the back of the LRU
         child->last_access_time = now;
+        move_node_to_lru_back(child);
+
         matched_tokens += prefix_length;
 
         // append the blocks to the result
@@ -117,9 +126,12 @@ size_t PrefixCache::insert(const Slice<int32_t>& token_ids,
       // we only cache a whole block, truncate the prefix length
       prefix_length = round_down(prefix_length, block_size_);
 
+      // find a match
       if (prefix_length > 0) {
-        // find a match, update the last access time
+        // update the last access time and move the node to the back of the LRU
         child->last_access_time = now;
+        move_node_to_lru_back(child);
+
         CHECK(prefix_length % block_size_ == 0)
             << "The prefix length should be multiple of block size";
         const size_t n_blocks = prefix_length / block_size_;
@@ -165,12 +177,16 @@ size_t PrefixCache::evict_helper(size_t n_blocks_to_evict) {
   size_t total_evicted = 0;
   // evict nodes at the end to avoid invaliding iterator
   std::vector<Node*> nodes_to_evict;
-  for (auto it = nodes_.begin();
-       total_evicted < n_blocks_to_evict && it != nodes_.end();
-       ++it) {
-    auto* node = *it;
+  int64_t pre_access_time = 0;
+  for (Node* node = lru_front_.next;
+       total_evicted < n_blocks_to_evict && node != &lru_back_;
+       node = node->next) {
+    CHECK(pre_access_time <= node->last_access_time)
+        << "The last access time should be in ascending order";
+    pre_access_time = node->last_access_time;
+
+    // skip non-leaf nodes
     if (!node->children.empty()) {
-      // skip non-leaf nodes
       continue;
     }
 
@@ -219,8 +235,9 @@ void PrefixCache::release_node(Node* node) {
   parent->children.erase(node);
 
   // delete the node
-  nodes_.erase(node);
+  remove_node_from_lru(node);
   delete node;
+  --num_nodes_;
 }
 
 void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
@@ -233,7 +250,8 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
 
   // split the node at the common prefix
   Node* child = new Node();
-  nodes_.insert(child);
+  add_node_to_lru_back(child);
+  ++num_nodes_;
 
   Slice<int32_t> token_ids(node->token_ids);
   Slice<Block> blocks(node->blocks);
@@ -265,7 +283,8 @@ void PrefixCache::create_child(Node* node,
          "should be equal to the number of blocks times block size";
 
   Node* child = new Node();
-  nodes_.insert(child);
+  add_node_to_lru_back(child);
+  ++num_nodes_;
 
   num_blocks_ += blocks.size();
 
@@ -274,6 +293,27 @@ void PrefixCache::create_child(Node* node,
   child->last_access_time = now;
   child->parent = node;
   node->children.insert(child);
+}
+
+// add a new node to the back of the LRU list
+void PrefixCache::add_node_to_lru_back(Node* node) {
+  node->prev = lru_back_.prev;
+  node->next = &lru_back_;
+  lru_back_.prev->next = node;
+  lru_back_.prev = node;
+}
+
+void PrefixCache::remove_node_from_lru(Node* node) {
+  node->prev->next = node->next;
+  node->next->prev = node->prev;
+}
+
+// move the node to the back of the LRU list
+void PrefixCache::move_node_to_lru_back(Node* node) {
+  // remove the node from the current position
+  remove_node_from_lru(node);
+  // add the node to the back of the LRU list
+  add_node_to_lru_back(node);
 }
 
 }  // namespace llm

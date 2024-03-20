@@ -11,9 +11,15 @@ namespace llm {
 
 class PrefixCache final {
  public:
-  PrefixCache(uint32_t block_size);
+  explicit PrefixCache(uint32_t block_size);
 
   ~PrefixCache();
+
+  // disable copy, move and assign
+  PrefixCache(const PrefixCache&) = delete;
+  PrefixCache(PrefixCache&&) = delete;
+  PrefixCache& operator=(const PrefixCache&) = delete;
+  PrefixCache& operator=(PrefixCache&&) = delete;
 
   // match the token ids with the prefix tree
   // return matched blocks
@@ -38,7 +44,7 @@ class PrefixCache final {
   size_t num_blocks() const { return num_blocks_; }
 
   // get the total number of nodes in the prefix tree
-  size_t num_nodes() const { return nodes_.size(); }
+  size_t num_nodes() const { return num_nodes_; }
 
  private:
   struct Node {
@@ -47,12 +53,18 @@ class PrefixCache final {
     std::vector<int32_t> token_ids;
     // the block ids that the node represents
     std::vector<Block> blocks;
+
     // the children nodes, used to traverse down the tree
     std::unordered_set<Node*> children;
     // the parent node, used to traverse up the tree
     Node* parent = nullptr;
+
     // the last access time of the node, used to evict blocks
     int64_t last_access_time = 0;
+
+    // the previous and next nodes, used to maintain the LRU list
+    Node* prev = nullptr;
+    Node* next = nullptr;
   };
 
   // release the node and update leaf_nodes_
@@ -69,17 +81,32 @@ class PrefixCache final {
 
   size_t evict_helper(size_t n_blocks);
 
-  // TODO: add a LRU policy to evict blocks based on the last access time
-  std::unordered_set<Node*> nodes_;
+  // remove the node from the LRU list
+  static void remove_node_from_lru(Node* node);
+
+  // add a new node to the back of the LRU list
+  void add_node_to_lru_back(Node* node);
+
+  // move the node to the back of the LRU list
+  void move_node_to_lru_back(Node* node);
 
   // the root node of the prefix tree
   Node root_;
+
+  // the front and back nodes of the LRU list
+  // the front node is the least recently used node
+  // sorted by the last access time in ascending order
+  Node lru_front_;
+  Node lru_back_;
 
   // the block size of the memory blocks
   uint32_t block_size_;
 
   // the total number of blocks in the prefix cache
   size_t num_blocks_ = 0;
+
+  // the total number of nodes in the prefix tree
+  size_t num_nodes_ = 0;
 };
 
 }  // namespace llm
