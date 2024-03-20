@@ -82,17 +82,17 @@ class Engine {
   // Tokenizer args
   TokenizerArgs tokenizer_args_;
 
+  // block manager
+  std::unique_ptr<BlockManager> block_manager_;
+
   // a list of process groups, with each process group handling a single device
   std::vector<std::unique_ptr<ProcessGroup>> process_groups_;
 
-  // a list of workers, with each worker handling a partial of model
-  std::vector<std::unique_ptr<Worker>> workers_;
-
   // tokenizer
   std::unique_ptr<Tokenizer> tokenizer_;
-
-  // block manager
-  std::unique_ptr<BlockManager> block_manager_;
+  
+  // a list of workers, with each worker handling a partial of model
+  std::vector<std::unique_ptr<Worker>> workers_;
 };
 
 }  // namespace llm
