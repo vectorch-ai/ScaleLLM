@@ -90,16 +90,16 @@ ModelInput Batch::prepare_model_inputs() {
 
     const uint32_t n_tokens = token_ids.size();
     const uint32_t n_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
-    const uint32_t n_tokens_to_process =
+    const uint32_t q_seq_len =
         std::min(n_tokens - n_tokens_in_kv_cache, max_tokens_to_process_[i]);
 
-    const uint32_t seq_len = n_tokens_to_process + n_tokens_in_kv_cache;
+    const uint32_t seq_len = q_seq_len + n_tokens_in_kv_cache;
 
     // check if the sequence has enough cache slots
     CHECK_GE(sequence->kv_cache_capacity(), seq_len);
 
     // at least one token to process otherwise the sequence should be finished.
-    CHECK(n_tokens_to_process != 0)
+    CHECK(q_seq_len != 0)
         << "at least one token should be processed. "
         << "n_tokens: " << n_tokens
         << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
@@ -130,12 +130,12 @@ ModelInput Batch::prepare_model_inputs() {
     max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
 
     max_seq_len = std::max(max_seq_len, seq_len);
-    q_max_seq_len = std::max(q_max_seq_len, n_tokens_to_process);
+    q_max_seq_len = std::max(q_max_seq_len, q_seq_len);
     cu_seq_lens.push_back(cu_seq_lens.back() + seq_len);
-    q_cu_seq_lens.push_back(q_cu_seq_lens.back() + n_tokens_to_process);
+    q_cu_seq_lens.push_back(q_cu_seq_lens.back() + q_seq_len);
 
     // commit kv cache to advance kv_cache pos in sequence
-    sequence->commit_kv_cache(/*size=*/n_tokens_to_process);
+    sequence->commit_kv_cache(/*size=*/q_seq_len);
 
     // add sampling parameters
     model_inputs.sampling_params.add(sequence->sampling_param());
