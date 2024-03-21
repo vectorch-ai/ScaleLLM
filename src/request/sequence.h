@@ -106,8 +106,8 @@ class Sequence final {
   // generate the kv cache slots for the position range [pos_start, pos_end)
   std::vector<int32_t> kv_cache_slots(int32_t pos_start, int32_t pos_end) const;
 
-  // advance the kv cache position by n after the tokens are processed
-  void advance_kv_cache_pos_by(size_t n);
+  // commit the kv cache for size n
+  void commit_kv_cache(size_t size);
 
   // check if the sequence is finished
   bool is_finished() const { return is_cancelled() || is_finished_; }

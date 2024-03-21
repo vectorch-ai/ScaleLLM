@@ -86,27 +86,29 @@ ModelInput Batch::prepare_model_inputs() {
 
     all_prefill_sequences &= sequence->is_prefill();
 
-    const auto seq_token_ids = sequence->token_ids();
-    // TODO: update the logic to handle chunked prefill sequences
-    const uint32_t seq_len = seq_token_ids.size();
+    const auto token_ids = sequence->token_ids();
+
+    const uint32_t n_tokens = token_ids.size();
+    const uint32_t n_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
+    const uint32_t n_tokens_to_process =
+        std::min(n_tokens - n_tokens_in_kv_cache, max_tokens_to_process_[i]);
+
+    const uint32_t seq_len = n_tokens_to_process + n_tokens_in_kv_cache;
 
     // check if the sequence has enough cache slots
     CHECK_GE(sequence->kv_cache_capacity(), seq_len);
 
-    const uint32_t n_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
-    const uint32_t n_tokens_to_process =
-        std::min(seq_len - n_tokens_in_kv_cache, max_tokens_to_process_[i]);
-
     // at least one token to process otherwise the sequence should be finished.
     CHECK(n_tokens_to_process != 0)
         << "at least one token should be processed. "
-        << "seq_len: " << seq_len
+        << "n_tokens: " << n_tokens
         << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
+        << ", kv_cache_capacity: " << sequence->kv_cache_capacity()
         << ", max_tokens_to_process: " << max_tokens_to_process_[i];
 
     // pack the token ids and positions into one-dimensional tensors
     for (uint32_t i = n_tokens_in_kv_cache; i < seq_len; ++i) {
-      flatten_tokens_vec.push_back(seq_token_ids[i]);
+      flatten_tokens_vec.push_back(token_ids[i]);
       flatten_positions_vec.push_back(static_cast<int32_t>(i));
     }
     last_token_idxes.push_back(
@@ -132,8 +134,8 @@ ModelInput Batch::prepare_model_inputs() {
     cu_seq_lens.push_back(cu_seq_lens.back() + seq_len);
     q_cu_seq_lens.push_back(q_cu_seq_lens.back() + n_tokens_to_process);
 
-    // advance kv cache pos
-    sequence->advance_kv_cache_pos_by(n_tokens_to_process);
+    // commit kv cache to advance kv_cache pos in sequence
+    sequence->commit_kv_cache(/*size=*/n_tokens_to_process);
 
     // add sampling parameters
     model_inputs.sampling_params.add(sequence->sampling_param());

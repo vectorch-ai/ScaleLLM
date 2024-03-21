@@ -206,10 +206,9 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
   return slots;
 }
 
-void Sequence::advance_kv_cache_pos_by(size_t n) {
-  // make sure
-  CHECK_LE(kv_cache_pos_ + n, kv_cache_capacity());
-  kv_cache_pos_ += n;
+void Sequence::commit_kv_cache(size_t size) {
+  CHECK(kv_cache_pos_ + size < kv_cache_capacity());
+  kv_cache_pos_ += size;
 }
 
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
