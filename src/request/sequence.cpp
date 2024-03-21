@@ -196,7 +196,7 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
 
   std::vector<int32_t> slots;
   slots.reserve(pos_end - pos_start);
-  
+
   const size_t block_size = blocks_[0].size();
   for (int32_t i = pos_start; i < pos_end; ++i) {
     const int32_t block_id = blocks_[i / block_size].id();
@@ -204,6 +204,12 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
     slots.push_back(block_id * block_size + block_offset);
   }
   return slots;
+}
+
+void Sequence::advance_kv_cache_pos_by(size_t n) {
+  // make sure
+  CHECK_LE(kv_cache_pos_ + n, kv_cache_capacity());
+  kv_cache_pos_ += n;
 }
 
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
