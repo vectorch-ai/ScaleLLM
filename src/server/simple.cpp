@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
       // allocate slots for the sequence
-      CHECK(block_manager->allocate_slots_for_sequence(&sequence));
+      CHECK(block_manager->allocate_blocks_for(&sequence));
 
       // run inference
       const auto output_params = engine.execute_model(&sequence);
@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
     }
 
     // release the slots for the sequence
-    block_manager->release_slots_for_sequence(&sequence);
+    block_manager->release_blocks_for(&sequence);
 
     // print the prompt and wait for the next input
     std::cout << "\n\n" << prompt;

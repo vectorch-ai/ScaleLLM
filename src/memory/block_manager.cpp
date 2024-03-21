@@ -39,7 +39,7 @@ BlockManager::BlockManager(uint32_t num_blocks, int32_t block_size)
       prefix_cache_(block_size) {}
 
 // try to allocat slots for the request
-bool BlockManager::allocate_slots_for_request(Request* request) {
+bool BlockManager::allocate_blocks_for(Request* request) {
   DCHECK(request != nullptr);
   uint32_t num_additional_blocks = 0;
   for (auto& sequence : request->sequences) {
@@ -66,7 +66,7 @@ bool BlockManager::allocate_slots_for_request(Request* request) {
   return true;
 }
 
-bool BlockManager::allocate_slots_for_sequence(Sequence* sequence) {
+bool BlockManager::allocate_blocks_for(Sequence* sequence) {
   DCHECK(sequence != nullptr);
   // first try to allocate shared blocks
   allocate_shared_blocks(sequence);
@@ -88,11 +88,10 @@ bool BlockManager::allocate_slots_for_sequence(Sequence* sequence) {
   return true;
 }
 
-bool BlockManager::allocate_slots_for_sequences(
-    std::vector<Sequence*>& sequences) {
+bool BlockManager::allocate_blocks_for(std::vector<Sequence*>& sequences) {
   for (auto* sequence : sequences) {
     DCHECK(sequence != nullptr);
-    if (!allocate_slots_for_sequence(sequence)) {
+    if (!allocate_blocks_for(sequence)) {
       // should we gurantee the atomicity of the allocation? all or nothing?
       return false;
     }
@@ -100,22 +99,21 @@ bool BlockManager::allocate_slots_for_sequences(
   return true;
 }
 
-void BlockManager::release_slots_for_request(Request* request) {
+void BlockManager::release_blocks_for(Request* request) {
   DCHECK(request != nullptr);
   for (auto& sequence : request->sequences) {
-    release_slots_for_sequence(&sequence);
+    release_blocks_for(&sequence);
   }
 }
 
-void BlockManager::release_slots_for_sequences(
-    std::vector<Sequence*>& sequences) {
+void BlockManager::release_blocks_for(std::vector<Sequence*>& sequences) {
   for (auto* sequence : sequences) {
     DCHECK(sequence != nullptr);
-    release_slots_for_sequence(sequence);
+    release_blocks_for(sequence);
   }
 }
 
-void BlockManager::release_slots_for_sequence(Sequence* sequence) {
+void BlockManager::release_blocks_for(Sequence* sequence) {
   DCHECK(sequence != nullptr);
 
   if (FLAGS_enable_prefix_cache) {

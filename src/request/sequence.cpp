@@ -58,6 +58,13 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
     return false;
   }
 
+  if (kv_cache_pos_ < num_prompt_tokens()) {
+    // still in prefill stage, discard the generated token
+    // TODO: optimize this to avoid generating token for prefill.
+    return true;
+  }
+
+  // TODO(michael): need to revisit stop criteria for speculative decoding
   // check eos and stop tokens ids first
   if (!stopping_criteria_.ignore_eos_token &&
       next_token_id == stopping_criteria_.eos_token_id) {
@@ -71,9 +78,6 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
     is_finished_ = true;
     return false;
   }
-
-  // all tokens before pos should be processed and cached.
-  kv_cache_pos_ = token_ids_.size();
   token_ids_.push_back(next_token_id);
   token_to_count_map_[next_token_id]++;
 
@@ -175,6 +179,31 @@ void Sequence::release_blocks() {
   // reset the current pos to 0
   kv_cache_pos_ = 0;
   blocks_.clear();
+}
+
+size_t Sequence::kv_cache_capacity() const {
+  if (blocks_.empty()) {
+    return 0;
+  }
+  // all blocks have the same size
+  const size_t block_size = blocks_[0].size();
+  return blocks_.size() * block_size;
+}
+
+std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
+                                              int32_t pos_end) const {
+  CHECK(!blocks_.empty()) << "no cache blocks available";
+
+  std::vector<int32_t> slots;
+  slots.reserve(pos_end - pos_start);
+  
+  const size_t block_size = blocks_[0].size();
+  for (int32_t i = pos_start; i < pos_end; ++i) {
+    const int32_t block_id = blocks_[i / block_size].id();
+    const int32_t block_offset = i % block_size;
+    slots.push_back(block_id * block_size + block_offset);
+  }
+  return slots;
 }
 
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {

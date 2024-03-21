@@ -347,9 +347,9 @@ bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
   return true;
 }
 
-ModelOutput Engine::execute_model(const Batch& batch) {
+ModelOutput Engine::execute_model(Batch& batch) {
   // prepare inputs for workers
-  auto model_inputs = batch.prepare_model_inputs(FLAGS_block_size);
+  auto model_inputs = batch.prepare_model_inputs();
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     auto output = workers_[0]->execute_model(model_inputs);
@@ -370,9 +370,9 @@ ModelOutput Engine::execute_model(const Batch& batch) {
 }
 
 // TODO: implement validate logic for speculative decoding
-ModelOutput Engine::validate(const Batch& batch) {
+ModelOutput Engine::validate(Batch& batch) {
   // prepare inputs for workers
-  auto model_inputs = batch.prepare_model_inputs(FLAGS_block_size);
+  auto model_inputs = batch.prepare_model_inputs();
   if (workers_.size() == 1) {
     auto output = workers_[0]->validate(model_inputs);
     return output;

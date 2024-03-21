@@ -65,7 +65,7 @@ TEST(UtilsTest, Basic) {
   batch.add(&seq3);
 
   // define outputs
-  ModelInput model_inputs = batch.prepare_model_inputs(block_size);
+  ModelInput model_inputs = batch.prepare_model_inputs();
 
   // clang-format off
   // check the flatten token ids

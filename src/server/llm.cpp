@@ -42,7 +42,7 @@ void LLM::generate(const std::vector<std::string>& batched_prompt) {
     if (sequences.empty()) {
       break;
     }
-    CHECK(block_manager_->allocate_slots_for_sequences(sequences));
+    CHECK(block_manager_->allocate_blocks_for(sequences));
 
     // run inference
     const auto output_parameters = engine_->execute_model(sequences);
@@ -59,7 +59,7 @@ void LLM::generate(const std::vector<std::string>& batched_prompt) {
       const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
       // add the next token to sequence and check if the sequence is finished
       if (!sequence->append_new_token_id(next_token_id)) {
-        block_manager_->release_slots_for_sequence(sequence);
+        block_manager_->release_blocks_for(sequence);
         continue;
       }
     }

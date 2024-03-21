@@ -57,7 +57,7 @@ ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
 
 void ContinuousBatchingScheduler::on_request_finish(Request* request) {
   // release all blocks for the finished request
-  block_manager_->release_slots_for_request(request);
+  block_manager_->release_blocks_for(request);
   // take over the ownership of the request
   std::unique_ptr<Request> finished_request(request);
   response_threadpool_.schedule([tokenizer = tokenizer_.get(),
@@ -156,7 +156,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
         // skip finished sequence.
         continue;
       }
-      if (block_manager_->allocate_slots_for_sequence(&sequence)) {
+      if (block_manager_->allocate_blocks_for(&sequence)) {
         sequence_candiadtes.push_back(&sequence);
       } else {
         has_enough_slots = false;
@@ -183,7 +183,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
       preemptable_candidates_.pop_back();
       // avoid preempting the candidate request
       if (request_to_preempt != candidate) {
-        block_manager_->release_slots_for_request(request_to_preempt);
+        block_manager_->release_blocks_for(request_to_preempt);
       }
       continue;
     }
@@ -231,9 +231,9 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   }
 
   CHECK(!sequences_batch_.empty());
-  auto output_parameters = engine_->execute_model(sequences_batch_);
+  auto model_output = engine_->execute_model(sequences_batch_);
 
-  const auto& next_tokens = output_parameters.next_tokens;
+  const auto& next_tokens = model_output.next_tokens;
   const int64_t num_seqs = next_tokens.numel();
   CHECK(num_seqs == sequences_batch_.size());
 

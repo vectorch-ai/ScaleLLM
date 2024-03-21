@@ -75,7 +75,7 @@ class FakeSSMEngine : public Engine {
     return fake_block_manager_.get();
   }
 
-  ModelOutput execute_model(const Batch&) override {
+  ModelOutput execute_model(Batch&) override {
     if (spec_tokens_idx_ >= spec_token_ids_.size()) {
       LOG(FATAL) << "Out of Range, you should setup FakeSSMEngine correctly.";
       return ModelOutput();
@@ -90,7 +90,7 @@ class FakeSSMEngine : public Engine {
     return output;
   }
 
-  ModelOutput validate(const Batch&) override {
+  ModelOutput validate(Batch&) override {
     ++validate_calls_;
     return ModelOutput();
   }
@@ -132,12 +132,12 @@ class FakeLLMEngine : public Engine {
     return fake_block_manager_.get();
   }
 
-  ModelOutput execute_model(const Batch&) override {
+  ModelOutput execute_model(Batch&) override {
     ++execute_model_calls_;
     return ModelOutput();
   }
 
-  ModelOutput validate(const Batch&) override {
+  ModelOutput validate(Batch&) override {
     if (valid_tokens_idx_ >= valid_token_ids_.size()) {
       LOG(FATAL) << "Out of Range, you should setup FakeLLMEngine correctly.";
       return ModelOutput();

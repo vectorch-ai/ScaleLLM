@@ -67,6 +67,11 @@ class Sequence final {
   // get the number of tokens in the kvcache
   size_t num_tokens_in_kv_cache() const { return kv_cache_pos_; }
 
+  // get the number of tokens to process
+  size_t num_tokens_to_process() const {
+    return num_tokens() - num_tokens_in_kv_cache();
+  }
+
   // whether the sequence is in prefill stage, no kv cache has been generated
   bool is_prefill() const { return kv_cache_pos_ == 0; }
 
@@ -94,6 +99,15 @@ class Sequence final {
 
   // get the number of blocks
   size_t num_blocks() const { return blocks_.size(); }
+
+  // get the capacity of the kv cache allocated
+  size_t kv_cache_capacity() const;
+
+  // generate the kv cache slots for the position range [pos_start, pos_end)
+  std::vector<int32_t> kv_cache_slots(int32_t pos_start, int32_t pos_end) const;
+
+  // advance the kv cache position by n after the tokens are processed
+  void advance_kv_cache_pos_by(size_t n) { kv_cache_pos_ += n; }
 
   // check if the sequence is finished
   bool is_finished() const { return is_cancelled() || is_finished_; }
