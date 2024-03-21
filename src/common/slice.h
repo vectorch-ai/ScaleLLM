@@ -13,8 +13,8 @@ class Slice final {
 
   Slice(const T* data, size_t size) : data_(data), size_(size) {}
 
-  explicit Slice(const std::vector<T>& data)
-      : data_(data.data()), size_(data.size()) {}
+  // it is on purpose to allow implicit conversion from vector to slice
+  Slice(const std::vector<T>& data) : data_(data.data()), size_(data.size()) {}
 
   Slice(const std::vector<T>& data, size_t size)
       : data_(data.data()), size_(size) {
@@ -40,18 +40,16 @@ class Slice final {
   // get a sub slice
   Slice<T> slice(size_t start) const {
     CHECK(start <= size_);
-    return Slice<T>(data_ + start, size_ - start);
+    return {data_ + start, size_ - start};
   }
 
   Slice<T> slice(size_t start, size_t end) const {
     CHECK(start <= end && end <= size_);
-    return Slice<T>(data_ + start, end - start);
+    return {data_ + start, end - start};
   }
 
   // convert to vector
-  std::vector<T> to_vector() const {
-    return std::vector<T>(data_, data_ + size_);
-  }
+  std::vector<T> to_vector() const { return {data_, data_ + size_}; }
 
  private:
   const T* data_ = nullptr;

@@ -15,6 +15,7 @@ cc_library(
     sentencepiece_tokenizer.cpp
     hf_tokenizer.cpp
   DEPS
+    :common
     :sentencepiece
     absl::flat_hash_map
     absl::strings

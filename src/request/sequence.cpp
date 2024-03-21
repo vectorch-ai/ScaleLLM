@@ -132,9 +132,10 @@ void Sequence::update_valid_token_ids(const int64_t* valid_ids) {
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(size_t end,
                                         const Tokenizer& tokenizer) {
+  const auto tokens = token_ids();
   const auto prefix_text =
-      tokenizer.decode(sub_token_ids(prefix_offset_, output_offset_));
-  const auto new_text = tokenizer.decode(sub_token_ids(prefix_offset_, end));
+      tokenizer.decode(tokens.slice(prefix_offset_, output_offset_));
+  const auto new_text = tokenizer.decode(tokens.slice(prefix_offset_, end));
   // utf-8 char � at the end means it is a potential unfinished byte sequence
   // from byte fallback tokenization.
   if (new_text.size() > prefix_text.size() && !absl::EndsWith(new_text, "�")) {

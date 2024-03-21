@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
     block_manager->release_slots_for_sequence(&sequence);
 
     // print the prompt and wait for the next input
-    std::cout << '\n' << prompt;
+    std::cout << "\n\n" << prompt;
   }
 
   return 0;

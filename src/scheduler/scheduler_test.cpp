@@ -27,7 +27,7 @@ class FakeTokenizer : public Tokenizer {
     return true;
   }
 
-  std::string decode(const std::vector<int32_t>& tokens) const override {
+  std::string decode(const Slice<int32_t>& tokens) const override {
     std::stringstream ss;
     for (auto token : tokens) {
       auto it = id_to_token_.find(token);

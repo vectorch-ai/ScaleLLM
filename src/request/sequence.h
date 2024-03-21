@@ -42,7 +42,7 @@ class Sequence final {
   int64_t id() const { return id_; }
 
   // get token ids
-  Slice<int32_t> token_ids() const { return Slice<int32_t>{token_ids_}; }
+  Slice<int32_t> token_ids() const { return token_ids_; }
 
   // get token ids to count map
   const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
@@ -90,7 +90,7 @@ class Sequence final {
   void release_blocks();
 
   // returns allocated cache blocks
-  Slice<Block> blocks() const { return Slice<Block>{blocks_}; }
+  Slice<Block> blocks() const { return blocks_; }
 
   // get the number of blocks
   size_t num_blocks() const { return blocks_.size(); }
@@ -131,11 +131,6 @@ class Sequence final {
   }
 
  private:
-  std::vector<int32_t> sub_token_ids(size_t start, size_t end) {
-    return {token_ids_.begin() + static_cast<long>(start),
-            token_ids_.begin() + static_cast<long>(end)};
-  }
-
   // global unique id for the sequence
   const int64_t id_;
 
