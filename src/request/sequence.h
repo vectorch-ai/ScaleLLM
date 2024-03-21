@@ -8,7 +8,7 @@
 
 #include "common/slice.h"
 #include "memory/block.h"
-#include "sampling_parameters.h"
+#include "sampling/parameters.h"
 #include "stopping_criteria.h"
 #include "tokenizer/tokenizer.h"
 

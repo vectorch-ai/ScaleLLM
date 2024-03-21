@@ -13,7 +13,7 @@
 
 #include "flash_attn_handler.h"
 #include "gtest/gtest.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 #include "ref_handler.h"
 
 namespace llm {
@@ -40,7 +40,8 @@ void set_kv_cache(
 
     // [block_id, block_offset, n_kv_heads, head_dim]
     key_cache.index_put_({block_id, block_offset, ISlice(), ISlice()}, keys[i]);
-    value_cache.index_put_({block_id, block_offset, ISlice(), ISlice()}, values[i]);
+    value_cache.index_put_({block_id, block_offset, ISlice(), ISlice()},
+                           values[i]);
   }
 }
 
@@ -58,7 +59,8 @@ std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
     const auto block_id = slot_id / block_size;
     const auto block_offset = slot_id % block_size;
     // key = key_cache_[block_id, :, :, block_offset, :]
-    const auto key = key_cache.index({block_id, block_offset, ISlice(), ISlice()});
+    const auto key =
+        key_cache.index({block_id, block_offset, ISlice(), ISlice()});
     keys.push_back(key);
     // value = value_cache_[block_id, :, :, block_offset]
     const auto value =

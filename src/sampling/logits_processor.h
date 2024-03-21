@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "kernels/sampling/sampling_kernels.h"
-#include "request/sampling_parameters.h"
+#include "sampling/parameters.h"
 
 namespace llm {
 namespace detail {

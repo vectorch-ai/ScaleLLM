@@ -1,17 +1,18 @@
 #include "engine/worker.h"
+
+#include <gtest/gtest.h>
+
+#include "engine/batch.h"
 #include "memory/block_manager.h"
 #include "models/simple_model.h"
 #include "quantization/quant_args.h"
-
-#include <gtest/gtest.h>
 
 namespace llm {
 
 class TestableWorker {
  public:
   TestableWorker(const torch::Device& device) : device_(device) {
-    worker_ = std::make_unique<Worker>(ParallelArgs(0, 1, nullptr),
-        device_);
+    worker_ = std::make_unique<Worker>(ParallelArgs(0, 1, nullptr), device_);
     dtype_ = torch::kHalf;
   }
 
@@ -32,14 +33,8 @@ class TestableWorker {
     return true;
   }
 
-  OutputParameters execute_model(torch::Tensor flatten_tokens,
-                                 torch::Tensor flatten_positions,
-                                 const InputParameters& params,
-                                 const SamplingParameters& sampling_params) {
-    return worker_->execute_model(flatten_tokens,
-                                  flatten_positions,
-                                  params,
-                                  sampling_params);
+  ModelOutput execute_model(const ModelInput& inputs) {
+    return worker_->execute_model(inputs);
   }
 
   bool init_model() {
@@ -66,11 +61,11 @@ class TestableWorker {
     const int64_t head_dim = args_.hidden_size() / n_heads;
     const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
     const int64_t block_size_in_bytes =
-      2 * block_size * n_heads * head_dim * args_.n_layers() * dtype_size;
+        2 * block_size * n_heads * head_dim * args_.n_layers() * dtype_size;
 
     const int64_t n_blocks = cache_size_in_bytes / block_size_in_bytes;
     const std::vector<int64_t> kv_cache_shape = {
-        n_blocks, block_size, n_heads, head_dim };
+        n_blocks, block_size, n_heads, head_dim};
 
     block_manager_ = std::make_unique<BlockManager>(n_blocks, block_size);
     return worker_->init_kv_cache(kv_cache_shape);
@@ -96,19 +91,19 @@ class TestableWorker {
     // model.embed_tokens.weight: [32000, 4096]
     dict.emplace("model.embed_tokens.weight",
                  torch::ones({32000, 4096}, dtype_));
-                 //torch::ones({32000, 4096}, torch::kHalf, device_));
+    // torch::ones({32000, 4096}, torch::kHalf, device_));
     // model.layers.0.mlp.down_proj.weight: [4096, 11008]
     dict.emplace("model.layers.0.mlp.down_proj.weight",
                  torch::ones({4096, 11008}, dtype_));
-                 //torch::ones({4096, 11008}, torch::kHalf, device_));
+    // torch::ones({4096, 11008}, torch::kHalf, device_));
     // model.layers.0.mlp.gate_proj.weight: [11008, 4096]
     dict.emplace("model.layers.0.mlp.gate_proj.weight",
                  torch::ones({11008, 4096}, dtype_));
-                 //torch::ones({11008, 4096}, torch::kHalf, device_));
+    // torch::ones({11008, 4096}, torch::kHalf, device_));
     // model.layers.0.mlp.up_proj.weight: [11008, 4096]
     dict.emplace("model.layers.0.mlp.up_proj.weight",
                  torch::ones({11008, 4096}, dtype_));
-                 //torch::ones({11008, 4096}, torch::kHalf, device_));
+    // torch::ones({11008, 4096}, torch::kHalf, device_));
     StateDict state_dict(dict, 0, 1);
     return state_dict;
   }

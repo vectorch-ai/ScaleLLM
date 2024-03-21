@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "sampling_parameters.h"
+#include "sampling/parameters.h"
 #include "sequence.h"
 #include "status.h"
 #include "stopping_criteria.h"

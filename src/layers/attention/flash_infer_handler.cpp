@@ -3,7 +3,7 @@
 #include <torch/torch.h>
 
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 
 namespace llm {
 

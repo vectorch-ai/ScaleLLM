@@ -7,8 +7,8 @@
 #include <memory>
 
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
+#include "models/parameters.h"
 
 namespace llm {
 

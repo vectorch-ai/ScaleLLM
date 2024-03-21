@@ -8,7 +8,6 @@
 #include <memory>
 
 #include "common/pretty_print.h"
-#include "memory/memory.h"
 #include "model_loader/model_loader.h"
 #include "model_parallel/parallel_args.h"
 #include "models/model_args.h"
@@ -22,7 +21,9 @@ DEFINE_int64(max_cache_size, 10 * GB, "max cache size in bytes, default 10GB");
 DEFINE_double(max_memory_utilization,
               0.9,
               "maximum memory utilization allowed, default 0.9");
-DEFINE_bool(enable_cudagraph, false, "Enable CUDAGraph to optimize model execution.");
+DEFINE_bool(enable_cudagraph,
+            false,
+            "Enable CUDAGraph to optimize model execution.");
 
 // following two parameters are used for profiling and warmup the engine.
 // the profiling result would be used to determine kv cache size.
@@ -212,8 +213,7 @@ bool Engine::warmup_model() {
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.emplace_back(
-        worker->warmup_model_async(FLAGS_enable_cudagraph));
+    futures.emplace_back(worker->warmup_model_async(FLAGS_enable_cudagraph));
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
@@ -294,7 +294,8 @@ bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
   CHECK_GT(cache_size_in_bytes, 0);
   LOG(INFO) << "Initializing kv cache with size: "
             << readable_size(cache_size_in_bytes);
-  CHECK(FLAGS_block_size % 256 == 0) << "cache block size must be divisible by 256";
+  CHECK(FLAGS_block_size % 256 == 0)
+      << "cache block size must be divisible by 256";
 
   const int64_t block_size = FLAGS_block_size;
 
@@ -346,31 +347,20 @@ bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
   return true;
 }
 
-OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
+ModelOutput Engine::execute_model(const Batch& batch) {
   // prepare inputs for workers
-  torch::Tensor flatten_token_ids;
-  torch::Tensor flatten_positions;
-  InputParameters input_params;
-  SamplingParameters sampling_params;
-  Utils::prepare_inputs(batch,
-                        FLAGS_block_size,
-                        &flatten_token_ids,
-                        &flatten_positions,
-                        &input_params,
-                        &sampling_params);
+  auto model_inputs = batch.prepare_model_inputs(FLAGS_block_size);
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
-    auto output = workers_[0]->execute_model(
-        flatten_token_ids, flatten_positions, input_params, sampling_params);
+    auto output = workers_[0]->execute_model(model_inputs);
     return output;
   }
 
   // multiple workers, call async forward
-  std::vector<folly::SemiFuture<OutputParameters>> futures;
+  std::vector<folly::SemiFuture<ModelOutput>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->execute_model_async(
-        flatten_token_ids, flatten_positions, input_params, sampling_params));
+    futures.push_back(worker->execute_model_async(model_inputs));
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
@@ -379,38 +369,23 @@ OutputParameters Engine::execute_model(const std::vector<Sequence*>& batch) {
   return first_output;
 }
 
-// TODO
-OutputParameters Engine::validate(const std::vector<Sequence*>& batch) {
-  torch::Tensor flatten_token_ids;
-  torch::Tensor flatten_positions;
-  torch::Tensor seq_idxes;
-  InputParameters input_params;
-  SamplingParameters sampling_params;
-
-  Utils::prepare_validate_inputs(batch,
-                                 FLAGS_block_size,
-                                 &flatten_token_ids,
-                                 &flatten_positions,
-                                 &seq_idxes,
-                                 &input_params,
-                                 &sampling_params);
+// TODO: implement validate logic for speculative decoding
+ModelOutput Engine::validate(const Batch& batch) {
+  // prepare inputs for workers
+  auto model_inputs = batch.prepare_model_inputs(FLAGS_block_size);
   if (workers_.size() == 1) {
-    auto output = workers_[0]->validate(
-        flatten_token_ids, flatten_positions, input_params, sampling_params);
-    output.index_select(seq_idxes);
+    auto output = workers_[0]->validate(model_inputs);
     return output;
   }
 
-  std::vector<folly::SemiFuture<OutputParameters>> futures;
+  // multiple workers, call async forward
+  std::vector<folly::SemiFuture<ModelOutput>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.emplace_back(worker->validate_async(
-        flatten_token_ids, flatten_positions, input_params, sampling_params));
+    futures.emplace_back(worker->validate_async(model_inputs));
   }
   auto results = folly::collectAll(futures).get();
   auto first_output = results.front().value();
-
-  first_output.index_select(seq_idxes);
   return first_output;
 }
 

@@ -7,14 +7,13 @@
 #include "layers/activation.h"
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
-
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // simple model for test
 namespace llm {
@@ -31,24 +30,22 @@ class SimpleMLPImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    gate_up_proj_ =
-        register_module("gate_up_proj",
-                        ColumnParallelLinear(hidden_size,
-                                             intermediate_size * 2,
-                                             false,
-                                             false,
-                                             quant_args,
-                                             parallel_args,
-                                             options));
-    down_proj_ =
-        register_module("down_proj",
-            RowParallelLinear(intermediate_size,
-                              hidden_size,
-                              false,
-                              true,
-                              quant_args,
-                              parallel_args,
-                              options));
+    gate_up_proj_ = register_module("gate_up_proj",
+                                    ColumnParallelLinear(hidden_size,
+                                                         intermediate_size * 2,
+                                                         false,
+                                                         false,
+                                                         quant_args,
+                                                         parallel_args,
+                                                         options));
+    down_proj_ = register_module("down_proj",
+                                 RowParallelLinear(intermediate_size,
+                                                   hidden_size,
+                                                   false,
+                                                   true,
+                                                   quant_args,
+                                                   parallel_args,
+                                                   options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -85,9 +82,9 @@ class SimpleDecoderLayerImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x,
-                       torch::Tensor positions,
-                       KVCache& kv_cache,
-                       const InputParameters& input_params) {
+                        torch::Tensor positions,
+                        KVCache& kv_cache,
+                        const InputParameters& input_params) {
     return mlp_(x);
   }
 
@@ -113,14 +110,13 @@ class SimpleModelImpl : public torch::nn::Module {
                   const torch::TensorOptions& options) {
     embed_tokens_ = register_module(
         "embed_tokens",
-        ParallelEmbedding(args.vocab_size(), args.hidden_size(), parallel_args,
-            options));
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
 
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = SimpleDecoderLayer(
-          args, quant_args, parallel_args, options);
+      auto block = SimpleDecoderLayer(args, quant_args, parallel_args, options);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -140,7 +136,7 @@ class SimpleModelImpl : public torch::nn::Module {
 
   void load_state_dict(const StateDict& state_dict) {
     embed_tokens_->load_state_dict(state_dict.select("embed_tokens."));
-    for (int i = 0; i < layers_.size(); ++i)  {
+    for (int i = 0; i < layers_.size(); ++i) {
       layers_[i]->load_state_dict(
           state_dict.select("layers." + std::to_string(i) + "."));
     }
@@ -149,7 +145,8 @@ class SimpleModelImpl : public torch::nn::Module {
   void verify_loaded_weights(const std::string& prefix) const {
     embed_tokens_->verify_loaded_weights(prefix + "embed_tokens.");
     for (int i = 0; i < layers_.size(); ++i) {
-      layers_[i]->verify_loaded_weights(prefix + "layers." + std::to_string(i) + ".");
+      layers_[i]->verify_loaded_weights(prefix + "layers." + std::to_string(i) +
+                                        ".");
     }
   }
 
@@ -209,4 +206,4 @@ REGISTER_MODEL_ARGS(simple, [&] {
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 2048);
 });
 
-} // namespace llm
+}  // namespace llm

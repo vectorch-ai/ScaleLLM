@@ -4,11 +4,11 @@
 
 #include <vector>
 
-#include "input_parameters.h"
 #include "memory/kv_cache.h"
 #include "model_args.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
+#include "parameters.h"
 #include "quantization/quant_args.h"
 
 namespace llm {

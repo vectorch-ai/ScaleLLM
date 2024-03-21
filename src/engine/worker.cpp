@@ -16,15 +16,16 @@
 #include "memory/kv_cache.h"
 #include "memory/memory.h"
 #include "model_loader/state_dict.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 #include "sampling/logits_processor.h"
 #include "sampling/sampler.h"
 
 namespace llm {
 
-const static std::vector<int> BatchSizeForCudaGraph = {1, 2, 4, 8, 16, 24, 32, 40, 48,
-  56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192,
-  200, 208, 216, 224, 232, 240, 248, 256};
+const static std::vector<int> BatchSizeForCudaGraph = {
+    1,   2,   4,   8,   16,  24,  32,  40,  48,  56,  64,  72,
+    80,  88,  96,  104, 112, 120, 128, 136, 144, 152, 160, 168,
+    176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256};
 constexpr int MaxBatchSizeForCudaGraph = 256;
 constexpr int64_t max_seq_len = 1024;
 
@@ -37,21 +38,17 @@ class CudaGraphRunner {
                torch::Tensor flatten_positions,
                const InputParameters& params,
                std::vector<KVCache>& kv_cache) {
-    // run model once to avoid captured graph does not include initial benchmarking
-    model_->forward(flatten_tokens,
-                    flatten_positions,
-                    kv_cache,
-                    params);
+    // run model once to avoid captured graph does not include initial
+    // benchmarking
+    model_->forward(flatten_tokens, flatten_positions, kv_cache, params);
     torch::cuda::synchronize();
 
     // create cudagraph and capture
     graph_ = std::make_unique<at::cuda::CUDAGraph>();
     // TODO: optimize could share memorypool between different CUDAGraph
     graph_->capture_begin();
-    auto hidden_states = model_->forward(flatten_tokens,
-                                         flatten_positions,
-                                         kv_cache,
-                                         params);
+    auto hidden_states =
+        model_->forward(flatten_tokens, flatten_positions, kv_cache, params);
     graph_->capture_end();
     torch::cuda::synchronize();
 
@@ -172,23 +169,20 @@ std::tuple<int64_t, int64_t> Worker::profile_device_memory(
   return {available_memory, total_memory};
 }
 
-OutputParameters Worker::execute_model(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params,
-    const SamplingParameters& sampling_params) {
+ModelOutput Worker::execute_model(const ModelInput& inputs) {
   torch::DeviceGuard device_guard(device_);
 
-  torch::Device input_device = flatten_tokens.device();
+  torch::Device input_device = inputs.token_ids.device();
 
   // all tensors should be on the same device as model
-  flatten_tokens = flatten_tokens.to(device_);
-  flatten_positions = flatten_positions.to(device_);
-  InputParameters d_params = params.to(device_);
+  auto flatten_tokens = inputs.token_ids.to(device_);
+  auto flatten_positions = inputs.positions.to(device_);
+  InputParameters params = inputs.input_params.to(device_);
+  const SamplingParameters& sampling_params = inputs.sampling_params;
 
   // call model forward to get hidden states
   auto hidden_states =
-      model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
+      model_->forward(flatten_tokens, flatten_positions, kv_caches_, params);
 
   // call model logits to get logits
   auto logits = model_->logits(hidden_states,
@@ -213,45 +207,14 @@ OutputParameters Worker::execute_model(
   auto next_tokens = sampler->forward(logits);
 
   // prepare output parameters
-  OutputParameters output_params;
+  ModelOutput output_params;
   output_params.next_tokens = next_tokens.to(input_device);
   return output_params;
 }
 
-OutputParameters Worker::validate(torch::Tensor flatten_tokens,
-                                  torch::Tensor flatten_positions,
-                                  const InputParameters& params,
-                                  const SamplingParameters& sampling_params) {
-  torch::DeviceGuard device_guard(device_);
-
-  torch::Device input_device = flatten_tokens.device();
-
-  flatten_tokens = flatten_tokens.to(device_);
-  flatten_positions = flatten_positions.to(device_);
-  InputParameters d_params = params.to(device_);
-
-  // call model forward to get hidden states
-  auto hidden_states =
-      model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
-
-  // call model logits to get logits
-  auto logits = model_->logits(hidden_states,
-                               sampling_params.last_token_idxes.to(device_));
-
-  const auto options = torch::dtype(dtype_).device(device_);
-  auto logits_processor = LogitsProcessor::create(sampling_params, options);
-
-  // TODO: need to support validate multiple speculative steps
-  logits_processor->forward(logits,
-                            sampling_params.token_ids.to(device_),
-                            sampling_params.token_counts.to(device_),
-                            sampling_params.token_ids_lens.to(device_));
-
-  auto sampler = std::make_unique<Sampler>(sampling_params, options);
-  auto next_tokens = sampler->forward(logits);
-
-  OutputParameters output_params;
-  output_params.next_tokens = next_tokens.to(input_device);
+ModelOutput Worker::validate(const ModelInput& inputs) {
+  LOG(FATAL) << "Not implemented.";
+  ModelOutput output_params;
   return output_params;
 }
 
@@ -274,44 +237,28 @@ Worker::profile_device_memory_async(
   return future;
 }
 
-folly::SemiFuture<OutputParameters> Worker::execute_model_async(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params,
-    const SamplingParameters& sampling_params) {
-  folly::Promise<OutputParameters> promise;
+folly::SemiFuture<ModelOutput> Worker::execute_model_async(
+    const ModelInput& inputs) {
+  folly::Promise<ModelOutput> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule([this,
-                        tokens = flatten_tokens,
-                        positions = flatten_positions,
-                        parameters = params,
-                        sampling_params = sampling_params,
-                        promise = std::move(promise)]() mutable {
-    // run the model on the given input in working thread
-    const auto output =
-        this->execute_model(tokens, positions, parameters, sampling_params);
-    promise.setValue(output);
-  });
+  threadpool_.schedule(
+      [this, inputs = inputs, promise = std::move(promise)]() mutable {
+        // run the model on the given input in working thread
+        const auto output = this->execute_model(inputs);
+        promise.setValue(output);
+      });
   return future;
 }
 
-folly::SemiFuture<OutputParameters> Worker::validate_async(
-    torch::Tensor flatten_tokens,
-    torch::Tensor flatten_positions,
-    const InputParameters& params,
-    const SamplingParameters& sampling_params) {
-  folly::Promise<OutputParameters> promise;
+folly::SemiFuture<ModelOutput> Worker::validate_async(
+    const ModelInput& inputs) {
+  folly::Promise<ModelOutput> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule([this,
-                        tokens = flatten_tokens,
-                        positions = flatten_positions,
-                        parameters = params,
-                        sampling_params = sampling_params,
-                        promise = std::move(promise)]() mutable {
-    const auto output =
-        this->validate(tokens, positions, parameters, sampling_params);
-    promise.setValue(output);
-  });
+  threadpool_.schedule(
+      [this, inputs = inputs, promise = std::move(promise)]() mutable {
+        const auto output = this->validate(inputs);
+        promise.setValue(output);
+      });
   return future;
 }
 
@@ -370,7 +317,7 @@ folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
 
 // Only support decode in CUDAGraph
 void Worker::capture_graph() {
-  const int64_t max_seq_len = 1024; // TODO: need to optimize
+  const int64_t max_seq_len = 1024;  // TODO: need to optimize
   for (auto batch_size : BatchSizeForCudaGraph) {
     torch::Tensor flatten_token_ids;
     torch::Tensor flatten_positions;
@@ -381,13 +328,12 @@ void Worker::capture_graph() {
                                   &flatten_positions,
                                   &input_params);
     auto graph_runner = new CudaGraphRunner(model_.get());
-    graph_runner->capture(
-        flatten_token_ids,
-        flatten_positions,
-        input_params,
-        // TODO: if use shared buffer, we need to share
-        // memory pool between different cudagraph
-        kv_caches_);
+    graph_runner->capture(flatten_token_ids,
+                          flatten_positions,
+                          input_params,
+                          // TODO: if use shared buffer, we need to share
+                          // memory pool between different cudagraph
+                          kv_caches_);
     // TODO graph_memory_pool = graph_runner.graph.pool()
     graph_runners_[batch_size] = graph_runner;
   }
