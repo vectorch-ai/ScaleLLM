@@ -75,13 +75,13 @@ class FakeSSMEngine : public Engine {
     return fake_block_manager_.get();
   }
 
-  OutputParameters execute_model(const std::vector<Sequence*>&) override {
+  ModelOutput execute_model(const Batch&) override {
     if (spec_tokens_idx_ >= spec_token_ids_.size()) {
       LOG(FATAL) << "Out of Range, you should setup FakeSSMEngine correctly.";
-      return OutputParameters();
+      return ModelOutput();
     }
     ++execute_model_calls_;
-    OutputParameters output;
+    ModelOutput output;
     std::vector<int64_t> val;
     val.emplace_back(spec_token_ids_[spec_tokens_idx_++]);
 
@@ -90,9 +90,9 @@ class FakeSSMEngine : public Engine {
     return output;
   }
 
-  OutputParameters validate(const std::vector<Sequence*>&) override {
+  ModelOutput validate(const Batch&) override {
     ++validate_calls_;
-    return OutputParameters();
+    return ModelOutput();
   }
 
   void set_spec_token_ids(const std::vector<int64_t>& spec_token_ids) {
@@ -132,19 +132,19 @@ class FakeLLMEngine : public Engine {
     return fake_block_manager_.get();
   }
 
-  OutputParameters execute_model(const std::vector<Sequence*>&) override {
+  ModelOutput execute_model(const Batch&) override {
     ++execute_model_calls_;
-    return OutputParameters();
+    return ModelOutput();
   }
 
-  OutputParameters validate(const std::vector<Sequence*>&) override {
+  ModelOutput validate(const Batch&) override {
     if (valid_tokens_idx_ >= valid_token_ids_.size()) {
       LOG(FATAL) << "Out of Range, you should setup FakeLLMEngine correctly.";
-      return OutputParameters();
+      return ModelOutput();
     }
 
     ++validate_calls_;
-    OutputParameters output;
+    ModelOutput output;
     output.next_tokens =
         torch::unsqueeze(torch::tensor(valid_token_ids_, torch::kInt64), 0);
     return output;
@@ -386,7 +386,8 @@ TEST(DISABLED_SpeculativeSchedulerTest, Speculative4StepsNoMatchTest) {
   EXPECT_EQ(sequence_result.output_text, expect_output);
 }
 
-TEST(DISABLED_SpeculativeSchedulerTest, Speculative4StepsPartialMatchWithEndTest) {
+TEST(DISABLED_SpeculativeSchedulerTest,
+     Speculative4StepsPartialMatchWithEndTest) {
   // who[1058] is[338] messi[4473] ?[29973]
   const std::vector<int64_t> spec_token_ids = {1058, 338, 4473, 29973};
   const std::vector<int64_t> valid_token_ids = {1058, 338, 4473, 2};

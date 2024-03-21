@@ -1,6 +1,7 @@
 #include "server/llm.h"
 
 #include <absl/strings/str_split.h>
+
 #include "request/sequence.h"
 
 namespace llm {
@@ -10,8 +11,7 @@ LLM::LLM(const std::string& model_path,
          const llm::StoppingCriteria& sc,
          int64_t max_seq_len,
          const std::string& device_str)
-      : sampling_param_(sp), stopping_criteria_(sc),
-        max_seq_len_(max_seq_len) {
+    : sampling_param_(sp), stopping_criteria_(sc), max_seq_len_(max_seq_len) {
   auto devices = parse_devices(device_str);
   engine_ = new llm::Engine(devices);
   CHECK(engine_->init(model_path));
@@ -28,16 +28,17 @@ void LLM::generate(const std::vector<std::string>& batched_prompt) {
     std::vector<int> prompt_tokens;
     tokenizer_->encode(batched_prompt[i], &prompt_tokens);
 
-    auto sequence = new llm::Sequence(sampling_param_, stopping_criteria_,
-        prompt_tokens, true, nullptr);
-    sequences.emplace_back(sequence); 
+    auto sequence = new llm::Sequence(
+        sampling_param_, stopping_criteria_, prompt_tokens, true, nullptr);
+    sequences.emplace_back(sequence);
   }
 
   for (int64_t i = 0; i < max_seq_len_; ++i) {
-    sequences.erase(std::remove_if(sequences.begin(), sequences.end(),
-                    [](llm::Sequence* seq) {
-                      return seq->is_finished();
-                    }), sequences.end());
+    sequences.erase(
+        std::remove_if(sequences.begin(),
+                       sequences.end(),
+                       [](llm::Sequence* seq) { return seq->is_finished(); }),
+        sequences.end());
     if (sequences.empty()) {
       break;
     }
@@ -65,8 +66,7 @@ void LLM::generate(const std::vector<std::string>& batched_prompt) {
   }
 }
 
-std::vector<torch::Device> LLM::parse_devices(
-    const std::string& device_str) {
+std::vector<torch::Device> LLM::parse_devices(const std::string& device_str) {
   std::vector<torch::Device> devices;
   if (device_str == "auto") {
     // use all available gpus if any
@@ -91,9 +91,8 @@ std::vector<torch::Device> LLM::parse_devices(
     device_types.insert(devices.back().type());
   }
   CHECK(!devices.empty()) << "No devices specified.";
-  CHECK(device_types.size() == 1)
-      << "All devices must be of the same type.";
+  CHECK(device_types.size() == 1) << "All devices must be of the same type.";
   return devices;
 }
 
-} // namespace llm
+}  // namespace llm

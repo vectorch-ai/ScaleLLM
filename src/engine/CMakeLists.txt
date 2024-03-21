@@ -5,11 +5,14 @@ cc_library(
   NAME 
     engine
   HDRS
+    parameters.h
     utils.h
+    batch.h
     worker.h
     engine.h
   SRCS
     utils.cpp
+    batch.cpp
     worker.cpp
     engine.cpp
   DEPS
@@ -18,7 +21,6 @@ cc_library(
     :request
     :state_dict
     :models
-    :logits_processor
     :sampler
     :tokenizer
     :model_loader
@@ -33,7 +35,7 @@ cc_test(
   NAME
     engine_test
   SRCS
-    utils_test.cpp
+    batch_test.cpp
     worker_test.cpp
   DEPS
     :engine

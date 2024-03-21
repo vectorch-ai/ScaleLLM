@@ -48,11 +48,11 @@ ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
   }
 
   // release all requests in the batch
-  for (Request* request : request_batch_) {
+  for (Request* request : requests_batch_) {
     std::unique_ptr<Request> request_ptr(request);
   }
   sequences_batch_.clear();
-  request_batch_.clear();
+  requests_batch_.clear();
 }
 
 void ContinuousBatchingScheduler::on_request_finish(Request* request) {
@@ -128,7 +128,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
   }
 
   // access in reverse order
-  for (auto it = request_batch_.rbegin(); it != request_batch_.rend(); ++it) {
+  for (auto it = requests_batch_.rbegin(); it != requests_batch_.rend(); ++it) {
     Request* request = *it;
     if (request->is_finished()) {
       on_request_finish(request);
@@ -143,7 +143,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
 
   // clear previous batch
   sequences_batch_.clear();
-  request_batch_.clear();
+  requests_batch_.clear();
 
   // schedule sequence by sequence but preempt whole request if necessary
   while (!priority_queue_.empty()) {
@@ -167,10 +167,8 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     if (has_enough_slots) {
       // add request to new batch
       priority_queue_.pop();
-      request_batch_.push_back(candidate);
-      sequences_batch_.insert(sequences_batch_.end(),
-                              sequence_candiadtes.begin(),
-                              sequence_candiadtes.end());
+      requests_batch_.push_back(candidate);
+      sequences_batch_.add(sequence_candiadtes);
       if (!preemptable_candidates_.empty() &&
           candidate == preemptable_candidates_.front()) {
         // the request has been scheduled and can't be preempted
@@ -193,10 +191,8 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     // no requests left to preempt, partially schedule the request
     if (!sequence_candiadtes.empty()) {
       priority_queue_.pop();
-      request_batch_.push_back(candidate);
-      sequences_batch_.insert(sequences_batch_.end(),
-                              sequence_candiadtes.begin(),
-                              sequence_candiadtes.end());
+      requests_batch_.push_back(candidate);
+      sequences_batch_.add(sequence_candiadtes);
     }
     break;
   }

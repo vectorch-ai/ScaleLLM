@@ -107,7 +107,7 @@ void SpeculativeScheduler::speculate_multiple_steps(
   }
 }
 
-OutputParameters SpeculativeScheduler::validate(
+ModelOutput SpeculativeScheduler::validate(
     std::vector<Sequence*>& sequences_batch) {
   return llm_engine_->validate(sequences_batch);
 }

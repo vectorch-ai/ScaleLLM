@@ -1,4 +1,4 @@
-#include "utils.h"
+#include "batch.h"
 
 #include <common/logging.h>
 #include <gtest/gtest.h>
@@ -6,8 +6,8 @@
 #include <cstdint>
 
 #include "memory/block.h"
-#include "request/sampling_parameters.h"
 #include "request/stopping_criteria.h"
+#include "sampling/parameters.h"
 
 namespace llm {
 
@@ -31,6 +31,8 @@ TEST(UtilsTest, Basic) {
   SamplingParameter sampling_param;
   StoppingCriteria stopping_criteria;
 
+  Batch batch;
+
   // prepare sequences
   // sequence in prefill phase
   Sequence seq1(sampling_param,
@@ -39,6 +41,7 @@ TEST(UtilsTest, Basic) {
                 /*echo=*/false,
                 /*on_stream=*/nullptr);
   seq1.append_blocks(std::vector<Block>{1, 2, 3});
+  batch.add(&seq1);
 
   // seq in decode phase
   Sequence seq2(sampling_param,
@@ -48,6 +51,7 @@ TEST(UtilsTest, Basic) {
                 /*on_stream=*/nullptr);
   seq2.append_blocks(std::vector<Block>{4, 5, 6, 7});
   seq2.append_new_token_id(100);
+  batch.add(&seq2);
 
   // seq in decode phase
   Sequence seq3(
@@ -58,21 +62,10 @@ TEST(UtilsTest, Basic) {
       /*on_stream=*/nullptr);
   seq3.append_blocks(std::vector<Block>{8, 9, 10, 11, 12});
   seq3.append_new_token_id(200);
-
-  std::vector<Sequence*> batch = {&seq1, &seq2, &seq3};
+  batch.add(&seq3);
 
   // define outputs
-  torch::Tensor flatten_token_ids;
-  torch::Tensor flatten_positions;
-  InputParameters input_params;
-  SamplingParameters sampling_params;
-
-  Utils::prepare_inputs(batch,
-                        block_size,
-                        &flatten_token_ids,
-                        &flatten_positions,
-                        &input_params,
-                        &sampling_params);
+  ModelInput model_inputs = batch.prepare_model_inputs(block_size);
 
   // clang-format off
   // check the flatten token ids
@@ -80,16 +73,17 @@ TEST(UtilsTest, Basic) {
       /*seq1*/ 1, 3, 5, 7, 5, 4, 3, 2, 1, 
       /*seq2*/ 100, 
       /*seq3*/ 200};
-  EXPECT_TRUE(equal(flatten_token_ids, expcted_tokens));
+  EXPECT_TRUE(equal(model_inputs.token_ids, expcted_tokens));
 
   // check the flatten positions
   const std::vector<int32_t> expected_pos = {
     /*seq1*/ 0, 1, 2, 3, 4, 5, 6, 7, 8,
     /*seq2*/ 7, 
     /*seq3*/ 15};
-  EXPECT_TRUE(equal(flatten_positions, expected_pos));
+  EXPECT_TRUE(equal(model_inputs.positions, expected_pos));
 
   // check the input parameters
+  const InputParameters& input_params = model_inputs.input_params;
   EXPECT_FALSE(input_params.all_prefill_sequences);
   EXPECT_EQ(input_params.num_sequences, 3);
   EXPECT_EQ(input_params.q_max_seq_len, 9);
@@ -116,6 +110,7 @@ TEST(UtilsTest, Basic) {
   // const std::vector<int32_t> last_token_idxes = {8, 9, 10};
   // EXPECT_TRUE(equal(input_params.last_token_idxes, last_token_idxes));
 
+  const auto& sampling_params = model_inputs.sampling_params;
   const std::vector<int64_t> unique_ids = {
     /*seq1*/   2,  4,  7,  5,  3,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     /*seq2*/ 100,  8,  6,  4,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 

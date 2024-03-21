@@ -1,8 +1,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "request/sampling_parameters.h"
 #include "request/stopping_criteria.h"
+#include "sampling/parameters.h"
 #include "server/llm.h"
 
 namespace py = pybind11;

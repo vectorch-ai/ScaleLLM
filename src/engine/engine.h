@@ -5,6 +5,7 @@
 #include <memory>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 
+#include "batch.h"
 #include "memory/block_manager.h"
 #include "quantization/quant_args.h"
 #include "tokenizer/tokenizer.h"
@@ -40,10 +41,10 @@ class Engine {
   virtual bool init(const std::string& model_weights_path);
 
   // step the engine forward by one step with the batch
-  virtual OutputParameters execute_model(const std::vector<Sequence*>& batch);
+  virtual ModelOutput execute_model(const Batch& batch);
 
   // validate multiple speculative tokens when use speculative decoding
-  virtual OutputParameters validate(const std::vector<Sequence*>& batch);
+  virtual ModelOutput validate(const Batch& batch);
 
   virtual std::unique_ptr<Tokenizer> tokenizer() const {
     return tokenizer_->clone();

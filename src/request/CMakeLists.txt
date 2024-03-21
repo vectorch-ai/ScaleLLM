@@ -5,7 +5,6 @@ cc_library(
   NAME 
     request
   HDRS 
-    sampling_parameters.h 
     stopping_criteria.h
     sequence.h
     status.h

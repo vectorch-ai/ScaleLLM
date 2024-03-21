@@ -10,9 +10,9 @@
 #include <string>
 
 #include "engine/engine.h"
-#include "request/sampling_parameters.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
+#include "sampling/parameters.h"
 
 DEFINE_string(model_name_or_path,
               "THUDM/chatglm3-6b",
@@ -148,23 +148,17 @@ int main(int argc, char* argv[]) {
     tokenizer->encode(input, &prompt_tokens);
     const int64_t prompt_token_len = static_cast<int64_t>(prompt_tokens.size());
 
-    llm::Request request("request_id_0", prompt_tokens);
-    request.echo = true;
-    request.sampling_param = sampling_param;
-    request.stopping_criteria = stopping_criteria;
-
-    // create a sequence
-    request.add_sequence();
-    auto& sequence = request.sequences.front();
+    llm::Sequence sequence(
+        sampling_param, stopping_criteria, prompt_tokens, true, nullptr);
 
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
       // allocate slots for the sequence
-      CHECK(block_manager->allocate_slots_for_request(&request));
+      CHECK(block_manager->allocate_slots_for_sequence(&sequence));
 
       // run inference
-      const auto output_params = engine.execute_model({&sequence});
+      const auto output_params = engine.execute_model(&sequence);
 
       torch::Tensor next_token = output_params.next_tokens;
       const auto flat_tensor = next_token.view({-1});
@@ -182,7 +176,7 @@ int main(int argc, char* argv[]) {
     }
 
     // release the slots for the sequence
-    block_manager->release_slots_for_request(&request);
+    block_manager->release_slots_for_sequence(&sequence);
 
     // print the prompt and wait for the next input
     std::cout << '\n' << prompt;

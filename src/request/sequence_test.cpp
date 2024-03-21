@@ -4,8 +4,8 @@
 #include <gtest/gtest.h>
 
 #include "request.h"
-#include "request/sampling_parameters.h"
 #include "request/stopping_criteria.h"
+#include "sampling/parameters.h"
 
 namespace llm {
 
