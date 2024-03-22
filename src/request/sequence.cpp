@@ -196,10 +196,11 @@ void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
   blocks_.insert(blocks_.end(), shared_blocks.begin(), shared_blocks.end());
 
   // It is possible that kv_cache_pos_ == num_prompt_tokens_, indicating that
-  // the exact same prompt has been received again. In this case, we need to
-  // adjust the kv cache position to the previous token to allow the model to
-  // proceed. Ideally, the shared blocks should be immutable, but it is safe to
-  // do so since we are using the exact same token to regenerate the kv cache.
+  // the exact same prompt has been received again. In this case, it becomes
+  // necessary to adjust the kv cache position to the previous token, allowing
+  // the model proceed. While the shared blocks should be immutable ideally, but
+  // it remains safe to regenerate the kv cache in this context, given the
+  // utiliztion of the exact same token.
   if (kv_cache_pos_ == num_prompt_tokens_) {
     kv_cache_pos_ -= 1;
   }
