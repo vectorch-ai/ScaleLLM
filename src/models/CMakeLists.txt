@@ -6,7 +6,7 @@ cc_library(
     models
   HDRS
     model_args.h
-    input_parameters.h
+    parameters.h
     model_registry.h
     causal_lm.h
   SRCS

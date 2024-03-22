@@ -9,9 +9,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // Internlm model compatible with huggingface weights
 namespace llm::hf {

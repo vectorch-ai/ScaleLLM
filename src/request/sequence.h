@@ -6,7 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "sampling_parameters.h"
+#include "common/slice.h"
+#include "memory/block.h"
+#include "sampling/parameters.h"
 #include "stopping_criteria.h"
 #include "tokenizer/tokenizer.h"
 
@@ -30,9 +32,16 @@ using OnStream =
 // current position in generating tokens, etc.
 class Sequence final {
  public:
-  Sequence(const SamplingParameter& sampling_param_,
-           const StoppingCriteria& stopping_criteria_,
+  Sequence(const std::vector<int32_t>& token_ids,
+           const SamplingParameter& sampling_param,
+           const StoppingCriteria& stopping_criteria,
+           bool echo,
+           OnStream on_stream);
+
+  Sequence(const std::string_view& prompt,
            const std::vector<int32_t>& token_ids,
+           const SamplingParameter& sampling_param,
+           const StoppingCriteria& stopping_criteria,
            bool echo,
            OnStream on_stream);
 
@@ -40,7 +49,7 @@ class Sequence final {
   int64_t id() const { return id_; }
 
   // get token ids
-  const std::vector<int32_t>& token_ids() const { return token_ids_; }
+  Slice<int32_t> token_ids() const { return token_ids_; }
 
   // get token ids to count map
   const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
@@ -54,18 +63,24 @@ class Sequence final {
   size_t num_prompt_tokens() const { return num_prompt_tokens_; }
 
   // get the number of generated tokens
-  size_t num_generated_tokens() const {
-    return num_tokens() - num_prompt_tokens();
+  // returns 0 if still in prefill stage
+  size_t num_generated_tokens() const;
+
+  // get token ids in kv cache
+  Slice<int32_t> tokens_in_kv_cache() const {
+    return {token_ids_, kv_cache_pos_};
   }
 
   // get the number of tokens in the kvcache
-  size_t num_tokens_in_cache() const { return cache_pos_; }
+  size_t num_tokens_in_kv_cache() const { return kv_cache_pos_; }
 
-  // get the sampling parameters
-  const SamplingParameter& sampling_param() const;
+  // get the number of tokens to process
+  size_t num_tokens_to_process() const {
+    return num_tokens() - num_tokens_in_kv_cache();
+  }
 
   // whether the sequence is in prefill stage, no kv cache has been generated
-  bool is_prefill() const { return cache_pos_ == 0; }
+  bool is_prefill() const { return kv_cache_pos_ == 0; }
 
   // add a new token id to the sequence and check if the sequence is finished.
   // returns false if the sequence is finished.
@@ -78,22 +93,28 @@ class Sequence final {
   void update_valid_token_ids(const int64_t* ids);
 
   // add new cache blocks
-  void append_blocks(const std::vector<int32_t>& new_blocks) {
-    blocks_.insert(blocks_.end(), new_blocks.begin(), new_blocks.end());
-  }
+  void append_blocks(const std::vector<Block>& new_blocks);
+
+  // append shared cache blocks from prefix cache
+  void append_shared_blocks(const std::vector<Block>& shared_blocks);
 
   // release all cache blocks
-  std::vector<int32_t> release_blocks() {
-    // reset the current pos to 0 so that the cache can be recomputed next time
-    cache_pos_ = 0;
-    return std::move(blocks_);
-  }
+  void release_blocks();
 
   // returns allocated cache blocks
-  const std::vector<int32_t>& blocks() const { return blocks_; }
+  Slice<Block> blocks() const { return blocks_; }
 
   // get the number of blocks
   size_t num_blocks() const { return blocks_.size(); }
+
+  // get the capacity of the kv cache allocated
+  size_t kv_cache_capacity() const;
+
+  // generate the kv cache slots for the position range [pos_start, pos_end)
+  std::vector<int32_t> kv_cache_slots(int32_t pos_start, int32_t pos_end) const;
+
+  // commit the kv cache for size n
+  void commit_kv_cache(size_t size);
 
   // check if the sequence is finished
   bool is_finished() const { return is_cancelled() || is_finished_; }
@@ -117,24 +138,22 @@ class Sequence final {
   bool is_streaming() const { return on_stream_ != nullptr; }
 
   // stream the delta text to the client
-  void stream_delta(const std::string& delta, FinishReason reason) {
-    if (on_stream_) {
-      if (!on_stream_(delta, reason)) {
-        // failed to stream the delta, cancel the sequence
-        set_cancelled();
-      }
-    }
-  }
+  void stream_delta(const std::string& delta, FinishReason reason);
 
   // get the offset of output tokens
   size_t output_offset() const { return output_offset_; }
 
- private:
-  std::vector<int32_t> sub_token_ids(size_t start, size_t end) {
-    return {token_ids_.begin() + static_cast<long>(start),
-            token_ids_.begin() + static_cast<long>(end)};
+  // get the sampling parameters
+  const SamplingParameter& sampling_param() const { return sampling_param_; }
+
+  // get the stopping criteria
+  const StoppingCriteria& stopping_criteria() const {
+    return stopping_criteria_;
   }
 
+  std::string_view prompt() const { return prompt_; }
+
+ private:
   // global unique id for the sequence
   const int64_t id_;
 
@@ -143,6 +162,9 @@ class Sequence final {
 
   // the stopping criteria
   const StoppingCriteria& stopping_criteria_;
+
+  // the original prompt string
+  const std::string_view prompt_;
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
@@ -154,11 +176,11 @@ class Sequence final {
   size_t num_prompt_tokens_ = 0;
 
   // the cache position.
-  // all tokens before pos should be processed and cached.
-  size_t cache_pos_ = 0;
+  // all tokens before pos should already be in the kv cache.
+  size_t kv_cache_pos_ = 0;
 
-  // physical block ids that hold the keys and values cache.
-  std::vector<int32_t> blocks_;
+  // physical blocks that hold the kv cache.
+  std::vector<Block> blocks_;
 
   // has the sequence been finished
   bool is_finished_ = false;

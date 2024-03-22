@@ -5,8 +5,11 @@
 #include <memory>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 
+#include "batch.h"
+#include "engine/parameters.h"
 #include "memory/block_manager.h"
 #include "quantization/quant_args.h"
+#include "request/sequence.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 #include "worker.h"
@@ -40,10 +43,31 @@ class Engine {
   virtual bool init(const std::string& model_weights_path);
 
   // step the engine forward by one step with the batch
-  virtual OutputParameters execute_model(const std::vector<Sequence*>& batch);
+  virtual ModelOutput execute_model(Batch& batch);
 
   // validate multiple speculative tokens when use speculative decoding
-  virtual OutputParameters validate(const std::vector<Sequence*>& batch);
+  virtual ModelOutput validate(Batch& batch);
+
+  // TODO: remove following functions once refactoring is done
+  ModelOutput execute_model(const std::vector<Sequence*>& sequences) {
+    Batch batch(sequences);
+    return execute_model(batch);
+  }
+
+  ModelOutput execute_model(Sequence* sequence) {
+    Batch batch(sequence);
+    return execute_model(batch);
+  }
+
+  ModelOutput validate(const std::vector<Sequence*>& sequences) {
+    Batch batch(sequences);
+    return validate(batch);
+  }
+
+  ModelOutput validate(Sequence* sequence) {
+    Batch batch(sequence);
+    return validate(batch);
+  }
 
   virtual std::unique_ptr<Tokenizer> tokenizer() const {
     return tokenizer_->clone();
@@ -61,6 +85,8 @@ class Engine {
   bool init_model(const std::string& model_weights_path);
 
   bool init_kv_cache(int64_t cache_size_in_bytes);
+
+  bool warmup_model();
 
   // returns the memory size for the kv cache
   int64_t profile_memory_for_kv_cache();
@@ -80,17 +106,17 @@ class Engine {
   // Tokenizer args
   TokenizerArgs tokenizer_args_;
 
+  // block manager
+  std::unique_ptr<BlockManager> block_manager_;
+
   // a list of process groups, with each process group handling a single device
   std::vector<std::unique_ptr<ProcessGroup>> process_groups_;
-
-  // a list of workers, with each worker handling a partial of model
-  std::vector<std::unique_ptr<Worker>> workers_;
 
   // tokenizer
   std::unique_ptr<Tokenizer> tokenizer_;
 
-  // block manager
-  std::unique_ptr<BlockManager> block_manager_;
+  // a list of workers, with each worker handling a partial of model
+  std::vector<std::unique_ptr<Worker>> workers_;
 };
 
 }  // namespace llm

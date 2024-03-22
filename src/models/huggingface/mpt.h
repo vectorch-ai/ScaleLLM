@@ -11,9 +11,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // mpt model compatible with huggingface weights
 namespace llm::hf {
@@ -368,9 +368,10 @@ class MPTModelImpl : public torch::nn::Module {
     m.mul_(bias_max / next_power_of_2);
     auto slopes = 1.0f / torch::pow(2, m);
     if (next_power_of_2 != n_heads) {
-      using namespace torch::indexing;
-      slopes = torch::cat({slopes.index({Slice(1, None, 2)}),
-                           slopes.index({Slice(None, None, 2)})});
+      using ISlice = torch::indexing::Slice;
+      using torch::indexing::None;
+      slopes = torch::cat({slopes.index({ISlice(1, None, 2)}),
+                           slopes.index({ISlice(None, None, 2)})});
     }
     if (parallel_args.world_size() > 1) {
       slopes = slopes.chunk(/*chunks=*/parallel_args.world_size(),

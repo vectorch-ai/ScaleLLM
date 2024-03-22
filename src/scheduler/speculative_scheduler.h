@@ -27,8 +27,8 @@ class SpeculativeScheduler final : public Scheduler {
 
  private:
   void speculate_multiple_steps(std::vector<Sequence*>& sequences);
-  OutputParameters validate(std::vector<Sequence*>& sequences);
- 
+  ModelOutput validate(std::vector<Sequence*>& sequences);
+
  private:
   SchedulerConfig config_;
 
@@ -36,7 +36,7 @@ class SpeculativeScheduler final : public Scheduler {
   Engine* ssm_engine_;
 
   BlockManager* llm_block_manager_;
-  BlockManager* ssm_block_manager_; 
+  BlockManager* ssm_block_manager_;
 
   std::unique_ptr<Tokenizer> tokenizer_;
 

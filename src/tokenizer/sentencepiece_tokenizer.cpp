@@ -149,7 +149,7 @@ bool SentencePieceTokenizer::encode(const std::string_view& text,
   return encode_internal(input, ids);
 }
 
-void SentencePieceTokenizer::decode_internal(const std::vector<int32_t>& ids,
+void SentencePieceTokenizer::decode_internal(const Slice<int32_t>& ids,
                                              size_t start,
                                              size_t end,
                                              std::stringstream* ss) const {
@@ -175,7 +175,7 @@ void SentencePieceTokenizer::decode_internal(const std::vector<int32_t>& ids,
 }
 
 std::string SentencePieceTokenizer::decode(
-    const std::vector<int32_t>& ids) const {
+    const Slice<int32_t>& ids) const {
   std::stringstream ss;
   size_t start = 0;
   for (size_t i = 0; i < ids.size(); ++i) {

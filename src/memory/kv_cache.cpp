@@ -11,7 +11,7 @@
 #include "kernels/kv_cache_kernels.h"
 
 namespace llm {
-using torch::indexing::Slice;
+using ISlice = torch::indexing::Slice;
 
 // [num_blocks, block_size, num_kv_heads, head_dim]
 KVCache::KVCache(torch::Tensor key_cache, torch::Tensor value_cache)
@@ -50,9 +50,9 @@ void KVCache::set_kv_cache_slow(const torch::Tensor& slot_ids,
     const auto block_offset = slot_id % block_size_;
 
     // key_cache_[block_id, block_offset, :, :] = key
-    key_cache_.index_put_({block_id, block_offset, Slice(), Slice()}, keys[i]);
+    key_cache_.index_put_({block_id, block_offset, ISlice(), ISlice()}, keys[i]);
     // value_cache_[block_id, block_offset, :, :] = value
-    value_cache_.index_put_({block_id, block_offset, Slice(), Slice()},
+    value_cache_.index_put_({block_id, block_offset, ISlice(), ISlice()},
                             values[i]);
   }
 }
@@ -93,11 +93,11 @@ std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
     const int64_t block_offset = slot_id % block_size_;
     // key = key_cache_[block_id, block_offset, :, :]
     const auto key =
-        key_cache_.index({block_id, block_offset, Slice(), Slice()});
+        key_cache_.index({block_id, block_offset, ISlice(), ISlice()});
     keys.push_back(key.reshape({num_kv_heads_, head_size_}));
     // value = value_cache_[block_id, block_offset, :, :]
     const auto value =
-        value_cache_.index({block_id, block_offset, Slice(), Slice()});
+        value_cache_.index({block_id, block_offset, ISlice(), ISlice()});
     values.push_back(value);
   }
   return std::make_tuple(torch::stack(keys), torch::stack(values));
@@ -144,11 +144,11 @@ std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
 
       // key = key_cache_[block_id, block_offset, :, :]
       const auto key =
-          key_cache_.index({block_id, block_offset, Slice(), Slice()});
+          key_cache_.index({block_id, block_offset, ISlice(), ISlice()});
       keys.push_back(key.reshape({num_kv_heads_, head_size_}));
       // value = value_cache_[block_id, block_offset, :, :]
       const auto value =
-          value_cache_.index({block_id, block_offset, Slice(), Slice()});
+          value_cache_.index({block_id, block_offset, ISlice(), ISlice()});
       values.push_back(value);
     }
   }

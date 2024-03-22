@@ -257,7 +257,7 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
     const int n_blocks = !paged_KV ? 0 : k.size(0);
     const int block_size = !paged_KV ? 1 : k.size(1);
     // TODO: support smaller block sizes
-    TORCH_CHECK(!paged_KV || block_size % 256 == 0, "Paged KV cache block size must be divisible by 256");
+    TORCH_CHECK(!paged_KV || block_size % 16 == 0, "Paged KV cache block size must be divisible by 16");
 
     const int batch_size = cu_seqlens_q.numel() - 1;
     // [n_tokens, n_heads, head_dim]

@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "request.h"
 #include "tokenizer/tokenizer.h"
 
 namespace llm {
@@ -25,12 +24,26 @@ inline bool sequence_end_withs(const std::vector<int32_t>& sequence,
 // NOLINTNEXTLINE
 std::atomic<int64_t> Sequence::next_id_{1};
 
-Sequence::Sequence(const SamplingParameter& sampling_param,
+Sequence::Sequence(const std::vector<int32_t>& token_ids,
+                   const SamplingParameter& sampling_param,
                    const StoppingCriteria& stopping_criteria,
-                   const std::vector<int32_t>& token_ids,
                    bool echo,
                    OnStream on_stream)
-    : id_(next_id_.fetch_add(1)),
+    : Sequence("",
+               token_ids,
+               sampling_param,
+               stopping_criteria,
+               echo,
+               on_stream) {}
+
+Sequence::Sequence(const std::string_view& prompt,
+                   const std::vector<int32_t>& token_ids,
+                   const SamplingParameter& sampling_param,
+                   const StoppingCriteria& stopping_criteria,
+                   bool echo,
+                   OnStream on_stream)
+    : prompt_(prompt),
+      id_(next_id_.fetch_add(1)),
       sampling_param_(sampling_param),
       stopping_criteria_(stopping_criteria),
       token_ids_(token_ids),
@@ -44,8 +57,8 @@ Sequence::Sequence(const SamplingParameter& sampling_param,
   // if echo is true, set prefix_offset_ and output_offset_ to 0 to print the
   // whole sequence, otherwise set them to the length of the prompt to skip the
   // prompt.
-  prefix_offset_ = echo ? 0 : token_ids_.size();
-  output_offset_ = echo ? 0 : token_ids_.size();
+  prefix_offset_ = echo ? 0 : num_prompt_tokens_;
+  output_offset_ = echo ? 0 : num_prompt_tokens_;
 
   // calculate the token counts
   for (const int32_t token_id : token_ids_) {
@@ -58,6 +71,13 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
     return false;
   }
 
+  if (kv_cache_pos_ < num_prompt_tokens()) {
+    // still in prefill stage, discard the generated token
+    // TODO: optimize this to avoid generating token for prefill.
+    return true;
+  }
+
+  // TODO(michael): need to revisit stop criteria for speculative decoding
   // check eos and stop tokens ids first
   if (!stopping_criteria_.ignore_eos_token &&
       next_token_id == stopping_criteria_.eos_token_id) {
@@ -71,9 +91,6 @@ bool Sequence::append_new_token_id(int32_t next_token_id) {
     is_finished_ = true;
     return false;
   }
-
-  // all tokens before pos should be processed and cached.
-  cache_pos_ = token_ids_.size();
   token_ids_.push_back(next_token_id);
   token_to_count_map_[next_token_id]++;
 
@@ -132,9 +149,19 @@ void Sequence::update_valid_token_ids(const int64_t* valid_ids) {
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(size_t end,
                                         const Tokenizer& tokenizer) {
+  // return prompt directly if prompt string is not empty
+  if (output_offset_ < num_prompt_tokens_ && !prompt_.empty()) {
+    // leave 6 tokens for the prefix to defeat cleanup algorithms in decode
+    // which decide to add a space or not depending on the surrouding ids.
+    prefix_offset_ = num_prompt_tokens_ <= 6 ? 0 : num_prompt_tokens_ - 6;
+    output_offset_ = num_prompt_tokens_;
+    return std::string(prompt_);
+  }
+
+  const auto tokens = token_ids();
   const auto prefix_text =
-      tokenizer.decode(sub_token_ids(prefix_offset_, output_offset_));
-  const auto new_text = tokenizer.decode(sub_token_ids(prefix_offset_, end));
+      tokenizer.decode(tokens.slice(prefix_offset_, output_offset_));
+  const auto new_text = tokenizer.decode(tokens.slice(prefix_offset_, end));
   // utf-8 char � at the end means it is a potential unfinished byte sequence
   // from byte fallback tokenization.
   if (new_text.size() > prefix_text.size() && !absl::EndsWith(new_text, "�")) {
@@ -146,8 +173,73 @@ std::string Sequence::decode_delta_text(size_t end,
   return "";
 }
 
-const SamplingParameter& Sequence::sampling_param() const {
-  return sampling_param_;
+size_t Sequence::num_generated_tokens() const {
+  const size_t n_tokens = num_tokens();
+  const size_t n_prompt_tokens = num_prompt_tokens();
+  return (n_tokens <= n_prompt_tokens) ? 0 : n_tokens - n_prompt_tokens;
+}
+
+void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
+  blocks_.insert(blocks_.end(), new_blocks.begin(), new_blocks.end());
+}
+
+// append shared cache blocks from prefix cache
+void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
+  CHECK(blocks_.empty()) << "shared blocks should be appended before any "
+                            "other blocks";
+  if (shared_blocks.empty()) {
+    return;
+  }
+  // update the kv cache position
+  const size_t block_size = shared_blocks[0].size();
+  kv_cache_pos_ = shared_blocks.size() * block_size;
+  blocks_.insert(blocks_.end(), shared_blocks.begin(), shared_blocks.end());
+}
+
+// release all cache blocks
+void Sequence::release_blocks() {
+  // reset the current pos to 0
+  kv_cache_pos_ = 0;
+  blocks_.clear();
+}
+
+size_t Sequence::kv_cache_capacity() const {
+  if (blocks_.empty()) {
+    return 0;
+  }
+  // all blocks have the same size
+  const size_t block_size = blocks_[0].size();
+  return blocks_.size() * block_size;
+}
+
+std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
+                                              int32_t pos_end) const {
+  CHECK(!blocks_.empty()) << "no cache blocks available";
+
+  std::vector<int32_t> slots;
+  slots.reserve(pos_end - pos_start);
+
+  const size_t block_size = blocks_[0].size();
+  for (int32_t i = pos_start; i < pos_end; ++i) {
+    const int32_t block_id = blocks_[i / block_size].id();
+    const int32_t block_offset = i % block_size;
+    slots.push_back(block_id * block_size + block_offset);
+  }
+  return slots;
+}
+
+void Sequence::commit_kv_cache(size_t size) {
+  CHECK(kv_cache_pos_ + size <= kv_cache_capacity());
+  kv_cache_pos_ += size;
+}
+
+void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
+  if (on_stream_) {
+    if (!on_stream_(delta, reason)) {
+      // failed to stream the delta, cancel the sequence
+      set_cancelled();
+    }
+  }
 }
 
 }  // namespace llm

@@ -13,8 +13,8 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
+#include "models/parameters.h"
 
 // QWen model compatible with huggingface weights
 // adopted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
