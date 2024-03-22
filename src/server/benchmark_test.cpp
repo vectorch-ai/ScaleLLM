@@ -12,9 +12,9 @@
 
 #include "common/time.h"
 #include "engine/engine.h"
-#include "request/sampling_parameters.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
+#include "sampling/parameters.h"
 
 DEFINE_string(model_name_or_path,
               "/data/llama2-7b",
@@ -93,9 +93,10 @@ class LLM {
       std::vector<int> prompt_tokens;
       tokenizer_->encode(batched_prompt[i], &prompt_tokens);
 
-      auto sequence = new llm::Sequence(sampling_param_,
-                                        stopping_criteria_,
+      auto sequence = new llm::Sequence(batched_prompt[i],
                                         prompt_tokens,
+                                        sampling_param_,
+                                        stopping_criteria_,
                                         /*echo=*/false,
                                         /*on_stream=*/nullptr);
       sequences.emplace_back(sequence);
@@ -113,7 +114,7 @@ class LLM {
       if (sequences.empty()) {
         break;
       }
-      CHECK(block_manager_->allocate_slots_for_sequences(sequences));
+      CHECK(block_manager_->allocate_blocks_for(sequences));
 
       uint64_t time_start = time.now_micros();
       // run inference
@@ -133,7 +134,7 @@ class LLM {
         const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
         // add the next token to sequence and check if the sequence is finished
         if (!sequence->append_new_token_id(next_token_id)) {
-          block_manager_->release_slots_for_sequence(sequence);
+          block_manager_->release_blocks_for(sequence);
           continue;
         }
         // std::cout << sequence->decode_delta_text(sequence->num_tokens(),
@@ -143,7 +144,7 @@ class LLM {
     }
 
     // release all remaining slots
-    block_manager_->release_slots_for_sequences(sequences);
+    block_manager_->release_blocks_for(sequences);
 
     std::cout << "request cost:" << request_cost / kMicrosToSeconds
               << std::endl;
@@ -232,7 +233,9 @@ int main(int argc, char* argv[]) {
     double cost = (time_end - time_start) / kMicrosToSeconds;
     std::cout << "one_batch_cost:" << cost << std::endl;
     total_cost += cost;
+    std::cout << "average cost:" << total_cost / (i + 1) << std::endl;
   }
+
   std::cout << "average cost:" << total_cost / loop_count << std::endl;
   return 0;
 }
