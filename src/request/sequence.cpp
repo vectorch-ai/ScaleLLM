@@ -194,6 +194,17 @@ void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
   const size_t block_size = shared_blocks[0].size();
   kv_cache_pos_ = shared_blocks.size() * block_size;
   blocks_.insert(blocks_.end(), shared_blocks.begin(), shared_blocks.end());
+
+  // It is possible that kv_cache_pos_ == num_prompt_tokens_, indicating that
+  // the exact same prompt has been received again. In this case, it becomes
+  // necessary to adjust the kv cache position to the previous token, allowing
+  // the model proceed. While the shared blocks should be immutable ideally, but
+  // it remains safe to regenerate the kv cache in this context, given the
+  // utiliztion of the exact same token.
+  if (kv_cache_pos_ == num_prompt_tokens_) {
+    kv_cache_pos_ -= 1;
+  }
+  CHECK(kv_cache_pos_ < num_prompt_tokens_);
 }
 
 // release all cache blocks
@@ -229,7 +240,7 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
 }
 
 void Sequence::commit_kv_cache(size_t size) {
-  CHECK(kv_cache_pos_ + size <= kv_cache_capacity());
+  CHECK(kv_cache_pos_ + size < kv_cache_capacity());
   kv_cache_pos_ += size;
 }
 
