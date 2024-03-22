@@ -28,8 +28,12 @@ void LLM::generate(const std::vector<std::string>& batched_prompt) {
     std::vector<int> prompt_tokens;
     tokenizer_->encode(batched_prompt[i], &prompt_tokens);
 
-    auto sequence = new llm::Sequence(
-        sampling_param_, stopping_criteria_, prompt_tokens, true, nullptr);
+    auto* sequence = new llm::Sequence(batched_prompt[i],
+                                       prompt_tokens,
+                                       sampling_param_,
+                                       stopping_criteria_,
+                                       true,
+                                       nullptr);
     sequences.emplace_back(sequence);
   }
 

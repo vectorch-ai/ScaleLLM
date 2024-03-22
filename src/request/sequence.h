@@ -32,9 +32,16 @@ using OnStream =
 // current position in generating tokens, etc.
 class Sequence final {
  public:
-  Sequence(const SamplingParameter& sampling_param_,
-           const StoppingCriteria& stopping_criteria_,
+  Sequence(const std::vector<int32_t>& token_ids,
+           const SamplingParameter& sampling_param,
+           const StoppingCriteria& stopping_criteria,
+           bool echo,
+           OnStream on_stream);
+
+  Sequence(const std::string_view& prompt,
            const std::vector<int32_t>& token_ids,
+           const SamplingParameter& sampling_param,
+           const StoppingCriteria& stopping_criteria,
            bool echo,
            OnStream on_stream);
 
@@ -144,6 +151,8 @@ class Sequence final {
     return stopping_criteria_;
   }
 
+  std::string_view prompt() const { return prompt_; }
+
  private:
   // global unique id for the sequence
   const int64_t id_;
@@ -153,6 +162,9 @@ class Sequence final {
 
   // the stopping criteria
   const StoppingCriteria& stopping_criteria_;
+
+  // the original prompt string
+  const std::string_view prompt_;
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;

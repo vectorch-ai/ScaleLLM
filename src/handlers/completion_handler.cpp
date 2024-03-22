@@ -182,8 +182,8 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     return nullptr;
   }
 
-  auto request =
-      std::make_unique<Request>(generate_request_id(), prompt_tokens);
+  auto request = std::make_unique<Request>(
+      generate_request_id(), grpc_request.prompt(), prompt_tokens);
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
