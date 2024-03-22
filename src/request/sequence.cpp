@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "request.h"
 #include "tokenizer/tokenizer.h"
 
 namespace llm {
@@ -25,12 +24,26 @@ inline bool sequence_end_withs(const std::vector<int32_t>& sequence,
 // NOLINTNEXTLINE
 std::atomic<int64_t> Sequence::next_id_{1};
 
-Sequence::Sequence(const SamplingParameter& sampling_param,
+Sequence::Sequence(const std::vector<int32_t>& token_ids,
+                   const SamplingParameter& sampling_param,
                    const StoppingCriteria& stopping_criteria,
-                   const std::vector<int32_t>& token_ids,
                    bool echo,
                    OnStream on_stream)
-    : id_(next_id_.fetch_add(1)),
+    : Sequence("",
+               token_ids,
+               sampling_param,
+               stopping_criteria,
+               echo,
+               on_stream) {}
+
+Sequence::Sequence(const std::string_view& prompt,
+                   const std::vector<int32_t>& token_ids,
+                   const SamplingParameter& sampling_param,
+                   const StoppingCriteria& stopping_criteria,
+                   bool echo,
+                   OnStream on_stream)
+    : prompt_(prompt),
+      id_(next_id_.fetch_add(1)),
       sampling_param_(sampling_param),
       stopping_criteria_(stopping_criteria),
       token_ids_(token_ids),
@@ -44,8 +57,8 @@ Sequence::Sequence(const SamplingParameter& sampling_param,
   // if echo is true, set prefix_offset_ and output_offset_ to 0 to print the
   // whole sequence, otherwise set them to the length of the prompt to skip the
   // prompt.
-  prefix_offset_ = echo ? 0 : token_ids_.size();
-  output_offset_ = echo ? 0 : token_ids_.size();
+  prefix_offset_ = echo ? 0 : num_prompt_tokens_;
+  output_offset_ = echo ? 0 : num_prompt_tokens_;
 
   // calculate the token counts
   for (const int32_t token_id : token_ids_) {
@@ -136,6 +149,15 @@ void Sequence::update_valid_token_ids(const int64_t* valid_ids) {
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(size_t end,
                                         const Tokenizer& tokenizer) {
+  // return prompt directly if prompt string is not empty
+  if (output_offset_ < num_prompt_tokens_ && !prompt_.empty()) {
+    // leave 6 tokens for the prefix to defeat cleanup algorithms in decode
+    // which decide to add a space or not depending on the surrouding ids.
+    prefix_offset_ = num_prompt_tokens_ <= 6 ? 0 : num_prompt_tokens_ - 6;
+    output_offset_ = num_prompt_tokens_;
+    return std::string(prompt_);
+  }
+
   const auto tokens = token_ids();
   const auto prefix_text =
       tokenizer.decode(tokens.slice(prefix_offset_, output_offset_));

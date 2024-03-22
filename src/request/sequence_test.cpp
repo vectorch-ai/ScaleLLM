@@ -22,9 +22,9 @@ TEST(SequenceTest, MaxTokens) {
   stopping_criteria.ignore_eos_token = true;
   SamplingParameter sampling_param;
 
-  Sequence sequence(sampling_param,
+  Sequence sequence(prompt_tokens,
+                    sampling_param,
                     stopping_criteria,
-                    prompt_tokens,
                     /*echo=*/false,
                     /*on_stream=*/nullptr);
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
@@ -60,9 +60,9 @@ TEST(SequenceTest, EosTokenId) {
   stopping_criteria.eos_token_id = eos_token_id;
   SamplingParameter sampling_param;
 
-  Sequence sequence(sampling_param,
+  Sequence sequence(prompt_tokens,
+                    sampling_param,
                     stopping_criteria,
-                    prompt_tokens,
                     /*echo=*/false,
                     /*on_stream=*/nullptr);
   sequence.append_blocks(allocator.allocate(10));
@@ -90,9 +90,9 @@ TEST(SequenceTest, StopTokenIds) {
 
   SamplingParameter sampling_param;
 
-  Sequence sequence(sampling_param,
+  Sequence sequence(prompt_tokens,
+                    sampling_param,
                     stopping_criteria,
-                    prompt_tokens,
                     /*echo=*/false,
                     /*on_stream=*/nullptr);
 
@@ -130,9 +130,9 @@ TEST(SequenceTest, StopSequences) {
 
   SamplingParameter sampling_param;
 
-  Sequence sequence(sampling_param,
+  Sequence sequence(prompt_tokens,
+                    sampling_param,
                     stopping_criteria,
-                    prompt_tokens,
                     /*echo=*/false,
                     /*on_stream=*/nullptr);
 

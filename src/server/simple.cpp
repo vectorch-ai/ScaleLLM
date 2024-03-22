@@ -148,8 +148,12 @@ int main(int argc, char* argv[]) {
     tokenizer->encode(input, &prompt_tokens);
     const int64_t prompt_token_len = static_cast<int64_t>(prompt_tokens.size());
 
-    llm::Sequence sequence(
-        sampling_param, stopping_criteria, prompt_tokens, true, nullptr);
+    llm::Sequence sequence(input,
+                           prompt_tokens,
+                           sampling_param,
+                           stopping_criteria,
+                           /*echo=*/true,
+                           /*on_stream=*/nullptr);
 
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
