@@ -294,8 +294,6 @@ bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
   CHECK_GT(cache_size_in_bytes, 0);
   LOG(INFO) << "Initializing kv cache with size: "
             << readable_size(cache_size_in_bytes);
-  CHECK(FLAGS_block_size % 256 == 0)
-      << "cache block size must be divisible by 256";
 
   const int64_t block_size = FLAGS_block_size;
 
