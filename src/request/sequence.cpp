@@ -207,7 +207,7 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
 }
 
 void Sequence::commit_kv_cache(size_t size) {
-  CHECK(kv_cache_pos_ + size < kv_cache_capacity());
+  CHECK(kv_cache_pos_ + size <= kv_cache_capacity());
   kv_cache_pos_ += size;
 }
 
