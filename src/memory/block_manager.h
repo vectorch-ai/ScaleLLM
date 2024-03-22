@@ -14,17 +14,17 @@ class BlockManager final {
  public:
   BlockManager(uint32_t num_blocks, int32_t block_size);
 
-  bool allocate_slots_for_request(Request* request);
+  bool allocate_blocks_for(Request* request);
 
-  bool allocate_slots_for_sequence(Sequence* sequence);
+  bool allocate_blocks_for(Sequence* sequence);
 
-  bool allocate_slots_for_sequences(std::vector<Sequence*>& sequences);
+  bool allocate_blocks_for(std::vector<Sequence*>& sequences);
 
-  void release_slots_for_request(Request* request);
+  void release_blocks_for(Request* request);
 
-  void release_slots_for_sequences(std::vector<Sequence*>& sequences);
+  void release_blocks_for(std::vector<Sequence*>& sequences);
 
-  void release_slots_for_sequence(Sequence* sequence);
+  void release_blocks_for(Sequence* sequence);
 
  private:
   // check if block allocator has enough slots, if not, try to evict some blocks

@@ -6,8 +6,10 @@
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 
 #include "batch.h"
+#include "engine/parameters.h"
 #include "memory/block_manager.h"
 #include "quantization/quant_args.h"
+#include "request/sequence.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 #include "worker.h"
@@ -41,10 +43,31 @@ class Engine {
   virtual bool init(const std::string& model_weights_path);
 
   // step the engine forward by one step with the batch
-  virtual ModelOutput execute_model(const Batch& batch);
+  virtual ModelOutput execute_model(Batch& batch);
 
   // validate multiple speculative tokens when use speculative decoding
-  virtual ModelOutput validate(const Batch& batch);
+  virtual ModelOutput validate(Batch& batch);
+
+  // TODO: remove following functions once refactoring is done
+  ModelOutput execute_model(const std::vector<Sequence*>& sequences) {
+    Batch batch(sequences);
+    return execute_model(batch);
+  }
+
+  ModelOutput execute_model(Sequence* sequence) {
+    Batch batch(sequence);
+    return execute_model(batch);
+  }
+
+  ModelOutput validate(const std::vector<Sequence*>& sequences) {
+    Batch batch(sequences);
+    return validate(batch);
+  }
+
+  ModelOutput validate(Sequence* sequence) {
+    Batch batch(sequence);
+    return validate(batch);
+  }
 
   virtual std::unique_ptr<Tokenizer> tokenizer() const {
     return tokenizer_->clone();
@@ -91,7 +114,7 @@ class Engine {
 
   // tokenizer
   std::unique_ptr<Tokenizer> tokenizer_;
-  
+
   // a list of workers, with each worker handling a partial of model
   std::vector<std::unique_ptr<Worker>> workers_;
 };

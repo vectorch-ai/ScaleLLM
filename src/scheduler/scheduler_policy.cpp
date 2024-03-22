@@ -88,7 +88,7 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
       if (sequence.is_finished()) {
         continue;
       }
-      if (block_manager_->allocate_slots_for_sequence(&sequence)) {
+      if (block_manager_->allocate_blocks_for(&sequence)) {
         sequences.emplace_back(&sequence);
       }
     }

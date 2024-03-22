@@ -11,26 +11,6 @@ namespace llm {
 
 namespace {
 
-std::vector<int32_t> cache_slots_for_pos(const Slice<Block>& blocks,
-                                         int32_t block_size,
-                                         int32_t start,
-                                         int32_t end) {
-  std::vector<int32_t> slots;
-  slots.reserve(end - start);
-  for (int32_t i = start; i < end; ++i) {
-    const int32_t block_id = blocks[i / block_size].id();
-    const int32_t block_offset = i % block_size;
-    slots.push_back(block_id * block_size + block_offset);
-  }
-  return slots;
-}
-
-bool has_enough_cache_slots(const Sequence& sequence, int32_t block_size) {
-  const size_t num_tokens = sequence.num_tokens();
-  const size_t num_blocks = sequence.num_blocks();
-  return num_tokens <= num_blocks * block_size;
-}
-
 template <typename T>
 torch::Tensor create_2d_tensor(std::vector<std::vector<T>>& vec,
                                size_t max_col_size,
@@ -48,18 +28,33 @@ torch::Tensor create_2d_tensor(std::vector<std::vector<T>>& vec,
 
 }  // namespace
 
-void Batch::add(Sequence* sequence) {
+Batch::Batch(Sequence* sequence) { add(sequence); }
+Batch::Batch(const std::vector<Sequence*>& sequences) { add(sequences); }
+
+void Batch::reset(const std::vector<Sequence*>& sequences) {
+  clear();
+  add(sequences);
+}
+
+void Batch::add(Sequence* sequence, uint32_t max_tokens_to_process) {
   DCHECK(sequence != nullptr);
   sequences_.push_back(sequence);
+  max_tokens_to_process_.push_back(max_tokens_to_process);
 }
 
 void Batch::add(const std::vector<Sequence*>& sequences) {
-  // TODO: check if the sequences are valid
-  sequences_.insert(sequences_.end(), sequences.begin(), sequences.end());
+  for (auto* sequence : sequences) {
+    add(sequence);
+  }
+}
+
+void Batch::clear() {
+  sequences_.clear();
+  max_tokens_to_process_.clear();
 }
 
 // prepare inputs for the batch
-ModelInput Batch::prepare_model_inputs(int32_t block_size) const {
+ModelInput Batch::prepare_model_inputs() {
   ModelInput model_inputs;
 
   // flatten the token ids and positions
@@ -76,8 +71,8 @@ ModelInput Batch::prepare_model_inputs(int32_t block_size) const {
 
   // process prefill requests
   bool all_prefill_sequences = true;
-  int32_t max_seq_len = 0;
-  int32_t q_max_seq_len = 0;
+  uint32_t max_seq_len = 0;
+  uint32_t q_max_seq_len = 0;
   std::vector<int32_t> cu_seq_lens = {0};
   std::vector<int32_t> q_cu_seq_lens = {0};
   // slot ids for new token
@@ -86,19 +81,34 @@ ModelInput Batch::prepare_model_inputs(int32_t block_size) const {
   int32_t max_block_table_len = 0;
   const int32_t num_sequences = static_cast<int32_t>(sequences_.size());
   for (int32_t i = 0; i < num_sequences; ++i) {
-    const auto* sequence = sequences_[i];
+    auto* sequence = sequences_[i];
     CHECK(!sequence->is_finished());
-    CHECK(has_enough_cache_slots(*sequence, block_size));
 
     all_prefill_sequences &= sequence->is_prefill();
 
-    const auto seq_token_ids = sequence->token_ids();
-    const int32_t seq_len = static_cast<int32_t>(seq_token_ids.size());
-    const int32_t kvcache_seq_len = sequence->num_tokens_in_kv_cache();
-    const int32_t q_seq_len = seq_len - kvcache_seq_len;
+    const auto token_ids = sequence->token_ids();
+
+    const uint32_t n_tokens = token_ids.size();
+    const uint32_t n_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
+    const uint32_t q_seq_len =
+        std::min(n_tokens - n_tokens_in_kv_cache, max_tokens_to_process_[i]);
+
+    const uint32_t seq_len = q_seq_len + n_tokens_in_kv_cache;
+
+    // check if the sequence has enough cache slots
+    CHECK_GE(sequence->kv_cache_capacity(), seq_len);
+
+    // at least one token to process otherwise the sequence should be finished.
+    CHECK(q_seq_len != 0)
+        << "at least one token should be processed. "
+        << "n_tokens: " << n_tokens
+        << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
+        << ", kv_cache_capacity: " << sequence->kv_cache_capacity()
+        << ", max_tokens_to_process: " << max_tokens_to_process_[i];
+
     // pack the token ids and positions into one-dimensional tensors
-    for (int32_t i = kvcache_seq_len; i < seq_len; ++i) {
-      flatten_tokens_vec.push_back(seq_token_ids[i]);
+    for (uint32_t i = n_tokens_in_kv_cache; i < seq_len; ++i) {
+      flatten_tokens_vec.push_back(token_ids[i]);
       flatten_positions_vec.push_back(static_cast<int32_t>(i));
     }
     last_token_idxes.push_back(
@@ -124,13 +134,16 @@ ModelInput Batch::prepare_model_inputs(int32_t block_size) const {
     cu_seq_lens.push_back(cu_seq_lens.back() + seq_len);
     q_cu_seq_lens.push_back(q_cu_seq_lens.back() + q_seq_len);
 
+    // commit kv cache to advance kv_cache pos in sequence
+    sequence->commit_kv_cache(/*size=*/q_seq_len);
+
     // add sampling parameters
     model_inputs.sampling_params.add(sequence->sampling_param());
 
     // assign slot ids for new tokens [n_tokens_in_kvcache, total_tokens)
     const auto blocks = sequence->blocks();
     const auto slot_ids =
-        cache_slots_for_pos(blocks, block_size, kvcache_seq_len, seq_len);
+        sequence->kv_cache_slots(n_tokens_in_kv_cache, seq_len);
     new_token_slot_ids.insert(
         new_token_slot_ids.end(), slot_ids.begin(), slot_ids.end());
 
@@ -181,9 +194,9 @@ ModelInput Batch::prepare_model_inputs(int32_t block_size) const {
   return model_inputs;
 }
 
-ModelInput Batch::prepare_model_validate_inputs(int32_t block_size) const {
+ModelInput Batch::prepare_model_validate_inputs() {
   // TODO: implement this with different logic
-  return prepare_model_inputs(block_size);
+  return prepare_model_inputs();
 }
 
 }  // namespace llm

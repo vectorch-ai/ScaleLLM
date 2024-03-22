@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "memory/block.h"
+#include "memory/block_allocator.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
 
@@ -25,8 +26,14 @@ bool equal(const torch::Tensor& t, const std::vector<T>& d) {
   return true;
 }
 
-TEST(UtilsTest, Basic) {
-  const int32_t block_size = 4;
+TEST(BatchTest, Basic) {
+  const uint32_t n_blocks = 20;
+  const uint32_t block_size = 4;
+
+  BlockAllocator allocator(n_blocks, block_size);
+  // reserve block 0
+  auto block_0 = allocator.allocate();
+  EXPECT_EQ(block_0.id(), 0);
 
   SamplingParameter sampling_param;
   StoppingCriteria stopping_criteria;
@@ -40,7 +47,7 @@ TEST(UtilsTest, Basic) {
                 /*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
                 /*echo=*/false,
                 /*on_stream=*/nullptr);
-  seq1.append_blocks(std::vector<Block>{1, 2, 3});
+  seq1.append_blocks(allocator.allocate(3)); // [1, 2, 3]
   batch.add(&seq1);
 
   // seq in decode phase
@@ -49,7 +56,8 @@ TEST(UtilsTest, Basic) {
                 /*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
                 /*echo=*/false,
                 /*on_stream=*/nullptr);
-  seq2.append_blocks(std::vector<Block>{4, 5, 6, 7});
+  seq2.append_blocks(allocator.allocate(4)); // [4, 5, 6, 7]
+  seq2.commit_kv_cache(/*size=*/7);
   seq2.append_new_token_id(100);
   batch.add(&seq2);
 
@@ -60,12 +68,18 @@ TEST(UtilsTest, Basic) {
       /*token_ids=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19},
       /*echo=*/false,
       /*on_stream=*/nullptr);
-  seq3.append_blocks(std::vector<Block>{8, 9, 10, 11, 12});
+  seq3.append_blocks(allocator.allocate(5)); // [8, 9, 10, 11, 12]
+  seq3.commit_kv_cache(/*size=*/15);
   seq3.append_new_token_id(200);
   batch.add(&seq3);
 
   // define outputs
-  ModelInput model_inputs = batch.prepare_model_inputs(block_size);
+  ModelInput model_inputs = batch.prepare_model_inputs();
+
+  // check kv cache pos in sequence
+  EXPECT_EQ(seq1.num_tokens_in_kv_cache(), 9);
+  EXPECT_EQ(seq2.num_tokens_in_kv_cache(), 8);
+  EXPECT_EQ(seq3.num_tokens_in_kv_cache(), 16);
 
   // clang-format off
   // check the flatten token ids

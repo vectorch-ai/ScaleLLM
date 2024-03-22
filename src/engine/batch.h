@@ -2,6 +2,7 @@
 
 #include <torch/torch.h>
 
+#include <limits>
 #include <vector>
 
 #include "parameters.h"
@@ -17,12 +18,18 @@ class Batch {
  public:
   Batch() = default;
   // it is on purpose to allow implicit conversion
-  Batch(Sequence* sequence) : sequences_{sequence} {}
-  Batch(const std::vector<Sequence*>& sequences) : sequences_(sequences) {}
+  Batch(Sequence* sequence);
+  Batch(const std::vector<Sequence*>& sequences);
+
+  // reset the batch with new sequences
+  void reset(const std::vector<Sequence*>& sequences);
 
   // add sequence into the batch
   // caller should make sure the sequence is valid
-  void add(Sequence* sequence);
+  void add(
+      Sequence* sequence,
+      uint32_t max_tokens_to_process = std::numeric_limits<uint32_t>::max());
+
   void add(const std::vector<Sequence*>& sequences);
 
   // get the number of sequences in the batch
@@ -30,29 +37,26 @@ class Batch {
   bool empty() const { return sequences_.empty(); }
 
   // clear the batch for reuse
-  void clear() { sequences_.clear(); }
-  void reset() { sequences_.clear(); }
-
-  // reset the batch with new sequences
-  void reset(const std::vector<Sequence*>& sequences) {
-    sequences_ = sequences;
-  }
+  void clear();
+  void reset() { clear(); }
 
   // index operator
   // TODO: remove this operator once refactoring is done
   Sequence* operator[](size_t i) { return sequences_[i]; }
 
-  // prepare inputs for the batch
-  ModelInput prepare_model_inputs(int32_t block_size) const;
+  // prepare inputs for the batch, a stateful operation
+  ModelInput prepare_model_inputs();
 
   // TODO: do we really need a sperate function for validate?
-  ModelInput prepare_model_validate_inputs(int32_t block_size) const;
-
-  // where to put outputs?
-  // TODO: iterator sequence
+  ModelInput prepare_model_validate_inputs();
 
  private:
+  // sequences in the batch
   std::vector<Sequence*> sequences_;
+
+  // max number of tokens to process for each sequence
+  // default to max value
+  std::vector<uint32_t> max_tokens_to_process_;
 };
 
 }  // namespace llm
