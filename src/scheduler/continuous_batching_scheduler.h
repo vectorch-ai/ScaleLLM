@@ -38,6 +38,17 @@ class ContinuousBatchingScheduler final : public Scheduler {
 
   void on_sequence_stream(Sequence* seq);
 
+  // allocate blocks for a sequence, honoring the tokens budget.
+  // * for prefill sequence, the allocated_tokens will be within
+  // [1, num_prompt_tokens - num_tokens_in_kv_cache].
+  // * for decode sequence, the actual_tokens usually would be 1 or K for
+  // speculative decoding.
+  // returns false if no enough blocks can be allocated or no enough token
+  // budget left.
+  bool allocate_blocks_for(Sequence* sequence,
+                           size_t token_budget,
+                           size_t* actual_tokens);
+
   // the engine to run the batch
   Engine* engine_;
 
@@ -61,7 +72,7 @@ class ContinuousBatchingScheduler final : public Scheduler {
   // a batch of requests to be processed, sorted by priority from high to low.
   std::vector<Request*> requests_batch_;
 
-  // a batch of sequences to be processed.
+  // a batch of sequences to be processed, sorted by priority from high to low.
   Batch sequences_batch_;
 
   // preemptable requests that hold cache slots, sorted by priority from high to

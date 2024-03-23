@@ -24,11 +24,11 @@ class Batch {
   // reset the batch with new sequences
   void reset(const std::vector<Sequence*>& sequences);
 
-  // add sequence into the batch
+  // add sequence into the batch with token budget
   // caller should make sure the sequence is valid
   void add(
       Sequence* sequence,
-      uint32_t max_tokens_to_process = std::numeric_limits<uint32_t>::max());
+      uint32_t token_budget = std::numeric_limits<uint32_t>::max());
 
   void add(const std::vector<Sequence*>& sequences);
 
@@ -56,7 +56,7 @@ class Batch {
 
   // max number of tokens to process for each sequence
   // default to max value
-  std::vector<uint32_t> max_tokens_to_process_;
+  std::vector<uint32_t> token_budgets_;
 };
 
 }  // namespace llm

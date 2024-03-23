@@ -36,10 +36,12 @@ void Batch::reset(const std::vector<Sequence*>& sequences) {
   add(sequences);
 }
 
-void Batch::add(Sequence* sequence, uint32_t max_tokens_to_process) {
-  DCHECK(sequence != nullptr);
+void Batch::add(Sequence* sequence, uint32_t token_budget) {
+  CHECK(sequence != nullptr);
+  CHECK(token_budget > 0);
+
   sequences_.push_back(sequence);
-  max_tokens_to_process_.push_back(max_tokens_to_process);
+  token_budgets_.push_back(token_budget);
 }
 
 void Batch::add(const std::vector<Sequence*>& sequences) {
@@ -50,7 +52,7 @@ void Batch::add(const std::vector<Sequence*>& sequences) {
 
 void Batch::clear() {
   sequences_.clear();
-  max_tokens_to_process_.clear();
+  token_budgets_.clear();
 }
 
 // prepare inputs for the batch
@@ -84,14 +86,14 @@ ModelInput Batch::prepare_model_inputs() {
     auto* sequence = sequences_[i];
     CHECK(!sequence->is_finished());
 
-    all_prefill_sequences &= sequence->is_prefill();
+    all_prefill_sequences &= (sequence->num_tokens_in_kv_cache() == 0);
 
     const auto token_ids = sequence->token_ids();
 
     const uint32_t n_tokens = token_ids.size();
     const uint32_t n_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
     const uint32_t q_seq_len =
-        std::min(n_tokens - n_tokens_in_kv_cache, max_tokens_to_process_[i]);
+        std::min(n_tokens - n_tokens_in_kv_cache, token_budgets_[i]);
 
     const uint32_t seq_len = q_seq_len + n_tokens_in_kv_cache;
 
@@ -99,12 +101,12 @@ ModelInput Batch::prepare_model_inputs() {
     CHECK_GE(sequence->kv_cache_capacity(), seq_len);
 
     // at least one token to process otherwise the sequence should be finished.
-    CHECK(q_seq_len != 0)
-        << "at least one token should be processed. "
-        << "n_tokens: " << n_tokens
-        << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
-        << ", kv_cache_capacity: " << sequence->kv_cache_capacity()
-        << ", max_tokens_to_process: " << max_tokens_to_process_[i];
+    CHECK(q_seq_len != 0) << "at least one token should be processed. "
+                          << "n_tokens: " << n_tokens
+                          << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
+                          << ", kv_cache_capacity: "
+                          << sequence->kv_cache_capacity()
+                          << ", token_budget: " << token_budgets_[i];
 
     // pack the token ids and positions into one-dimensional tensors
     for (uint32_t i = n_tokens_in_kv_cache; i < seq_len; ++i) {
