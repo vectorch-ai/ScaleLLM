@@ -59,10 +59,10 @@ class ContinuousBatchingScheduler final : public Scheduler {
   MinHeap priority_queue_;
 
   // a batch of requests to be processed, sorted by priority from high to low.
-  std::vector<Request*> request_batch_;
+  std::vector<Request*> requests_batch_;
 
-  // a batch of sequence to be processed.
-  std::vector<Sequence*> sequences_batch_;
+  // a batch of sequences to be processed.
+  Batch sequences_batch_;
 
   // preemptable requests that hold cache slots, sorted by priority from high to
   // low.

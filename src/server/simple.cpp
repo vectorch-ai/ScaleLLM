@@ -10,9 +10,9 @@
 #include <string>
 
 #include "engine/engine.h"
-#include "request/sampling_parameter.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
+#include "sampling/parameters.h"
 
 DEFINE_string(model_name_or_path,
               "THUDM/chatglm3-6b",
@@ -118,6 +118,7 @@ int main(int argc, char* argv[]) {
   CHECK(engine.init(model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
+  const auto& model_args = engine.model_args();
 
   llm::SamplingParameter sampling_param;
   sampling_param.temperature = FLAGS_temperature;
@@ -130,7 +131,8 @@ int main(int argc, char* argv[]) {
   llm::StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = FLAGS_max_seq_len;
   stopping_criteria.ignore_eos_token = false;
-  // stopping_criteria.eos_token_id = tokenizer->eos_id();
+  stopping_criteria.eos_token_id = model_args.eos_token_id();
+  stopping_criteria.stop_token_ids = model_args.stop_token_ids();
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -146,23 +148,21 @@ int main(int argc, char* argv[]) {
     tokenizer->encode(input, &prompt_tokens);
     const int64_t prompt_token_len = static_cast<int64_t>(prompt_tokens.size());
 
-    llm::Request request("request_id_0", prompt_tokens);
-    request.echo = true;
-    request.sampling_param = sampling_param;
-    request.stopping_criteria = stopping_criteria;
-
-    // create a sequence
-    request.add_sequence();
-    auto& sequence = request.sequences.front();
+    llm::Sequence sequence(input,
+                           prompt_tokens,
+                           sampling_param,
+                           stopping_criteria,
+                           /*echo=*/true,
+                           /*on_stream=*/nullptr);
 
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
          ++cur_pos) {
       // allocate slots for the sequence
-      CHECK(block_manager->allocate_slots_for_request(&request));
+      CHECK(block_manager->allocate_blocks_for(&sequence));
 
       // run inference
-      const auto output_params = engine.execute_model({&sequence});
+      const auto output_params = engine.execute_model(&sequence);
 
       torch::Tensor next_token = output_params.next_tokens;
       const auto flat_tensor = next_token.view({-1});
@@ -180,10 +180,10 @@ int main(int argc, char* argv[]) {
     }
 
     // release the slots for the sequence
-    block_manager->release_slots_for_request(&request);
+    block_manager->release_blocks_for(&sequence);
 
     // print the prompt and wait for the next input
-    std::cout << '\n' << prompt;
+    std::cout << "\n\n" << prompt;
   }
 
   return 0;

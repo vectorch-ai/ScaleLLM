@@ -4,10 +4,10 @@
 #include <torch/torch.h>
 
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 
 namespace llm {
-using torch::indexing::Slice;
+using ISlice = torch::indexing::Slice;
 
 namespace {
 constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
@@ -110,7 +110,7 @@ void varlen_masked_self_attention(
 
     const auto attn =
         masked_self_attention(_query, _key, _value, bias, mask, scale);
-    output.index_put_({Slice(q_start, q_end), Slice(), Slice()}, attn);
+    output.index_put_({ISlice(q_start, q_end), ISlice(), ISlice()}, attn);
   }
 }
 
@@ -125,12 +125,8 @@ RefHandler::RefHandler(float scale,
                        const torch::TensorOptions& options)
     : scale_(scale) {
   // register rotary positional embedding
-  pos_emb_ = RotaryEmbedding(rotary_dim,
-                             max_position,
-                             rope_scaling,
-                             rope_theta,
-                             interleaved,
-                             options);
+  pos_emb_ = RotaryEmbedding(
+      rotary_dim, max_position, rope_scaling, rope_theta, interleaved, options);
 }
 
 RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)

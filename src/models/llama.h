@@ -11,9 +11,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // port LLAMA's model to C++ API:
 // https://github.com/facebookresearch/llama/blob/main/llama/model.py
@@ -170,8 +170,7 @@ class LlamaTransformerBlockImpl : public torch::nn::Module {
     // register submodules
     attention_ = register_module(
         "attention",
-        LlamaAttention(
-            args, quant_args, parallel_args, options, handler));
+        LlamaAttention(args, quant_args, parallel_args, options, handler));
     feed_forward_ = register_module(
         "feed_forward",
         LlamaFeedForward(args, quant_args, parallel_args, options));
@@ -179,8 +178,7 @@ class LlamaTransformerBlockImpl : public torch::nn::Module {
         "attention_norm",
         RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
     ffn_norm_ = register_module(
-        "ffn_norm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
+        "ffn_norm", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -227,11 +225,10 @@ class LlamaTransformerImpl : public torch::nn::Module {
                        const ParallelArgs& parallel_args,
                        const torch::TensorOptions& options) {
     // register submodules
-    tok_embeddings_ = register_module("tok_embeddings",
-                                      ParallelEmbedding(args.vocab_size(),
-                                                        args.hidden_size(),
-                                                        parallel_args,
-                                                        options));
+    tok_embeddings_ = register_module(
+        "tok_embeddings",
+        ParallelEmbedding(
+            args.vocab_size(), args.hidden_size(), parallel_args, options));
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
 
@@ -244,8 +241,7 @@ class LlamaTransformerImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm",
-        RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
+        "norm", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]
@@ -305,8 +301,7 @@ class LlamaForCausalLMImpl : public torch::nn::Module {
                        const torch::TensorOptions& options) {
     // register submodules
     transformer_ = register_module(
-        "model",
-        LlamaTransformer(args, quant_args, parallel_args, options));
+        "model", LlamaTransformer(args, quant_args, parallel_args, options));
 
     output_ = register_module("output",
                               ColumnParallelLinear(args.hidden_size(),
@@ -319,13 +314,24 @@ class LlamaForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = transformer_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return transformer_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return output_(h);
   }
 

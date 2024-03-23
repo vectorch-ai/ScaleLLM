@@ -51,6 +51,7 @@ ScaleLLM is a cutting-edge inference system engineered for large language models
 
 Please note that in order to use Yi models, you need to add `--model_type=Yi` to the command line. For example:
 ```bash
+docker pull docker.io/vectorchai/scalellm:latest
 docker run -it --gpus=all --net=host --shm-size=1g \
   -v $HOME/.cache/huggingface/hub:/models \
   -e HF_MODEL_ID=01-ai/Yi-34B-Chat-4bits \
@@ -62,6 +63,7 @@ docker run -it --gpus=all --net=host --shm-size=1g \
 | :--------: | :-------------: | :----------: | :------: | :---------------------------:|
 |   Aquila   |       Yes       |     Yes      |    Yes   | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
 |   Bloom    |       Yes       |     Yes      |    No    | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
+|   Baichuan |       Yes       |     Yes      |    Yes   | [baichuan-inc/Baichuan2-7B-Chat](https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat) |
 |   ChatGLM3 |       Yes       |     Yes      |    Yes   | [THUDM/chatglm3-6b](https://huggingface.co/THUDM/chatglm3-6b) |
 |   GPT_j    |       Yes       |     Yes      |    No    | [EleutherAI/gpt-j-6b](https://huggingface.co/EleutherAI/gpt-j-6b) |
 |  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
@@ -96,6 +98,7 @@ You can download and install Docker from the official website: [Docker Installat
 Once you have Docker installed, you can run ScaleLLM Docker container with [latest image](https://hub.docker.com/r/vectorchai/scalellm/tags) using the following command:
 
 ```bash
+docker pull docker.io/vectorchai/scalellm:latest
 docker run -it --gpus=all --net=host --shm-size=1g \
   -v $HOME/.cache/huggingface/hub:/models \
   -e HF_MODEL_ID=TheBloke/Llama-2-7B-chat-AWQ \
@@ -139,6 +142,7 @@ After running the Docker container, two ports are exposed:
 You can also start a REST API gateway with [latest image](https://hub.docker.com/r/vectorchai/scalellm-gateway/tags) using the following command:
 
 ```bash
+docker pull docker.io/vectorchai/scalellm-gateway:latest
 docker run -it --net=host \
   docker.io/vectorchai/scalellm-gateway:latest --logtostderr
 ```
@@ -150,6 +154,7 @@ The REST API Server is available on `localhost:8080`. You can use REST API reque
 A local Chatbot UI is also available on [localhost:3000](localhost:3000). You can start it with [latest image](https://hub.docker.com/r/vectorchai/chatbot-ui/tags) using the following command:
 
 ```bash
+docker pull docker.io/vectorchai/chatbot-ui:latest
 docker run -it --net=host \
   -e OPENAI_API_HOST=http://127.0.0.1:8080 \
   -e OPENAI_API_KEY=YOUR_API_KEY \

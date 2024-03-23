@@ -5,7 +5,7 @@
 
 #include <functional>
 
-#include "request/sampling_parameter.h"
+#include "sampling/parameters.h"
 namespace llm {
 
 class Sampler final {

@@ -21,7 +21,7 @@ ResponseHandler::ResponseHandler(BlockManager* block_manager,
 
 void ResponseHandler::on_request_finish(Request* request) {
   // release all blocks for the finished request
-  block_manager_->release_slots_for_request(request);
+  block_manager_->release_blocks_for(request);
   // take over the ownership of the request
   std::unique_ptr<Request> finished_request(request);
   response_threadpool_.schedule([tokenizer = tokenizer_,

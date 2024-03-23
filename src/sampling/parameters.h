@@ -1,5 +1,5 @@
 #pragma once
-
+#include <torch/torch.h>
 #include <cstdint>
 #include <vector>
 
@@ -68,6 +68,19 @@ struct SamplingParameters {
 
   // default = 0, use global generator
   std::vector<uint64_t> seeds;
+
+  // the index of the last token of each sequence in the tokens.
+  // IntTensor: [n_seqs]
+  torch::Tensor last_token_idxes;
+
+  // the unique token id and count of each sequence in the batch.
+  // LongTensor: [n_seqs, max_unique_tokens]
+  torch::Tensor token_ids;
+  torch::Tensor token_counts;  // IntTensor
+
+  // the number of unique tokens in each sequence.
+  // IntTensor: [n_seqs]
+  torch::Tensor token_ids_lens;
 };
 
 }  // namespace llm

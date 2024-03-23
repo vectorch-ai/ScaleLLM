@@ -7,28 +7,14 @@
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
 #include "models/causal_lm.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
+#include "models/parameters.h"
+#include "parameters.h"
 #include "quantization/quant_args.h"
 
 namespace llm {
 
-// output parameters for the model that encapsulates all the necessary
-// output information. The output parameters should be as small as possible
-// to avoid transferring large tensors between host and device.
-struct OutputParameters {
-  // rerang the next tokens and next logprob according to the seq_idx
-  void index_select(const torch::Tensor& seq_idx) {
-    next_tokens = next_tokens.index_select(/*dim=*/0, seq_idx);
-    // next_logprob = next_logprob.index_select(/*dim=*/0, seq_idx);
-  }
-  // [num_seq] LongTensor
-  torch::Tensor next_tokens;
-
-  // [num_seq]
-  // torch::Tensor next_logprob;
-};
-
+class CudaGraphRunner;
 class Worker final {
  public:
   Worker(const ParallelArgs& parallel_args, const torch::Device& device);
@@ -57,17 +43,12 @@ class Worker final {
   bool init_kv_cache(const std::vector<int64_t>& kv_cache_shape);
 
   // Run the model on the given input. blocking call
-  OutputParameters execute_model(
-      torch::Tensor flatten_tokens,     // [num_tokens]
-      torch::Tensor flatten_positions,  // [num_tokens]
-      const InputParameters& params,
-      const SamplingParameters& sampling_params);
+  ModelOutput execute_model(const ModelInput& inputs);
 
-  // TODO
-  OutputParameters validate(torch::Tensor flatten_tokens,
-                            torch::Tensor flatten_positions,
-                            const InputParameters& params,
-                            const SamplingParameters& sampling_params);
+  bool warmup_model(bool enable_cudagraph);
+
+  // TODO: implement this
+  ModelOutput validate(const ModelInput& inputs);
 
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
@@ -90,21 +71,18 @@ class Worker final {
 
   // Run the model on the given input. async call
   // the future returns a successfull status with no meaningful value
-  folly::SemiFuture<OutputParameters> execute_model_async(
-      torch::Tensor flatten_tokens,     // [num_tokens]
-      torch::Tensor flatten_positions,  // [num_tokens]
-      const InputParameters& params,
-      const SamplingParameters& sampling_params);
+  folly::SemiFuture<ModelOutput> execute_model_async(const ModelInput& inputs);
 
-  folly::SemiFuture<OutputParameters> validate_async(
-      torch::Tensor flatten_tokens,
-      torch::Tensor flatten_positions,
-      const InputParameters& params,
-      const SamplingParameters& sampling_params);
+  folly::SemiFuture<ModelOutput> validate_async(const ModelInput& inputs);
+
+  folly::SemiFuture<bool> warmup_model_async(bool enable_cudagraph);
 
   const torch::Device& device() const { return device_; }
 
  private:
+  // capture cuda graph
+  void capture_graph();
+
   // working thread
   ThreadPool threadpool_;
 
@@ -125,6 +103,9 @@ class Worker final {
 
   // model
   std::unique_ptr<CausalLM> model_;
+
+  // graph runner
+  std::map<int64_t, CudaGraphRunner*> graph_runners_;
 };
 
 }  // namespace llm

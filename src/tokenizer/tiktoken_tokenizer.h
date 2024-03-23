@@ -20,7 +20,7 @@ class TiktokenTokenizer : public Tokenizer {
   bool encode(const std::string_view& text,
               std::vector<int32_t>* ids) const override;
 
-  std::string decode(const std::vector<int32_t>& ids) const override;
+  std::string decode(const Slice<int32_t>& ids) const override;
 
   size_t vocab_size() const override;
 

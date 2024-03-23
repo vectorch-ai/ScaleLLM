@@ -35,10 +35,14 @@ DEFINE_int32(http_port, 9999, "Port for http server.");
 DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 
 // NOLINTNEXTLINE
-static std::atomic<bool> running{true};
+static std::atomic<uint32_t> signal_received{0};
 void shutdown_handler(int signal) {
+  // force exit after receiving third signal
+  if (signal_received.fetch_add(1, std::memory_order_relaxed) >= 2) {
+    LOG(ERROR) << "Received too many signals, force aborting...";
+    exit(1);
+  }
   LOG(WARNING) << "Received signal " << signal << ", stopping server...";
-  running.store(false, std::memory_order_relaxed);
 }
 
 std::vector<torch::Device> parse_devices(const std::string& device_str) {
@@ -121,14 +125,14 @@ int main(int argc, char** argv) {
       "/metrics", [](HttpServer::Transport& transport) -> bool {
         return transport.send_string(Metrics::Instance().GetString());
       });
-  http_server.register_uri("/health",
-                           [](HttpServer::Transport& transport) -> bool {
-                             if (running.load(std::memory_order_relaxed)) {
-                               return transport.send_string("Ok\n");
-                             }
-                             // 503 Service Unavailable
-                             return transport.send_status(503);
-                           });
+  http_server.register_uri(
+      "/health", [](HttpServer::Transport& transport) -> bool {
+        if (signal_received.load(std::memory_order_relaxed) == 0) {
+          return transport.send_string("Ok\n");
+        }
+        // 503 Service Unavailable
+        return transport.send_status(503);
+      });
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
@@ -169,7 +173,7 @@ int main(int argc, char** argv) {
   (void)signal(SIGTERM, shutdown_handler);
 
   const auto timeout = absl::Milliseconds(500);
-  while (running.load(std::memory_order_relaxed)) {
+  while (signal_received.load(std::memory_order_relaxed) == 0) {
     // move scheduler forward
     scheduler->step(timeout);
   }

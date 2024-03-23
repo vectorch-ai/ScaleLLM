@@ -5,7 +5,7 @@
 
 #include "kernels/flash_attn/flash_api.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 
 DEFINE_bool(use_kv_cache_stream, true, "use separate stream for kv cache");
 

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "sampling_parameter.h"
+#include "sampling/parameters.h"
 #include "sequence.h"
 #include "status.h"
 #include "stopping_criteria.h"
@@ -71,6 +71,11 @@ using OnStreamFinish = std::function<bool(const Status& status)>;
 // request's handling.
 struct Request final {
  public:
+  // caller needs to gurantee prompt's lifecycle
+  Request(const std::string& id,
+          const std::string_view& prompt,
+          const std::vector<int32_t>& prompt_tokens);
+
   Request(const std::string& id, const std::vector<int32_t>& prompt_tokens);
 
   void add_sequence(OnStream on_stream = nullptr);
@@ -86,6 +91,10 @@ struct Request final {
   // Scheduled time of the request.
   // NOLINTNEXTLINE
   const int64_t created_time;
+
+  // prompt text string
+  // NOLINTNEXTLINE
+  const std::string_view prompt;
 
   // the token ids from request's prompt.
   // NOLINTNEXTLINE

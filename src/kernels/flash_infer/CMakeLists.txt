@@ -20,7 +20,6 @@ cc_library(
     flash_infer.kernels
   HDRS
     flashinfer_ops.h
-    flashinfer_decl.h
   SRCS
     single_decode.cu
     single_prefill.cu
@@ -35,6 +34,7 @@ cc_library(
     ${CMAKE_CURRENT_BINARY_DIR}
   DEFINES
     FLASHINFER_ENABLE_BF16
+    # FLASHINFER_ENABLE_FP8
   DEPS
     torch
 )

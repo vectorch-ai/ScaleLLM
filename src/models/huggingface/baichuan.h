@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
@@ -10,9 +11,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // Baichuan model compatible with huggingface weights
 
@@ -261,13 +262,14 @@ class BaichuanModelImpl : public torch::nn::Module {
         "embed_tokens",
         ParallelEmbedding(
             args.vocab_size(), args.hidden_size(), parallel_args, options));
-    if (baichuan_type == BaichuanType::Baichuan_7B &&
+    if (baichuan_type == BaichuanType::Baichuan_7B ||
         baichuan_type == BaichuanType::Baichuan2_7B) {
       handler_ = AttentionHandler::create_handler_with_rope(
-          args, /*interleaved=*/true, options);
+          args, /*interleaved=*/false, options);
     } else {
       const torch::Tensor alibi_slopes =
           prepare_alibi_slopes(args.n_heads(), parallel_args);
+
       handler_ = AttentionHandler::create_handler_with_alibi(
           args, alibi_slopes, options);
     }
@@ -414,24 +416,41 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = model_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return model_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     model_->load_state_dict(state_dict.select("model."));
-    // lm_head_->load_state_dict(state_dict.select("lm_head."));
-    lm_head_->load_state_dict(
-        state_dict.select_with_transform("lm_head.", [](torch::Tensor tensor) {
-          return torch::nn::functional::normalize(tensor);
-        }));
+    if (baichuan_type_ == BaichuanType::Baichuan2_13B ||
+        baichuan_type_ == BaichuanType::Baichuan2_7B) {
+      // Baichuan2 normalizes the head weights:
+      // https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat/blob/main/modeling_baichuan.py#L508
+      lm_head_->load_state_dict(state_dict.select_with_transform(
+          "lm_head.", [](torch::Tensor tensor) {
+            return torch::nn::functional::normalize(tensor);
+          }));
+    } else {
+      lm_head_->load_state_dict(state_dict.select("lm_head."));
+    }
   }
 
   void verify_loaded_weights() const {

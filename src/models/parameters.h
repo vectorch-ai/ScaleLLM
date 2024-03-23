@@ -25,10 +25,6 @@ struct InputParameters {
 
     params.new_cache_slots = safe_to(new_cache_slots, device);
     params.block_tables = safe_to(block_tables, device);
-    params.last_token_idxes = safe_to(last_token_idxes, device);
-    params.token_ids = safe_to(token_ids, device);
-    params.token_counts = safe_to(token_counts, device);
-    params.token_ids_lens = safe_to(token_ids_lens, device);
     return params;
   }
 
@@ -37,10 +33,6 @@ struct InputParameters {
 
   // total number of sequences in the batch
   int32_t num_sequences = 0;
-
-  // *******************************************************
-  // ******       parameters for attention           *******
-  // *******************************************************
 
   // cumulative sequence length of each sequence
   // used to determine the token range for each sequence
@@ -64,23 +56,6 @@ struct InputParameters {
   // used in attention kernel to fetch cached key-value.
   // IntTensor: [n_seq, max_n_blocks]
   torch::Tensor block_tables;
-
-  // *******************************************************
-  // *****  parameters for all sequence in the batch  ******
-  // *******************************************************
-
-  // the index of the last token of each sequence in the tokens.
-  // IntTensor: [n_seqs]
-  torch::Tensor last_token_idxes;
-
-  // the unique token id and count of each sequence in the batch.
-  // LongTensor: [n_seqs, max_unique_tokens]
-  torch::Tensor token_ids;
-  torch::Tensor token_counts;  // IntTensor
-
-  // the number of unique tokens in each sequence.
-  // IntTensor: [n_seqs]
-  torch::Tensor token_ids_lens;
 };
 
 }  // namespace llm

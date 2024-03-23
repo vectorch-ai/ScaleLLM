@@ -19,7 +19,7 @@ class SentencePieceTokenizer : public Tokenizer {
   bool encode(const std::string_view& text,
               std::vector<int32_t>* ids) const override;
 
-  std::string decode(const std::vector<int32_t>& ids) const override;
+  std::string decode(const Slice<int32_t>& ids) const override;
 
   size_t vocab_size() const override;
 
@@ -31,7 +31,7 @@ class SentencePieceTokenizer : public Tokenizer {
 
   bool encode_internal(const std::string_view& text,
                        std::vector<int32_t>* ids) const;
-  void decode_internal(const std::vector<int32_t>& ids,
+  void decode_internal(const Slice<int32_t>& ids,
                        size_t start,
                        size_t end,
                        std::stringstream* ss) const;
