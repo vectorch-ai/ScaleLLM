@@ -79,9 +79,6 @@ class Sequence final {
     return num_tokens() - num_tokens_in_kv_cache();
   }
 
-  // whether the sequence is in prefill stage, no kv cache has been generated
-  bool is_prefill() const { return kv_cache_pos_ == 0; }
-
   // add a new token id to the sequence and check if the sequence is finished.
   // returns false if the sequence is finished.
   bool append_new_token_id(int32_t next_token_id);
