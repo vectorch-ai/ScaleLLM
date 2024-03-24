@@ -1,4 +1,4 @@
-#include "continuous_batching_scheduler.h"
+#include "continuous_scheduler.h"
 
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
@@ -15,10 +15,6 @@ namespace llm {
 
 constexpr size_t kRequestQueueSize = 100000;
 
-DEFINE_int32(streaming_token_buffer_size,
-             1,
-             "number of tokens to buffer before streaming to client");
-
 DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
 DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
@@ -29,6 +25,9 @@ ContinuousBatchingScheduler::ContinuousBatchingScheduler(Engine* engine)
   tokenizer_ = engine_->tokenizer();
   CHECK(block_manager_ != nullptr);
   CHECK(tokenizer_ != nullptr);
+
+  response_handler_ =
+      std::make_unique<ResponseHandler>(block_manager_, tokenizer_.get());
 }
 
 ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
@@ -52,57 +51,6 @@ ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
   }
   sequences_batch_.clear();
   requests_batch_.clear();
-}
-
-void ContinuousBatchingScheduler::on_request_finish(Request* request) {
-  // release all blocks for the finished request
-  block_manager_->release_blocks_for(request);
-  // take over the ownership of the request
-  std::unique_ptr<Request> finished_request(request);
-  response_threadpool_.schedule([tokenizer = tokenizer_.get(),
-                                 request = std::move(finished_request)]() {
-    if (request->stream) {
-      // just finish the request
-      request->on_stream_finish(Status());
-    } else {
-      // summarize statistics for all sequences
-      Statistics stats;
-      stats.num_prompt_tokens = request->num_prompt_tokens();
-      for (const Sequence& seq : request->sequences) {
-        stats.num_generated_tokens += seq.num_generated_tokens();
-      }
-      stats.num_total_tokens =
-          stats.num_prompt_tokens + stats.num_generated_tokens;
-
-      std::vector<SequenceResult> seq_results;
-      seq_results.reserve(request->sequences.size());
-      for (Sequence& seq : request->sequences) {
-        // generate the final output
-        const auto output = seq.decode_delta_text(seq.num_tokens(), *tokenizer);
-        seq_results.push_back({output, seq.finish_reason()});
-      }
-      request->on_finish(seq_results, Status(), stats);
-    }
-  });
-}
-
-void ContinuousBatchingScheduler::on_sequence_stream(Sequence* seq) {
-  // check if the sequence has enough tokens to output
-  const size_t num_tokens = seq->num_tokens();
-  const size_t output_offset = seq->output_offset();
-  const size_t num_tokens_to_output = num_tokens - output_offset;
-  if (seq->is_finished() ||
-      num_tokens_to_output >= FLAGS_streaming_token_buffer_size) {
-    const auto finish_reason = seq->finish_reason();
-    // output the delta text til the end of the sequence to the client
-    response_threadpool_.schedule(
-        [seq, tokenizer = tokenizer_.get(), end = num_tokens, finish_reason]() {
-          const auto detla = seq->decode_delta_text(end, *tokenizer);
-          if (!detla.empty() || finish_reason != FinishReason::NONE) {
-            seq->stream_delta(detla, finish_reason);
-          };
-        });
-  }
 }
 
 bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
@@ -130,7 +78,8 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
   for (auto it = requests_batch_.rbegin(); it != requests_batch_.rend(); ++it) {
     Request* request = *it;
     if (request->is_finished()) {
-      on_request_finish(request);
+      // release the ownership of the request
+      response_handler_->on_request_finish(std::unique_ptr<Request>(request));
       continue;
     }
 
@@ -275,7 +224,8 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     // no enough memory to schedule single sequence, just finish the request
     Request* request = priority_queue_.top();
     priority_queue_.pop();
-    on_request_finish(request);
+    // release the ownership of the request
+    response_handler_->on_request_finish(std::unique_ptr<Request>(request));
   }
 }
 
@@ -310,7 +260,7 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
     Sequence* seq = sequences_batch_[i];
     // stream delta to client if streaming is enabled
     if (seq->is_streaming()) {
-      on_sequence_stream(seq);
+      response_handler_->on_sequence_stream(seq);
     }
   }
 }

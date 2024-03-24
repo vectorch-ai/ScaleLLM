@@ -3,7 +3,6 @@
 #include <absl/time/time.h>
 #include <folly/MPMCQueue.h>
 
-#include <cstdint>
 #include <memory>
 #include <queue>
 
@@ -11,6 +10,7 @@
 #include "memory/block_manager.h"
 #include "request/request.h"
 #include "scheduler.h"
+#include "response_handler.h"
 
 namespace llm {
 
@@ -33,10 +33,6 @@ class ContinuousBatchingScheduler final : public Scheduler {
  private:
   // get a batch of requests from the priority queue
   void build_sequence_batch();
-
-  void on_request_finish(Request* request);
-
-  void on_sequence_stream(Sequence* seq);
 
   // allocate blocks for a sequence, honoring the tokens budget.
   // * for prefill sequence, the allocated_tokens will be within
@@ -78,8 +74,7 @@ class ContinuousBatchingScheduler final : public Scheduler {
   // low.
   std::deque<Request*> preemptable_candidates_;
 
-  // the threadpool to handle responses
-  ThreadPool response_threadpool_;
+  std::unique_ptr<ResponseHandler> response_handler_;
 };
 
 }  // namespace llm
