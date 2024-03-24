@@ -3,7 +3,6 @@
 #include <glog/logging.h>
 
 #include "engine/engine.h"
-#include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
 

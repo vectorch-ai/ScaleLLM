@@ -79,12 +79,9 @@ class Sequence final {
     return num_tokens() - num_tokens_in_kv_cache();
   }
 
-  // whether the sequence is in prefill stage, no kv cache has been generated
-  bool is_prefill() const { return kv_cache_pos_ == 0; }
-
-  // add a new token id to the sequence and check if the sequence is finished.
-  // returns false if the sequence is finished.
-  bool append_new_token_id(int32_t next_token_id);
+  // add a new token id to the sequence and update the count
+  // the token would be discarded if the sequence is still in prefill stage
+  void append_new_token_id(int32_t next_token_id);
 
   // append speculate token id
   void append_spec_token_id(int32_t spec_token_id);
@@ -115,9 +112,6 @@ class Sequence final {
 
   // commit the kv cache for size n
   void commit_kv_cache(size_t size);
-
-  // check if the sequence is finished
-  bool is_finished() const { return is_cancelled() || is_finished_; }
 
   // check if the sequence is cancelled
   bool is_cancelled() const {
@@ -151,7 +145,14 @@ class Sequence final {
     return stopping_criteria_;
   }
 
+  // get the prompt string
   std::string_view prompt() const { return prompt_; }
+
+  // check if the sequence is finished based on the stopping criteria.
+  bool check_finished();
+
+  // check finish status, should be called after check_finished()
+  bool is_finished() const { return is_finished_ || is_cancelled(); }
 
  private:
   // global unique id for the sequence

@@ -18,7 +18,7 @@
 #include "handlers/completion_handler.h"
 #include "handlers/models_handler.h"
 #include "http_server.h"
-#include "scheduler/continuous_batching_scheduler.h"
+#include "scheduler/continuous_scheduler.h"
 
 using namespace llm;
 

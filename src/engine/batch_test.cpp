@@ -74,7 +74,7 @@ TEST(BatchTest, Basic) {
   batch.add(&seq3);
 
   // define outputs
-  ModelInput model_inputs = batch.prepare_model_inputs();
+  ModelInput model_input = batch.prepare_model_input();
 
   // check kv cache pos in sequence
   EXPECT_EQ(seq1.num_tokens_in_kv_cache(), 9);
@@ -87,17 +87,17 @@ TEST(BatchTest, Basic) {
       /*seq1*/ 1, 3, 5, 7, 5, 4, 3, 2, 1, 
       /*seq2*/ 100, 
       /*seq3*/ 200};
-  EXPECT_TRUE(equal(model_inputs.token_ids, expcted_tokens));
+  EXPECT_TRUE(equal(model_input.token_ids, expcted_tokens));
 
   // check the flatten positions
   const std::vector<int32_t> expected_pos = {
     /*seq1*/ 0, 1, 2, 3, 4, 5, 6, 7, 8,
     /*seq2*/ 7, 
     /*seq3*/ 15};
-  EXPECT_TRUE(equal(model_inputs.positions, expected_pos));
+  EXPECT_TRUE(equal(model_input.positions, expected_pos));
 
   // check the input parameters
-  const InputParameters& input_params = model_inputs.input_params;
+  const InputParameters& input_params = model_input.input_params;
   EXPECT_FALSE(input_params.all_prefill_sequences);
   EXPECT_EQ(input_params.num_sequences, 3);
   EXPECT_EQ(input_params.q_max_seq_len, 9);
@@ -124,7 +124,7 @@ TEST(BatchTest, Basic) {
   // const std::vector<int32_t> last_token_idxes = {8, 9, 10};
   // EXPECT_TRUE(equal(input_params.last_token_idxes, last_token_idxes));
 
-  const auto& sampling_params = model_inputs.sampling_params;
+  const auto& sampling_params = model_input.sampling_params;
   const std::vector<int64_t> unique_ids = {
     /*seq1*/   2,  4,  7,  5,  3,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     /*seq2*/ 100,  8,  6,  4,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 

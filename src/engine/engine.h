@@ -43,28 +43,28 @@ class Engine {
   virtual bool init(const std::string& model_weights_path);
 
   // step the engine forward by one step with the batch
-  virtual ModelOutput execute_model(Batch& batch);
+  virtual void execute_model(Batch& batch);
 
   // validate multiple speculative tokens when use speculative decoding
-  virtual ModelOutput validate(Batch& batch);
+  virtual void validate(Batch& batch);
 
   // TODO: remove following functions once refactoring is done
-  ModelOutput execute_model(const std::vector<Sequence*>& sequences) {
+  void execute_model(const std::vector<Sequence*>& sequences) {
     Batch batch(sequences);
     return execute_model(batch);
   }
 
-  ModelOutput execute_model(Sequence* sequence) {
+  void execute_model(Sequence* sequence) {
     Batch batch(sequence);
     return execute_model(batch);
   }
 
-  ModelOutput validate(const std::vector<Sequence*>& sequences) {
+  void validate(const std::vector<Sequence*>& sequences) {
     Batch batch(sequences);
     return validate(batch);
   }
 
-  ModelOutput validate(Sequence* sequence) {
+  void validate(Sequence* sequence) {
     Batch batch(sequence);
     return validate(batch);
   }

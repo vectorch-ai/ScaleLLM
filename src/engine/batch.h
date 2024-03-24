@@ -24,11 +24,11 @@ class Batch {
   // reset the batch with new sequences
   void reset(const std::vector<Sequence*>& sequences);
 
-  // add sequence into the batch
+  // add sequence into the batch with token budget
   // caller should make sure the sequence is valid
   void add(
       Sequence* sequence,
-      uint32_t max_tokens_to_process = std::numeric_limits<uint32_t>::max());
+      uint32_t token_budget = std::numeric_limits<uint32_t>::max());
 
   void add(const std::vector<Sequence*>& sequences);
 
@@ -45,10 +45,16 @@ class Batch {
   Sequence* operator[](size_t i) { return sequences_[i]; }
 
   // prepare inputs for the batch, a stateful operation
-  ModelInput prepare_model_inputs();
+  ModelInput prepare_model_input();
 
   // TODO: do we really need a sperate function for validate?
-  ModelInput prepare_model_validate_inputs();
+  ModelInput prepare_model_validate_input();
+
+  // process the model output for each sequence
+  void process_model_output(const ModelOutput& model_output);
+
+  // process the model output for each sequence in validate mode
+  void process_model_validate_output(const ModelOutput& model_output);
 
  private:
   // sequences in the batch
@@ -56,7 +62,7 @@ class Batch {
 
   // max number of tokens to process for each sequence
   // default to max value
-  std::vector<uint32_t> max_tokens_to_process_;
+  std::vector<uint32_t> token_budgets_;
 };
 
 }  // namespace llm

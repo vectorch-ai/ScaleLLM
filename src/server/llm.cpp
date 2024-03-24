@@ -49,22 +49,12 @@ void LLM::generate(const std::vector<std::string>& batched_prompt) {
     CHECK(block_manager_->allocate_blocks_for(sequences));
 
     // run inference
-    const auto output_parameters = engine_->execute_model(sequences);
-
-    const auto& next_tokens = output_parameters.next_tokens;
-    const int64_t num_seqs = next_tokens.numel();
-
-    CHECK(num_seqs == sequences.size());
-
-    const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
+    engine_->execute_model(sequences);
     // process sequence in batch
-    for (int64_t i = 0; i < num_seqs; ++i) {
-      auto sequence = sequences[i];
-      const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
-      // add the next token to sequence and check if the sequence is finished
-      if (!sequence->append_new_token_id(next_token_id)) {
+    for (auto* sequence : sequences) {
+       // add the next token to sequence and check if the sequence is finished
+      if (sequence->is_finished()) {
         block_manager_->release_blocks_for(sequence);
-        continue;
       }
     }
   }

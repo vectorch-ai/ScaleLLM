@@ -1,5 +1,3 @@
-#include "scheduler/scheduler.h"
-
 #include <absl/strings/str_split.h>
 #include <c10/core/Device.h>
 #include <gtest/gtest.h>
@@ -7,7 +5,7 @@
 
 #include <memory>
 
-#include "scheduler/speculative_scheduler.h"
+#include "speculative_scheduler.h"
 
 namespace llm {
 

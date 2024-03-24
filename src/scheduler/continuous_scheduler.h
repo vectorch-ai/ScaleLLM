@@ -3,7 +3,6 @@
 #include <absl/time/time.h>
 #include <folly/MPMCQueue.h>
 
-#include <cstdint>
 #include <memory>
 #include <queue>
 
@@ -11,6 +10,7 @@
 #include "memory/block_manager.h"
 #include "request/request.h"
 #include "scheduler.h"
+#include "response_handler.h"
 
 namespace llm {
 
@@ -34,9 +34,15 @@ class ContinuousBatchingScheduler final : public Scheduler {
   // get a batch of requests from the priority queue
   void build_sequence_batch();
 
-  void on_request_finish(Request* request);
-
-  void on_sequence_stream(Sequence* seq);
+  // allocate blocks for a sequence, honoring the tokens budget.
+  // * for prefill sequence, the allocated_tokens will be within
+  // [1, num_prompt_tokens - num_tokens_in_kv_cache].
+  // * for decode sequence, the actual_tokens usually would be 1 or K for
+  // speculative decoding.
+  // returns false if no blocks can be allocated.
+  bool allocate_blocks_for(Sequence* sequence,
+                           size_t token_budget,
+                           size_t* actual_tokens);
 
   // the engine to run the batch
   Engine* engine_;
@@ -61,15 +67,14 @@ class ContinuousBatchingScheduler final : public Scheduler {
   // a batch of requests to be processed, sorted by priority from high to low.
   std::vector<Request*> requests_batch_;
 
-  // a batch of sequences to be processed.
+  // a batch of sequences to be processed, sorted by priority from high to low.
   Batch sequences_batch_;
 
   // preemptable requests that hold cache slots, sorted by priority from high to
   // low.
   std::deque<Request*> preemptable_candidates_;
 
-  // the threadpool to handle responses
-  ThreadPool response_threadpool_;
+  std::unique_ptr<ResponseHandler> response_handler_;
 };
 
 }  // namespace llm
