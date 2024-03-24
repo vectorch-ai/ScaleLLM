@@ -229,7 +229,6 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     }
 
     // no requests left to preempt, partially schedule the request
-    CHECK(preemptable_candidates_.empty());
     if (!candidates.empty()) {
       priority_queue_.pop();
       requests_batch.push_back(request);
@@ -244,10 +243,6 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
   // adjust the token number for each sequence if still have token budget left
   if (remaining_token_budget > 0) {
     for (SequenceData& seq_data : sequences_batch) {
-      // no budget left
-      if (remaining_token_budget == 0) {
-        break;
-      }
       // add previous allocated tokens back
       remaining_token_budget += seq_data.token_budget;
       size_t actual_tokens = 0;
@@ -260,6 +255,11 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
       seq_data.token_budget = actual_tokens;
       CHECK(remaining_token_budget >= actual_tokens);
       remaining_token_budget -= actual_tokens;
+
+      // no budget left
+      if (remaining_token_budget == 0) {
+        break;
+      }
     }
   }
 
