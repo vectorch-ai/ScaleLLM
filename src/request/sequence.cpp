@@ -66,54 +66,17 @@ Sequence::Sequence(const std::string_view& prompt,
   }
 }
 
-bool Sequence::append_new_token_id(int32_t next_token_id) {
-  if (is_finished_) {
-    return false;
-  }
+void Sequence::append_new_token_id(int32_t next_token_id) {
+  CHECK(!is_finished_) << "cannot append token to a finished sequence";
 
+  // still in prefill stage, discard the generated token
   if (kv_cache_pos_ < num_prompt_tokens()) {
-    // still in prefill stage, discard the generated token
-    // TODO: optimize this to avoid generating token for prefill.
-    return true;
+    return;
   }
 
-  // TODO(michael): need to revisit stop criteria for speculative decoding
-  // check eos and stop tokens ids first
-  if (!stopping_criteria_.ignore_eos_token &&
-      next_token_id == stopping_criteria_.eos_token_id) {
-    finish_reason_ = FinishReason::STOP;
-    is_finished_ = true;
-    return false;
-  }
-  // check against stop tokens ids
-  if (stopping_criteria_.stop_token_ids.count(next_token_id) > 0) {
-    finish_reason_ = FinishReason::STOP;
-    is_finished_ = true;
-    return false;
-  }
+  // append the token id and update the token count
   token_ids_.push_back(next_token_id);
   token_to_count_map_[next_token_id]++;
-
-  // check against stop sequences after adding the token
-  for (const auto& stop_sequence : stopping_criteria_.stop_sequences) {
-    if (stop_sequence.back() == next_token_id &&
-        sequence_end_withs(token_ids_, stop_sequence)) {
-      finish_reason_ = FinishReason::STOP;
-      is_finished_ = true;
-      return false;
-    }
-  }
-
-  // check against max tokens
-  const size_t max_new_tokens = stopping_criteria_.max_tokens;
-  if (max_new_tokens > 0 && num_generated_tokens() >= max_new_tokens) {
-    finish_reason_ = FinishReason::LENGTH;
-    is_finished_ = true;
-    return false;
-  }
-
-  // return true if the sequence is not finished
-  return true;
 }
 
 void Sequence::append_spec_token_id(int32_t spec_token_id) {
@@ -251,6 +214,42 @@ void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
       set_cancelled();
     }
   }
+}
+
+bool Sequence::check_finished() {
+  // already finished
+  if (is_finished_) {
+    return true;
+  }
+
+  const auto last_token_id = token_ids_.back();
+  if (!stopping_criteria_.ignore_eos_token &&
+      last_token_id == stopping_criteria_.eos_token_id) {
+    finish_reason_ = FinishReason::STOP;
+    return is_finished_ = true;
+  }
+  // check against stop tokens ids
+  if (stopping_criteria_.stop_token_ids.count(last_token_id) > 0) {
+    finish_reason_ = FinishReason::STOP;
+    return is_finished_ = true;
+  }
+
+  // check against stop sequences after adding the token
+  for (const auto& stop_sequence : stopping_criteria_.stop_sequences) {
+    if (stop_sequence.back() == last_token_id &&
+        sequence_end_withs(token_ids_, stop_sequence)) {
+      finish_reason_ = FinishReason::STOP;
+      return is_finished_ = true;
+    }
+  }
+
+  // check against max tokens
+  const size_t max_new_tokens = stopping_criteria_.max_tokens;
+  if (max_new_tokens > 0 && num_generated_tokens() >= max_new_tokens) {
+    finish_reason_ = FinishReason::LENGTH;
+    return is_finished_ = true;
+  }
+  return false;
 }
 
 }  // namespace llm

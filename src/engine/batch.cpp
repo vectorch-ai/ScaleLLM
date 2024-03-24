@@ -56,7 +56,7 @@ void Batch::clear() {
 }
 
 // prepare inputs for the batch
-ModelInput Batch::prepare_model_inputs() {
+ModelInput Batch::prepare_model_input() {
   ModelInput model_inputs;
 
   // flatten the token ids and positions
@@ -196,9 +196,29 @@ ModelInput Batch::prepare_model_inputs() {
   return model_inputs;
 }
 
-ModelInput Batch::prepare_model_validate_inputs() {
-  // TODO: implement this with different logic
-  return prepare_model_inputs();
+ModelInput Batch::prepare_model_validate_input() {
+  LOG(FATAL) << "Not implemented";
+  return {};
+}
+
+void Batch::process_model_output(const ModelOutput& model_output) {
+  const auto& next_tokens = model_output.next_tokens;
+  const int64_t num_seqs = next_tokens.numel();
+  CHECK(num_seqs == sequences_.size());
+
+  const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
+  for (int64_t i = 0; i < num_seqs; ++i) {
+    Sequence* seq = sequences_[i];
+    const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
+    // add the next token to sequence
+    seq->append_new_token_id(next_token_id);
+    // check if the sequence is finished
+    seq->check_finished();
+  }
+}
+
+void Batch::process_model_validate_output(const ModelOutput& model_output) {
+  LOG(FATAL) << "Not implemented";
 }
 
 }  // namespace llm
