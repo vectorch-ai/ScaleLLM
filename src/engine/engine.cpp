@@ -345,13 +345,14 @@ bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
   return true;
 }
 
-ModelOutput Engine::execute_model(Batch& batch) {
+void Engine::execute_model(Batch& batch) {
   // prepare inputs for workers
-  auto model_inputs = batch.prepare_model_inputs();
+  auto model_inputs = batch.prepare_model_input();
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
-    auto output = workers_[0]->execute_model(model_inputs);
-    return output;
+    auto model_output = workers_[0]->execute_model(model_inputs);
+    batch.process_model_output(model_output);
+    return;
   }
 
   // multiple workers, call async forward
@@ -363,17 +364,17 @@ ModelOutput Engine::execute_model(Batch& batch) {
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
   // return the result from the first worker
-  auto first_output = results.front().value();
-  return first_output;
+  auto model_output = results.front().value();
+  batch.process_model_output(model_output);
 }
 
-// TODO: implement validate logic for speculative decoding
-ModelOutput Engine::validate(Batch& batch) {
+void Engine::validate(Batch& batch) {
   // prepare inputs for workers
-  auto model_inputs = batch.prepare_model_inputs();
+  auto model_inputs = batch.prepare_model_validate_input();
   if (workers_.size() == 1) {
-    auto output = workers_[0]->validate(model_inputs);
-    return output;
+    auto model_output = workers_[0]->validate(model_inputs);
+    batch.process_model_validate_output(model_output);
+    return;
   }
 
   // multiple workers, call async forward
@@ -383,8 +384,8 @@ ModelOutput Engine::validate(Batch& batch) {
     futures.emplace_back(worker->validate_async(model_inputs));
   }
   auto results = folly::collectAll(futures).get();
-  auto first_output = results.front().value();
-  return first_output;
+  auto model_output = results.front().value();
+  batch.process_model_validate_output(model_output);
 }
 
 }  // namespace llm

@@ -303,20 +303,11 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   }
 
   CHECK(!sequences_batch_.empty());
-  auto model_output = engine_->execute_model(sequences_batch_);
+  engine_->execute_model(sequences_batch_);
 
-  const auto& next_tokens = model_output.next_tokens;
-  const int64_t num_seqs = next_tokens.numel();
-  CHECK(num_seqs == sequences_batch_.size());
-
-  const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
   // process sequence in batch
-  for (int64_t i = 0; i < num_seqs; ++i) {
+  for (int64_t i = 0; i < sequences_batch_.size(); ++i) {
     Sequence* seq = sequences_batch_[i];
-    const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
-    // add the next token to sequence and check if the sequence is finished
-    seq->append_new_token_id(next_token_id);
-
     // stream delta to client if streaming is enabled
     if (seq->is_streaming()) {
       on_sequence_stream(seq);

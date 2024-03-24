@@ -27,9 +27,8 @@ class SpeculativeScheduler final : public Scheduler {
 
  private:
   void speculate_multiple_steps(std::vector<Sequence*>& sequences);
-  ModelOutput validate(std::vector<Sequence*>& sequences);
+  void validate(std::vector<Sequence*>& sequences);
 
- private:
   SchedulerConfig config_;
 
   Engine* llm_engine_;

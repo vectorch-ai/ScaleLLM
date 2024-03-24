@@ -148,7 +148,11 @@ class Sequence final {
     return stopping_criteria_;
   }
 
+  // get the prompt string
   std::string_view prompt() const { return prompt_; }
+
+  // check if the sequence is finished based on the stopping criteria.
+  void check_finished();
 
  private:
   // global unique id for the sequence

@@ -45,10 +45,16 @@ class Batch {
   Sequence* operator[](size_t i) { return sequences_[i]; }
 
   // prepare inputs for the batch, a stateful operation
-  ModelInput prepare_model_inputs();
+  ModelInput prepare_model_input();
 
   // TODO: do we really need a sperate function for validate?
-  ModelInput prepare_model_validate_inputs();
+  ModelInput prepare_model_validate_input();
+
+  // process the model output for each sequence
+  void process_model_output(const ModelOutput& model_output);
+
+  // process the model output for each sequence in validate mode
+  void process_model_validate_output(const ModelOutput& model_output);
 
  private:
   // sequences in the batch
