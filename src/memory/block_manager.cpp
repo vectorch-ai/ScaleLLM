@@ -28,7 +28,9 @@ bool BlockManager::allocate_blocks_for(Sequence* sequence) {
 bool BlockManager::allocate_blocks_for(Sequence* sequence, size_t num_tokens) {
   DCHECK(sequence != nullptr);
   // first try to allocate shared blocks
-  allocate_shared_blocks(sequence);
+  if (sequence->num_blocks() == 0) {
+    allocate_shared_blocks_for(sequence);
+  }
 
   const size_t num_blocks = sequence->num_blocks();
   // round up to the nearest block number
@@ -116,10 +118,10 @@ bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
   return false;
 }
 
-void BlockManager::allocate_shared_blocks(Sequence* sequence) {
+void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
   // only allocate shared blocks for prefill sequences
-  if (FLAGS_enable_prefix_cache && sequence->num_blocks() == 0) {
-    const auto& tokens_ids = sequence->token_ids();
+  if (FLAGS_enable_prefix_cache) {
+    const auto tokens_ids = sequence->token_ids();
     std::vector<Block> shared_blocks = prefix_cache_.match(tokens_ids);
     sequence->append_shared_blocks(shared_blocks);
   }

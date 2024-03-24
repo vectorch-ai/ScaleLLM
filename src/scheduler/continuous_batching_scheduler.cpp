@@ -19,8 +19,8 @@ DEFINE_int32(streaming_token_buffer_size,
              1,
              "number of tokens to buffer before streaming to client");
 
-DEFINE_int32(max_tokens_per_batch, 2048, "max number of tokens per batch");
-DEFINE_int32(max_seqs_per_batch, 256, "max number of sequences per batch");
+DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
+DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
 ContinuousBatchingScheduler::ContinuousBatchingScheduler(Engine* engine)
     : engine_(engine), request_queue_(kRequestQueueSize) {
@@ -328,6 +328,11 @@ bool ContinuousBatchingScheduler::allocate_blocks_for(Sequence* sequence,
                                                       size_t token_budget,
                                                       size_t* actual_tokens) {
   CHECK(token_budget > 0);
+  // need to allocate shared blocks explicitly to avoid kv_cache_pos change
+  if (sequence->num_blocks() == 0) {
+    block_manager_->allocate_shared_blocks_for(sequence);
+  }
+
   // number of tokens in the kv cache, which are already processed
   const size_t num_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
   // the number tokens can be allocated for the sequence, honoring the
