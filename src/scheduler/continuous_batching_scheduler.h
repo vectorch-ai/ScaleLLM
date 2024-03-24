@@ -43,8 +43,7 @@ class ContinuousBatchingScheduler final : public Scheduler {
   // [1, num_prompt_tokens - num_tokens_in_kv_cache].
   // * for decode sequence, the actual_tokens usually would be 1 or K for
   // speculative decoding.
-  // returns false if no enough blocks can be allocated or no enough token
-  // budget left.
+  // returns false if no blocks can be allocated.
   bool allocate_blocks_for(Sequence* sequence,
                            size_t token_budget,
                            size_t* actual_tokens);
