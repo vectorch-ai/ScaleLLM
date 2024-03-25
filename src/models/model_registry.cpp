@@ -17,6 +17,7 @@
 #include "huggingface/phi.h"       // IWYU pragma: keep
 #include "huggingface/qwen.h"      // IWYU pragma: keep
 #include "huggingface/yi.h"        // IWYU pragma: keep
+#include "huggingface/gemma.h"     // IWYU pragma: keep
 #include "llama.h"                 // IWYU pragma: keep
 
 namespace llm {
