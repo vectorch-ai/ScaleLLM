@@ -186,7 +186,7 @@ class Sequence final {
   // kv cache position.
   // all tokens before pos should already be in the kv cache.
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
-  size_t kv_cache_pos_[2] = {0};
+  size_t kv_cache_pos_[static_cast<size_t>(EngineType::COUNT)] = {0};
 
   // physical blocks that hold the kv cache.
   std::vector<Block> blocks_;
