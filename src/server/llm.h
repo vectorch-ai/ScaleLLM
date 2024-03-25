@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/engine.h"
+#include "engine/llm_engine.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
 
@@ -20,7 +20,7 @@ class LLM {
   std::vector<torch::Device> parse_devices(const std::string& device_str);
 
  private:
-  Engine* engine_;
+  LLMEngine* engine_;
   BlockManager* block_manager_;
   SamplingParameter sampling_param_;
   StoppingCriteria stopping_criteria_;

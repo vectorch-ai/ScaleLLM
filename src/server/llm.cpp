@@ -13,7 +13,7 @@ LLM::LLM(const std::string& model_path,
          const std::string& device_str)
     : sampling_param_(sp), stopping_criteria_(sc), max_seq_len_(max_seq_len) {
   auto devices = parse_devices(device_str);
-  engine_ = new llm::Engine(devices);
+  engine_ = new llm::LLMEngine(devices);
   CHECK(engine_->init(model_path));
   block_manager_ = engine_->block_manager();
   tokenizer_ = engine_->tokenizer();
@@ -49,10 +49,11 @@ void LLM::generate(const std::vector<std::string>& batched_prompt) {
     CHECK(block_manager_->allocate_blocks_for(sequences));
 
     // run inference
-    engine_->execute_model(sequences);
+    Batch batch(sequences);
+    engine_->execute_model(batch);
     // process sequence in batch
     for (auto* sequence : sequences) {
-       // add the next token to sequence and check if the sequence is finished
+      // add the next token to sequence and check if the sequence is finished
       if (sequence->is_finished()) {
         block_manager_->release_blocks_for(sequence);
       }

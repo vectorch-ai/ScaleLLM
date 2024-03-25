@@ -11,8 +11,8 @@ namespace llm {
 constexpr uint64_t kStepSleepTimeMs = 10;
 
 SpeculativeScheduler::SpeculativeScheduler(const SchedulerConfig& config,
-                                           Engine* llm_engine,
-                                           Engine* ssm_engine)
+                                           LLMEngine* llm_engine,
+                                           LLMEngine* ssm_engine)
     : config_(config), llm_engine_(llm_engine), ssm_engine_(ssm_engine) {
   CHECK(llm_engine_ != nullptr);
   llm_block_manager_ = llm_engine_->block_manager();
@@ -74,7 +74,8 @@ void SpeculativeScheduler::speculate_multiple_steps(
   // TODO: should not support beam search
   std::vector<Sequence*> spec_batch(sequences_batch);
   for (uint64_t i = 0; i < config_.speculative_steps_; ++i) {
-    ssm_engine_->execute_model(spec_batch);
+    Batch batch(spec_batch);
+    ssm_engine_->execute_model(batch);
 
     std::vector<Sequence*> next_spec_batch;
     next_spec_batch.reserve(spec_batch.size());
@@ -90,7 +91,8 @@ void SpeculativeScheduler::speculate_multiple_steps(
 }
 
 void SpeculativeScheduler::validate(std::vector<Sequence*>& sequences_batch) {
-  llm_engine_->validate(sequences_batch);
+  Batch batch(sequences_batch);
+  llm_engine_->validate(batch);
 }
 
 }  // namespace llm

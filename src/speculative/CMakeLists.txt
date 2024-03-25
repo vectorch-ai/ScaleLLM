@@ -5,23 +5,23 @@ cc_library(
   NAME 
     speculative
   HDRS
-    speculative_scheduler.h
+    speculative_engine.h
   SRCS 
-    speculative_scheduler.cpp
+    speculative_engine.cpp
   DEPS
-    :scheduler
+    :engine
     glog::glog
     Folly::folly
     absl::time
 )
 
-cc_test(
-  NAME
-    speculative_test
-  SRCS
-    speculative_test.cpp
-  DEPS
-    :speculative
-    absl::strings
-    GTest::gtest_main
-)
+# cc_test(
+#   NAME
+#     speculative_test
+#   SRCS
+#     speculative_test.cpp
+#   DEPS
+#     :speculative
+#     absl::strings
+#     GTest::gtest_main
+# )

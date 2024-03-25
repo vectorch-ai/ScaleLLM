@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "engine/engine.h"
+#include "engine/llm_engine.h"
 #include "request/request.h"
 #include "scheduler/response_handler.h"
 #include "scheduler/scheduler.h"
@@ -12,13 +13,13 @@
 namespace llm {
 
 class BlockManager;
-class Engine;
+class LLMEngine;
 class Tokenizer;
 class SpeculativeScheduler final : public Scheduler {
  public:
   SpeculativeScheduler(const SchedulerConfig& config,
-                       Engine* llm_engine,
-                       Engine* ssm_engine);
+                       LLMEngine* llm_engine,
+                       LLMEngine* ssm_engine);
   ~SpeculativeScheduler() override = default;
 
   bool schedule(std::unique_ptr<Request>& request) override;
@@ -30,8 +31,8 @@ class SpeculativeScheduler final : public Scheduler {
 
   SchedulerConfig config_;
 
-  Engine* llm_engine_;
-  Engine* ssm_engine_;
+  LLMEngine* llm_engine_;
+  LLMEngine* ssm_engine_;
 
   BlockManager* llm_block_manager_;
   BlockManager* ssm_block_manager_;

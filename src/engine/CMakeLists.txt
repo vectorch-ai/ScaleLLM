@@ -10,11 +10,12 @@ cc_library(
     batch.h
     worker.h
     engine.h
+    llm_engine.h
   SRCS
     utils.cpp
     batch.cpp
     worker.cpp
-    engine.cpp
+    llm_engine.cpp
   DEPS
     torch
     :common
