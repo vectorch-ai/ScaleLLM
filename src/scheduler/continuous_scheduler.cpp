@@ -270,7 +270,7 @@ bool ContinuousBatchingScheduler::allocate_blocks_for(Sequence* sequence,
                                                       size_t* actual_tokens) {
   CHECK(token_budget > 0);
   // need to allocate shared blocks explicitly to avoid kv_cache_pos change
-  if (sequence->num_blocks() == 0) {
+  if (sequence->num_tokens_in_kv_cache() == 0) {
     block_manager_->allocate_shared_blocks_for(sequence);
   }
 
