@@ -212,8 +212,6 @@ void Batch::process_model_output(const ModelOutput& model_output) {
     const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
     // add the next token to sequence
     seq->append_new_token_id(next_token_id);
-    // check if the sequence is finished
-    seq->check_finished();
   }
 }
 

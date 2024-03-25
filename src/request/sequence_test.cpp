@@ -37,7 +37,7 @@ TEST(SequenceTest, MaxTokens) {
     sequence.append_new_token_id(id);
   }
   sequence.append_new_token_id(max_tokens);
-  EXPECT_TRUE(sequence.check_finished());
+  EXPECT_TRUE(sequence.is_finished());
 
   EXPECT_EQ(sequence.finish_reason(), FinishReason::LENGTH);
 
@@ -69,7 +69,7 @@ TEST(SequenceTest, EosTokenId) {
   sequence.commit_kv_cache(/*size=*/3);
 
   sequence.append_new_token_id(eos_token_id);
-  EXPECT_TRUE(sequence.check_finished());
+  EXPECT_TRUE(sequence.is_finished());
   EXPECT_EQ(sequence.finish_reason(), FinishReason::STOP);
 
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
@@ -112,7 +112,7 @@ TEST(SequenceTest, StopTokenIds) {
   sequence.append_new_token_id(6);
   sequence.append_new_token_id(20);
 
-  EXPECT_TRUE(sequence.check_finished());
+  EXPECT_TRUE(sequence.is_finished());
   EXPECT_EQ(sequence.finish_reason(), FinishReason::STOP);
 
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
@@ -154,7 +154,7 @@ TEST(SequenceTest, StopSequences) {
   sequence.append_new_token_id(6);
   sequence.append_new_token_id(7);
 
-  EXPECT_TRUE(sequence.check_finished());
+  EXPECT_TRUE(sequence.is_finished());
   EXPECT_EQ(sequence.finish_reason(), FinishReason::STOP);
 
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);

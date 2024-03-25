@@ -64,49 +64,36 @@ Sequence::Sequence(const std::string_view& prompt,
   for (const int32_t token_id : token_ids_) {
     token_to_count_map_[token_id]++;
   }
+
+  kv_cache_pos_[static_cast<size_t>(EngineType::LLM)] = 0;
+  kv_cache_pos_[static_cast<size_t>(EngineType::SSM)] = 0;
 }
 
-void Sequence::append_new_token_id(int32_t next_token_id) {
+void Sequence::append_new_token_id(int32_t next_token_id,
+                                   EngineType engine_type) {
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
 
   // still in prefill stage, discard the generated token
-  if (kv_cache_pos_ < num_prompt_tokens()) {
+  if (kv_cache_pos(engine_type) < num_prompt_tokens()) {
     return;
   }
 
   // append the token id and update the token count
   token_ids_.push_back(next_token_id);
   token_to_count_map_[next_token_id]++;
+
+  // reset the finish status once a new token is appended
+  finish_status_invalidated_ = true;
 }
 
-void Sequence::append_spec_token_id(int32_t spec_token_id) {
-  spec_token_ids_.push_back(spec_token_id);
+// get token ids in kv cache
+Slice<int32_t> Sequence::tokens_in_kv_cache(EngineType engine_type) const {
+  return {token_ids_, kv_cache_pos(engine_type)};
 }
 
-void Sequence::update_valid_token_ids(const int64_t* valid_ids) {
-  // reset finished flags
-  finish_reason_ = FinishReason::NONE;
-  is_finished_ = false;
-
-  size_t idx = 0;
-  for (; idx < spec_token_ids_.size(); ++idx) {
-    if (valid_ids[idx] != spec_token_ids_[idx]) {
-      // find first invalid token id (idx)
-      // 1. clear invalid token counts
-      for (int64_t i = idx; i < spec_token_ids_.size(); ++i) {
-        token_to_count_map_[spec_token_ids_[i]]--;
-      }
-      // 2. erase invalid tokens
-      token_ids_.erase(token_ids_.end() - spec_token_ids_.size() + idx,
-                       token_ids_.end());
-      break;
-    }
-  }
-  // clear spec token ids
-  spec_token_ids_.clear();
-
-  // append new valid id
-  append_new_token_id(valid_ids[idx]);
+// get the number of tokens in the kvcache
+size_t Sequence::num_tokens_in_kv_cache(EngineType engine_type) const {
+  return kv_cache_pos(engine_type);
 }
 
 // decode the sequence to get delta text using the tokenizer
@@ -155,25 +142,29 @@ void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
   }
   // update the kv cache position
   const size_t block_size = shared_blocks[0].size();
-  kv_cache_pos_ = shared_blocks.size() * block_size;
+  size_t kv_cache_pos = shared_blocks.size() * block_size;
   blocks_.insert(blocks_.end(), shared_blocks.begin(), shared_blocks.end());
 
-  // It is possible that kv_cache_pos_ == num_prompt_tokens_, indicating that
+  // It is possible that kv_cache_pos == num_prompt_tokens_, indicating that
   // the exact same prompt has been received again. In this case, it becomes
   // necessary to adjust the kv cache position to the previous token, allowing
   // the model proceed. While the shared blocks should be immutable ideally, but
   // it remains safe to regenerate the kv cache in this context, given the
   // utiliztion of the exact same token.
-  if (kv_cache_pos_ == num_prompt_tokens_) {
-    kv_cache_pos_ -= 1;
+  if (kv_cache_pos == num_prompt_tokens_) {
+    kv_cache_pos -= 1;
   }
-  CHECK(kv_cache_pos_ < num_prompt_tokens_);
+  CHECK(kv_cache_pos < num_prompt_tokens_);
+  // update the kv cache position for both engines
+  kv_cache_pos_[static_cast<size_t>(EngineType::LLM)] = kv_cache_pos;
+  kv_cache_pos_[static_cast<size_t>(EngineType::SSM)] = kv_cache_pos;
 }
 
 // release all cache blocks
 void Sequence::release_blocks() {
-  // reset the current pos to 0
-  kv_cache_pos_ = 0;
+  // reset the kv cache position to 0
+  kv_cache_pos_[static_cast<size_t>(EngineType::LLM)] = 0;
+  kv_cache_pos_[static_cast<size_t>(EngineType::SSM)] = 0;
   blocks_.clear();
 }
 
@@ -202,25 +193,38 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
   return slots;
 }
 
-void Sequence::commit_kv_cache(size_t size) {
-  CHECK(kv_cache_pos_ + size <= kv_cache_capacity());
-  kv_cache_pos_ += size;
+void Sequence::commit_kv_cache(size_t size, EngineType engine_type) {
+  size_t& kv_cache_pos = kv_cache_pos_[static_cast<size_t>(engine_type)];
+  CHECK(kv_cache_pos + size <= kv_cache_capacity());
+  kv_cache_pos += size;
+}
+
+void Sequence::rewind_kv_cache(size_t size, EngineType engine_type) {
+  size_t& kv_cache_pos = kv_cache_pos_[static_cast<size_t>(engine_type)];
+  CHECK(kv_cache_pos >= size);
+  kv_cache_pos -= size;
 }
 
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
   if (on_stream_) {
     if (!on_stream_(delta, reason)) {
-      // failed to stream the delta, cancel the sequence
-      set_cancelled();
+      LOG(ERROR) << "failed to stream the delta";
+      // TODO: handle the failure
     }
   }
 }
 
-bool Sequence::check_finished() {
-  // already finished
-  if (is_finished_) {
-    return true;
+bool Sequence::is_finished() const {
+  // return the cached finish status
+  if (!finish_status_invalidated_) {
+    return is_finished_;
   }
+  return check_finished();
+}
+
+bool Sequence::check_finished() const {
+  // reset the finish status invalidation flag
+  finish_status_invalidated_ = false;
 
   const auto last_token_id = token_ids_.back();
   if (!stopping_criteria_.ignore_eos_token &&
@@ -249,7 +253,7 @@ bool Sequence::check_finished() {
     finish_reason_ = FinishReason::LENGTH;
     return is_finished_ = true;
   }
-  return false;
+  return is_finished_ = false;
 }
 
 }  // namespace llm
