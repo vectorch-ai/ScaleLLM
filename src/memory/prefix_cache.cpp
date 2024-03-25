@@ -40,9 +40,12 @@ PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {
 PrefixCache::~PrefixCache() {
   // iterator the lru list to release nodes
   size_t num_nodes = 0;
-  for (Node* node = lru_front_.next; node != &lru_back_; node = node->next) {
-    ++num_nodes;
+  Node* node = lru_front_.next;
+  while (node != &lru_back_) {
+    Node* next = node->next;
     delete node;
+    node = next;
+    ++num_nodes;
   }
   CHECK(num_nodes_ == num_nodes) << "detected memory leak";
 }
