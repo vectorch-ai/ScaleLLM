@@ -38,8 +38,6 @@ TEST(BatchTest, Basic) {
   SamplingParameter sampling_param;
   StoppingCriteria stopping_criteria;
 
-  Batch batch;
-
   // prepare sequences
   // sequence in prefill phase
   Sequence seq1(/*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
@@ -48,7 +46,6 @@ TEST(BatchTest, Basic) {
                 /*echo=*/false,
                 /*on_stream=*/nullptr);
   seq1.append_blocks(allocator.allocate(3));  // [1, 2, 3]
-  batch.add(&seq1);
 
   // seq in decode phase
   Sequence seq2(/*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
@@ -59,7 +56,6 @@ TEST(BatchTest, Basic) {
   seq2.append_blocks(allocator.allocate(4));  // [4, 5, 6, 7]
   seq2.commit_kv_cache(/*size=*/7);
   seq2.append_new_token_id(100);
-  batch.add(&seq2);
 
   // seq in decode phase
   Sequence seq3(
@@ -71,9 +67,9 @@ TEST(BatchTest, Basic) {
   seq3.append_blocks(allocator.allocate(5));  // [8, 9, 10, 11, 12]
   seq3.commit_kv_cache(/*size=*/15);
   seq3.append_new_token_id(200);
-  batch.add(&seq3);
 
   // define outputs
+  Batch batch({&seq1, &seq2, &seq3});
   ModelInput model_input = batch.prepare_model_input();
 
   // check kv cache pos in sequence

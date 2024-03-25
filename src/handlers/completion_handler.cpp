@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <string>
 
+#include "engine/engine.h"
 #include "models/model_args.h"
 #include "request/request.h"
+#include "scheduler/scheduler.h"
 #include "utils.h"
 
 namespace llm {

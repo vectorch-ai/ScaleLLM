@@ -6,21 +6,22 @@
 #include <memory>
 #include <queue>
 
-#include "engine/engine.h"
+#include "engine/batch.h"
 #include "memory/block_manager.h"
 #include "request/request.h"
-#include "scheduler.h"
 #include "response_handler.h"
+#include "scheduler.h"
 
 namespace llm {
+class Engine;
 
 // TODO: add schedule config to control the max number of tokens per batch, max
 // number of seqs per batch and the time out value.
-class ContinuousBatchingScheduler final : public Scheduler {
+class ContinuousScheduler final : public Scheduler {
  public:
-  ContinuousBatchingScheduler(Engine* engine);
+  ContinuousScheduler(Engine* engine);
 
-  ~ContinuousBatchingScheduler();
+  ~ContinuousScheduler();
 
   // schedule a request, thread safe and non-blocking
   // may return false if the queue is full
@@ -32,7 +33,7 @@ class ContinuousBatchingScheduler final : public Scheduler {
 
  private:
   // get a batch of requests from the priority queue
-  void build_sequence_batch();
+  Batch build_sequence_batch();
 
   // allocate blocks for a sequence, honoring the tokens budget.
   // * for prefill sequence, the allocated_tokens will be within
@@ -64,15 +65,12 @@ class ContinuousBatchingScheduler final : public Scheduler {
       std::priority_queue<Request*, std::vector<Request*>, RequestPtrGreater>;
   MinHeap priority_queue_;
 
-  // a batch of requests to be processed, sorted by priority from high to low.
-  std::vector<Request*> requests_batch_;
-
-  // a batch of sequences to be processed, sorted by priority from high to low.
-  Batch sequences_batch_;
+  // a batch of requests in running state, sorted by priority from high to low.
+  std::vector<Request*> running_requests_;
 
   // preemptable requests that hold cache slots, sorted by priority from high to
   // low.
-  std::deque<Request*> preemptable_candidates_;
+  std::deque<Request*> preemptable_requests_;
 
   std::unique_ptr<ResponseHandler> response_handler_;
 };

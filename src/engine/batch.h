@@ -17,6 +17,7 @@ namespace llm {
 class Batch {
  public:
   Batch() = default;
+
   // it is on purpose to allow implicit conversion
   Batch(Sequence* sequence);
   Batch(const std::vector<Sequence*>& sequences);
@@ -26,9 +27,8 @@ class Batch {
 
   // add sequence into the batch with token budget
   // caller should make sure the sequence is valid
-  void add(
-      Sequence* sequence,
-      uint32_t token_budget = std::numeric_limits<uint32_t>::max());
+  void add(Sequence* sequence,
+           uint32_t token_budget = std::numeric_limits<uint32_t>::max());
 
   void add(const std::vector<Sequence*>& sequences);
 
