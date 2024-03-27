@@ -23,6 +23,13 @@ jobs:
           [ "$diff" = "no modified files to format" ] && exit 0
           [ "$diff" = "clang-format did not modify any files" ] && exit 0
 
-          printf "\033[1mYou have introduced coding style breakages, suggested changes:\n\n"
+          echo "You have introduced coding style breakages. You can:"
+          echo "- Fix the errors, e.g. with git-clang-format"
+          echo "- Disable checks on section of the code with:"
+          echo "   // clang-format off"
+          echo "   code"
+          echo "   // clang-format on"
+
+          printf "\033[1mSuggested changes:\n\n"
           echo "$diff" | colordiff
           exit 1
