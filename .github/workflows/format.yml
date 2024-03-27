@@ -19,7 +19,8 @@ jobs:
 
       - name: Run clang-format
         run: |
-          diff=`git-clang-format --diff --commit ${{ github.event.pull_request.base.sha }}`
+          extensions="c,h,m,mm,cc,cp,cpp,c++,cxx,hh,hpp,hxx,inc,cu,cuh,proto,protodevel"
+          diff=`git-clang-format --extensions=$extensions --diff --commit ${{ github.event.pull_request.base.sha }}`
           [ "$diff" = "no modified files to format" ] && exit 0
           [ "$diff" = "clang-format did not modify any files" ] && exit 0
 
