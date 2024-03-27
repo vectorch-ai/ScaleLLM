@@ -13,4 +13,4 @@ jobs:
 
       - name: Run clang-format
         run: |
-          git-clang-format --diff --commit HEAD~1
+          git-clang-format --diff

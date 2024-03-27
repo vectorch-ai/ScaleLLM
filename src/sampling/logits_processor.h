@@ -263,7 +263,8 @@ class TopKTopPLogitsProcessor : public LogitsProcessor {
     // ####################  apply top p   ####################
     if (top_p_.defined()) {
       // Calculate the probabilities
-      const auto probs_sort = logits_sort.softmax(/*dim=*/-1);
+      const auto probs_sort = 
+      logits_sort.softmax(/*dim=*/-1);
       // Calculate the cumulative sum of sorted probabilities
       const auto probs_sum = probs_sort.cumsum(/*dim=*/-1);
       // Create a mask where (cumulative sum - current value) > p
