@@ -202,7 +202,8 @@ ModelInput Batch::prepare_model_validate_input() {
 }
 
 void Batch::process_model_output(const ModelOutput& model_output) {
-  const auto& next_tokens = model_output.next_tokens;
+  const auto& next_tokens = model_output.sample_output.next_tokens.cpu();
+
   const int64_t num_seqs = next_tokens.numel();
   CHECK(num_seqs == sequences_.size());
 
@@ -212,13 +213,18 @@ void Batch::process_model_output(const ModelOutput& model_output) {
     const int32_t next_token_id = static_cast<int32_t>(new_token_ids[i]);
     // add the next token to sequence
     seq->append_new_token_id(next_token_id);
-    // check if the sequence is finished
-    seq->check_finished();
   }
 }
 
 void Batch::process_model_validate_output(const ModelOutput& model_output) {
   LOG(FATAL) << "Not implemented";
+}
+
+void Batch::set_engine_type(EngineType engine_type) {
+  // set engine type for all sequences in the batch
+  for (auto* sequence : sequences_) {
+    sequence->set_engine_type(engine_type);
+  }
 }
 
 }  // namespace llm

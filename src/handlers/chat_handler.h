@@ -6,14 +6,16 @@
 #include "chat.grpc.pb.h"  // IWYU pragma: keep
 #include "chat_template/chat_template.h"
 #include "common/threadpool.h"
-#include "engine/engine.h"
 #include "models/model_args.h"
-#include "scheduler/scheduler.h"
+#include "tokenizer/tokenizer.h"
 
 DECLARE_bool(disable_default_chat_template);
 
 namespace llm {
 using ChatCallData = CallData<ChatRequest, ChatResponse>;
+
+class Scheduler;
+class Engine;
 
 // a class to handle completion requests
 class ChatHandler final {

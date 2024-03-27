@@ -27,6 +27,19 @@ enum class FinishReason {
 using OnStream =
     std::function<bool(const std::string& delta, FinishReason reason)>;
 
+// Since the sequence is shared between LLM and SSM for speculative decoding,
+// it's possible that the kv cache pos might be out of sync. Thus, specifying
+// the engine type becomes crucial to ensure accurate updating of the kv cache
+// position separately for LLM and SSM.
+enum class EngineType : size_t {
+  // LLM engine
+  LLM = 0,
+  // SSM engine
+  SSM = 1,
+  // total number of engines
+  COUNT = 2,
+};
+
 // The sequence encapsulates all the necessary
 // information for a sequence, including the prompt, the token ids, and the
 // current position in generating tokens, etc.
@@ -67,12 +80,10 @@ class Sequence final {
   size_t num_generated_tokens() const;
 
   // get token ids in kv cache
-  Slice<int32_t> tokens_in_kv_cache() const {
-    return {token_ids_, kv_cache_pos_};
-  }
+  Slice<int32_t> tokens_in_kv_cache() const;
 
   // get the number of tokens in the kvcache
-  size_t num_tokens_in_kv_cache() const { return kv_cache_pos_; }
+  size_t num_tokens_in_kv_cache() const;
 
   // get the number of tokens to process
   size_t num_tokens_to_process() const {
@@ -82,12 +93,6 @@ class Sequence final {
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
   void append_new_token_id(int32_t next_token_id);
-
-  // append speculate token id
-  void append_spec_token_id(int32_t spec_token_id);
-
-  // update valid token ids
-  void update_valid_token_ids(const int64_t* ids);
 
   // add new cache blocks
   void append_blocks(const std::vector<Block>& new_blocks);
@@ -110,16 +115,11 @@ class Sequence final {
   // generate the kv cache slots for the position range [pos_start, pos_end)
   std::vector<int32_t> kv_cache_slots(int32_t pos_start, int32_t pos_end) const;
 
-  // commit the kv cache for size n
+  // commit the kv cache by n tokens
   void commit_kv_cache(size_t size);
 
-  // check if the sequence is cancelled
-  bool is_cancelled() const {
-    return is_cancelled_.load(std::memory_order_relaxed);
-  }
-
-  // cancel the sequence
-  void set_cancelled() { is_cancelled_.store(true, std::memory_order_relaxed); }
+  // rewind the kv cache by n tokens
+  void rewind_kv_cache(size_t size);
 
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
@@ -148,13 +148,21 @@ class Sequence final {
   // get the prompt string
   std::string_view prompt() const { return prompt_; }
 
-  // check if the sequence is finished based on the stopping criteria.
-  bool check_finished();
+  // check finish status, use cached value if not invalidated
+  bool is_finished() const;
 
-  // check finish status, should be called after check_finished()
-  bool is_finished() const { return is_finished_ || is_cancelled(); }
+  // set engine type this sequence is used for
+  void set_engine_type(EngineType engine_type) {
+    CHECK(engine_type < EngineType::COUNT) << "Invalid engine type.";
+    engine_type_ = static_cast<size_t>(engine_type);
+  }
 
  private:
+  // force recheck if the sequence is finished based on the stopping criteria.
+  bool check_finished() const;
+
+  size_t kv_cache_pos() const { return kv_cache_pos_[engine_type_]; }
+
   // global unique id for the sequence
   const int64_t id_;
 
@@ -176,22 +184,24 @@ class Sequence final {
   // the length of the prompt tokens
   size_t num_prompt_tokens_ = 0;
 
-  // the cache position.
+  // kv cache position.
   // all tokens before pos should already be in the kv cache.
-  size_t kv_cache_pos_ = 0;
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
+  size_t kv_cache_pos_[static_cast<size_t>(EngineType::COUNT)] = {0};
+  // current using engine type
+  size_t engine_type_ = 0;
 
   // physical blocks that hold the kv cache.
   std::vector<Block> blocks_;
 
   // has the sequence been finished
-  bool is_finished_ = false;
+  mutable bool is_finished_ = false;
 
-  // has the sequence been cancelled by client, e.g. timeout, rpc error, etc.
-  // use a atomic bool since it can be accessed by multiple threads.
-  std::atomic<bool> is_cancelled_{false};
+  // is the finish status invalidated
+  mutable bool finish_status_invalidated_ = true;
 
   // the reason why the sequence is finished
-  FinishReason finish_reason_ = FinishReason::NONE;
+  mutable FinishReason finish_reason_ = FinishReason::NONE;
 
   // variables to keep track of output text, should be accessed by single thread
   // prefix offset is used to defeat cleanup algorithms in the decode which
@@ -208,9 +218,6 @@ class Sequence final {
   // id allocator for sequences
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
   static std::atomic<int64_t> next_id_;
-
-  // speculative decoding tokens
-  std::vector<int32_t> spec_token_ids_;
 };
 
 }  // namespace llm

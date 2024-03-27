@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "engine/engine.h"
 #include "request/request.h"
 #include "request/sequence.h"
 
@@ -18,7 +19,7 @@ constexpr size_t kRequestQueueSize = 100000;
 DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
 DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
-ContinuousBatchingScheduler::ContinuousBatchingScheduler(Engine* engine)
+ContinuousScheduler::ContinuousScheduler(Engine* engine)
     : engine_(engine), request_queue_(kRequestQueueSize) {
   CHECK(engine_ != nullptr);
   block_manager_ = engine_->block_manager();
@@ -30,7 +31,7 @@ ContinuousBatchingScheduler::ContinuousBatchingScheduler(Engine* engine)
       std::make_unique<ResponseHandler>(block_manager_, tokenizer_.get());
 }
 
-ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
+ContinuousScheduler::~ContinuousScheduler() {
   // release all requests in the queue
   while (!request_queue_.isEmpty()) {
     Request* request = nullptr;
@@ -45,15 +46,14 @@ ContinuousBatchingScheduler::~ContinuousBatchingScheduler() {
     std::unique_ptr<Request> request_ptr(request);
   }
 
-  // release all requests in the batch
-  for (Request* request : requests_batch_) {
+  // release all running requests
+  for (Request* request : running_requests_) {
     std::unique_ptr<Request> request_ptr(request);
   }
-  sequences_batch_.clear();
-  requests_batch_.clear();
+  running_requests_.clear();
 }
 
-bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
+bool ContinuousScheduler::schedule(std::unique_ptr<Request>& request) {
   CHECK(request != nullptr);
   if (request_queue_.write(request.get())) {
     // take over the ownership of the request
@@ -64,7 +64,7 @@ bool ContinuousBatchingScheduler::schedule(std::unique_ptr<Request>& request) {
   return false;
 }
 
-void ContinuousBatchingScheduler::build_sequence_batch() {
+Batch ContinuousScheduler::build_sequence_batch() {
   // propogate new requests to priority_queue_
   while (!request_queue_.isEmpty()) {
     Request* request = nullptr;
@@ -74,8 +74,10 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     priority_queue_.push(request);
   }
 
-  // access in reverse order to iterate from the lowest priority to the highest
-  for (auto it = requests_batch_.rbegin(); it != requests_batch_.rend(); ++it) {
+  // insert running requests back to the priority queue, iterating from the
+  // lowest priority to the highest
+  for (auto it = running_requests_.rbegin(); it != running_requests_.rend();
+       ++it) {
     Request* request = *it;
     if (request->is_finished()) {
       // release the ownership of the request
@@ -84,18 +86,18 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     }
 
     // put it to the front of the preemptable queue as it has higher priority
-    preemptable_candidates_.push_front(request);
+    preemptable_requests_.push_front(request);
     // push the request back to the priority queue
     priority_queue_.push(request);
   }
+  running_requests_.clear();
 
   struct SequenceData {
     Sequence* sequence = nullptr;
     // tokens to process in this iteration
     size_t token_budget = 0;
   };
-  std::vector<SequenceData> sequences_batch;
-  std::vector<Request*> requests_batch;
+  std::vector<SequenceData> new_batch;
 
   // average number of token budget for each sequence.
   const size_t avg_sequence_token_budget =
@@ -151,24 +153,23 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
       // remove the request from the priority queue
       priority_queue_.pop();
       // add the request to the batch
-      requests_batch.push_back(request);
-      sequences_batch.insert(
-          sequences_batch.end(), candidates.begin(), candidates.end());
+      running_requests_.push_back(request);
+      new_batch.insert(new_batch.end(), candidates.begin(), candidates.end());
       remaining_token_budget -= allocated_tokens;
       remaining_seq_budget -= allocated_seqs;
 
       // the request has been scheduled and can't be preempted
-      if (!preemptable_candidates_.empty() &&
-          request == preemptable_candidates_.front()) {
-        preemptable_candidates_.pop_front();
+      if (!preemptable_requests_.empty() &&
+          request == preemptable_requests_.front()) {
+        preemptable_requests_.pop_front();
       }
       continue;
     }
 
     // otherwise, preempt lowest priority request and retry
-    if (!preemptable_candidates_.empty()) {
-      Request* request_to_preempt = preemptable_candidates_.back();
-      preemptable_candidates_.pop_back();
+    if (!preemptable_requests_.empty()) {
+      Request* request_to_preempt = preemptable_requests_.back();
+      preemptable_requests_.pop_back();
 
       // avoid preempting the candidate itself
       if (request_to_preempt != request) {
@@ -180,9 +181,8 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     // no requests left to preempt, partially schedule the request
     if (!candidates.empty()) {
       priority_queue_.pop();
-      requests_batch.push_back(request);
-      sequences_batch.insert(
-          sequences_batch.end(), candidates.begin(), candidates.end());
+      running_requests_.push_back(request);
+      new_batch.insert(new_batch.end(), candidates.begin(), candidates.end());
       remaining_token_budget -= allocated_tokens;
       remaining_seq_budget -= allocated_seqs;
     }
@@ -191,7 +191,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
 
   // adjust the token number for each sequence if still have token budget left
   if (remaining_token_budget > 0) {
-    for (SequenceData& seq_data : sequences_batch) {
+    for (SequenceData& seq_data : new_batch) {
       // add previous allocated tokens back
       remaining_token_budget += seq_data.token_budget;
       size_t actual_tokens = 0;
@@ -212,14 +212,7 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     }
   }
 
-  // update the batch
-  requests_batch_ = std::move(requests_batch);
-  sequences_batch_.clear();
-  for (const SequenceData& seq_data : sequences_batch) {
-    sequences_batch_.add(seq_data.sequence, seq_data.token_budget);
-  }
-
-  if (sequences_batch_.empty() && !priority_queue_.empty()) {
+  if (new_batch.empty() && !priority_queue_.empty()) {
     LOG(ERROR) << "No enough memory to schedule single sequence";
     // no enough memory to schedule single sequence, just finish the request
     Request* request = priority_queue_.top();
@@ -227,16 +220,24 @@ void ContinuousBatchingScheduler::build_sequence_batch() {
     // release the ownership of the request
     response_handler_->on_request_finish(std::unique_ptr<Request>(request));
   }
+
+  // update the batch
+  Batch batch;
+  for (const SequenceData& seq_data : new_batch) {
+    batch.add(seq_data.sequence, seq_data.token_budget);
+  }
+  return batch;
 }
 
 // step the scheduler forward by one step
 // may get blocked if there are no requests to process
-void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
+void ContinuousScheduler::step(const absl::Duration& timeout) {
   // get a new batch of requests
   const auto deadline = absl::Now() + timeout;
+  Batch batch;
   while (true) {
-    build_sequence_batch();
-    if (!sequences_batch_.empty()) {
+    batch = build_sequence_batch();
+    if (!batch.empty()) {
       // find one batch of requests to process
       break;
     }
@@ -252,12 +253,11 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
     absl::SleepFor(time_to_sleep);
   }
 
-  CHECK(!sequences_batch_.empty());
-  engine_->execute_model(sequences_batch_);
+  engine_->execute_model(batch);
 
   // process sequence in batch
-  for (int64_t i = 0; i < sequences_batch_.size(); ++i) {
-    Sequence* seq = sequences_batch_[i];
+  for (int64_t i = 0; i < batch.size(); ++i) {
+    Sequence* seq = batch[i];
     // stream delta to client if streaming is enabled
     if (seq->is_streaming()) {
       response_handler_->on_sequence_stream(seq);
@@ -265,12 +265,12 @@ void ContinuousBatchingScheduler::step(const absl::Duration& timeout) {
   }
 }
 
-bool ContinuousBatchingScheduler::allocate_blocks_for(Sequence* sequence,
-                                                      size_t token_budget,
-                                                      size_t* actual_tokens) {
+bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
+                                              size_t token_budget,
+                                              size_t* actual_tokens) {
   CHECK(token_budget > 0);
   // need to allocate shared blocks explicitly to avoid kv_cache_pos change
-  if (sequence->num_blocks() == 0) {
+  if (sequence->num_tokens_in_kv_cache() == 0) {
     block_manager_->allocate_shared_blocks_for(sequence);
   }
 

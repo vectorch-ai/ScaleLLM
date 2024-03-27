@@ -1,4 +1,4 @@
-#include "engine.h"
+#include "llm_engine.h"
 
 #include <ATen/cuda/CUDAContext.h>
 #include <gflags/gflags_declare.h>
@@ -63,7 +63,8 @@ torch::ScalarType parse_dtype(const std::string& dtype_str,
 }
 }  // namespace
 
-Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
+LLMEngine::LLMEngine(const std::vector<torch::Device>& devices)
+    : devices_(devices) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   const auto device_type = devices[0].type();
@@ -102,7 +103,7 @@ Engine::Engine(const std::vector<torch::Device>& devices) : devices_(devices) {
   }
 }
 
-bool Engine::init(const std::string& model_weights_path) {
+bool LLMEngine::init(const std::string& model_weights_path) {
   if (!init_model(model_weights_path)) {
     LOG(ERROR) << "Failed to initialize model from: " << model_weights_path;
     return false;
@@ -120,7 +121,7 @@ bool Engine::init(const std::string& model_weights_path) {
   return true;
 }
 
-bool Engine::init_model(const std::string& model_weights_path) {
+bool LLMEngine::init_model(const std::string& model_weights_path) {
   auto model_loader = ModelLoader::create(model_weights_path);
   LOG(INFO) << "Initializing model from: " << model_weights_path;
 
@@ -203,7 +204,7 @@ bool Engine::init_model(const std::string& model_weights_path) {
   return true;
 }
 
-bool Engine::warmup_model() {
+bool LLMEngine::warmup_model() {
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     return workers_[0]->warmup_model(FLAGS_enable_cudagraph);
@@ -225,7 +226,7 @@ bool Engine::warmup_model() {
   return true;
 }
 
-int64_t Engine::profile_memory_for_kv_cache() {
+int64_t LLMEngine::profile_memory_for_kv_cache() {
   // use first device to profile memory usage
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
@@ -290,7 +291,7 @@ int64_t Engine::profile_memory_for_kv_cache() {
   return std::max(smallest_available_memory, int64_t(0));
 }
 
-bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
+bool LLMEngine::init_kv_cache(int64_t cache_size_in_bytes) {
   CHECK_GT(cache_size_in_bytes, 0);
   LOG(INFO) << "Initializing kv cache with size: "
             << readable_size(cache_size_in_bytes);
@@ -345,7 +346,7 @@ bool Engine::init_kv_cache(int64_t cache_size_in_bytes) {
   return true;
 }
 
-void Engine::execute_model(Batch& batch) {
+void LLMEngine::execute_model(Batch& batch) {
   // prepare inputs for workers
   auto model_inputs = batch.prepare_model_input();
   if (workers_.size() == 1) {
@@ -368,7 +369,7 @@ void Engine::execute_model(Batch& batch) {
   batch.process_model_output(model_output);
 }
 
-void Engine::validate(Batch& batch) {
+void LLMEngine::validate(Batch& batch) {
   // prepare inputs for workers
   auto model_inputs = batch.prepare_model_validate_input();
   if (workers_.size() == 1) {

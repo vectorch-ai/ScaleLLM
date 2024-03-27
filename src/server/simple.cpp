@@ -9,7 +9,7 @@
 #include <iostream>
 #include <string>
 
-#include "engine/engine.h"
+#include "engine/llm_engine.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
   const auto devices = parse_devices(FLAGS_device);
   LOG(INFO) << "Using devices: " << to_string(devices);
 
-  llm::Engine engine(devices);
+  llm::LLMEngine engine(devices);
   CHECK(engine.init(model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
@@ -162,7 +162,8 @@ int main(int argc, char* argv[]) {
       CHECK(block_manager->allocate_blocks_for(&sequence));
 
       // run inference
-      engine.execute_model(&sequence);
+      llm::Batch batch(&sequence);
+      engine.execute_model(batch);
 
       // check if sequence is finished
       if (sequence.is_finished()) {

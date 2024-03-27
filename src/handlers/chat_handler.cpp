@@ -10,9 +10,11 @@
 #include <string>
 
 #include "chat_template/jinja_chat_template.h"
+#include "engine/engine.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "request/request.h"
+#include "scheduler/scheduler.h"
 #include "utils.h"
 
 DEFINE_bool(disable_default_chat_template,

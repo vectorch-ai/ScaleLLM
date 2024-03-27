@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "engine/batch.h"
 #include "speculative_scheduler.h"
 
 namespace llm {
@@ -54,9 +55,10 @@ class FakeTokenizer : public Tokenizer {
   std::unordered_map<std::string, int32_t> token_to_id_;
 };
 
-class FakeSSMEngine : public Engine {
+class FakeSSMEngine : public LLMEngine {
  public:
-  FakeSSMEngine(const std::vector<torch::Device>& devices) : Engine(devices) {}
+  FakeSSMEngine(const std::vector<torch::Device>& devices)
+      : LLMEngine(devices) {}
   virtual ~FakeSSMEngine() {}
 
   bool init(const std::string&) override {
@@ -73,21 +75,15 @@ class FakeSSMEngine : public Engine {
     return fake_block_manager_.get();
   }
 
-  void execute_model(Batch&) override {
+  void execute_model(Batch& batch) override {
     if (spec_tokens_idx_ >= spec_token_ids_.size()) {
       LOG(FATAL) << "Out of Range, you should setup FakeSSMEngine correctly.";
     }
+    batch[0]->append_new_token_id(spec_token_ids_[spec_tokens_idx_++]);
     ++execute_model_calls_;
-    // ModelOutput output;
-    // std::vector<int64_t> val;
-    // val.emplace_back(spec_token_ids_[spec_tokens_idx_++]);
-
-    // output.next_tokens = torch::unsqueeze(torch::tensor(val, torch::kInt64), 0);
   }
 
-  void validate(Batch&) override {
-    ++validate_calls_;
-  }
+  void validate(Batch&) override { ++validate_calls_; }
 
   void set_spec_token_ids(const std::vector<int64_t>& spec_token_ids) {
     spec_token_ids_ = spec_token_ids;
@@ -107,9 +103,10 @@ class FakeSSMEngine : public Engine {
   std::unique_ptr<BlockManager> fake_block_manager_;
 };
 
-class FakeLLMEngine : public Engine {
+class FakeLLMEngine : public LLMEngine {
  public:
-  FakeLLMEngine(const std::vector<torch::Device>& devices) : Engine(devices) {}
+  FakeLLMEngine(const std::vector<torch::Device>& devices)
+      : LLMEngine(devices) {}
   virtual ~FakeLLMEngine() {}
 
   bool init(const std::string&) override {
@@ -126,21 +123,16 @@ class FakeLLMEngine : public Engine {
     return fake_block_manager_.get();
   }
 
-  void execute_model(Batch&) override {
-    ++execute_model_calls_;
-  }
+  void execute_model(Batch&) override { ++execute_model_calls_; }
 
-  void validate(Batch&) override {
+  void validate(Batch& batch) override {
     if (valid_tokens_idx_ >= valid_token_ids_.size()) {
       LOG(FATAL) << "Out of Range, you should setup FakeLLMEngine correctly.";
     }
-
+    for (auto token_id : valid_token_ids_) {
+      batch[0]->append_new_token_id(token_id);
+    }
     ++validate_calls_;
-    // TODO: fix the unittest
-    // ModelOutput output;
-    // output.next_tokens =
-    //     torch::unsqueeze(torch::tensor(valid_token_ids_, torch::kInt64), 0);
-    // return output;
   }
 
   void set_valid_token_id(const std::vector<int64_t>& valid_token_ids) {
@@ -221,11 +213,11 @@ class TestableSpeculativeScheduler {
   }
 
  private:
-  std::unique_ptr<SpeculativeScheduler> scheduler_;
   std::unique_ptr<FakeLLMEngine> llm_engine_;
   std::unique_ptr<FakeSSMEngine> ssm_engine_;
-  std::unique_ptr<SchedulerConfig> config_;
   std::unique_ptr<Tokenizer> tokenizer_;
+  std::unique_ptr<SpeculativeScheduler> scheduler_;
+  std::unique_ptr<SchedulerConfig> config_;
 };
 
 class RequestWrapper {
@@ -291,7 +283,7 @@ class RequestWrapper {
   bool is_finished = false;
 };
 
-TEST(DISABLED_SpeculativeSchedulerTest, Speculative4StepsPartiallyMatchTest) {
+TEST(SpeculativeSchedulerTest, Speculative4StepsPartiallyMatchTest) {
   // who[1058] is[338] messi[4473] ?[29973]
   const std::vector<int64_t> spec_token_ids = {1058, 338, 4473, 29973};
   const std::vector<int64_t> valid_token_ids = {
