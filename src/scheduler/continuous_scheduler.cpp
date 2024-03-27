@@ -55,6 +55,8 @@ ContinuousScheduler::~ContinuousScheduler() {
 
 bool ContinuousScheduler::schedule(std::unique_ptr<Request>& request) {
   CHECK(request != nullptr);
+  CHECK(!request->sequences.empty());
+  
   if (request_queue_.write(request.get())) {
     // take over the ownership of the request
     request.release();
@@ -83,6 +85,14 @@ Batch ContinuousScheduler::build_sequence_batch() {
       // release the ownership of the request
       response_handler_->on_request_finish(std::unique_ptr<Request>(request));
       continue;
+    }
+
+    // check if the request can be expanded
+    if (request->should_expand_sequences()) {
+      // cache the blocks to share among the sequences
+      block_manager_->cache_blocks_for(&request->sequences[0]);
+      // expand sequences to the target number
+      request->expand_sequences();
     }
 
     // put it to the front of the preemptable queue as it has higher priority
