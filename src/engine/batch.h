@@ -56,6 +56,9 @@ class Batch {
   // process the model output for each sequence in validate mode
   void process_model_validate_output(const ModelOutput& model_output);
 
+  // set the engine type for the batch
+  void set_engine_type(EngineType engine_type);
+
  private:
   // sequences in the batch
   std::vector<Sequence*> sequences_;

@@ -83,4 +83,12 @@ struct SamplingParameters {
   torch::Tensor token_ids_lens;
 };
 
+struct SampleOutput {
+  // [num_seq] LongTensor
+  torch::Tensor next_tokens;
+  
+  // [num_seq] FloatTensor
+  // torch::Tensor next_logprobs;
+};
+
 }  // namespace llm

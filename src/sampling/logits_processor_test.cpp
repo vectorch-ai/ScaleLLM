@@ -243,4 +243,94 @@ TEST(LogitsProcessorTest, RepetitionPenaltyKernel) {
                               /*atol=*/1e-03));
 }
 
+TEST(LogitsProcessorTest, TopK) {
+  // Set the random seed
+  torch::manual_seed(100);
+  torch::ScalarType dtype(torch::kHalf);
+  torch::Device device(torch::kCUDA);
+  int64_t batch_size = 4;
+  int64_t vocab_size = 100;
+  const std::vector<int64_t> top_k = {60, 70, 80, 200};
+  const std::vector<float> top_p = {1.0, 1.0, 1.0, 1.0};
+  const float filter_value = -std::numeric_limits<float>::infinity();
+  const auto options = torch::dtype(dtype).device(device);
+  TopKTopPLogitsProcessor processor(top_k, top_p, options);
+
+  auto logits = torch::randn({batch_size, vocab_size}, options);
+  torch::Tensor token_ids;
+  torch::Tensor token_counts;
+  torch::Tensor tokens_ids_lens;
+  auto logits_output =
+      processor(logits, token_ids, token_counts, tokens_ids_lens);
+
+  for (int64_t i = 0; i < batch_size; ++i) {
+    const int64_t k = std::min(top_k[i], vocab_size);
+
+    // calculate top k values one by one
+    auto [top_k_values, top_k_indices] =
+        logits[i].topk(k, /*dim=*/-1, /*largest=*/true, /*sorted=*/true);
+    auto [output_sorted, output_indices] =
+        logits_output[i].sort(/*dim=*/-1, /*descending=*/true);
+    // top k values should be the same
+    ASSERT_TRUE(torch::equal(
+        output_sorted.slice(/*dim=*/0, /*start=*/0, /*end=*/k), top_k_values));
+    // all remaining values should be filter_value
+    auto masked_output = output_sorted.slice(/*dim=*/0, /*start=*/k);
+    ASSERT_TRUE(torch::equal(masked_output,
+                             torch::full_like(masked_output, filter_value)));
+  }
+}
+
+TEST(LogitsProcessorTest, TopP) {
+  // Set the random seed
+  torch::manual_seed(100);
+  torch::ScalarType dtype(torch::kHalf);
+  torch::Device device(torch::kCUDA);
+  int64_t batch_size = 4;
+  int64_t vocab_size = 100;
+  int64_t min_tokens_to_keep = 1;
+  const std::vector<int64_t> top_k = {0, 0, 0, 0};
+  const std::vector<float> top_p = {0.001, 0.7, 0.9, 1.0};
+  const float filter_value = -std::numeric_limits<float>::infinity();
+  const auto options = torch::dtype(dtype).device(device);
+
+  TopKTopPLogitsProcessor processor(top_k, top_p, options);
+
+  auto logits = torch::randn({batch_size, vocab_size},
+                             torch::dtype(dtype).device(device));
+  torch::Tensor token_ids;
+  torch::Tensor token_counts;
+  torch::Tensor tokens_ids_lens;
+  auto logits_output =
+      processor(logits, token_ids, token_counts, tokens_ids_lens);
+
+  // verify result one by one
+  for (int64_t i = 0; i < batch_size; ++i) {
+    const float p = top_p[i];
+
+    // calculate number of values to keep (k)
+    auto probs = torch::softmax(logits[i], /*dim=*/-1);
+    // calculate top p values one by one
+    auto [sorted_probs, sorted_indices] =
+        probs.sort(/*dim=*/-1, /*descending=*/true);
+    auto probs_sum = sorted_probs.cumsum(/*dim=*/-1);
+    torch::Tensor mask = (probs_sum - sorted_probs) <= p;
+    const int64_t k = std::max(mask.sum().item<int64_t>(), min_tokens_to_keep);
+
+    // gather top logits value
+    auto [sorted_logits, sorted_logits_indices] =
+        logits[i].sort(/*dim=*/-1, /*descending=*/true);
+
+    auto [output_sorted, output_indices] =
+        logits_output[i].sort(/*dim=*/-1, /*descending=*/true);
+    ASSERT_TRUE(
+        torch::equal(output_sorted.slice(/*dim=*/0, /*start=*/0, /*end=*/k),
+                     sorted_logits.slice(/*dim=*/0, /*start=*/0, /*end=*/k)));
+    // all remaining values should be filter_value
+    auto masked_output = output_sorted.slice(/*dim=*/0, /*start=*/k);
+    ASSERT_TRUE(torch::equal(masked_output,
+                             torch::full_like(masked_output, filter_value)));
+  }
+}
+
 }  // namespace llm

@@ -80,11 +80,10 @@ class Sequence final {
   size_t num_generated_tokens() const;
 
   // get token ids in kv cache
-  Slice<int32_t> tokens_in_kv_cache(
-      EngineType engine_type = EngineType::LLM) const;
+  Slice<int32_t> tokens_in_kv_cache() const;
 
   // get the number of tokens in the kvcache
-  size_t num_tokens_in_kv_cache(EngineType engine_type = EngineType::LLM) const;
+  size_t num_tokens_in_kv_cache() const;
 
   // get the number of tokens to process
   size_t num_tokens_to_process() const {
@@ -93,8 +92,7 @@ class Sequence final {
 
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
-  void append_new_token_id(int32_t next_token_id,
-                           EngineType engine_type = EngineType::LLM);
+  void append_new_token_id(int32_t next_token_id);
 
   // add new cache blocks
   void append_blocks(const std::vector<Block>& new_blocks);
@@ -118,10 +116,10 @@ class Sequence final {
   std::vector<int32_t> kv_cache_slots(int32_t pos_start, int32_t pos_end) const;
 
   // commit the kv cache by n tokens
-  void commit_kv_cache(size_t size, EngineType engine_type = EngineType::LLM);
+  void commit_kv_cache(size_t size);
 
   // rewind the kv cache by n tokens
-  void rewind_kv_cache(size_t size, EngineType engine_type = EngineType::LLM);
+  void rewind_kv_cache(size_t size);
 
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
@@ -153,14 +151,17 @@ class Sequence final {
   // check finish status, use cached value if not invalidated
   bool is_finished() const;
 
+  // set engine type this sequence is used for
+  void set_engine_type(EngineType engine_type) {
+    CHECK(engine_type < EngineType::COUNT) << "Invalid engine type.";
+    engine_type_ = static_cast<size_t>(engine_type);
+  }
+
  private:
   // force recheck if the sequence is finished based on the stopping criteria.
   bool check_finished() const;
 
-  size_t kv_cache_pos(EngineType engine_type) const {
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-constant-array-index)
-    return kv_cache_pos_[static_cast<size_t>(engine_type)];
-  }
+  size_t kv_cache_pos() const { return kv_cache_pos_[engine_type_]; }
 
   // global unique id for the sequence
   const int64_t id_;
@@ -187,6 +188,8 @@ class Sequence final {
   // all tokens before pos should already be in the kv cache.
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
   size_t kv_cache_pos_[static_cast<size_t>(EngineType::COUNT)] = {0};
+  // current using engine type
+  size_t engine_type_ = 0;
 
   // physical blocks that hold the kv cache.
   std::vector<Block> blocks_;
