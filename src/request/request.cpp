@@ -29,7 +29,7 @@ Request::Request(const std::string& id,
 
 void Request::add_sequence() {
   OnDelta on_delta = nullptr;
-  
+
   if (stream) {
     CHECK(on_stream_delta);
     on_delta = [this, index = sequences.size(), first_message = true](

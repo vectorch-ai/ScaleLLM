@@ -56,7 +56,7 @@ ContinuousScheduler::~ContinuousScheduler() {
 bool ContinuousScheduler::schedule(std::unique_ptr<Request>& request) {
   CHECK(request != nullptr);
   CHECK(!request->sequences.empty());
-  
+
   if (request_queue_.write(request.get())) {
     // take over the ownership of the request
     request.release();
