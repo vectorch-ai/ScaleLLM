@@ -21,14 +21,15 @@ struct ModelInput {
 };
 
 // output for the model that encapsulates all the necessary
-// output information. The output parameters should be as small as possible
-// to avoid transferring large tensors between host and device.
+// output information.
 struct ModelOutput {
-  // [num_seq] LongTensor
-  torch::Tensor next_tokens;
+  // output of sampling
+  SampleOutput sample_output;
 
-  // [num_seq]
-  // torch::Tensor next_logprob;
+  // logits for selected indices
+  torch::Tensor logits;
+
+  // torch::Tensor logprob;
 };
 
 }  // namespace llm

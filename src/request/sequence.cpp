@@ -69,12 +69,11 @@ Sequence::Sequence(const std::string_view& prompt,
   kv_cache_pos_[static_cast<size_t>(EngineType::SSM)] = 0;
 }
 
-void Sequence::append_new_token_id(int32_t next_token_id,
-                                   EngineType engine_type) {
+void Sequence::append_new_token_id(int32_t next_token_id) {
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
 
   // still in prefill stage, discard the generated token
-  if (kv_cache_pos(engine_type) < num_prompt_tokens()) {
+  if (kv_cache_pos() < num_prompt_tokens()) {
     return;
   }
 
@@ -87,13 +86,13 @@ void Sequence::append_new_token_id(int32_t next_token_id,
 }
 
 // get token ids in kv cache
-Slice<int32_t> Sequence::tokens_in_kv_cache(EngineType engine_type) const {
-  return {token_ids_, kv_cache_pos(engine_type)};
+Slice<int32_t> Sequence::tokens_in_kv_cache() const {
+  return {token_ids_, kv_cache_pos()};
 }
 
 // get the number of tokens in the kvcache
-size_t Sequence::num_tokens_in_kv_cache(EngineType engine_type) const {
-  return kv_cache_pos(engine_type);
+size_t Sequence::num_tokens_in_kv_cache() const {
+  return kv_cache_pos();
 }
 
 // decode the sequence to get delta text using the tokenizer
@@ -193,14 +192,14 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
   return slots;
 }
 
-void Sequence::commit_kv_cache(size_t size, EngineType engine_type) {
-  size_t& kv_cache_pos = kv_cache_pos_[static_cast<size_t>(engine_type)];
+void Sequence::commit_kv_cache(size_t size) {
+  size_t& kv_cache_pos = kv_cache_pos_[engine_type_];
   CHECK(kv_cache_pos + size <= kv_cache_capacity());
   kv_cache_pos += size;
 }
 
-void Sequence::rewind_kv_cache(size_t size, EngineType engine_type) {
-  size_t& kv_cache_pos = kv_cache_pos_[static_cast<size_t>(engine_type)];
+void Sequence::rewind_kv_cache(size_t size) {
+  size_t& kv_cache_pos = kv_cache_pos_[engine_type_];
   CHECK(kv_cache_pos >= size);
   kv_cache_pos -= size;
 }

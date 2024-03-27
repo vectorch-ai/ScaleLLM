@@ -184,32 +184,33 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   auto hidden_states =
       model_->forward(flatten_tokens, flatten_positions, kv_caches_, params);
 
+  // waits for all kernels in all streams to complete.
+  torch::cuda::synchronize();
+
   // call model logits to get logits
   auto logits = model_->logits(hidden_states,
                                sampling_params.last_token_idxes.to(device_));
-
-  // waits for all kernels in all streams to complete.
-  torch::cuda::synchronize();
 
   // TODO: use a seperate stream for sampling parameters tensor copy
 
   // create and call logits processors
   const auto options = torch::dtype(dtype_).device(device_);
   auto logits_processor = LogitsProcessor::create(sampling_params, options);
-  // apply logits processors to logits in-place
-  logits_processor->forward(logits,
-                            sampling_params.token_ids.to(device_),
-                            sampling_params.token_counts.to(device_),
-                            sampling_params.token_ids_lens.to(device_));
+  // apply logits processors to logits
+  logits =
+      logits_processor->forward(logits,
+                                sampling_params.token_ids.to(device_),
+                                sampling_params.token_counts.to(device_),
+                                sampling_params.token_ids_lens.to(device_));
 
   // create and call sampler
-  auto sampler = std::make_unique<Sampler>(sampling_params, options);
-  auto next_tokens = sampler->forward(logits);
+  auto sampler = std::make_unique<Sampler>(sampling_params);
 
-  // prepare output parameters
-  ModelOutput output_params;
-  output_params.next_tokens = next_tokens.to(input_device);
-  return output_params;
+  // prepare output
+  ModelOutput output;
+  output.sample_output = sampler->forward(logits);
+  output.logits = logits;
+  return output;
 }
 
 ModelOutput Worker::validate(const ModelInput& inputs) {
