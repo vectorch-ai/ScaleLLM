@@ -1,0 +1,28 @@
+name: clang-format
+on: 
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install clang-format
+        run: |
+          sudo apt-get install -y clang-format colordiff
+    
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Run clang-format
+        run: |
+          diff=`git-clang-format --diff --commit ${{ github.event.pull_request.base.sha }}`
+          [ "$diff" = "no modified files to format" ] && exit 0
+          [ "$diff" = "clang-format did not modify any files" ] && exit 0
+
+          printf "\033[1mYou have introduced coding style breakages, suggested changes:\n\n"
+          echo "$diff" | colordiff
+          exit 1
