@@ -193,7 +193,7 @@ class GemmaDecoderLayerImpl : public torch::nn::Module{
 
     torch::Tensor forward( torch::Tensor x,
                         torch::Tensor positions,
-                        std::vector<KVCache>& kv_cache,
+                        KVCache& kv_cache,
                         const InputParameters& input_params,
                         torch::Tensor& residual){
         // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py line 185
@@ -289,7 +289,7 @@ class GemmaModelImpl : public torch::nn::Module{
         torch::Tensor residual;
         for (int32_t i=0;i< modelArgs_.n_layers();i++){
             auto& layer = layers_[i];
-            h = layer(h,positions,kv_caches,input_params,residual);
+            h = layer(h,positions,kv_caches[i],input_params,residual);
         }
         
         return norm_(h,residual);
