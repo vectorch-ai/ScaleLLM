@@ -399,7 +399,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module{
 
 };
 TORCH_MODULE(GemmaForCausalLM);
-
+// TODO
 class GemmaChatTemplate final: public CodedChatTemplate{
 
 };
