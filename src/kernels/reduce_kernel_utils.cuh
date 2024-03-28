@@ -27,6 +27,36 @@ __inline__ __device__ T warp_reduce_sum(T val) {
 // performs a parallel reduction operation across the threads within a single
 // warp (32 threads).
 //   - val: The value to be reduced within a warp.
+template <>
+__inline__ __device__ half warp_reduce_sum<half>(half val) {
+  // uses bitwise operations to perform a parallel reduction
+  // within a warp. The 'mask' is right-shifted by 1 in each iteration
+  // until it reaches zero, effectively summing all values within the warp.
+#pragma unroll
+  for (int mask = 16; mask > 0; mask >>= 1) {
+    val = __hadd(val, __shfl_xor_sync(FINAL_MASK, val, mask, 32));
+  }
+  return val;
+}
+
+// performs a parallel reduction operation across the threads within a single
+// warp (32 threads).
+//   - val: The value to be reduced within a warp.
+template <>
+__inline__ __device__ half2 warp_reduce_sum<half2>(half2 val) {
+  // uses bitwise operations to perform a parallel reduction
+  // within a warp. The 'mask' is right-shifted by 1 in each iteration
+  // until it reaches zero, effectively summing all values within the warp.
+#pragma unroll
+  for (int mask = 16; mask > 0; mask >>= 1) {
+    val = __hadd2(val, __shfl_xor_sync(FINAL_MASK, val, mask, 32));
+  }
+  return val;
+}
+
+// performs a parallel reduction operation across the threads within a single
+// warp (32 threads).
+//   - val: The value to be reduced within a warp.
 template <typename T>
 __inline__ __device__ T warp_reduce_max(T val) {
 #pragma unroll
@@ -60,6 +90,33 @@ __inline__ __device__ T block_reduce_sum(T val) {
   // blockDim.x is not divided by 32
   val = (threadIdx.x < (blockDim.x / 32.f)) ? shared[lane] : (T)(0.0f);
   val = warp_reduce_sum<T>(val);
+  return val;
+}
+
+/* Calculate the sum of all elements in a thread block */
+template <>
+__inline__ __device__ half2 block_reduce_sum<half2>(half2 val) {
+  // up to 32 warps in a block
+  static __shared__ half2 shared[32];
+  // lane id in a warp
+  int lane = threadIdx.x & 0x1f;
+  // wrap id: threadIdx.x / 32
+  int wid = threadIdx.x >> 5;
+
+  // perform a parallel reduction across the threads within each warp
+  val = warp_reduce_sum<half2>(val);
+
+  if (lane == 0) {
+    // write the sum of each warp to shared memory
+    shared[wid] = val;
+  }
+  // wait for all warps to finish
+  __syncthreads();
+
+  // Modify from blockDim.x << 5 to blockDim.x / 32. to prevent
+  // blockDim.x is not divided by 32
+  val = (threadIdx.x < (blockDim.x / 32.f)) ? shared[lane] : make_half2(__float2half(0.0f), __float2half(0.0f));
+  val = warp_reduce_sum<half2>(val);
   return val;
 }
 
