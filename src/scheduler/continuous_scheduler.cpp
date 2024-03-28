@@ -12,12 +12,14 @@
 #include "request/request.h"
 #include "request/sequence.h"
 
+DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
+DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
+
+DECLARE_bool(enable_prefix_cache);
+
 namespace llm {
 
 constexpr size_t kRequestQueueSize = 100000;
-
-DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
-DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
 ContinuousScheduler::ContinuousScheduler(Engine* engine)
     : engine_(engine), request_queue_(kRequestQueueSize) {
@@ -73,6 +75,13 @@ Batch ContinuousScheduler::build_sequence_batch() {
     // read from request queue then push to priority queue
     request_queue_.read(request);
     CHECK(request != nullptr);
+
+    // expand sequences to the target number if prefix cache is disabled.
+    if (!FLAGS_enable_prefix_cache) {
+      // expand sequences to the target number
+      request->expand_sequences();
+    }
+
     priority_queue_.push(request);
   }
 
@@ -280,7 +289,7 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
                                               size_t* actual_tokens) {
   CHECK(token_budget > 0);
   // need to allocate shared blocks explicitly to avoid kv_cache_pos change
-  if (sequence->num_tokens_in_kv_cache() == 0) {
+  if (sequence->num_blocks() == 0) {
     block_manager_->allocate_shared_blocks_for(sequence);
   }
 

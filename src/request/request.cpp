@@ -67,13 +67,12 @@ bool Request::should_expand_sequences() const {
     const auto& first_sequence = sequences.front();
     // if all prompt tokens are in kv cache, then expand
     return first_sequence.num_tokens_in_kv_cache() >=
-           first_sequence.num_tokens();
+           first_sequence.num_prompt_tokens();
   }
   return false;
 }
 
 void Request::expand_sequences() {
-  CHECK(should_expand_sequences()) << "should_expand() should return true";
   while (sequences.size() < num_seqs) {
     add_sequence();
   }
