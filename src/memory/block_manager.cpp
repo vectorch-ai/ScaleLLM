@@ -77,14 +77,7 @@ void BlockManager::release_blocks_for(std::vector<Sequence*>& sequences) {
 
 void BlockManager::release_blocks_for(Sequence* sequence) {
   DCHECK(sequence != nullptr);
-
-  if (FLAGS_enable_prefix_cache) {
-    // only insert tokens in kv cache to the prefix cache
-    const auto tokens_ids = sequence->tokens_in_kv_cache();
-    const auto blocks = sequence->blocks();
-    // Add the kv cache to the prefix cache
-    prefix_cache_.insert(tokens_ids, blocks);
-  }
+  cache_blocks_for(sequence);
   // release the blocks after prefix cache insertion
   sequence->release_blocks();
 }
@@ -124,6 +117,16 @@ void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
     const auto tokens_ids = sequence->token_ids();
     std::vector<Block> shared_blocks = prefix_cache_.match(tokens_ids);
     sequence->append_shared_blocks(shared_blocks);
+  }
+}
+
+void BlockManager::cache_blocks_for(Sequence* sequence) {
+  if (FLAGS_enable_prefix_cache) {
+    // only insert tokens in kv cache to the prefix cache
+    const auto tokens_ids = sequence->tokens_in_kv_cache();
+    const auto blocks = sequence->blocks();
+    // Add the kv cache to the prefix cache
+    prefix_cache_.insert(tokens_ids, blocks);
   }
 }
 

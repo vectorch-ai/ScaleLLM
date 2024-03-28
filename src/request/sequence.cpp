@@ -28,26 +28,26 @@ Sequence::Sequence(const std::vector<int32_t>& token_ids,
                    const SamplingParameter& sampling_param,
                    const StoppingCriteria& stopping_criteria,
                    bool echo,
-                   OnStream on_stream)
+                   OnDelta on_delta)
     : Sequence("",
                token_ids,
                sampling_param,
                stopping_criteria,
                echo,
-               on_stream) {}
+               on_delta) {}
 
 Sequence::Sequence(const std::string_view& prompt,
                    const std::vector<int32_t>& token_ids,
                    const SamplingParameter& sampling_param,
                    const StoppingCriteria& stopping_criteria,
                    bool echo,
-                   OnStream on_stream)
+                   OnDelta on_delta)
     : prompt_(prompt),
       id_(next_id_.fetch_add(1)),
       sampling_param_(sampling_param),
       stopping_criteria_(stopping_criteria),
       token_ids_(token_ids),
-      on_stream_(on_stream) {
+      on_delta_(on_delta) {
   num_prompt_tokens_ = token_ids_.size();
   // reserve enough space for the token ids to avoid reallocation
   // so that the token ids are not invalidated
@@ -91,9 +91,7 @@ Slice<int32_t> Sequence::tokens_in_kv_cache() const {
 }
 
 // get the number of tokens in the kvcache
-size_t Sequence::num_tokens_in_kv_cache() const {
-  return kv_cache_pos();
-}
+size_t Sequence::num_tokens_in_kv_cache() const { return kv_cache_pos(); }
 
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(size_t end,
@@ -205,8 +203,8 @@ void Sequence::rewind_kv_cache(size_t size) {
 }
 
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
-  if (on_stream_) {
-    if (!on_stream_(delta, reason)) {
+  if (on_delta_) {
+    if (!on_delta_(delta, reason)) {
       LOG(ERROR) << "failed to stream the delta";
       // TODO: handle the failure
     }

@@ -24,7 +24,7 @@ enum class FinishReason {
   FUNCTION_CALL,
 };
 
-using OnStream =
+using OnDelta =
     std::function<bool(const std::string& delta, FinishReason reason)>;
 
 // Since the sequence is shared between LLM and SSM for speculative decoding,
@@ -49,14 +49,14 @@ class Sequence final {
            const SamplingParameter& sampling_param,
            const StoppingCriteria& stopping_criteria,
            bool echo,
-           OnStream on_stream);
+           OnDelta on_delta);
 
   Sequence(const std::string_view& prompt,
            const std::vector<int32_t>& token_ids,
            const SamplingParameter& sampling_param,
            const StoppingCriteria& stopping_criteria,
            bool echo,
-           OnStream on_stream);
+           OnDelta on_delta);
 
   // get the id of the sequence
   int64_t id() const { return id_; }
@@ -129,7 +129,7 @@ class Sequence final {
   std::string decode_delta_text(size_t end, const Tokenizer& tokenizer);
 
   // check if streaming is enabled
-  bool is_streaming() const { return on_stream_ != nullptr; }
+  bool is_streaming() const { return on_delta_ != nullptr; }
 
   // stream the delta text to the client
   void stream_delta(const std::string& delta, FinishReason reason);
@@ -211,7 +211,7 @@ class Sequence final {
   size_t output_offset_ = 0;
 
   // function to call when new tokens are generated. (only for streaming)
-  OnStream on_stream_;
+  OnDelta on_delta_;
 
   // TODO: Add logits results.
 

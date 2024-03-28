@@ -30,6 +30,9 @@ class BlockManager final {
   // try to share blocks among sequences with the same prefix
   void allocate_shared_blocks_for(Sequence* sequence);
 
+  // cache the blocks for the sequence
+  void cache_blocks_for(Sequence* sequence);
+
  private:
   // check if block allocator has enough slots, if not, try to evict some blocks
   // from the prefix cache

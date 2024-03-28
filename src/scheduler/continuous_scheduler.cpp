@@ -12,12 +12,14 @@
 #include "request/request.h"
 #include "request/sequence.h"
 
+DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
+DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
+
+DECLARE_bool(enable_prefix_cache);
+
 namespace llm {
 
 constexpr size_t kRequestQueueSize = 100000;
-
-DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
-DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
 ContinuousScheduler::ContinuousScheduler(Engine* engine)
     : engine_(engine), request_queue_(kRequestQueueSize) {
@@ -55,6 +57,8 @@ ContinuousScheduler::~ContinuousScheduler() {
 
 bool ContinuousScheduler::schedule(std::unique_ptr<Request>& request) {
   CHECK(request != nullptr);
+  CHECK(!request->sequences.empty());
+
   if (request_queue_.write(request.get())) {
     // take over the ownership of the request
     request.release();
@@ -71,6 +75,13 @@ Batch ContinuousScheduler::build_sequence_batch() {
     // read from request queue then push to priority queue
     request_queue_.read(request);
     CHECK(request != nullptr);
+
+    // expand sequences to the target number if prefix cache is disabled.
+    if (!FLAGS_enable_prefix_cache) {
+      // expand sequences to the target number
+      request->expand_sequences();
+    }
+
     priority_queue_.push(request);
   }
 
@@ -83,6 +94,14 @@ Batch ContinuousScheduler::build_sequence_batch() {
       // release the ownership of the request
       response_handler_->on_request_finish(std::unique_ptr<Request>(request));
       continue;
+    }
+
+    // check if the request can be expanded
+    if (request->should_expand_sequences()) {
+      // cache the blocks to share among the sequences
+      block_manager_->cache_blocks_for(&request->sequences[0]);
+      // expand sequences to the target number
+      request->expand_sequences();
     }
 
     // put it to the front of the preemptable queue as it has higher priority
@@ -270,7 +289,7 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
                                               size_t* actual_tokens) {
   CHECK(token_budget > 0);
   // need to allocate shared blocks explicitly to avoid kv_cache_pos change
-  if (sequence->num_tokens_in_kv_cache() == 0) {
+  if (sequence->num_blocks() == 0) {
     block_manager_->allocate_shared_blocks_for(sequence);
   }
 

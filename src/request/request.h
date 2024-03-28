@@ -61,6 +61,11 @@ using OnFinish =
                        const Status& status,
                        const Statistics& stats)>;
 
+using OnStreamDelta = std::function<bool(size_t index,
+                                         bool first_message,
+                                         const std::string& delta,
+                                         FinishReason reason)>;
+
 // Function to call when a stream request is finished.
 using OnStreamFinish = std::function<bool(const Status& status)>;
 
@@ -74,15 +79,20 @@ struct Request final {
   // caller needs to gurantee prompt's lifecycle
   Request(const std::string& id,
           const std::string_view& prompt,
+          size_t n,
           const std::vector<int32_t>& prompt_tokens);
 
   Request(const std::string& id, const std::vector<int32_t>& prompt_tokens);
 
-  void add_sequence(OnStream on_stream = nullptr);
+  void add_sequence();
 
   bool is_finished() const;
 
   size_t num_prompt_tokens() const { return prompt_tokens.size(); }
+
+  bool should_expand_sequences() const;
+
+  void expand_sequences();
 
   // The unique id of the request.
   // NOLINTNEXTLINE
@@ -95,6 +105,10 @@ struct Request final {
   // prompt text string
   // NOLINTNEXTLINE
   const std::string_view prompt;
+
+  // the number of sequences to generate completions for the prompt.
+  // NOLINTNEXTLINE
+  const size_t num_seqs;
 
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
@@ -121,6 +135,9 @@ struct Request final {
 
   // function to call when the request is finished.
   OnFinish on_finish;
+
+  // function to call when a delta is generated.
+  OnStreamDelta on_stream_delta;
 
   // function to call when a stream request is finished.
   OnStreamFinish on_stream_finish;
