@@ -22,6 +22,8 @@ DEFINE_string(model_allow_patterns,
               "*.json,*.tiktoken,*.model,*.safetensors",
               "Allow patterns for model files.");
 
+DEFINE_string(token, "", "hugging face token");
+
 DEFINE_string(device,
               "cuda",
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
@@ -44,10 +46,12 @@ std::string download_model(const std::string& model_name) {
   py::scoped_interpreter guard{};  // Start the interpreter
 
   py::dict globals = py::globals();
+  globals["token"] = FLAGS_token;
   globals["repo_id"] = model_name;
   globals["allow_patterns"] = FLAGS_model_allow_patterns;
   py::exec(R"(
-    from huggingface_hub import snapshot_download
+    from huggingface_hub import snapshot_download,login
+    login(token)
     model_path = snapshot_download(repo_id, allow_patterns=allow_patterns.split(','))
   )",
            globals,
