@@ -90,6 +90,9 @@ class Sequence final {
     return num_tokens() - num_tokens_in_kv_cache();
   }
 
+  // check if the sequence is in prefill stage
+  bool is_prefill_stage() const { return kv_cache_pos() < num_prompt_tokens(); }
+
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
   void append_new_token_id(int32_t next_token_id);

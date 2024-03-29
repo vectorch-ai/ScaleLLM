@@ -183,10 +183,13 @@ TEST(SequenceTest, DiscardTokenIds) {
   EXPECT_EQ(sequence.num_generated_tokens(), 0);
   EXPECT_EQ(sequence.num_tokens(), 3);
 
-  // all following tokens will be discarded since kv_cache is not committed yet
-  sequence.append_new_token_id(10);
-  sequence.append_new_token_id(20);
-  sequence.append_new_token_id(30);
+  // append tokens to prefill sequence expect CHECK failure
+  EXPECT_DEATH(sequence.append_new_token_id(10),
+               "cannot append token to a prefill sequence");
+  EXPECT_DEATH(sequence.append_new_token_id(20),
+               "cannot append token to a prefill sequence");
+  EXPECT_DEATH(sequence.append_new_token_id(30),
+               "cannot append token to a prefill sequence");
 
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
   EXPECT_EQ(sequence.num_generated_tokens(), 0);

@@ -179,6 +179,9 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   auto flatten_positions = inputs.positions.to(device_);
   InputParameters params = inputs.input_params.to(device_);
   const SamplingParameters& sampling_params = inputs.sampling_params;
+  auto safe_to = [](const torch::Tensor& t, const torch::Device& device) {
+    return t.defined() ? t.to(device) : t;
+  };
 
   // call model forward to get hidden states
   auto hidden_states =
@@ -187,29 +190,38 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   // waits for all kernels in all streams to complete.
   torch::cuda::synchronize();
 
-  // call model logits to get logits
-  auto logits = model_->logits(hidden_states,
-                               sampling_params.last_token_idxes.to(device_));
-
-  // TODO: use a seperate stream for sampling parameters tensor copy
-
-  // create and call logits processors
-  const auto options = torch::dtype(dtype_).device(device_);
-  auto logits_processor = LogitsProcessor::create(sampling_params, options);
-  // apply logits processors to logits
-  logits =
-      logits_processor->forward(logits,
-                                sampling_params.token_ids.to(device_),
-                                sampling_params.token_counts.to(device_),
-                                sampling_params.token_ids_lens.to(device_));
-
-  // create and call sampler
-  auto sampler = std::make_unique<Sampler>(sampling_params);
-
-  // prepare output
+  // prepare model output
   ModelOutput output;
-  output.sample_output = sampler->forward(logits);
-  output.logits = logits;
+
+  auto selected_token_idxes =
+      safe_to(sampling_params.selected_token_idxes, device_);
+  torch::Tensor logits;
+  if (selected_token_idxes.defined()) {
+    // call model to get logits
+    logits = model_->logits(hidden_states, selected_token_idxes);
+
+    // create and call logits processors
+    const auto options = torch::dtype(dtype_).device(device_);
+    auto logits_processor = LogitsProcessor::create(sampling_params, options);
+    // apply logits processors to logits
+    auto token_ids = safe_to(sampling_params.token_ids, device_);
+    auto token_counts = safe_to(sampling_params.token_counts, device_);
+    auto token_ids_lens = safe_to(sampling_params.token_ids_lens, device_);
+    logits = logits_processor->forward(
+        logits, token_ids, token_counts, token_ids_lens);
+    // set logits to output
+    output.logits = logits;
+  }
+
+  auto sample_idxes = safe_to(sampling_params.sample_idxes, device_);
+  if (logits.defined() && sample_idxes.defined()) {
+    auto sampler = std::make_unique<Sampler>(sampling_params);
+    // select sample logits
+    auto sample_logits = logits.index_select(/*dim=*/0, sample_idxes);
+    auto sample_output = sampler->forward(sample_logits);
+    // set sample output to output
+    output.sample_output = sample_output;
+  }
   return output;
 }
 

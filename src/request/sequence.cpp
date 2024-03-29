@@ -71,11 +71,7 @@ Sequence::Sequence(const std::string_view& prompt,
 
 void Sequence::append_new_token_id(int32_t next_token_id) {
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
-
-  // still in prefill stage, discard the generated token
-  if (kv_cache_pos() < num_prompt_tokens()) {
-    return;
-  }
+  CHECK(!is_prefill_stage()) << "cannot append token to a prefill sequence";
 
   // append the token id and update the token count
   token_ids_.push_back(next_token_id);
