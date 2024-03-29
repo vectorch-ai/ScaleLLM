@@ -401,8 +401,36 @@ class GemmaForCausalLMImpl : public torch::nn::Module{
 TORCH_MODULE(GemmaForCausalLM);
 // TODO
 class GemmaChatTemplate final: public CodedChatTemplate{
+ public:
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
+    // at least one user message
+    if (messages.size() % 2 == 0) {
+      return std::nullopt;
+    }
+    // example:https://huggingface.co/google/gemma-2b-it
+    /*
+    * <bos><start_of_turn>user
+    * Write a hello world program<end_of_turn>
+    * <start_of_turn>model
+    */
+    std::stringstream ss;
+    // start with system message
+    if (!system_message.empty()) {
+      ss << "<bos> <start_of_turn> model\n"
+         << system_message << "<end_of_turn>";
+    }
+    // then user message
+    for (size_t i = 0; i < messages.size(); i++) {
+      ss << "\n<start_of_turn> user\n" << messages[i] << "<end_of_turn>";
+    }
 
+    ss << "\n<start_of_turn> model";
+    return ss.str();
+  }
 };
+
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gemma,GemmaForCausalLM);
 // TODO I don't know the meaning of "REGISTER_DEFAULT_CHAT_TEMPLATE"
