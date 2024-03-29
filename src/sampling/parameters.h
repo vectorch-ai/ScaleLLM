@@ -69,9 +69,14 @@ struct SamplingParameters {
   // default = 0, use global generator
   std::vector<uint64_t> seeds;
 
-  // the index of the last token of each sequence in the tokens.
-  // IntTensor: [n_seqs]
-  torch::Tensor last_token_idxes;
+  // selected tokens are tokens for sampling the next token,
+  // including the generated tokens and the last prompt token
+  // IntTensor
+  torch::Tensor selected_token_idxes;
+
+  // the last index of the selected tokens for sampling.
+  // IntTensor
+  torch::Tensor sample_idxes;
 
   // the unique token id and count of each sequence in the batch.
   // LongTensor: [n_seqs, max_unique_tokens]
