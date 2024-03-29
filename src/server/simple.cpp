@@ -9,7 +9,7 @@
 #include <iostream>
 #include <string>
 
-#include "engine/engine.h"
+#include "engine/llm_engine.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
   const auto devices = parse_devices(FLAGS_device);
   LOG(INFO) << "Using devices: " << to_string(devices);
 
-  llm::Engine engine(devices);
+  llm::LLMEngine engine(devices);
   CHECK(engine.init(model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
@@ -148,8 +148,12 @@ int main(int argc, char* argv[]) {
     tokenizer->encode(input, &prompt_tokens);
     const int64_t prompt_token_len = static_cast<int64_t>(prompt_tokens.size());
 
-    llm::Sequence sequence(
-        sampling_param, stopping_criteria, prompt_tokens, true, nullptr);
+    llm::Sequence sequence(input,
+                           prompt_tokens,
+                           sampling_param,
+                           stopping_criteria,
+                           /*echo=*/true,
+                           /*on_stream=*/nullptr);
 
     // generate tokens until the end of sentence token is generated
     for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
@@ -158,15 +162,11 @@ int main(int argc, char* argv[]) {
       CHECK(block_manager->allocate_blocks_for(&sequence));
 
       // run inference
-      const auto output_params = engine.execute_model(&sequence);
+      llm::Batch batch(&sequence);
+      engine.execute_model(batch);
 
-      torch::Tensor next_token = output_params.next_tokens;
-      const auto flat_tensor = next_token.view({-1});
-
-      // add the next token to the list of tokens
-      const auto next_token_id = static_cast<int>(flat_tensor.item<int>());
-      if (!sequence.append_new_token_id(next_token_id)) {
-        // sequence is finished
+      // check if sequence is finished
+      if (sequence.is_finished()) {
         break;
       }
 

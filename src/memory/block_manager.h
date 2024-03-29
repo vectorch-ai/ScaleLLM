@@ -14,8 +14,6 @@ class BlockManager final {
  public:
   BlockManager(uint32_t num_blocks, int32_t block_size);
 
-  bool allocate_blocks_for(Request* request);
-
   bool allocate_blocks_for(Sequence* sequence);
 
   bool allocate_blocks_for(std::vector<Sequence*>& sequences);
@@ -26,13 +24,19 @@ class BlockManager final {
 
   void release_blocks_for(Sequence* sequence);
 
+  // try to allocate blloks for sequence with num_tokens
+  bool allocate_blocks_for(Sequence* sequence, size_t num_tokens);
+
+  // try to share blocks among sequences with the same prefix
+  void allocate_shared_blocks_for(Sequence* sequence);
+
+  // cache the blocks for the sequence
+  void cache_blocks_for(Sequence* sequence);
+
  private:
   // check if block allocator has enough slots, if not, try to evict some blocks
   // from the prefix cache
   bool has_enough_blocks(uint32_t num_blocks);
-
-  // try to share blocks among sequences with the same prefix
-  void allocate_shared_blocks(Sequence* sequence);
 
   // number of slots per block
   int32_t block_size_ = 0;

@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <string>
 
+#include "engine/engine.h"
 #include "models/model_args.h"
 #include "request/request.h"
+#include "scheduler/scheduler.h"
 #include "utils.h"
 
 namespace llm {
@@ -182,8 +184,9 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     return nullptr;
   }
 
-  auto request =
-      std::make_unique<Request>(generate_request_id(), prompt_tokens);
+  const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
+  auto request = std::make_unique<Request>(
+      generate_request_id(), grpc_request.prompt(), num_seqs, prompt_tokens);
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -248,28 +251,21 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     request->priority = grpc_priority_to_priority(grpc_request.priority());
   }
 
-  // add on_stream and on_finish callbacks
-  const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
+  // set callbacks
   if (request->stream) {
-    // add sequences with on_stream callback
-    for (uint32_t i = 0; i < num_seqs; ++i) {
-      request->add_sequence(
-          [call_data, request = request.get(), i](const std::string& delta,
-                                                  FinishReason reason) -> bool {
-            return send_delta_to_client(call_data, request, i, delta, reason);
-          });
-    }
+    request->on_stream_delta = [call_data, request = request.get()](
+                                   size_t index,
+                                   bool /*first_message*/,
+                                   const std::string& delta,
+                                   FinishReason reason) -> bool {
+      return send_delta_to_client(call_data, request, index, delta, reason);
+    };
 
     // add on_stream_finish callback
     request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
       return call_data->finish();
     };
   } else {
-    // add sequences
-    for (uint32_t i = 0; i < num_seqs; ++i) {
-      request->add_sequence();
-    }
-
     // add on_finish callback
     request->on_finish = [call_data, request = request.get()](
                              const std::vector<SequenceResult>& seq_results,
@@ -279,6 +275,9 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
           call_data, request, seq_results, status, stats);
     };
   }
+
+  // add sequences
+  request->add_sequence();
   return request;
 }
 

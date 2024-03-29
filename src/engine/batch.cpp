@@ -36,10 +36,12 @@ void Batch::reset(const std::vector<Sequence*>& sequences) {
   add(sequences);
 }
 
-void Batch::add(Sequence* sequence, uint32_t max_tokens_to_process) {
-  DCHECK(sequence != nullptr);
+void Batch::add(Sequence* sequence, uint32_t token_budget) {
+  CHECK(sequence != nullptr);
+  CHECK(token_budget > 0);
+
   sequences_.push_back(sequence);
-  max_tokens_to_process_.push_back(max_tokens_to_process);
+  token_budgets_.push_back(token_budget);
 }
 
 void Batch::add(const std::vector<Sequence*>& sequences) {
@@ -50,18 +52,22 @@ void Batch::add(const std::vector<Sequence*>& sequences) {
 
 void Batch::clear() {
   sequences_.clear();
-  max_tokens_to_process_.clear();
+  token_budgets_.clear();
 }
 
 // prepare inputs for the batch
-ModelInput Batch::prepare_model_inputs() {
+ModelInput Batch::prepare_model_input() {
   ModelInput model_inputs;
 
   // flatten the token ids and positions
   std::vector<int32_t> flatten_tokens_vec;
   std::vector<int32_t> flatten_positions_vec;
-  // track the last token index in the flattened tokens
-  std::vector<int32_t> last_token_idxes;
+
+  // sleceted tokens to return logits, including generated tokens and last
+  // prompt token
+  std::vector<int32_t> selected_token_idxes;
+  // track the last token of selected tokens for sampling
+  std::vector<int32_t> sample_idxes;
 
   // track the token ids and counts in the batch
   std::vector<std::vector<int64_t>> token_ids_vec;
@@ -84,14 +90,14 @@ ModelInput Batch::prepare_model_inputs() {
     auto* sequence = sequences_[i];
     CHECK(!sequence->is_finished());
 
-    all_prefill_sequences &= sequence->is_prefill();
+    all_prefill_sequences &= (sequence->num_tokens_in_kv_cache() == 0);
 
     const auto token_ids = sequence->token_ids();
 
     const uint32_t n_tokens = token_ids.size();
     const uint32_t n_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
     const uint32_t q_seq_len =
-        std::min(n_tokens - n_tokens_in_kv_cache, max_tokens_to_process_[i]);
+        std::min(n_tokens - n_tokens_in_kv_cache, token_budgets_[i]);
 
     const uint32_t seq_len = q_seq_len + n_tokens_in_kv_cache;
 
@@ -99,46 +105,66 @@ ModelInput Batch::prepare_model_inputs() {
     CHECK_GE(sequence->kv_cache_capacity(), seq_len);
 
     // at least one token to process otherwise the sequence should be finished.
-    CHECK(q_seq_len != 0)
-        << "at least one token should be processed. "
-        << "n_tokens: " << n_tokens
-        << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
-        << ", kv_cache_capacity: " << sequence->kv_cache_capacity()
-        << ", max_tokens_to_process: " << max_tokens_to_process_[i];
+    CHECK(q_seq_len != 0) << "at least one token should be processed. "
+                          << "n_tokens: " << n_tokens
+                          << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
+                          << ", kv_cache_capacity: "
+                          << sequence->kv_cache_capacity()
+                          << ", token_budget: " << token_budgets_[i];
 
-    // pack the token ids and positions into one-dimensional tensors
-    for (uint32_t i = n_tokens_in_kv_cache; i < seq_len; ++i) {
-      flatten_tokens_vec.push_back(token_ids[i]);
-      flatten_positions_vec.push_back(static_cast<int32_t>(i));
-    }
-    last_token_idxes.push_back(
-        static_cast<int32_t>(flatten_tokens_vec.size() - 1));
-
-    // add token id and count for each sequence
-    const auto& seq_token_counts = sequence->token_to_count_map();
-    const auto unique_tokens = seq_token_counts.size();
-
-    auto& ids = token_ids_vec.emplace_back();
-    auto& counts = token_counts_vec.emplace_back();
-    ids.reserve(unique_tokens);
-    counts.reserve(unique_tokens);
-    for (const auto& [token_id, count] : seq_token_counts) {
-      ids.push_back(token_id);
-      counts.push_back(count);
-    }
-    token_ids_lens_vec.push_back(static_cast<int32_t>(unique_tokens));
-    max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
-
+    // update sequence length
     max_seq_len = std::max(max_seq_len, seq_len);
     q_max_seq_len = std::max(q_max_seq_len, q_seq_len);
     cu_seq_lens.push_back(cu_seq_lens.back() + seq_len);
     q_cu_seq_lens.push_back(q_cu_seq_lens.back() + q_seq_len);
 
-    // commit kv cache to advance kv_cache pos in sequence
-    sequence->commit_kv_cache(/*size=*/q_seq_len);
+    // pack the token ids and positions into one-dimensional tensors
+    // and select tokens for sampling the next token
+    const uint32_t n_prompt_tokens = sequence->num_prompt_tokens();
+    bool has_selected_token = false;
+    bool has_sample_token = false;
+    for (uint32_t j = n_tokens_in_kv_cache; j < seq_len; ++j) {
+      flatten_tokens_vec.push_back(token_ids[j]);
+      flatten_positions_vec.push_back(static_cast<int32_t>(j));
+
+      // skip prompt tokens except the last one
+      if (j + 1 >= n_prompt_tokens) {
+        // select tokens for sampling the next token
+        selected_token_idxes.push_back(flatten_tokens_vec.size() - 1);
+        has_selected_token = true;
+        // sample last token in the sequence
+        if (j == seq_len - 1) {
+          sample_idxes.push_back(
+              static_cast<int32_t>(selected_token_idxes.size() - 1));
+          has_sample_token = true;
+        }
+      }
+    }
+
+    // add token id and count for sampling
+    if (has_selected_token) {
+      const auto& seq_token_counts = sequence->token_to_count_map();
+      const auto unique_tokens = seq_token_counts.size();
+
+      auto& ids = token_ids_vec.emplace_back();
+      auto& counts = token_counts_vec.emplace_back();
+      ids.reserve(unique_tokens);
+      counts.reserve(unique_tokens);
+      for (const auto& [token_id, count] : seq_token_counts) {
+        ids.push_back(token_id);
+        counts.push_back(count);
+      }
+      token_ids_lens_vec.push_back(static_cast<int32_t>(unique_tokens));
+      max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
+    }
 
     // add sampling parameters
-    model_inputs.sampling_params.add(sequence->sampling_param());
+    if (has_sample_token) {
+      model_inputs.sampling_params.add(sequence->sampling_param());
+    }
+
+    // commit kv cache to advance kv_cache pos in sequence
+    sequence->commit_kv_cache(/*size=*/q_seq_len);
 
     // assign slot ids for new tokens [n_tokens_in_kvcache, total_tokens)
     const auto blocks = sequence->blocks();
@@ -154,18 +180,9 @@ ModelInput Batch::prepare_model_inputs() {
       block_ids.push_back(block.id());
     }
     block_tables_vec.push_back(block_ids);
-
     max_block_table_len =
         std::max(max_block_table_len, static_cast<int32_t>(blocks.size()));
   }
-
-  // construct two-dimensional tensors for token ids and counts
-  auto token_ids = create_2d_tensor(token_ids_vec,
-                                    max_unique_tokens,
-                                    torch::kInt64,
-                                    /*pad_value=*/int64_t(0));
-  auto token_counts = create_2d_tensor(
-      token_counts_vec, max_unique_tokens, torch::kInt, /*pad_value=*/0);
 
   auto block_tables = create_2d_tensor(
       block_tables_vec, max_block_table_len, torch::kInt, /*pad_value=*/0);
@@ -184,19 +201,65 @@ ModelInput Batch::prepare_model_inputs() {
   input_params.block_tables = block_tables;
 
   auto& sampling_params = model_inputs.sampling_params;
-  sampling_params.last_token_idxes =
-      torch::tensor(last_token_idxes, torch::kInt);
-  sampling_params.token_ids = token_ids;
-  sampling_params.token_counts = token_counts;
-  sampling_params.token_ids_lens =
-      torch::tensor(token_ids_lens_vec, torch::kInt);
+  if (!selected_token_idxes.empty()) {
+    // construct two-dimensional tensors for token ids and counts
+    auto token_ids = create_2d_tensor(token_ids_vec,
+                                      max_unique_tokens,
+                                      torch::kInt64,
+                                      /*pad_value=*/int64_t(0));
+    auto token_counts = create_2d_tensor(
+        token_counts_vec, max_unique_tokens, torch::kInt, /*pad_value=*/0);
+
+    sampling_params.selected_token_idxes =
+        torch::tensor(selected_token_idxes, torch::kInt);
+    sampling_params.token_ids = token_ids;
+    sampling_params.token_counts = token_counts;
+    sampling_params.token_ids_lens =
+        torch::tensor(token_ids_lens_vec, torch::kInt);
+  }
+
+  if (!sample_idxes.empty()) {
+    sampling_params.sample_idxes = torch::tensor(sample_idxes, torch::kInt);
+  }
 
   return model_inputs;
 }
 
-ModelInput Batch::prepare_model_validate_inputs() {
-  // TODO: implement this with different logic
-  return prepare_model_inputs();
+ModelInput Batch::prepare_model_validate_input() {
+  LOG(FATAL) << "Not implemented";
+  return {};
+}
+
+void Batch::process_model_output(const ModelOutput& model_output) {
+  // it is possible that the model output is empty for prefill sequences
+  if (model_output.sample_output.next_tokens.defined()) {
+    const auto& next_tokens = model_output.sample_output.next_tokens.cpu();
+    const int64_t num_seqs = next_tokens.numel();
+    int64_t output_idx = 0;
+    for (auto* seq : sequences_) {
+      if (seq->is_prefill_stage()) {
+        // no sampling for prefill sequences
+        continue;
+      }
+      CHECK_LT(output_idx, num_seqs);
+
+      // add the next token to sequence
+      const int32_t next_token_id = next_tokens[output_idx++].item().toInt();
+      seq->append_new_token_id(next_token_id);
+    }
+    CHECK_EQ(output_idx, num_seqs);
+  }
+}
+
+void Batch::process_model_validate_output(const ModelOutput& model_output) {
+  LOG(FATAL) << "Not implemented";
+}
+
+void Batch::set_engine_type(EngineType engine_type) {
+  // set engine type for all sequences in the batch
+  for (auto* sequence : sequences_) {
+    sequence->set_engine_type(engine_type);
+  }
 }
 
 }  // namespace llm

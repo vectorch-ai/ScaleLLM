@@ -31,9 +31,20 @@ std::unique_ptr<LogitsProcessor> LogitsProcessor::create(
   }
   if (std::any_of(params.temperatures.begin(),
                   params.temperatures.end(),
-                  [](float t) { return t != 1.0; })) {
+                  [](float t) { return t != 0.0 && t != 1.0; })) {
     processors.push_back(std::make_unique<TemperatureLogitsProcessor>(
         params.temperatures, options));
+  }
+
+  const bool has_top_k = std::any_of(params.top_k.begin(),
+                                     params.top_k.end(),
+                                     [](int64_t t) { return t != 0; });
+  const bool has_top_p = std::any_of(params.top_p.begin(),
+                                     params.top_p.end(),
+                                     [](float t) { return t != 1.0; });
+  if (has_top_k || has_top_p) {
+    processors.push_back(std::make_unique<TopKTopPLogitsProcessor>(
+        params.top_k, params.top_p, options));
   }
 
   return std::make_unique<LogitsProcessorList>(std::move(processors));

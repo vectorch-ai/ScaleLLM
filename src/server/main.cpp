@@ -12,13 +12,13 @@
 #include <thread>
 
 #include "common/metrics.h"
-#include "engine/engine.h"
+#include "engine/llm_engine.h"
 #include "grpc_server.h"
 #include "handlers/chat_handler.h"
 #include "handlers/completion_handler.h"
 #include "handlers/models_handler.h"
 #include "http_server.h"
-#include "scheduler/continuous_batching_scheduler.h"
+#include "scheduler/continuous_scheduler.h"
 
 using namespace llm;
 
@@ -139,11 +139,11 @@ int main(int argc, char** argv) {
   LOG(INFO) << "Using devices: " << to_string(devices);
 
   // create engine
-  auto engine = std::make_unique<Engine>(devices);
+  auto engine = std::make_unique<LLMEngine>(devices);
   CHECK(engine->init(FLAGS_model_path));
 
   // create scheduler and grpc handlers
-  auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
+  auto scheduler = std::make_unique<ContinuousScheduler>(engine.get());
   auto completion_handler =
       std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
   auto chat_handler =
