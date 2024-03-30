@@ -97,7 +97,8 @@ class Sequence final {
   // the token would be discarded if the sequence is still in prefill stage
   void append_new_token_id(int32_t next_token_id);
 
-  // validate accepted tokens with draft tokens (tokens at the end of the sequence)
+  // validate accepted tokens with draft tokens (tokens at the end of the
+  // sequence)
   void validate_token_ids(const Slice<int32_t>& accpeted_token_ids);
 
   // add new cache blocks
