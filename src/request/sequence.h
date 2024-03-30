@@ -27,11 +27,11 @@ enum class FinishReason {
 using OnDelta =
     std::function<bool(const std::string& delta, FinishReason reason)>;
 
-// Since the sequence is shared between LLM and SSM for speculative decoding,
-// it's possible that the kv cache pos might be out of sync. Thus, specifying
-// the engine type becomes crucial to ensure accurate updating of the kv cache
-// position separately for LLM and SSM.
-enum class EngineType : size_t {
+// The sequence is shared between LLM and SSM for speculative decoding, and
+// it's possible that the numbers of tokens in kv cache are out of sync.
+// Specifying the engine type to ensure accurate updating of the the number
+// tokens in kv cache separately for LLM and SSM.
+enum class EngineType : int8_t {
   // LLM engine
   LLM = 0,
   // SSM engine
@@ -52,7 +52,7 @@ class Sequence final {
            OnDelta on_delta);
 
   Sequence(const std::string_view& prompt,
-           const std::vector<int32_t>& token_ids,
+           const std::vector<int32_t>& prompt_token_ids,
            const SamplingParameter& sampling_param,
            const StoppingCriteria& stopping_criteria,
            bool echo,
@@ -62,7 +62,7 @@ class Sequence final {
   int64_t id() const { return id_; }
 
   // get token ids
-  Slice<int32_t> token_ids() const { return token_ids_; }
+  Slice<int32_t> token_ids() const { return {token_ids_, num_tokens_}; }
 
   // get token ids to count map
   const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
@@ -70,7 +70,7 @@ class Sequence final {
   }
 
   // get the total number of tokens
-  size_t num_tokens() const { return token_ids_.size(); }
+  size_t num_tokens() const { return num_tokens_; }
 
   // get the number of prompt tokens
   size_t num_prompt_tokens() const { return num_prompt_tokens_; }
@@ -80,22 +80,40 @@ class Sequence final {
   size_t num_generated_tokens() const;
 
   // get token ids in kv cache
-  Slice<int32_t> tokens_in_kv_cache() const;
+  Slice<int32_t> tokens_in_kv_cache() const {
+    return {token_ids_, num_kv_cache_tokens()};
+  }
 
   // get the number of tokens in the kvcache
-  size_t num_tokens_in_kv_cache() const;
+  size_t kv_cache_size() const { return num_kv_cache_tokens(); }
+
+  size_t kv_cache_size(EngineType engine_type) const {
+    CHECK(engine_type < EngineType::COUNT) << "Invalid engine type.";
+    return num_kv_cache_tokens(static_cast<size_t>(engine_type));
+  }
+
+  // get the capacity of the kv cache allocated
+  size_t kv_cache_capacity() const;
+
+  // generate the kv cache slots for the position range [pos_start, pos_end)
+  std::vector<int32_t> kv_cache_slots(int32_t pos_start, int32_t pos_end) const;
 
   // get the number of tokens to process
   size_t num_tokens_to_process() const {
-    return num_tokens() - num_tokens_in_kv_cache();
+    return num_tokens() - num_kv_cache_tokens();
   }
 
   // check if the sequence is in prefill stage
-  bool is_prefill_stage() const { return kv_cache_pos() < num_prompt_tokens(); }
+  bool is_prefill_stage() const {
+    return num_kv_cache_tokens() < num_prompt_tokens();
+  }
 
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
   void append_new_token_id(int32_t next_token_id);
+
+  // validate draft tokens with accepted tokens for speculative decoding
+  void validate_token_ids(const Slice<int32_t>& accpeted_token_ids);
 
   // add new cache blocks
   void append_blocks(const std::vector<Block>& new_blocks);
@@ -111,18 +129,6 @@ class Sequence final {
 
   // get the number of blocks
   size_t num_blocks() const { return blocks_.size(); }
-
-  // get the capacity of the kv cache allocated
-  size_t kv_cache_capacity() const;
-
-  // generate the kv cache slots for the position range [pos_start, pos_end)
-  std::vector<int32_t> kv_cache_slots(int32_t pos_start, int32_t pos_end) const;
-
-  // commit the kv cache by n tokens
-  void commit_kv_cache(size_t size);
-
-  // rewind the kv cache by n tokens
-  void rewind_kv_cache(size_t size);
 
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
@@ -160,11 +166,24 @@ class Sequence final {
     engine_type_ = static_cast<size_t>(engine_type);
   }
 
- private:
-  // force recheck if the sequence is finished based on the stopping criteria.
-  bool check_finished() const;
+  // commit the kv cache by n tokens
+  void commit_kv_cache(size_t size) {
+    size_t& num_kv_cache_tokens = num_kv_cache_tokens_[engine_type_];
+    CHECK(num_kv_cache_tokens + size <= kv_cache_capacity());
+    num_kv_cache_tokens += size;
+  }
 
-  size_t kv_cache_pos() const { return kv_cache_pos_[engine_type_]; }
+ private:
+  size_t num_kv_cache_tokens() const {
+    return num_kv_cache_tokens_[engine_type_];
+  }
+
+  size_t num_kv_cache_tokens(size_t engine_type) const {
+    return num_kv_cache_tokens_[engine_type];
+  }
+
+  // force recheck if the sequence is finished based on the stopping criteria.
+  bool check_finished(size_t last_token_idx) const;
 
   // global unique id for the sequence
   const int64_t id_;
@@ -181,16 +200,17 @@ class Sequence final {
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
 
+  // number of tokens in the sequence
+  size_t num_tokens_ = 0;
+
   // the count of each token id
   std::unordered_map<int32_t, int32_t> token_to_count_map_;
 
   // the length of the prompt tokens
   size_t num_prompt_tokens_ = 0;
 
-  // kv cache position.
-  // all tokens before pos should already be in the kv cache.
-  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays)
-  size_t kv_cache_pos_[static_cast<size_t>(EngineType::COUNT)] = {0};
+  // number of tokens in kv cache
+  std::vector<size_t> num_kv_cache_tokens_;
   // current using engine type
   size_t engine_type_ = 0;
 

@@ -75,8 +75,7 @@ ModelInput Batch::prepare_model_input() {
   std::vector<std::vector<int32_t>> token_counts_vec;
   size_t max_unique_tokens = 0;
 
-  // process prefill requests
-  bool all_prefill_sequences = true;
+  bool empty_kv_cache = true;
   uint32_t max_seq_len = 0;
   uint32_t q_max_seq_len = 0;
   std::vector<int32_t> cu_seq_lens = {0};
@@ -90,12 +89,12 @@ ModelInput Batch::prepare_model_input() {
     auto* sequence = sequences_[i];
     CHECK(!sequence->is_finished());
 
-    all_prefill_sequences &= (sequence->num_tokens_in_kv_cache() == 0);
+    empty_kv_cache = empty_kv_cache && (sequence->kv_cache_size() == 0);
 
     const auto token_ids = sequence->token_ids();
 
     const uint32_t n_tokens = token_ids.size();
-    const uint32_t n_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
+    const uint32_t n_tokens_in_kv_cache = sequence->kv_cache_size();
     const uint32_t q_seq_len =
         std::min(n_tokens - n_tokens_in_kv_cache, token_budgets_[i]);
 
@@ -191,7 +190,7 @@ ModelInput Batch::prepare_model_input() {
   model_inputs.positions = torch::tensor(flatten_positions_vec, torch::kInt);
 
   auto& input_params = model_inputs.input_params;
-  input_params.all_prefill_sequences = all_prefill_sequences;
+  input_params.empty_kv_cache = empty_kv_cache;
   input_params.num_sequences = num_sequences;
   input_params.kv_max_seq_len = max_seq_len;
   input_params.q_max_seq_len = q_max_seq_len;
@@ -244,7 +243,7 @@ void Batch::process_model_output(const ModelOutput& model_output) {
       CHECK_LT(output_idx, num_seqs);
 
       // add the next token to sequence
-      const int32_t next_token_id = next_tokens[output_idx++].item().toInt();
+      const int32_t next_token_id = next_tokens[output_idx++].item<int32_t>();
       seq->append_new_token_id(next_token_id);
     }
     CHECK_EQ(output_idx, num_seqs);

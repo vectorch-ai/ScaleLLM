@@ -37,6 +37,7 @@ TEST(BatchTest, Basic) {
 
   SamplingParameter sampling_param;
   StoppingCriteria stopping_criteria;
+  stopping_criteria.max_tokens = 20;
 
   // prepare sequences
   // sequence in prefill phase
@@ -73,9 +74,9 @@ TEST(BatchTest, Basic) {
   ModelInput model_input = batch.prepare_model_input();
 
   // check kv cache pos in sequence
-  EXPECT_EQ(seq1.num_tokens_in_kv_cache(), 9);
-  EXPECT_EQ(seq2.num_tokens_in_kv_cache(), 8);
-  EXPECT_EQ(seq3.num_tokens_in_kv_cache(), 16);
+  EXPECT_EQ(seq1.kv_cache_size(), 9);
+  EXPECT_EQ(seq2.kv_cache_size(), 8);
+  EXPECT_EQ(seq3.kv_cache_size(), 16);
 
   // clang-format off
   // check the flatten token ids
@@ -94,7 +95,7 @@ TEST(BatchTest, Basic) {
 
   // check the input parameters
   const InputParameters& input_params = model_input.input_params;
-  EXPECT_FALSE(input_params.all_prefill_sequences);
+  EXPECT_FALSE(input_params.empty_kv_cache);
   EXPECT_EQ(input_params.num_sequences, 3);
   EXPECT_EQ(input_params.q_max_seq_len, 9);
   EXPECT_EQ(input_params.kv_max_seq_len, 16);
