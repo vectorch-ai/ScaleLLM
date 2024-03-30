@@ -81,35 +81,37 @@ void Sequence::append_new_token_id(int32_t next_token_id) {
 
 void Sequence::validate_token_ids(const Slice<int32_t>& accpeted_token_ids) {
   const size_t len = accpeted_token_ids.size();
-  CHECK_GE(num_tokens_, len) << "accepted tokens exceed the sequence length";
+  CHECK_GT(num_tokens_, len) << "accepted tokens exceed the sequence length";
 
   // validate the accepted tokens with draft tokens, stop at the first mismatch
-  const size_t base_idx = num_tokens_ - len;
+  const size_t start_idx = num_tokens_ - len;
   size_t i = 0;
   for (; i < len; ++i) {
-    const int32_t token_id = accpeted_token_ids[i];
+    const int32_t draft_token_id = token_ids_[start_idx + i];
+    const int32_t target_token_id = accpeted_token_ids[i];
     // stop at the first mismatch
-    if (token_id != token_ids_[base_idx + i]) {
+    if (target_token_id != draft_token_id) {
       // overwrite the token id with the accepted token id
-      token_ids_[base_idx + i] = token_id;
-      ++token_to_count_map_[token_id];
-
+      token_ids_[start_idx + i] = target_token_id;
+      // update the token count
+      --token_to_count_map_[draft_token_id];
+      ++token_to_count_map_[target_token_id];
       // update num tokens
-      num_tokens_ = base_idx + i + 1;
+      num_tokens_ = start_idx + i + 1;
       break;
     }
 
     // check if sequence is finished
-    if (check_finished(base_idx + i)) {
+    if (check_finished(start_idx + i)) {
       // update num tokens, including the last token
-      num_tokens_ = base_idx + i + 1;
+      num_tokens_ = start_idx + i + 1;
       break;
     }
   }
 
-  // adjust the token count for mismatched tokens
-  for (; i < len; ++i) {
-    const auto token_id = token_ids_[base_idx + i];
+  // adjust the token count for remaining discarded tokens
+  for (i += 1; i < len; ++i) {
+    const auto token_id = token_ids_[start_idx + i];
     --token_to_count_map_[token_id];
   }
 
