@@ -7,7 +7,8 @@ namespace llm {
 
 class RejectionSampler final {
  public:
-  RejectionSampler(const std::vector<bool>& do_sample, const torch::TensorOptions& options);
+  RejectionSampler(const std::vector<bool>& do_sample,
+                   const torch::TensorOptions& options);
 
   // operator() allows us to use the module as a function.
   template <typename... Args>
