@@ -16,7 +16,7 @@ TEST(RejectionSamplerTest, Greedy) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   const auto options = torch::dtype(dtype).device(device);
-  RejectionSampler sampler({false, false});
+  RejectionSampler sampler({false, false}, options);
 
   int64_t batch_size = 2;
   int64_t n_speculative_tokens = 3;
@@ -51,7 +51,7 @@ TEST(RejectionSamplerTest, Random) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   const auto options = torch::dtype(dtype).device(device);
-  RejectionSampler sampler({true, true});
+  RejectionSampler sampler({true, false}, options);
 
   int64_t batch_size = 2;
   int64_t n_speculative_tokens = 3;
@@ -75,6 +75,11 @@ TEST(RejectionSamplerTest, Random) {
 
   auto output =
       sampler(draft_token_ids, draft_probs, target_probs, bonus_token_ids);
+
+  auto target_token_ids = torch::argmax(target_probs, /*dim=*/-1);
+  auto accepted_token_ids =
+      torch::cat({target_token_ids, bonus_token_ids}, /*dim=*/-1);
+  EXPECT_TRUE(torch::allclose(output[1], accepted_token_ids[1]));
 
   // TODO: add test for random rejection sampling
 }

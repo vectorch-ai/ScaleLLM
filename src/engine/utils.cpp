@@ -32,7 +32,7 @@ void Utils::prepare_capture_inputs(int64_t max_seq_len,
   torch::Tensor cu_seq_lens = torch::tensor(cu_lens, torch::kInt32);
 
   InputParameters params;
-  input_params->all_prefill_sequences = false;
+  input_params->empty_kv_cache = false;
   input_params->num_sequences = batch_size;
   input_params->q_max_seq_len = 1;
   input_params->kv_max_seq_len = max_seq_len;
@@ -67,7 +67,7 @@ void Utils::prepare_profile_inputs(int64_t max_num_tokens,
   torch::Tensor cu_seq_lens = torch::tensor(cu_lens, torch::kInt32);
 
   InputParameters params;
-  input_params->all_prefill_sequences = true;
+  input_params->empty_kv_cache = true;
   input_params->num_sequences = 1;
   input_params->q_max_seq_len = max_seq_len;
   input_params->kv_max_seq_len = max_seq_len;

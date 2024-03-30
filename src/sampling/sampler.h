@@ -3,14 +3,14 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include <functional>
+#include "parameters.h"
 
-#include "sampling/parameters.h"
 namespace llm {
 
 class Sampler final {
  public:
-  Sampler(const std::vector<bool>& do_sample);
+  Sampler(const std::vector<bool>& do_sample,
+          const torch::TensorOptions& options);
 
   // operator() allows us to use the module as a function.
   template <typename... Args>
@@ -29,16 +29,9 @@ class Sampler final {
   static torch::Tensor random_sample(const torch::Tensor& probs);
 
  private:
-  // sample from the distribution
-  torch::Tensor sample(const torch::Tensor& probs) const;
-
-  std::vector<bool> do_sample_;
+  torch::Tensor do_sample_;
   bool all_random_sample_ = true;
   bool all_greedy_sample_ = true;
-
-  // apply top_p then top_k
-  torch::Tensor top_p_;
-  torch::Tensor top_k_;
 };
 
 }  // namespace llm

@@ -3,15 +3,11 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include <functional>
-#include <optional>
-
-#include "sampling/parameters.h"
 namespace llm {
 
 class RejectionSampler final {
  public:
-  RejectionSampler(const std::vector<bool>& do_sample);
+  RejectionSampler(const std::vector<bool>& do_sample, const torch::TensorOptions& options);
 
   // operator() allows us to use the module as a function.
   template <typename... Args>
@@ -33,11 +29,6 @@ class RejectionSampler final {
                         const torch::Tensor& bonus_token_ids) const;
 
  private:
-  // rejection sample one sequence by one sequence
-  torch::Tensor rejection_sample(const torch::Tensor& draft_token_ids,
-                                 const torch::Tensor& draft_probs,
-                                 const torch::Tensor& target_probs) const;
-
   // batch random rejection sample
   static torch::Tensor batch_random_sample(const torch::Tensor& draft_token_ids,
                                            const torch::Tensor& draft_probs,
@@ -48,7 +39,7 @@ class RejectionSampler final {
                                            const torch::Tensor& draft_probs,
                                            const torch::Tensor& target_probs);
 
-  std::vector<bool> do_sample_;
+  torch::Tensor do_sample_;
   bool all_random_sample_ = true;
   bool all_greedy_sample_ = true;
 };

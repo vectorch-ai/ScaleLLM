@@ -302,7 +302,7 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
   }
 
   // number of tokens in the kv cache, which are already processed
-  const size_t num_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
+  const size_t num_tokens_in_kv_cache = sequence->kv_cache_size();
   // the number tokens can be allocated for the sequence, honoring the
   // token budget.
   size_t num_tokens =

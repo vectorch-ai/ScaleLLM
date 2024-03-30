@@ -6,50 +6,49 @@
 #include "sampling/parameters.h"
 namespace llm {
 
-Sampler::Sampler(const std::vector<bool>& do_sample) : do_sample_(do_sample) {
-  for (bool sample : do_sample_) {
+Sampler::Sampler(const std::vector<bool>& do_sample,
+                 const torch::TensorOptions& options) {
+  CHECK(!do_sample.empty());
+
+  std::vector<int32_t> do_sample_int;
+  do_sample_int.reserve(do_sample.size());
+  for (bool sample : do_sample) {
     if (sample) {
       all_greedy_sample_ = false;
+      do_sample_int.push_back(1);
     } else {
       all_random_sample_ = false;
+      do_sample_int.push_back(0);
     }
   }
-}
-
-torch::Tensor Sampler::sample(const torch::Tensor& probs) const {
-  const auto num_seqs = probs.size(/*dim=*/0);
-  auto selected = torch::empty(
-      {num_seqs, 1}, torch::dtype(torch::kInt64).device(probs.device()));
-  // sample sequence one by one
-  for (int64_t i = 0; i < num_seqs; ++i) {
-    if (do_sample_[i]) {
-      selected[i] = random_sample(probs[i]);
-    } else {
-      selected[i] = greedy_sample(probs[i]);
-    }
-  }
-  return selected;
+  // [batch_size]
+  do_sample_ = torch::tensor(do_sample_int, options.dtype(torch::kBool));
 }
 
 SampleOutput Sampler::forward(const torch::Tensor& logits) const {
-  const auto num_seqs = logits.size(0);
-  CHECK_EQ(num_seqs, static_cast<int64_t>(do_sample_.size()));
+  // same batch size
+  CHECK_EQ(logits.size(0), do_sample_.size(0));
 
   // use float32 for probabilities and log probabilities
   const auto probs =
       torch::softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
-  const auto logprobs =
-      torch::log_softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
+
+  // TODO: add logprobs to output
+  // const auto logprobs =
+  //     torch::log_softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
 
   SampleOutput output;
-  if (all_greedy_sample_) {
-    output.next_tokens = greedy_sample(probs);
-  } else if (all_random_sample_) {
+  if (all_random_sample_) {
     output.next_tokens = random_sample(probs);
+  } else if (all_greedy_sample_) {
+    output.next_tokens = greedy_sample(probs);
   } else {
-    output.next_tokens = sample(probs);
+    // mixed sample, sample both then choose based on do_sample_
+    auto greedy = greedy_sample(probs);
+    auto random = random_sample(probs);
+    output.next_tokens = torch::where(do_sample_, random, greedy);
   }
-  // TODO: add logprobs to output
+
   return output;
 }
 

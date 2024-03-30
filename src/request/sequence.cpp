@@ -46,6 +46,7 @@ Sequence::Sequence(const std::string_view& prompt,
       id_(next_id_.fetch_add(1)),
       sampling_param_(sampling_param),
       stopping_criteria_(stopping_criteria),
+      num_kv_cache_tokens_(static_cast<size_t>(EngineType::COUNT), 0),
       on_delta_(on_delta) {
   CHECK(!prompt_token_ids.empty()) << "empty prompt token ids";
 
@@ -62,9 +63,6 @@ Sequence::Sequence(const std::string_view& prompt,
   // prompt.
   prefix_offset_ = echo ? 0 : num_prompt_tokens_;
   output_offset_ = echo ? 0 : num_prompt_tokens_;
-
-  kv_cache_pos_[0] = 0;
-  kv_cache_pos_[1] = 0;
 }
 
 void Sequence::append_new_token_id(int32_t next_token_id) {
@@ -116,17 +114,10 @@ void Sequence::validate_token_ids(const Slice<int32_t>& accpeted_token_ids) {
   }
 
   // adjust kv cache position
-  kv_cache_pos_[0] = std::min(kv_cache_pos_[0], num_tokens_ - 1);
-  kv_cache_pos_[1] = std::min(kv_cache_pos_[1], num_tokens_ - 1);
+  // num_tokens must be at least one more than num_kv_cache_tokens
+  num_kv_cache_tokens_[0] = std::min(num_kv_cache_tokens_[0], num_tokens_ - 1);
+  num_kv_cache_tokens_[1] = std::min(num_kv_cache_tokens_[1], num_tokens_ - 1);
 }
-
-// get token ids in kv cache
-Slice<int32_t> Sequence::tokens_in_kv_cache() const {
-  return {token_ids_, kv_cache_pos()};
-}
-
-// get the number of tokens in the kvcache
-size_t Sequence::num_tokens_in_kv_cache() const { return kv_cache_pos(); }
 
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(size_t end,
@@ -174,29 +165,29 @@ void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
   }
   // update the kv cache position
   const size_t block_size = shared_blocks[0].size();
-  size_t kv_cache_pos = shared_blocks.size() * block_size;
+  size_t num_shared_tokens = shared_blocks.size() * block_size;
   blocks_.insert(blocks_.end(), shared_blocks.begin(), shared_blocks.end());
 
-  // It is possible that kv_cache_pos == num_prompt_tokens_, indicating that
-  // the exact same prompt has been received again. In this case, it becomes
-  // necessary to adjust the kv cache position to the previous token, allowing
-  // the model proceed. While the shared blocks should be immutable ideally, but
-  // it remains safe to regenerate the kv cache in this context, given the
-  // utiliztion of the exact same token.
-  if (kv_cache_pos == num_prompt_tokens_) {
-    kv_cache_pos -= 1;
+  // It is possible that num_shared_tokens == num_prompt_tokens_, indicating
+  // that the exact same prompt has been received again. In this case, it
+  // becomes necessary to adjust the kv cache position to the previous token,
+  // allowing the model proceed. While the shared blocks should be immutable
+  // ideally, but it remains safe to regenerate the kv cache in this context,
+  // given the utiliztion of the exact same token.
+  if (num_shared_tokens == num_prompt_tokens_) {
+    num_shared_tokens -= 1;
   }
-  CHECK(kv_cache_pos < num_prompt_tokens_);
+  CHECK(num_shared_tokens < num_prompt_tokens_);
   // update the kv cache position for both engines
-  kv_cache_pos_[0] = kv_cache_pos;
-  kv_cache_pos_[1] = kv_cache_pos;
+  num_kv_cache_tokens_[0] = num_shared_tokens;
+  num_kv_cache_tokens_[1] = num_shared_tokens;
 }
 
 // release all cache blocks
 void Sequence::release_blocks() {
   // reset the kv cache position to 0
-  kv_cache_pos_[0] = 0;
-  kv_cache_pos_[1] = 0;
+  num_kv_cache_tokens_[0] = 0;
+  num_kv_cache_tokens_[1] = 0;
   blocks_.clear();
 }
 
@@ -223,20 +214,6 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
     slots.push_back(block_id * block_size + block_offset);
   }
   return slots;
-}
-
-void Sequence::commit_kv_cache(size_t size) {
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-constant-array-index)
-  size_t& kv_cache_pos = kv_cache_pos_[engine_type_];
-  CHECK(kv_cache_pos + size <= kv_cache_capacity());
-  kv_cache_pos += size;
-}
-
-void Sequence::rewind_kv_cache(size_t size) {
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-constant-array-index)
-  size_t& kv_cache_pos = kv_cache_pos_[engine_type_];
-  CHECK(kv_cache_pos >= size);
-  kv_cache_pos -= size;
 }
 
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {

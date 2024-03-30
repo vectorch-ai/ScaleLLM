@@ -66,8 +66,7 @@ bool Request::should_expand_sequences() const {
     CHECK(!sequences.empty());
     const auto& first_sequence = sequences.front();
     // if all prompt tokens are in kv cache, then expand
-    return first_sequence.num_tokens_in_kv_cache() >=
-           first_sequence.num_prompt_tokens();
+    return first_sequence.kv_cache_size() >= first_sequence.num_prompt_tokens();
   }
   return false;
 }
