@@ -287,7 +287,9 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
 bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
                                               size_t token_budget,
                                               size_t* actual_tokens) {
-  CHECK(token_budget > 0);
+  const size_t speculative_steps = 0;
+  CHECK_GT(token_budget, speculative_steps);
+
   // need to allocate shared blocks explicitly to avoid kv_cache_pos change
   if (sequence->num_blocks() == 0) {
     block_manager_->allocate_shared_blocks_for(sequence);
@@ -297,9 +299,26 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
   const size_t num_tokens_in_kv_cache = sequence->num_tokens_in_kv_cache();
   // the number tokens can be allocated for the sequence, honoring the
   // token budget.
-  const size_t num_tokens =
+  size_t num_tokens =
       std::min(num_tokens_in_kv_cache + token_budget, sequence->num_tokens());
-  CHECK(num_tokens >= num_tokens_in_kv_cache);
+
+  // we need to process prefill and decode phases seperately to guarantee that
+  // one sequence either in prefill or decode phase in one step to allign
+  // speculative decoding.
+  if (num_tokens >= sequence->num_prompt_tokens()) {
+    // check if over budget
+    if (num_tokens + speculative_steps >
+        num_tokens_in_kv_cache + token_budget) {
+      // over budget, force to process the prefill phase only
+      num_tokens = sequence->num_prompt_tokens() - 1;
+    } else {
+      // decode phase
+      num_tokens += speculative_steps;
+    }
+  }
+
+  // make sure the sequence proceeds
+  CHECK(num_tokens > num_tokens_in_kv_cache);
 
   // the actual allocated tokens is the difference between the total
   // number of tokens and the number of tokens already processed

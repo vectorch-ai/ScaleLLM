@@ -52,7 +52,7 @@ class Sequence final {
            OnDelta on_delta);
 
   Sequence(const std::string_view& prompt,
-           const std::vector<int32_t>& token_ids,
+           const std::vector<int32_t>& prompt_token_ids,
            const SamplingParameter& sampling_param,
            const StoppingCriteria& stopping_criteria,
            bool echo,
@@ -62,7 +62,7 @@ class Sequence final {
   int64_t id() const { return id_; }
 
   // get token ids
-  Slice<int32_t> token_ids() const { return token_ids_; }
+  Slice<int32_t> token_ids() const { return {token_ids_, num_tokens_}; }
 
   // get token ids to count map
   const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
@@ -70,7 +70,7 @@ class Sequence final {
   }
 
   // get the total number of tokens
-  size_t num_tokens() const { return token_ids_.size(); }
+  size_t num_tokens() const { return num_tokens_; }
 
   // get the number of prompt tokens
   size_t num_prompt_tokens() const { return num_prompt_tokens_; }
@@ -96,6 +96,9 @@ class Sequence final {
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
   void append_new_token_id(int32_t next_token_id);
+
+  // validate accepted tokens with draft tokens (tokens at the end of the sequence)
+  void validate_token_ids(const Slice<int32_t>& accpeted_token_ids);
 
   // add new cache blocks
   void append_blocks(const std::vector<Block>& new_blocks);
@@ -162,7 +165,7 @@ class Sequence final {
 
  private:
   // force recheck if the sequence is finished based on the stopping criteria.
-  bool check_finished() const;
+  bool check_finished(size_t last_token_idx) const;
 
   size_t kv_cache_pos() const { return kv_cache_pos_[engine_type_]; }
 
@@ -180,6 +183,9 @@ class Sequence final {
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
+
+  // number of tokens in the sequence
+  size_t num_tokens_ = 0;
 
   // the count of each token id
   std::unordered_map<int32_t, int32_t> token_to_count_map_;

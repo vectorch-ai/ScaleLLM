@@ -214,8 +214,9 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   }
 
   auto sample_idxes = safe_to(sampling_params.sample_idxes, device_);
-  if (logits.defined() && sample_idxes.defined()) {
-    auto sampler = std::make_unique<Sampler>(sampling_params);
+  if (sample_idxes.defined()) {
+    CHECK(logits.defined());
+    auto sampler = std::make_unique<Sampler>(sampling_params.do_sample);
     // select sample logits
     auto sample_logits = logits.index_select(/*dim=*/0, sample_idxes);
     auto sample_output = sampler->forward(sample_logits);

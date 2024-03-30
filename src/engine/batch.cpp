@@ -244,7 +244,7 @@ void Batch::process_model_output(const ModelOutput& model_output) {
       CHECK_LT(output_idx, num_seqs);
 
       // add the next token to sequence
-      const int32_t next_token_id = next_tokens[output_idx++].item().toInt();
+      const int32_t next_token_id = next_tokens[output_idx++].item<int32_t>();
       seq->append_new_token_id(next_token_id);
     }
     CHECK_EQ(output_idx, num_seqs);

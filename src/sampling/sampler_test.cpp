@@ -5,7 +5,6 @@
 #include <c10/core/TensorImpl.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <kernels/sampling/sampling_kernels.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
@@ -16,9 +15,7 @@ TEST(SamplerTest, Greedy) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   const auto options = torch::dtype(dtype).device(device);
-  SamplingParameters params;
-  params.do_sample = {false, false};
-  Sampler sampler(params);
+  Sampler sampler({false, false});
 
   int64_t batch_size = 2;
   int64_t vocab_size = 32000;

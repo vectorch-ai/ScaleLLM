@@ -6,12 +6,13 @@
 #include "sampling/parameters.h"
 namespace llm {
 
-Sampler::Sampler(const SamplingParameters& params) {
-  sample_funcs_.reserve(params.do_sample.size());
-  for (bool sample : params.do_sample) {
-    // choose right sample function for each sequence
-    auto func = sample ? random_sample : greedy_sample;
-    sample_funcs_.emplace_back(func);
+Sampler::Sampler(const std::vector<bool>& do_sample) : do_sample_(do_sample) {
+  for (bool sample : do_sample_) {
+    if (sample) {
+      all_greedy_sample_ = false;
+    } else {
+      all_random_sample_ = false;
+    }
   }
 }
 
@@ -19,18 +20,20 @@ torch::Tensor Sampler::sample(const torch::Tensor& probs) const {
   const auto num_seqs = probs.size(/*dim=*/0);
   auto selected = torch::empty(
       {num_seqs, 1}, torch::dtype(torch::kInt64).device(probs.device()));
-  // sample logits for each sequence
+  // sample sequence one by one
   for (int64_t i = 0; i < num_seqs; ++i) {
-    // Sample from the adjusted distribution
-    auto sample = sample_funcs_[i](probs[i]);
-    selected.index_put_({i}, sample);
+    if (do_sample_[i]) {
+      selected[i] = random_sample(probs[i]);
+    } else {
+      selected[i] = greedy_sample(probs[i]);
+    }
   }
   return selected;
 }
 
 SampleOutput Sampler::forward(const torch::Tensor& logits) const {
   const auto num_seqs = logits.size(0);
-  CHECK_EQ(num_seqs, static_cast<int64_t>(sample_funcs_.size()));
+  CHECK_EQ(num_seqs, static_cast<int64_t>(do_sample_.size()));
 
   // use float32 for probabilities and log probabilities
   const auto probs =
@@ -39,7 +42,13 @@ SampleOutput Sampler::forward(const torch::Tensor& logits) const {
       torch::log_softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
 
   SampleOutput output;
-  output.next_tokens = sample(probs);
+  if (all_greedy_sample_) {
+    output.next_tokens = greedy_sample(probs);
+  } else if (all_random_sample_) {
+    output.next_tokens = random_sample(probs);
+  } else {
+    output.next_tokens = sample(probs);
+  }
   // TODO: add logprobs to output
   return output;
 }
