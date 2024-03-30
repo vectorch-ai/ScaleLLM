@@ -14,6 +14,7 @@
 
 DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
 DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
+DEFINE_int32(num_speculative_steps, 0, "number of speculative steps");
 
 DECLARE_bool(enable_prefix_cache);
 
@@ -118,19 +119,24 @@ Batch ContinuousScheduler::build_sequence_batch() {
   };
   std::vector<SequenceData> new_batch;
 
+  // at least one sequence per batch
+  const size_t max_seqs_per_batch = std::max(FLAGS_max_seqs_per_batch, 1);
+
   // average number of token budget for each sequence.
   const size_t avg_sequence_token_budget =
-      std::max(FLAGS_max_tokens_per_batch / FLAGS_max_seqs_per_batch, 1);
+      std::max<size_t>(FLAGS_max_tokens_per_batch / max_seqs_per_batch,
+                       1 + FLAGS_num_speculative_steps);
 
   // remaining budget for the current batch
-  // at least one token per sequence
+  // at least avg_sequence_token_budget token per sequence
   size_t remaining_token_budget =
-      std::max(FLAGS_max_tokens_per_batch, FLAGS_max_seqs_per_batch);
-  // at least one sequence per batch
-  size_t remaining_seq_budget = std::max(FLAGS_max_seqs_per_batch, 1);
+      std::max<size_t>(FLAGS_max_tokens_per_batch,
+                       max_seqs_per_batch * avg_sequence_token_budget);
+  size_t remaining_seq_budget = max_seqs_per_batch;
 
   // schedule the requests in the priority queue until budgets are exhausted
-  while (!priority_queue_.empty() && remaining_token_budget > 0 &&
+  while (!priority_queue_.empty() &&
+         remaining_token_budget > FLAGS_num_speculative_steps &&
          remaining_seq_budget > 0) {
     Request* request = priority_queue_.top();
     std::vector<SequenceData> candidates;
@@ -145,7 +151,8 @@ Batch ContinuousScheduler::build_sequence_batch() {
         continue;
       }
       // no budget left
-      if (allocated_tokens >= remaining_token_budget ||
+      if (allocated_tokens + FLAGS_num_speculative_steps >=
+              remaining_token_budget ||
           allocated_seqs >= remaining_seq_budget) {
         break;
       }
@@ -287,8 +294,7 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
 bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
                                               size_t token_budget,
                                               size_t* actual_tokens) {
-  const size_t speculative_steps = 0;
-  CHECK_GT(token_budget, speculative_steps);
+  CHECK_GT(token_budget, FLAGS_num_speculative_steps);
 
   // need to allocate shared blocks explicitly to avoid kv_cache_pos change
   if (sequence->num_blocks() == 0) {
@@ -302,18 +308,17 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
   size_t num_tokens =
       std::min(num_tokens_in_kv_cache + token_budget, sequence->num_tokens());
 
-  // we need to process prefill and decode phases seperately to guarantee that
-  // one sequence either in prefill or decode phase in one step to allign
-  // speculative decoding.
+  // make sure sequence either in prefill or decode phase to allign
+  // speculative decoding progress
   if (num_tokens >= sequence->num_prompt_tokens()) {
     // check if over budget
-    if (num_tokens + speculative_steps >
+    if (num_tokens + FLAGS_num_speculative_steps >
         num_tokens_in_kv_cache + token_budget) {
       // over budget, force to process the prefill phase only
       num_tokens = sequence->num_prompt_tokens() - 1;
     } else {
       // decode phase
-      num_tokens += speculative_steps;
+      num_tokens += FLAGS_num_speculative_steps;
     }
   }
 

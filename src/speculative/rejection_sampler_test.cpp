@@ -24,13 +24,19 @@ TEST(RejectionSamplerTest, Greedy) {
   int64_t n_bonus_tokens = 1;
 
   const auto draft_token_ids =
-      torch::randint(0, vocab_size, {batch_size, n_speculative_tokens}, device);
+      torch::randint(0,
+                     vocab_size,
+                     {batch_size, n_speculative_tokens},
+                     torch::dtype(torch::kInt64).device(device));
   const auto draft_probs =
       torch::randn({batch_size, n_speculative_tokens, vocab_size}, options);
   const auto target_probs =
       torch::randn({batch_size, n_speculative_tokens, vocab_size}, options);
   const auto bonus_token_ids =
-      torch::randint(0, vocab_size, {batch_size, n_bonus_tokens}, device);
+      torch::randint(0,
+                     vocab_size,
+                     {batch_size, n_bonus_tokens},
+                     torch::dtype(torch::kInt64).device(device));
 
   auto output =
       sampler(draft_token_ids, draft_probs, target_probs, bonus_token_ids);
@@ -53,13 +59,19 @@ TEST(RejectionSamplerTest, Random) {
   int64_t n_bonus_tokens = 1;
 
   const auto draft_token_ids =
-      torch::randint(0, vocab_size, {batch_size, n_speculative_tokens}, device);
+      torch::randint(0,
+                     vocab_size,
+                     {batch_size, n_speculative_tokens},
+                     torch::dtype(torch::kInt64).device(device));
   const auto draft_probs =
       torch::randn({batch_size, n_speculative_tokens, vocab_size}, options);
   const auto target_probs =
       torch::randn({batch_size, n_speculative_tokens, vocab_size}, options);
   const auto bonus_token_ids =
-      torch::randint(0, vocab_size, {batch_size, n_bonus_tokens}, device);
+      torch::randint(0,
+                     vocab_size,
+                     {batch_size, n_bonus_tokens},
+                     torch::dtype(torch::kInt64).device(device));
 
   auto output =
       sampler(draft_token_ids, draft_probs, target_probs, bonus_token_ids);

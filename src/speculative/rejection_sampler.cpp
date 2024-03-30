@@ -4,7 +4,6 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "sampling/parameters.h"
 #include "sampling/sampler.h"
 
 namespace llm {
