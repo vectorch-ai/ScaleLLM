@@ -115,8 +115,9 @@ void Sequence::validate_token_ids(const Slice<int32_t>& accpeted_token_ids) {
 
   // adjust kv cache position
   // num_tokens must be at least one more than num_kv_cache_tokens
-  num_kv_cache_tokens_[0] = std::min(num_kv_cache_tokens_[0], num_tokens_ - 1);
-  num_kv_cache_tokens_[1] = std::min(num_kv_cache_tokens_[1], num_tokens_ - 1);
+  for (auto& num_kv_cache_tokens : num_kv_cache_tokens_) {
+    num_kv_cache_tokens = std::min(num_kv_cache_tokens, num_tokens_ - 1);
+  }
 }
 
 // decode the sequence to get delta text using the tokenizer
@@ -178,16 +179,16 @@ void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
     num_shared_tokens -= 1;
   }
   CHECK(num_shared_tokens < num_prompt_tokens_);
-  // update the kv cache position for both engines
-  num_kv_cache_tokens_[0] = num_shared_tokens;
-  num_kv_cache_tokens_[1] = num_shared_tokens;
+  // update the kv cache position
+  std::fill(num_kv_cache_tokens_.begin(),
+            num_kv_cache_tokens_.end(),
+            num_shared_tokens);
 }
 
 // release all cache blocks
 void Sequence::release_blocks() {
   // reset the kv cache position to 0
-  num_kv_cache_tokens_[0] = 0;
-  num_kv_cache_tokens_[1] = 0;
+  std::fill(num_kv_cache_tokens_.begin(), num_kv_cache_tokens_.end(), 0);
   blocks_.clear();
 }
 
