@@ -83,15 +83,16 @@ torch::Tensor RejectionSampler::batch_random_sample(
 
   auto uniform_rand =
       torch::rand({batch_size, n_tokens}, draft_probs.options());
+  // std::min(probs, 1.0) element-wise
   auto acceptance_probs =
       (selected_target_probs / selected_draft_probs).clamp_max_(1.0f);
   auto accepted = uniform_rand < acceptance_probs;
 
   // construct recovered probs
   const auto eps = 1e-6f;
-  auto recovered_probs = target_probs - draft_probs;
-  auto recovered_probs_sum =
-      recovered_probs.sum(-1, /*keepdim=*/true).clamp_min_(eps);
+  // std::max(probs, 0) element-wise
+  auto recovered_probs = (target_probs - draft_probs).clamp_min_(eps);
+  auto recovered_probs_sum = recovered_probs.sum(-1, /*keepdim=*/true);
   recovered_probs.div_(recovered_probs_sum);
   // resample on the recovered probs
   auto recovered_token_ids = Sampler::random_sample(recovered_probs);
