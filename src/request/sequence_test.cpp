@@ -172,6 +172,7 @@ TEST(SequenceTest, DiscardTokenIds) {
   const int32_t max_tokens = 100;
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   StoppingCriteria stopping_criteria;
+  stopping_criteria.max_tokens = max_tokens;
   SamplingParameter sampling_param;
 
   Sequence sequence(prompt_tokens,

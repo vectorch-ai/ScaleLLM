@@ -68,6 +68,8 @@ Sequence::Sequence(const std::string_view& prompt,
 }
 
 void Sequence::append_new_token_id(int32_t next_token_id) {
+  CHECK(num_tokens_ < token_ids_.size())
+      << "exceed the maximum number of tokens in the sequence";
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
   CHECK(!is_prefill_stage()) << "cannot append token to a prefill sequence";
 

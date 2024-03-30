@@ -37,6 +37,7 @@ TEST(BatchTest, Basic) {
 
   SamplingParameter sampling_param;
   StoppingCriteria stopping_criteria;
+  stopping_criteria.max_tokens = 20;
 
   // prepare sequences
   // sequence in prefill phase

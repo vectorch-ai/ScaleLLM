@@ -21,8 +21,10 @@ TEST(SamplerTest, Greedy) {
   int64_t vocab_size = 32000;
   const auto logits = torch::randn({batch_size, vocab_size}, options);
   auto output = sampler(logits);
-  EXPECT_TRUE(torch::allclose(output.next_tokens,
-                              logits.argmax(/*dim=*/-1, /*keepdim=*/true)));
+
+  const auto probs =
+      torch::softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
+  EXPECT_TRUE(torch::allclose(output.next_tokens, probs.argmax(/*dim=*/-1)));
 }
 
 }  // namespace llm
