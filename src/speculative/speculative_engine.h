@@ -22,32 +22,43 @@ class SpeculativeEngine : public Engine {
             const std::string& draft_model_weights_path);
 
   // step the engine forward by one step with the batch
-  void execute_model(Batch& batch) override;
+  // N.B. the model output is the output of the target model.
+  ModelOutput execute_model(Batch& batch) override;
 
-  // validate multiple speculative tokens when use speculative decoding
-  void validate(Batch& batch) override;
+  std::unique_ptr<Tokenizer> tokenizer() const override {
+    return engine_->tokenizer();
+  }
 
-  std::unique_ptr<Tokenizer> tokenizer() const override;
+  BlockManager* block_manager() const override {
+    return engine_->block_manager();
+  }
 
-  BlockManager* block_manager() const override;
+  const ModelArgs& model_args() const override { return engine_->model_args(); }
 
-  const ModelArgs& model_args() const override;
-
-  const QuantArgs& quant_args() const override;
-
-  const TokenizerArgs& tokenizer_args() const override;
+  const TokenizerArgs& tokenizer_args() const override {
+    return engine_->tokenizer_args();
+  }
 
  private:
   bool init_model(const std::string& model_weights_path,
                   const std::string& draft_model_weights_path);
 
-  bool init_kv_cache(int64_t cache_size_in_bytes);
+  bool init_kv_cache();
+
+  int64_t calculate_kv_cache_blocks(int64_t cache_size_in_bytes) const;
+
+  void validate(Batch& batch,
+                const std::vector<ModelOutput>& draft_outputs,
+                const ModelOutput& target_output);
 
   // engine
   std::unique_ptr<LLMEngine> engine_;
 
   // draft engine
   std::unique_ptr<LLMEngine> draft_engine_;
+
+  // whether target and draft engine are sharing the same device
+  bool share_device_ = false;
 };
 
 }  // namespace llm

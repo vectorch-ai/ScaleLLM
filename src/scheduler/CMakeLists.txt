@@ -19,6 +19,7 @@ cc_library(
   DEPS
     :request
     :engine
+    :speculative
     glog::glog
     Folly::folly
     absl::time

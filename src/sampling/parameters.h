@@ -1,5 +1,6 @@
 #pragma once
 #include <torch/torch.h>
+
 #include <cstdint>
 #include <vector>
 
@@ -91,9 +92,12 @@ struct SamplingParameters {
 struct SampleOutput {
   // [num_seq] LongTensor
   torch::Tensor next_tokens;
-  
+
   // [num_seq] FloatTensor
-  // torch::Tensor next_logprobs;
+  torch::Tensor probs;
+
+  // [num_seq] FloatTensor
+  torch::Tensor logprobs;
 };
 
 }  // namespace llm

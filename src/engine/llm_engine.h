@@ -33,13 +33,8 @@ class LLMEngine : public Engine {
 
   virtual ~LLMEngine() = default;
 
-  virtual bool init(const std::string& model_weights_path);
-
   // step the engine forward by one step with the batch
-  void execute_model(Batch& batch) override;
-
-  // validate multiple speculative tokens when use speculative decoding
-  void validate(Batch& batch) override;
+  ModelOutput execute_model(Batch& batch) override;
 
   std::unique_ptr<Tokenizer> tokenizer() const override {
     return tokenizer_->clone();
@@ -49,19 +44,27 @@ class LLMEngine : public Engine {
 
   const ModelArgs& model_args() const override { return args_; }
 
-  const QuantArgs& quant_args() const override { return quant_args_; }
-
   const TokenizerArgs& tokenizer_args() const override {
     return tokenizer_args_;
   }
 
+  // initialize the engine with the given model weights
+  bool init(const std::string& model_weights_path);
+  
+  const QuantArgs& quant_args() const { return quant_args_; }
+
   bool init_model(const std::string& model_weights_path);
 
-  bool init_kv_cache(int64_t cache_size_in_bytes);
+  bool init_kv_cache(int64_t n_blocks);
 
   // returns the memory size for the kv cache
   int64_t profile_memory_for_kv_cache();
 
+  // returns the memory size in bytes for each kv cache slot
+  int64_t kv_cache_slot_size_in_bytes() const;
+
+  // returns the number of kv cache blocks from the given cache size in bytes
+  int64_t calculate_kv_cache_blocks(int64_t cache_size_in_bytes) const;
  private:
   bool warmup_model();
 
@@ -91,6 +94,10 @@ class LLMEngine : public Engine {
 
   // a list of workers, with each worker handling a partial of model
   std::vector<std::unique_ptr<Worker>> workers_;
+
+  // config for kv cache
+  int64_t n_local_kv_heads_ = 0;
+  int64_t head_dim_ = 0;
 };
 
 }  // namespace llm

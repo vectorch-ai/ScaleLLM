@@ -79,7 +79,7 @@ void Sequence::append_new_token_id(int32_t next_token_id) {
   finish_status_invalidated_ = true;
 }
 
-void Sequence::validate_token_ids(const Slice<int32_t>& accpeted_token_ids) {
+void Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
   const size_t len = accpeted_token_ids.size();
   CHECK_GT(num_tokens_, len) << "accepted tokens exceed the sequence length";
 
@@ -88,7 +88,7 @@ void Sequence::validate_token_ids(const Slice<int32_t>& accpeted_token_ids) {
   size_t i = 0;
   for (; i < len; ++i) {
     const int32_t draft_token_id = token_ids_[start_idx + i];
-    const int32_t target_token_id = accpeted_token_ids[i];
+    const int32_t target_token_id = static_cast<int32_t>(accpeted_token_ids[i]);
     // stop at the first mismatch
     if (target_token_id != draft_token_id) {
       // overwrite the token id with the accepted token id
