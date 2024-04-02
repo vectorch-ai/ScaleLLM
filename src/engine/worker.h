@@ -47,9 +47,6 @@ class Worker final {
 
   bool warmup_model(bool enable_cudagraph);
 
-  // TODO: implement this
-  ModelOutput validate(const ModelInput& inputs);
-
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
                                            const ModelArgs& args,
@@ -72,8 +69,6 @@ class Worker final {
   // Run the model on the given input. async call
   // the future returns a successfull status with no meaningful value
   folly::SemiFuture<ModelOutput> execute_model_async(const ModelInput& inputs);
-
-  folly::SemiFuture<ModelOutput> validate_async(const ModelInput& inputs);
 
   folly::SemiFuture<bool> warmup_model_async(bool enable_cudagraph);
 

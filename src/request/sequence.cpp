@@ -52,7 +52,8 @@ Sequence::Sequence(const std::string_view& prompt,
 
   // allocate space for the token ids and add the prompt tokens
   const size_t max_tokens = stopping_criteria.max_tokens;
-  token_ids_.resize(max_tokens + prompt_token_ids.size());
+  // TODO: boundary check for max_tokens for speculative decoding
+  token_ids_.resize(max_tokens + prompt_token_ids.size() + 10 /*buffer for speculative decoding*/);
   for (const auto token_id : prompt_token_ids) {
     token_ids_[num_tokens_++] = token_id;
     token_to_count_map_[token_id]++;

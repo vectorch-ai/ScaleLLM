@@ -108,33 +108,44 @@ ModelOutput SpeculativeEngine::execute_model(Batch& batch) {
 void SpeculativeEngine::validate(Batch& batch,
                                  const std::vector<ModelOutput>& draft_outputs,
                                  const ModelOutput& target_output) {
-  const auto bonus_token_ids = target_output.sample_output.next_tokens;
-  if (!bonus_token_ids.defined()) {
+  if (!target_output.sample_output.next_tokens.defined()) {
     // a pure prefill batch, no sampling needed
     return;
   }
-  auto num_speculative_tokens = target_output.logits.size(/*dim=*/-1);
-  CHECK_EQ(num_speculative_tokens, draft_outputs.size());
 
-  auto target_probs = torch::softmax(
-      target_output.logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
-  // filter out last column of target_probs
+  const auto bonus_token_ids =
+      target_output.sample_output.next_tokens.view({-1, 1});
+  const int64_t batch_size = bonus_token_ids.size(/*dim=*/0);
+  const int64_t vocab_size = target_output.logits.size(/*dim=*/-1);
+  const int64_t num_speculative_tokens =
+      static_cast<int64_t>(draft_outputs.size());
+
+  // [batch_size, n_speculative_tokens, vocab_size]
+  auto target_logits = target_output.logits.view(
+      {batch_size, num_speculative_tokens + /*bonus_tokens*/ 1, vocab_size});
+  auto target_probs =
+      torch::softmax(target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
+  // filter out probs for bonus tokens
   target_probs = target_probs.slice(
-      /*dim=*/-1, /*start=*/0, /*end=*/num_speculative_tokens - 1);
+      /*dim=*/1, /*start=*/0, /*end=*/num_speculative_tokens);
 
   // prepare input for rejection sampling
   std::vector<torch::Tensor> draft_token_ids_vec;
   std::vector<torch::Tensor> draft_probs_vec;
   for (const auto& draft_output : draft_outputs) {
-    draft_token_ids_vec.push_back(draft_output.sample_output.next_tokens);
-    draft_probs_vec.push_back(draft_output.sample_output.probs);
+    auto draft_token_ids =
+        draft_output.sample_output.next_tokens.view({batch_size, 1});
+    auto draft_probs =
+        draft_output.sample_output.probs.view({{batch_size, 1, vocab_size}});
+    draft_token_ids_vec.push_back(draft_token_ids);
+    draft_probs_vec.push_back(draft_probs);
   }
 
   // concatenate the draft token ids and probs along the last dimension
   const auto draft_token_ids =
-      torch::cat(draft_token_ids_vec, /*dim=*/-1).to(bonus_token_ids);
+      torch::cat(draft_token_ids_vec, /*dim=*/1).to(bonus_token_ids);
   const auto draft_probs =
-      torch::cat(draft_probs_vec, /*dim=*/-1).to(target_probs);
+      torch::cat(draft_probs_vec, /*dim=*/1).to(target_probs);
 
   auto rejection_sampler = std::make_unique<RejectionSampler>(
       target_output.do_sample, target_probs.options());

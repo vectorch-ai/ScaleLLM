@@ -50,7 +50,7 @@ class LLMEngine : public Engine {
 
   // initialize the engine with the given model weights
   bool init(const std::string& model_weights_path);
-  
+
   const QuantArgs& quant_args() const { return quant_args_; }
 
   bool init_model(const std::string& model_weights_path);
@@ -65,6 +65,7 @@ class LLMEngine : public Engine {
 
   // returns the number of kv cache blocks from the given cache size in bytes
   int64_t calculate_kv_cache_blocks(int64_t cache_size_in_bytes) const;
+
  private:
   bool warmup_model();
 

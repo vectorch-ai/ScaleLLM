@@ -10,12 +10,18 @@
 #include <string>
 
 #include "engine/llm_engine.h"
+#include "speculative/speculative_engine.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
+#include "speculative/speculative_engine.h"
 
 DEFINE_string(model_name_or_path,
               "THUDM/chatglm3-6b",
+              "hf model name or path to the model file.");
+
+DEFINE_string(draft_model_name_or_path,
+              "",
               "hf model name or path to the model file.");
 
 DEFINE_string(model_allow_patterns,
@@ -23,6 +29,11 @@ DEFINE_string(model_allow_patterns,
               "Allow patterns for model files.");
 
 DEFINE_string(device,
+              "cuda",
+              "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
+              "auto to use all available gpus.");
+
+DEFINE_string(draft_device,
               "cuda",
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
               "auto to use all available gpus.");
@@ -109,13 +120,23 @@ int main(int argc, char* argv[]) {
     // not a model path, try to download the model from huggingface hub
     model_path = download_model(FLAGS_model_name_or_path);
   }
+  
+  // use the same model for testing
+  std::string draft_model_path = model_path;
+  // if (FLAGS_draft_model_name_or_path == FLAGS_model_name_or_path) {
+  //   // not a model path, try to download the model from huggingface hub
+  //   // draft_model_path = download_model(FLAGS_draft_model_name_or_path);
+  // }
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
   LOG(INFO) << "Using devices: " << to_string(devices);
 
-  llm::LLMEngine engine(devices);
-  CHECK(engine.init(model_path));
+  const auto draft_devices = parse_devices(FLAGS_draft_device);
+  LOG(INFO) << "Using draft devices: " << to_string(draft_devices);
+
+  llm::SpeculativeEngine engine(devices, draft_devices);
+  CHECK(engine.init(model_path, draft_model_path));
   auto tokenizer = engine.tokenizer();
   llm::BlockManager* block_manager = engine.block_manager();
   const auto& model_args = engine.model_args();
@@ -155,12 +176,11 @@ int main(int argc, char* argv[]) {
                            /*echo=*/true,
                            /*on_stream=*/nullptr);
 
-    // generate tokens until the end of sentence token is generated
-    for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
-         ++cur_pos) {
-      // allocate slots for the sequence
-      CHECK(block_manager->allocate_blocks_for(&sequence));
+    // allocate slots for the sequence
+    CHECK(block_manager->allocate_blocks_for(&sequence, FLAGS_max_seq_len + 10));
 
+    // generate tokens until the end of sentence token is generated
+    while (sequence.num_generated_tokens() < FLAGS_max_seq_len) {
       // run inference
       llm::Batch batch(&sequence);
       engine.execute_model(batch);

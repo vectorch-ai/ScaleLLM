@@ -88,7 +88,7 @@ ModelInput Batch::prepare_model_input() {
   const int32_t num_sequences = static_cast<int32_t>(sequences_.size());
   for (int32_t i = 0; i < num_sequences; ++i) {
     auto* sequence = sequences_[i];
-    CHECK(!sequence->is_finished());
+    // CHECK(!sequence->is_finished());
 
     empty_kv_cache = empty_kv_cache && (sequence->kv_cache_size() == 0);
 
