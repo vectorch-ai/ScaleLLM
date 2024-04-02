@@ -9,7 +9,8 @@
 #include "rejection_sampler.h"
 
 DECLARE_int32(block_size);
-DEFINE_int32(num_speculative_steps, 0, "number of speculative steps");
+DECLARE_int32(num_speculative_steps);
+
 namespace llm {
 
 SpeculativeEngine::SpeculativeEngine(

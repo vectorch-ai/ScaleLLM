@@ -10,7 +10,6 @@
 #include <string>
 
 #include "engine/llm_engine.h"
-#include "speculative/speculative_engine.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
@@ -33,10 +32,11 @@ DEFINE_string(device,
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
               "auto to use all available gpus.");
 
-DEFINE_string(draft_device,
-              "cuda",
-              "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
-              "auto to use all available gpus.");
+DEFINE_string(
+    draft_device,
+    "cuda",
+    "Device to run the draft model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
+    "auto to use all available gpus.");
 
 DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
 
@@ -49,6 +49,8 @@ DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
 
 DEFINE_double(frequency_penalty, 0.0, "Frequency penalty for sampling.");
 DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
+
+DECLARE_int32(num_speculative_steps);
 
 std::string download_model(const std::string& model_name) {
   namespace py = pybind11;
@@ -116,30 +118,43 @@ int main(int argc, char* argv[]) {
 
   // check if model path exists
   std::string model_path = FLAGS_model_name_or_path;
+  CHECK(!model_path.empty()) << "model_name_or_path is empty.";
   if (!std::filesystem::exists(model_path)) {
     // not a model path, try to download the model from huggingface hub
     model_path = download_model(FLAGS_model_name_or_path);
   }
-  
-  // use the same model for testing
-  std::string draft_model_path = model_path;
-  // if (FLAGS_draft_model_name_or_path == FLAGS_model_name_or_path) {
-  //   // not a model path, try to download the model from huggingface hub
-  //   // draft_model_path = download_model(FLAGS_draft_model_name_or_path);
-  // }
+
+  std::string draft_model_path = FLAGS_draft_model_name_or_path;
+  if (!draft_model_path.empty() && !std::filesystem::exists(draft_model_path)) {
+    if (FLAGS_draft_model_name_or_path == FLAGS_model_name_or_path) {
+      draft_model_path = model_path;
+    } else {
+      // not a model path, try to download the model from huggingface hub
+      draft_model_path = download_model(FLAGS_draft_model_name_or_path);
+    }
+  }
 
   // parse devices
   const auto devices = parse_devices(FLAGS_device);
   LOG(INFO) << "Using devices: " << to_string(devices);
 
-  const auto draft_devices = parse_devices(FLAGS_draft_device);
-  LOG(INFO) << "Using draft devices: " << to_string(draft_devices);
+  std::unique_ptr<llm::Engine> engine;
+  if (!draft_model_path.empty()) {
+    const auto draft_devices = parse_devices(FLAGS_draft_device);
+    LOG(INFO) << "Using draft devices: " << to_string(draft_devices);
+    auto spec_engine =
+        std::make_unique<llm::SpeculativeEngine>(devices, draft_devices);
+    CHECK(spec_engine->init(model_path, draft_model_path));
+    engine = std::move(spec_engine);
+  } else {
+    auto llm_engine = std::make_unique<llm::LLMEngine>(devices);
+    CHECK(llm_engine->init(model_path));
+    engine = std::move(llm_engine);
+  }
 
-  llm::SpeculativeEngine engine(devices, draft_devices);
-  CHECK(engine.init(model_path, draft_model_path));
-  auto tokenizer = engine.tokenizer();
-  llm::BlockManager* block_manager = engine.block_manager();
-  const auto& model_args = engine.model_args();
+  auto tokenizer = engine->tokenizer();
+  llm::BlockManager* block_manager = engine->block_manager();
+  const auto& model_args = engine->model_args();
 
   llm::SamplingParameter sampling_param;
   sampling_param.temperature = FLAGS_temperature;
@@ -154,6 +169,7 @@ int main(int argc, char* argv[]) {
   stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
+  stopping_criteria.max_context_length = model_args.max_position_embeddings();
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -176,14 +192,16 @@ int main(int argc, char* argv[]) {
                            /*echo=*/true,
                            /*on_stream=*/nullptr);
 
-    // allocate slots for the sequence
-    CHECK(block_manager->allocate_blocks_for(&sequence, FLAGS_max_seq_len + 10));
+    // allocate all slots for the sequence
+    const size_t num_tokens = prompt_tokens.size() + FLAGS_max_seq_len +
+                              FLAGS_num_speculative_steps + 1;
+    CHECK(block_manager->allocate_blocks_for(&sequence, num_tokens));
 
     // generate tokens until the end of sentence token is generated
     while (sequence.num_generated_tokens() < FLAGS_max_seq_len) {
       // run inference
       llm::Batch batch(&sequence);
-      engine.execute_model(batch);
+      engine->execute_model(batch);
 
       // check if sequence is finished
       if (sequence.is_finished()) {

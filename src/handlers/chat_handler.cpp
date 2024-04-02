@@ -236,6 +236,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     max_tokens = std::min(max_tokens, kDefaultMaxTokens);
   }
   stopping_criteria.max_tokens = max_tokens;
+  stopping_criteria.max_context_length = model_args.max_position_embeddings();
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 
