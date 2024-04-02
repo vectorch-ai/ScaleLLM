@@ -4,6 +4,7 @@
 
 #include <vector>
 
+#include "common/slice.h"
 #include "models/parameters.h"
 #include "request/sequence.h"
 
@@ -87,7 +88,7 @@ ModelInput Batch::prepare_model_input() {
   const int32_t num_sequences = static_cast<int32_t>(sequences_.size());
   for (int32_t i = 0; i < num_sequences; ++i) {
     auto* sequence = sequences_[i];
-    CHECK(!sequence->is_finished());
+    // CHECK(!sequence->is_finished());
 
     empty_kv_cache = empty_kv_cache && (sequence->kv_cache_size() == 0);
 
@@ -224,15 +225,10 @@ ModelInput Batch::prepare_model_input() {
   return model_inputs;
 }
 
-ModelInput Batch::prepare_model_validate_input() {
-  LOG(FATAL) << "Not implemented";
-  return {};
-}
-
-void Batch::process_model_output(const ModelOutput& model_output) {
+void Batch::process_sample_output(const SampleOutput& sample_output) {
   // it is possible that the model output is empty for prefill sequences
-  if (model_output.sample_output.next_tokens.defined()) {
-    const auto& next_tokens = model_output.sample_output.next_tokens.cpu();
+  if (sample_output.next_tokens.defined()) {
+    const auto& next_tokens = sample_output.next_tokens.cpu();
     const int64_t num_seqs = next_tokens.numel();
     int64_t output_idx = 0;
     for (auto* seq : sequences_) {
@@ -243,15 +239,33 @@ void Batch::process_model_output(const ModelOutput& model_output) {
       CHECK_LT(output_idx, num_seqs);
 
       // add the next token to sequence
-      const int32_t next_token_id = next_tokens[output_idx++].item<int32_t>();
+      const int32_t next_token_id =
+          static_cast<int32_t>(next_tokens[output_idx++].item<int64_t>());
       seq->append_new_token_id(next_token_id);
     }
     CHECK_EQ(output_idx, num_seqs);
   }
 }
 
-void Batch::process_model_validate_output(const ModelOutput& model_output) {
-  LOG(FATAL) << "Not implemented";
+void Batch::process_validate_output(const torch::Tensor& accepted_ids) {
+  const auto& token_ids = accepted_ids.cpu();
+  const int64_t num_seqs = accepted_ids.size(0);
+  int64_t output_idx = 0;
+  for (auto* seq : sequences_) {
+    if (seq->is_prefill_stage()) {
+      // no sampling for prefill sequences
+      continue;
+    }
+    CHECK_LT(output_idx, num_seqs);
+
+    const auto ids = token_ids[output_idx++];
+    const Slice<int64_t> accepted_token_ids = {
+        ids.data_ptr<int64_t>(), static_cast<size_t>(ids.numel())};
+
+    // validate the draft tokens with accepted tokens
+    seq->validate_token_ids(accepted_token_ids);
+  }
+  CHECK_EQ(output_idx, num_seqs);
 }
 
 void Batch::set_engine_type(EngineType engine_type) {

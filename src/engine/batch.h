@@ -47,14 +47,11 @@ class Batch {
   // prepare inputs for the batch, a stateful operation
   ModelInput prepare_model_input();
 
-  // TODO: do we really need a sperate function for validate?
-  ModelInput prepare_model_validate_input();
+  // process the sample output for each sequence
+  void process_sample_output(const SampleOutput& sample_output);
 
-  // process the model output for each sequence
-  void process_model_output(const ModelOutput& model_output);
-
-  // process the model output for each sequence in validate mode
-  void process_model_validate_output(const ModelOutput& model_output);
+  // process the accepted output for each sequence
+  void process_validate_output(const torch::Tensor& accepted_ids);
 
   // set the engine type for the batch
   void set_engine_type(EngineType engine_type);

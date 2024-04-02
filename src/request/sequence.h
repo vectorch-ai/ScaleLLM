@@ -113,7 +113,9 @@ class Sequence final {
   void append_new_token_id(int32_t next_token_id);
 
   // validate draft tokens with accepted tokens for speculative decoding
-  void validate_token_ids(const Slice<int32_t>& accpeted_token_ids);
+  // N.B. take int64_t as input to be compatible with torch::Tensor to avoid
+  // copy
+  void validate_token_ids(const Slice<int64_t>& accpeted_token_ids);
 
   // add new cache blocks
   void append_blocks(const std::vector<Block>& new_blocks);

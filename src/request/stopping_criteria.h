@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -24,6 +23,9 @@ struct StoppingCriteria {
 
   // stop sequences
   std::vector<std::vector<int32_t>> stop_sequences;
+
+  // max context length
+  size_t max_context_length = 0;
 };
 
 }  // namespace llm

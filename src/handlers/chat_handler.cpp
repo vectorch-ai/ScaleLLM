@@ -193,10 +193,11 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     LOG(ERROR) << "Failed to encode prompt: " << prompt.value();
     return nullptr;
   }
-  if (prompt_tokens.size() > max_context_len) {
+  if (prompt_tokens.size() >= max_context_len) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Prompt is too long");
-    LOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
+    LOG(ERROR) << "Prompt is too long, prompt_len:" << prompt_tokens.size()
+               << ", max_context_len: " << max_context_len;
     return nullptr;
   }
 
@@ -235,6 +236,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     max_tokens = std::min(max_tokens, kDefaultMaxTokens);
   }
   stopping_criteria.max_tokens = max_tokens;
+  stopping_criteria.max_context_length = model_args.max_position_embeddings();
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 

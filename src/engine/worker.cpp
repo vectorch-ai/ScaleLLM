@@ -228,12 +228,6 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   return output;
 }
 
-ModelOutput Worker::validate(const ModelInput& inputs) {
-  LOG(FATAL) << "Not implemented.";
-  ModelOutput output_params;
-  return output_params;
-}
-
 folly::SemiFuture<std::tuple<int64_t, int64_t>>
 Worker::profile_device_memory_async(
     torch::Tensor flatten_tokens,     // [num_tokens]
@@ -261,18 +255,6 @@ folly::SemiFuture<ModelOutput> Worker::execute_model_async(
       [this, inputs = inputs, promise = std::move(promise)]() mutable {
         // run the model on the given input in working thread
         const auto output = this->execute_model(inputs);
-        promise.setValue(output);
-      });
-  return future;
-}
-
-folly::SemiFuture<ModelOutput> Worker::validate_async(
-    const ModelInput& inputs) {
-  folly::Promise<ModelOutput> promise;
-  auto future = promise.getSemiFuture();
-  threadpool_.schedule(
-      [this, inputs = inputs, promise = std::move(promise)]() mutable {
-        const auto output = this->validate(inputs);
         promise.setValue(output);
       });
   return future;

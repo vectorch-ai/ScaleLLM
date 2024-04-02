@@ -49,6 +49,7 @@ cc_binary(
     simple.cpp
   DEPS
     :engine
+    :speculative
     torch
     absl::strings
     gflags::gflags

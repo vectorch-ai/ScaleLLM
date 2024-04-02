@@ -8,6 +8,8 @@
 
 #include "tokenizer/tokenizer.h"
 
+DEFINE_int32(num_speculative_steps, 0, "number of speculative steps");
+
 namespace llm {
 namespace {
 // Returns whether a given `sequence` ends with `suffix`.
@@ -51,8 +53,10 @@ Sequence::Sequence(const std::string_view& prompt,
   CHECK(!prompt_token_ids.empty()) << "empty prompt token ids";
 
   // allocate space for the token ids and add the prompt tokens
-  const size_t max_tokens = stopping_criteria.max_tokens;
-  token_ids_.resize(max_tokens + prompt_token_ids.size());
+  const size_t max_tokens = stopping_criteria.max_tokens +
+                            prompt_token_ids.size() +
+                            FLAGS_num_speculative_steps + /*bouns_token*/ 1;
+  token_ids_.resize(max_tokens);
   for (const auto token_id : prompt_token_ids) {
     token_ids_[num_tokens_++] = token_id;
     token_to_count_map_[token_id]++;
@@ -79,7 +83,7 @@ void Sequence::append_new_token_id(int32_t next_token_id) {
   finish_status_invalidated_ = true;
 }
 
-void Sequence::validate_token_ids(const Slice<int32_t>& accpeted_token_ids) {
+void Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
   const size_t len = accpeted_token_ids.size();
   CHECK_GT(num_tokens_, len) << "accepted tokens exceed the sequence length";
 
@@ -88,7 +92,7 @@ void Sequence::validate_token_ids(const Slice<int32_t>& accpeted_token_ids) {
   size_t i = 0;
   for (; i < len; ++i) {
     const int32_t draft_token_id = token_ids_[start_idx + i];
-    const int32_t target_token_id = accpeted_token_ids[i];
+    const int32_t target_token_id = static_cast<int32_t>(accpeted_token_ids[i]);
     // stop at the first mismatch
     if (target_token_id != draft_token_id) {
       // overwrite the token id with the accepted token id
@@ -262,9 +266,16 @@ bool Sequence::check_finished(size_t last_token_idx) const {
     }
   }
 
-  // check against max tokens
+  // check against max tokens and max context length
   const size_t max_new_tokens = stopping_criteria_.max_tokens;
-  if (max_new_tokens > 0 && num_generated_tokens() >= max_new_tokens) {
+  const size_t max_context_length = stopping_criteria_.max_context_length;
+  const bool max_context_length_reached =
+      max_context_length > 0 &&
+      num_tokens_ + FLAGS_num_speculative_steps + /*bouns_token*/ 1 >=
+          max_context_length;
+  const bool max_new_tokens_reached =
+      max_new_tokens > 0 && num_generated_tokens() >= max_new_tokens;
+  if (max_context_length_reached || max_new_tokens_reached) {
     finish_reason_ = FinishReason::LENGTH;
     return is_finished_ = true;
   }

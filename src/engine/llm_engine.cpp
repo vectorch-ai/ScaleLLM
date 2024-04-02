@@ -109,8 +109,13 @@ bool LLMEngine::init(const std::string& model_weights_path) {
     return false;
   }
 
-  const int64_t kv_cache_size_in_bytes = profile_memory_for_kv_cache();
-  if (!init_kv_cache(kv_cache_size_in_bytes)) {
+  // initialize kv cache
+  const int64_t cache_size_in_bytes = profile_memory_for_kv_cache();
+  CHECK_GT(cache_size_in_bytes, 0);
+  LOG(INFO) << "Initializing kv cache with size: "
+            << readable_size(cache_size_in_bytes);
+  const int64_t n_blocks = calculate_kv_cache_blocks(cache_size_in_bytes);
+  if (!init_kv_cache(n_blocks)) {
     LOG(ERROR) << "Failed to initialize kv cache";
     return false;
   }
@@ -131,8 +136,20 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   args_ = model_loader->model_args();
   quant_args_ = model_loader->quant_args();
   tokenizer_args_ = model_loader->tokenizer_args();
+
+  // compute the number of local kv heads and head dim
+  const int world_size = static_cast<int>(workers_.size());
+  const int64_t n_heads = args_.n_heads();
+  const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
+  n_local_kv_heads_ = n_kv_heads / world_size;
+  head_dim_ = args_.hidden_size() / n_heads;
   dtype_ = parse_dtype(args_.dtype(), devices_[0]);
-  LOG(INFO) << "Initializing model with dtype: " << dtype_;
+
+  // key + value for all layers
+  LOG(INFO) << "Block info, block_size: " << FLAGS_block_size
+            << ", n_local_kv_heads: " << n_local_kv_heads_
+            << ", head_dim: " << head_dim_ << ", n_layers: " << args_.n_layers()
+            << ", dtype: " << dtype_;
 
   if (tokenizer_->vocab_size() != args_.vocab_size()) {
     // use tokenizer vocab size if model vocab size is not set
@@ -291,39 +308,16 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
   return std::max(smallest_available_memory, int64_t(0));
 }
 
-bool LLMEngine::init_kv_cache(int64_t cache_size_in_bytes) {
-  CHECK_GT(cache_size_in_bytes, 0);
-  LOG(INFO) << "Initializing kv cache with size: "
-            << readable_size(cache_size_in_bytes);
-
-  const int64_t block_size = FLAGS_block_size;
-
-  // init kv cache
-  const int world_size = static_cast<int>(workers_.size());
-  const int64_t n_heads = args_.n_heads();
-  const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
-  const int64_t n_local_kv_heads = n_kv_heads / world_size;
-  const int64_t head_dim = args_.hidden_size() / n_heads;
-  const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
-  // key + value for all layers
-  const int64_t block_size_in_bytes = 2 * block_size * n_local_kv_heads *
-                                      head_dim * args_.n_layers() * dtype_size;
-  LOG(INFO) << "Block size in bytes: " << readable_size(block_size_in_bytes)
-            << ", block_size: " << block_size << ", head_dim: " << head_dim
-            << ", n_local_kv_heads: " << n_local_kv_heads
-            << ", n_layers: " << args_.n_layers()
-            << ", dtype_size: " << dtype_size;
-
-  const int64_t n_blocks = cache_size_in_bytes / block_size_in_bytes;
-  CHECK_GT(n_blocks, 0) << "Not enough memory for the kv cache";
+bool LLMEngine::init_kv_cache(int64_t n_blocks) {
+  CHECK_GT(n_blocks, 0) << "no memory for kv cache";
 
   // init kv cache for each worker
   const std::vector<int64_t> kv_cache_shape = {
-      n_blocks, block_size, n_local_kv_heads, head_dim};
+      n_blocks, FLAGS_block_size, n_local_kv_heads_, head_dim_};
   LOG(INFO) << "Initializing kv cache with shape: [" << kv_cache_shape << "]";
 
   // initialize block manager
-  block_manager_ = std::make_unique<BlockManager>(n_blocks, block_size);
+  block_manager_ = std::make_unique<BlockManager>(n_blocks, FLAGS_block_size);
 
   // init kv cache for each worker in parallel
   if (workers_.size() == 1) {
@@ -346,14 +340,16 @@ bool LLMEngine::init_kv_cache(int64_t cache_size_in_bytes) {
   return true;
 }
 
-void LLMEngine::execute_model(Batch& batch) {
+ModelOutput LLMEngine::execute_model(Batch& batch) {
   // prepare inputs for workers
   auto model_inputs = batch.prepare_model_input();
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     auto model_output = workers_[0]->execute_model(model_inputs);
-    batch.process_model_output(model_output);
-    return;
+    batch.process_sample_output(model_output.sample_output);
+    // carry over the sampling params
+    model_output.do_sample = model_inputs.sampling_params.do_sample;
+    return model_output;
   }
 
   // multiple workers, call async forward
@@ -366,27 +362,25 @@ void LLMEngine::execute_model(Batch& batch) {
   auto results = folly::collectAll(futures).get();
   // return the result from the first worker
   auto model_output = results.front().value();
-  batch.process_model_output(model_output);
+  batch.process_sample_output(model_output.sample_output);
+  // carry over the sampling params
+  model_output.do_sample = model_inputs.sampling_params.do_sample;
+  return model_output;
 }
 
-void LLMEngine::validate(Batch& batch) {
-  // prepare inputs for workers
-  auto model_inputs = batch.prepare_model_validate_input();
-  if (workers_.size() == 1) {
-    auto model_output = workers_[0]->validate(model_inputs);
-    batch.process_model_validate_output(model_output);
-    return;
-  }
+int64_t LLMEngine::kv_cache_slot_size_in_bytes() const {
+  const auto dtype_size = torch::scalarTypeToTypeMeta(dtype_).itemsize();
+  // key + value for all layers
+  const int64_t slot_size_in_bytes =
+      2 * n_local_kv_heads_ * head_dim_ * args_.n_layers() * dtype_size;
+  return slot_size_in_bytes;
+}
 
-  // multiple workers, call async forward
-  std::vector<folly::SemiFuture<ModelOutput>> futures;
-  futures.reserve(workers_.size());
-  for (auto& worker : workers_) {
-    futures.emplace_back(worker->validate_async(model_inputs));
-  }
-  auto results = folly::collectAll(futures).get();
-  auto model_output = results.front().value();
-  batch.process_model_validate_output(model_output);
+int64_t LLMEngine::calculate_kv_cache_blocks(
+    int64_t cache_size_in_bytes) const {
+  const int64_t block_size_in_bytes =
+      FLAGS_block_size * kv_cache_slot_size_in_bytes();
+  return cache_size_in_bytes / block_size_in_bytes;
 }
 
 }  // namespace llm
