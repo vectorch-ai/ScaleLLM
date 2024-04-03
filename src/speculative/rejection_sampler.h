@@ -29,7 +29,6 @@ class RejectionSampler final {
                         const torch::Tensor& bonus_token_ids) const;
 
  private:
-
   torch::Tensor do_sample_;
   bool all_random_sample_ = true;
   bool all_greedy_sample_ = true;

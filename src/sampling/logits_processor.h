@@ -211,7 +211,9 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
     if (logits.size(0) != temperatures_.size(0)) {
       CHECK(logits.size(0) % temperatures_.size(0) == 0);
       int64_t repeats = logits.size(0) / temperatures_.size(0);
-      temperatures = temperatures_.repeat_interleave(/*repeats=*/repeats, /*dim=*/-2).contiguous();
+      temperatures =
+          temperatures_.repeat_interleave(/*repeats=*/repeats, /*dim=*/-2)
+              .contiguous();
     }
 
     torch::Tensor logits_ = logits;
