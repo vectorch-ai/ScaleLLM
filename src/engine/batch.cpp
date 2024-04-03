@@ -39,7 +39,8 @@ void Batch::reset(const std::vector<Sequence*>& sequences) {
 
 void Batch::add(Sequence* sequence, uint32_t token_budget) {
   CHECK(sequence != nullptr);
-  CHECK(token_budget > 0);
+  CHECK(!sequence->is_finished());
+  CHECK_GT(token_budget, 0);
 
   sequences_.push_back(sequence);
   token_budgets_.push_back(token_budget);
@@ -88,8 +89,6 @@ ModelInput Batch::prepare_model_input() {
   const int32_t num_sequences = static_cast<int32_t>(sequences_.size());
   for (int32_t i = 0; i < num_sequences; ++i) {
     auto* sequence = sequences_[i];
-    // CHECK(!sequence->is_finished());
-
     empty_kv_cache = empty_kv_cache && (sequence->kv_cache_size() == 0);
 
     const auto token_ids = sequence->token_ids();
@@ -122,27 +121,26 @@ ModelInput Batch::prepare_model_input() {
     // and select tokens for sampling the next token
     const uint32_t n_prompt_tokens = sequence->num_prompt_tokens();
     bool has_selected_token = false;
-    bool has_sample_token = false;
     for (uint32_t j = n_tokens_in_kv_cache; j < seq_len; ++j) {
       flatten_tokens_vec.push_back(token_ids[j]);
       flatten_positions_vec.push_back(static_cast<int32_t>(j));
 
       // skip prompt tokens except the last one
-      if (j + 1 >= n_prompt_tokens) {
-        // select tokens for sampling the next token
-        selected_token_idxes.push_back(flatten_tokens_vec.size() - 1);
-        has_selected_token = true;
-        // sample last token in the sequence
-        if (j == seq_len - 1) {
-          sample_idxes.push_back(
-              static_cast<int32_t>(selected_token_idxes.size() - 1));
-          has_sample_token = true;
-        }
+      if (j + 1 < n_prompt_tokens) {
+        continue;
+      }
+      // select tokens for sampling the next token
+      selected_token_idxes.push_back(flatten_tokens_vec.size() - 1);
+      has_selected_token = true;
+      // sample last token in the sequence
+      if (j == seq_len - 1) {
+        sample_idxes.push_back(
+            static_cast<int32_t>(selected_token_idxes.size() - 1));
       }
     }
 
-    // add token id and count for sampling
     if (has_selected_token) {
+      // add token id and count for sampling
       const auto& seq_token_counts = sequence->token_to_count_map();
       const auto unique_tokens = seq_token_counts.size();
 
@@ -156,10 +154,8 @@ ModelInput Batch::prepare_model_input() {
       }
       token_ids_lens_vec.push_back(static_cast<int32_t>(unique_tokens));
       max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
-    }
 
-    // add sampling parameters
-    if (has_sample_token) {
+      // add sampling parameters
       model_inputs.sampling_params.add(sequence->sampling_param());
     }
 

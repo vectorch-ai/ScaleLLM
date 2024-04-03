@@ -93,28 +93,32 @@ void Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
   for (; i < len; ++i) {
     const int32_t draft_token_id = token_ids_[start_idx + i];
     const int32_t target_token_id = static_cast<int32_t>(accpeted_token_ids[i]);
-    // stop at the first mismatch
+
+    // stop at first rejected token id
+    if (target_token_id == -1) {
+      num_tokens_ = start_idx + i;
+      break;
+    }
+
     if (target_token_id != draft_token_id) {
       // overwrite the token id with the accepted token id
       token_ids_[start_idx + i] = target_token_id;
       // update the token count
       --token_to_count_map_[draft_token_id];
       ++token_to_count_map_[target_token_id];
-      // update num tokens
-      num_tokens_ = start_idx + i + 1;
-      break;
     }
 
     // check if sequence is finished
     if (check_finished(start_idx + i)) {
       // update num tokens, including the last token
       num_tokens_ = start_idx + i + 1;
+      ++i;
       break;
     }
   }
 
   // adjust the token count for remaining discarded tokens
-  for (i += 1; i < len; ++i) {
+  for (; i < len; ++i) {
     const auto token_id = token_ids_[start_idx + i];
     --token_to_count_map_[token_id];
   }
