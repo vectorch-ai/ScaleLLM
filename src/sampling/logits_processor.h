@@ -205,11 +205,20 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
       const torch::Tensor& /*token_ids*/,
       const torch::Tensor& /*token_counts*/,
       const torch::Tensor& /*token_ids_lens*/) const override {
+    // CHECK_EQ(logits.size(0), temperatures_.size(0));
+    // TODO: remove this workaround
+    auto temperatures = temperatures_;
+    if (logits.size(0) != temperatures_.size(0)) {
+      CHECK(logits.size(0) % temperatures_.size(0) == 0);
+      int64_t repeats = logits.size(0) / temperatures_.size(0);
+      temperatures = temperatures_.repeat_interleave(/*repeats=*/repeats, /*dim=*/-2).contiguous();
+    }
+
     torch::Tensor logits_ = logits;
     if (logits_.is_cuda()) {
-      kernel::apply_temperature_penalty(logits_, temperatures_);
+      kernel::apply_temperature_penalty(logits_, temperatures);
     } else {
-      detail::apply_temperature_penalty(logits_, temperatures_);
+      detail::apply_temperature_penalty(logits_, temperatures);
     }
     return logits_;
   }
