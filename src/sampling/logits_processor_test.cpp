@@ -248,13 +248,15 @@ TEST(LogitsProcessorTest, TopK) {
   torch::manual_seed(100);
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
+  const auto options = torch::dtype(dtype).device(device);
+
   int64_t batch_size = 4;
   int64_t vocab_size = 100;
-  const std::vector<int64_t> top_k = {60, 70, 80, 200};
-  const std::vector<float> top_p = {1.0, 1.0, 1.0, 1.0};
   const float filter_value = -std::numeric_limits<float>::infinity();
-  const auto options = torch::dtype(dtype).device(device);
-  TopKTopPLogitsProcessor processor(top_k, top_p, options);
+  const auto top_k =
+      torch::tensor({60, 70, 80, 200}, options.dtype(torch::kInt64));
+  const auto top_p = torch::tensor({1.0, 1.0, 1.0, 1.0}, options);
+  TopKTopPLogitsProcessor processor(top_k, top_p);
 
   auto logits = torch::randn({batch_size, vocab_size}, options);
   torch::Tensor token_ids;
@@ -286,15 +288,17 @@ TEST(LogitsProcessorTest, TopP) {
   torch::manual_seed(100);
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
+  const auto options = torch::dtype(dtype).device(device);
+
   int64_t batch_size = 4;
   int64_t vocab_size = 100;
   int64_t min_tokens_to_keep = 1;
-  const std::vector<int64_t> top_k = {0, 0, 0, 0};
-  const std::vector<float> top_p = {0.001, 0.7, 0.9, 1.0};
-  const float filter_value = -std::numeric_limits<float>::infinity();
-  const auto options = torch::dtype(dtype).device(device);
 
-  TopKTopPLogitsProcessor processor(top_k, top_p, options);
+  const auto top_k = torch::tensor({0, 0, 0, 0}, options.dtype(torch::kInt64));
+  const auto top_p = torch::tensor({0.001, 0.7, 0.9, 1.0}, options);
+  const float filter_value = -std::numeric_limits<float>::infinity();
+
+  TopKTopPLogitsProcessor processor(top_k, top_p);
 
   auto logits = torch::randn({batch_size, vocab_size},
                              torch::dtype(dtype).device(device));

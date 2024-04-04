@@ -1,7 +1,8 @@
 #pragma once
 
-#include <request/request.h>
 #include <torch/torch.h>
+
+#include "common/tensor_helper.h"
 
 namespace llm {
 // input parameters for the model that encapsulates all the necessary
@@ -17,9 +18,6 @@ struct InputParameters {
     params.q_max_seq_len = q_max_seq_len;
 
     // all tensors should be on the same device
-    auto safe_to = [](const torch::Tensor& t, const torch::Device& device) {
-      return t.defined() ? t.to(device) : t;
-    };
     params.kv_cu_seq_lens = safe_to(kv_cu_seq_lens, device);
     params.q_cu_seq_lens = safe_to(q_cu_seq_lens, device);
 

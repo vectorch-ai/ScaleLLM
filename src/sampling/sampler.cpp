@@ -6,23 +6,11 @@
 #include "sampling/parameters.h"
 namespace llm {
 
-Sampler::Sampler(const std::vector<bool>& do_sample,
-                 const torch::TensorOptions& options) {
-  CHECK(!do_sample.empty());
-
-  std::vector<int32_t> do_sample_int;
-  do_sample_int.reserve(do_sample.size());
-  for (bool sample : do_sample) {
-    if (sample) {
-      all_greedy_sample_ = false;
-      do_sample_int.push_back(1);
-    } else {
-      all_random_sample_ = false;
-      do_sample_int.push_back(0);
-    }
-  }
-  // [batch_size]
-  do_sample_ = torch::tensor(do_sample_int, options.dtype(torch::kBool));
+Sampler::Sampler(const torch::Tensor& do_sample) {
+  CHECK(do_sample.defined());
+  do_sample_ = do_sample;
+  all_random_sample_ = do_sample.all().item<bool>();
+  all_greedy_sample_ = !do_sample.any().item<bool>();
 }
 
 SampleOutput Sampler::forward(const torch::Tensor& logits) const {

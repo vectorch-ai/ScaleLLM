@@ -9,6 +9,7 @@ cc_library(
     logging.h
     metrics.h
     slice.h
+    tensor_helper.h
     concurrent_queue.h
     time.h
     threadpool.h
