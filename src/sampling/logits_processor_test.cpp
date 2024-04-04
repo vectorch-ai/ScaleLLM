@@ -31,8 +31,8 @@ TEST(LogitsProcessorTest, Temperature) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   auto options = torch::dtype(dtype).device(device);
-  const std::vector<float> temperatures = {0.5, 1.5};
-  TemperatureLogitsProcessor processor(temperatures, options);
+  const auto temperatures = torch::tensor({0.5, 1.5}, options);
+  TemperatureLogitsProcessor processor(temperatures);
 
   int64_t batch_size = 2;
   int64_t vocab_size = 32000;
@@ -81,10 +81,10 @@ TEST(LogitsProcessorTest, FrequencyPresencePenalty) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   auto options = torch::dtype(dtype).device(device);
-  std::vector<float> frequency_penalties = {0.01, 0.02};
-  std::vector<float> presence_penalties = {0.1, 0.2};
-  FrequencyPresencePenaltyLogitsProcessor processor(
-      frequency_penalties, presence_penalties, options);
+  const auto frequency_penalties = torch::tensor({0.01, 0.02}, options);
+  const auto presence_penalties = torch::tensor({0.1, 0.2}, options);
+  FrequencyPresencePenaltyLogitsProcessor processor(frequency_penalties,
+                                                    presence_penalties);
 
   int64_t batch_size = 2;
   int64_t max_seq_len = 1023;
@@ -174,8 +174,8 @@ TEST(LogitsProcessorTest, RepetitionPenalty) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   auto options = torch::dtype(dtype).device(device);
-  const std::vector<float> repetition_penalties = {1.0, 2.0};
-  RepetitionPenaltyLogitsProcessor processor(repetition_penalties, options);
+  const auto repetition_penalties = torch::tensor({1.0, 2.0}, options);
+  RepetitionPenaltyLogitsProcessor processor(repetition_penalties);
 
   int64_t batch_size = 2;
   int64_t max_seq_len = 1023;
@@ -253,8 +253,8 @@ TEST(LogitsProcessorTest, TopK) {
   int64_t batch_size = 4;
   int64_t vocab_size = 100;
   const float filter_value = -std::numeric_limits<float>::infinity();
-  const auto top_k =
-      torch::tensor({60, 70, 80, 200}, options.dtype(torch::kInt64));
+  const std::vector<int64_t> top_k_vec = {60, 70, 80, 200};
+  const auto top_k = torch::tensor(top_k_vec, options.dtype(torch::kInt64));
   const auto top_p = torch::tensor({1.0, 1.0, 1.0, 1.0}, options);
   TopKTopPLogitsProcessor processor(top_k, top_p);
 
@@ -266,7 +266,7 @@ TEST(LogitsProcessorTest, TopK) {
       processor(logits, token_ids, token_counts, tokens_ids_lens);
 
   for (int64_t i = 0; i < batch_size; ++i) {
-    const int64_t k = std::min(top_k[i], vocab_size);
+    const int64_t k = std::min(top_k_vec[i], vocab_size);
 
     // calculate top k values one by one
     auto [top_k_values, top_k_indices] =
@@ -295,7 +295,8 @@ TEST(LogitsProcessorTest, TopP) {
   int64_t min_tokens_to_keep = 1;
 
   const auto top_k = torch::tensor({0, 0, 0, 0}, options.dtype(torch::kInt64));
-  const auto top_p = torch::tensor({0.001, 0.7, 0.9, 1.0}, options);
+  const std::vector<float> top_p_vec = {0.001, 0.7, 0.9, 1.0};
+  const auto top_p = torch::tensor(top_p_vec, options);
   const float filter_value = -std::numeric_limits<float>::infinity();
 
   TopKTopPLogitsProcessor processor(top_k, top_p);
@@ -310,7 +311,7 @@ TEST(LogitsProcessorTest, TopP) {
 
   // verify result one by one
   for (int64_t i = 0; i < batch_size; ++i) {
-    const float p = top_p[i];
+    const float p = top_p_vec[i];
 
     // calculate number of values to keep (k)
     auto probs = torch::softmax(logits[i], /*dim=*/-1);

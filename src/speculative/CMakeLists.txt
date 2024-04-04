@@ -18,14 +18,14 @@ cc_library(
     absl::time
 )
 
-# cc_test(
-#   NAME
-#     speculative_test
-#   SRCS
-#     # speculative_test.cpp
-#     rejection_sampler_test.cpp
-#   DEPS
-#     :speculative
-#     absl::strings
-#     GTest::gtest_main
-# )
+cc_test(
+  NAME
+    speculative_test
+  SRCS
+    # speculative_test.cpp
+    rejection_sampler_test.cpp
+  DEPS
+    :speculative
+    absl::strings
+    GTest::gtest_main
+)

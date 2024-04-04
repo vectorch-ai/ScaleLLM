@@ -6,7 +6,6 @@ cc_library(
     common
   HDRS
     macros.h
-    logging.h
     metrics.h
     slice.h
     tensor_helper.h

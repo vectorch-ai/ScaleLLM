@@ -192,8 +192,11 @@ class TemperatureLogitsProcessor : public LogitsProcessor {
   // Constructor
   TemperatureLogitsProcessor(const torch::Tensor& temperatures) {
     CHECK(temperatures.defined());
-    // Convert temperature to a tensor and unsqueeze it for broadcasting
+    // unsqueeze it for broadcasting
     temperatures_ = temperatures.unsqueeze(1);
+    // replace 0. with 1. to avoid division by 0
+    temperatures_ =
+        torch::where(temperatures_ == 0, torch::tensor(1.0), temperatures_);
   }
 
   torch::Tensor forward(
@@ -226,6 +229,9 @@ class TopKTopPLogitsProcessor : public LogitsProcessor {
     if (top_k.defined()) {
       // [n_tokens, 1]
       top_k_ = top_k.unsqueeze(1);
+      // replace 0 with max_value to disable top_k
+      const auto max_value = std::numeric_limits<int64_t>::max();
+      top_k_ = torch::where(top_k_ == 0, torch::tensor(max_value), top_k_);
     }
 
     if (top_p.defined()) {

@@ -18,13 +18,13 @@ cc_library(
     torch
 )
 
-# cc_test(
-#   NAME
-#     sampler_test
-#   SRCS
-#     sampler_test.cpp
-#     logits_processor_test.cpp
-#   DEPS
-#     :sampler
-#     GTest::gtest_main
-# )
+cc_test(
+  NAME
+    sampler_test
+  SRCS
+    sampler_test.cpp
+    logits_processor_test.cpp
+  DEPS
+    :sampler
+    GTest::gtest_main
+)

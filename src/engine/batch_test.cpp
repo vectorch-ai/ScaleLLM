@@ -1,6 +1,5 @@
 #include "batch.h"
 
-#include <common/logging.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -36,6 +35,7 @@ TEST(BatchTest, Basic) {
   EXPECT_EQ(block_0.id(), 0);
 
   SamplingParameter sampling_param;
+  sampling_param.frequency_penalty = 0.1;
   StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = 20;
 
