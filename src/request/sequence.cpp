@@ -133,13 +133,14 @@ void Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(size_t end,
                                         const Tokenizer& tokenizer) {
+  std::string delta_text;
   // return prompt directly if prompt string is not empty
   if (output_offset_ < num_prompt_tokens_ && !prompt_.empty()) {
     // leave 6 tokens for the prefix to defeat cleanup algorithms in decode
     // which decide to add a space or not depending on the surrouding ids.
     prefix_offset_ = num_prompt_tokens_ <= 6 ? 0 : num_prompt_tokens_ - 6;
     output_offset_ = num_prompt_tokens_;
-    return std::string(prompt_);
+    delta_text = prompt_;
   }
 
   const auto tokens = token_ids();
@@ -152,9 +153,9 @@ std::string Sequence::decode_delta_text(size_t end,
     prefix_offset_ = output_offset_;
     output_offset_ = end;
     // only print the delta text
-    return new_text.substr(prefix_text.size());
+    return delta_text + new_text.substr(prefix_text.size());
   }
-  return "";
+  return delta_text;
 }
 
 size_t Sequence::num_generated_tokens() const {
