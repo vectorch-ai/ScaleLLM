@@ -25,15 +25,7 @@ std::string generate_request_id() {
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 bool verify_request_arguments(CompletionCallData* call_data) {
   const auto& request = call_data->request();
-  // n is not implemented yet for stream request
-  const bool stream = request.has_stream() ? request.stream() : false;
   const uint32_t n = request.has_n() ? request.n() : 1;
-  if (stream && n > 1) {
-    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
-                                 "n > 1 is not supported yet");
-    return false;
-  }
-
   if (request.has_best_of() && request.best_of() != n) {
     call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
                                  "best_of != n is not supported yet");

@@ -8,7 +8,8 @@
 
 namespace llm {
 
-using CompletionCallData = CallData<CompletionRequest, CompletionResponse>;
+using CompletionCallData =
+    StreamCallData<CompletionRequest, CompletionResponse>;
 
 class Scheduler;
 class Engine;

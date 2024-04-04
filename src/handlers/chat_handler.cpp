@@ -38,19 +38,6 @@ bool verify_request_arguments(ChatCallData* call_data) {
     return false;
   }
 
-  const bool stream = request.has_stream() ? request.stream() : false;
-  // n is not implemented for stream requests
-  // N.B. grpc stream requires user to send messages in sequence for order
-  // guarantee. If we want to support n > 1 for stream requests, we need to add
-  // support in call_data to send messages in sequence explicitly to workaround
-  // the grpc stream limitation.
-  if (stream && request.has_n() && request.n() > 1) {
-    call_data->finish_with_error(
-        grpc::StatusCode::UNIMPLEMENTED,
-        "n != 1 is not supported yet for stream requests");
-    return false;
-  }
-
   // up to 4 stop sequences
   if (request.stop_size() > 4) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,

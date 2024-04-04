@@ -1,6 +1,6 @@
 #pragma once
 
-#include <folly/MPMCQueue.h>
+#include <glog/logging.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/grpcpp.h>
 
@@ -8,15 +8,14 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 
 namespace llm {
 
-constexpr size_t kResponseQueueSize = 20;
-
 // Interface for the classes that are used to handle grpc requests.
-class ICallData {
+class CallData {
  public:
-  virtual ~ICallData() = default;
+  virtual ~CallData() = default;
 
   // returns true if the rpc is ok and the call data is not finished
   // returns false if the call data is finished and can be deleted
@@ -26,7 +25,7 @@ class ICallData {
 // Class encompasing the state and logic needed to serve a server streaming
 // request.
 template <typename Request, typename Response>
-class CallData : public ICallData {
+class StreamCallData : public CallData {
  public:
   enum class Status { CREATE, WRITE, PENDING, FINISH };
 
@@ -51,16 +50,15 @@ class CallData : public ICallData {
                          grpc::ServerCompletionQueue* notification_cq,
                          void* tag)>;
   // callback for new request
-  using OnRequest = std::function<void(CallData<Request, Response>*)>;
+  using OnRequest = std::function<void(StreamCallData<Request, Response>*)>;
 
-  CallData(grpc::ServerCompletionQueue* cq,
-           OnRegister on_register,
-           OnRequest on_request)
+  StreamCallData(grpc::ServerCompletionQueue* cq,
+                 OnRegister on_register,
+                 OnRequest on_request)
       : cq_(cq),
         responder_(&ctx_),
         on_register_(on_register),
-        on_new_request_(on_request),
-        response_queue_(kResponseQueueSize) {
+        on_new_request_(on_request) {
     // register itself to the service for handling request
     on_register_(&ctx_, &request_, &responder_, cq_, cq_, this);
   }
@@ -77,13 +75,17 @@ class CallData : public ICallData {
     }
 
     // pack the response with state
-    auto response_with_state =
-        std::make_unique<ResponseWithState>(std::move(response));
+    auto new_response =
+        std::make_shared<ResponseWithState>(std::move(response));
+    // wait previous response to be processed
+    while (std::atomic_load(&next_response_)) {
+      std::this_thread::yield();
+    }
+    std::atomic_store(&next_response_, new_response);
 
-    // response_queue take the ownership of the response
-    response_queue_.blockingWrite(response_with_state.release());
     // notify the grpc handler thread
-    write_alarm_.Set(cq_, gpr_now(gpr_clock_type::GPR_CLOCK_REALTIME), this);
+    write_alarm_.Set(
+        cq_, gpr_time_0(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
     return true;
   }
 
@@ -96,11 +98,16 @@ class CallData : public ICallData {
   // returns false if the rpc channel has been closed/cancelled.
   bool finish(const grpc::Status& grpc_status = grpc::Status::OK) {
     // pack status with grpc status
-    auto response_with_state = std::make_unique<ResponseWithState>(grpc_status);
-    // response_queue take the ownership of the response
-    response_queue_.blockingWrite(response_with_state.release());
+    auto new_response = std::make_shared<ResponseWithState>(grpc_status);
+    // wait previous response to be processed
+    while (std::atomic_load(&next_response_)) {
+      std::this_thread::yield();
+    }
+    std::atomic_store(&next_response_, new_response);
+
     // notify the grpc handler thread
-    finish_alarm_.Set(cq_, gpr_now(gpr_clock_type::GPR_CLOCK_REALTIME), this);
+    finish_alarm_.Set(
+        cq_, gpr_time_0(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
     return rpc_ok_.load(std::memory_order_relaxed);
   }
 
@@ -122,17 +129,15 @@ class CallData : public ICallData {
 
       // Spawn a new CallData instance to serve new clients while we process
       // the one for this CallData.
-      new CallData(cq_, on_register_, on_new_request_);
+      new StreamCallData(cq_, on_register_, on_new_request_);
 
       // set status to WRITE to process response
       status_ = Status::WRITE;
       // The actual processing.
       on_new_request_(this);
     } else if (status_ == Status::WRITE) {
-      // pull the next request from the queue and send it to client
-      ResponseWithState* r = nullptr;
-      if (response_queue_.read(r)) {
-        std::unique_ptr<ResponseWithState> rs(r);
+      if (auto rs = std::atomic_load(&next_response_)) {
+        // send the response to client
         if (rs->response.has_value()) {
           // if rpc is ok, send the response to client, otherwise, wait for
           // finish alarm
@@ -155,6 +160,7 @@ class CallData : public ICallData {
     } else if (status_ == Status::PENDING) {
       // the write op has been finished, proceed to the next write op
       status_ = Status::WRITE;
+      std::atomic_store(&next_response_, {});
     } else if (status_ == Status::FINISH) {
       // Once in the FINISH state, deallocate CallData.
       return false;
@@ -193,9 +199,8 @@ class CallData : public ICallData {
   // callback for new request
   OnRequest on_new_request_;
 
-  // a thread safe queue of response, bounded by kResponseQueueSize
-  // the call data owns the responses and manages their lifetimes.
-  folly::MPMCQueue<ResponseWithState*> response_queue_;
+  // next response to be sent to client
+  std::shared_ptr<ResponseWithState> next_response_;
 };
 
 }  // namespace llm

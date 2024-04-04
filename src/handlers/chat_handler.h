@@ -12,7 +12,7 @@
 DECLARE_bool(disable_default_chat_template);
 
 namespace llm {
-using ChatCallData = CallData<ChatRequest, ChatResponse>;
+using ChatCallData = StreamCallData<ChatRequest, ChatResponse>;
 
 class Scheduler;
 class Engine;
