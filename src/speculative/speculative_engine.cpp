@@ -148,8 +148,8 @@ void SpeculativeEngine::validate(Batch& batch,
   const auto draft_probs =
       torch::cat(draft_probs_vec, /*dim=*/1).to(target_probs);
 
-  auto rejection_sampler = std::make_unique<RejectionSampler>(
-      target_output.do_sample, target_probs.options());
+  auto rejection_sampler =
+      std::make_unique<RejectionSampler>(target_output.do_sample);
 
   // get the accepted tokens
   auto accepted_tokens = rejection_sampler->forward(

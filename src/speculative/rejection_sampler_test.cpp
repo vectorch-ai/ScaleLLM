@@ -16,7 +16,8 @@ TEST(RejectionSamplerTest, Greedy) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   const auto options = torch::dtype(dtype).device(device);
-  RejectionSampler sampler({false, false}, options);
+  const auto do_sample = torch::tensor({false, false}, device);
+  RejectionSampler sampler(do_sample);
 
   int64_t batch_size = 2;
   int64_t n_speculative_tokens = 3;
@@ -50,7 +51,8 @@ TEST(RejectionSamplerTest, Random) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   const auto options = torch::dtype(dtype).device(device);
-  RejectionSampler sampler({true, false}, options);
+  const auto do_sample = torch::tensor({true, false}, device);
+  RejectionSampler sampler(do_sample);
 
   int64_t batch_size = 2;
   int64_t n_speculative_tokens = 3;

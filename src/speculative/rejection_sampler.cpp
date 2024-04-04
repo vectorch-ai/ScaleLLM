@@ -104,22 +104,11 @@ torch::Tensor batch_greedy_sample(const torch::Tensor& draft_token_ids,
 
 }  // namespace
 
-RejectionSampler::RejectionSampler(const std::vector<bool>& do_sample,
-                                   const torch::TensorOptions& options) {
-  std::vector<int32_t> do_sample_int;
-  do_sample_int.reserve(do_sample.size());
-  for (bool sample : do_sample) {
-    if (sample) {
-      all_greedy_sample_ = false;
-      do_sample_int.push_back(1);
-    } else {
-      all_random_sample_ = false;
-      do_sample_int.push_back(0);
-    }
-  }
+RejectionSampler::RejectionSampler(const torch::Tensor& do_sample) {
   // [batch_size, 1]
-  do_sample_ = torch::tensor(do_sample_int, options.dtype(torch::kBool))
-                   .unsqueeze_(/*dim=*/-1);
+  do_sample_ = do_sample.unsqueeze_(/*dim=*/-1);
+  all_random_sample_ = do_sample.all().item<bool>();
+  all_greedy_sample_ = !do_sample.any().item<bool>();
 }
 
 // draft_token_ids: [batch_size, n_speculative_tokens]

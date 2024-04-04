@@ -47,9 +47,9 @@ class SpeculativeEngine : public Engine {
 
   int64_t calculate_kv_cache_blocks(int64_t cache_size_in_bytes) const;
 
-  void validate(Batch& batch,
-                const std::vector<ModelOutput>& draft_outputs,
-                const ModelOutput& target_output);
+  static void validate(Batch& batch,
+                       const std::vector<ModelOutput>& draft_outputs,
+                       const ModelOutput& target_output);
 
   // engine
   std::unique_ptr<LLMEngine> engine_;

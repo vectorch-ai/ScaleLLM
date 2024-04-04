@@ -1,6 +1,5 @@
 #include "batch.h"
 
-#include <common/logging.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -36,6 +35,7 @@ TEST(BatchTest, Basic) {
   EXPECT_EQ(block_0.id(), 0);
 
   SamplingParameter sampling_param;
+  sampling_param.frequency_penalty = 0.1;
   StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = 20;
 
@@ -127,17 +127,17 @@ TEST(BatchTest, Basic) {
     /*seq2*/ 100,  8,  6,  4,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
     /*seq3*/ 200,  19, 17, 1,  2,  15, 3,  4,  5,  6,  7,  8,  9, 10, 11, 13
     };
-  EXPECT_TRUE(equal(sampling_params.token_ids, unique_ids));
+  EXPECT_TRUE(equal(sampling_params.unique_token_ids, unique_ids));
 
   const std::vector<int32_t> unique_counts = {
     /*seq1*/  1,  1,  1,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  
     /*seq2*/  1,  1,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  
     /*seq3*/  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1
   };
-  EXPECT_TRUE(equal(sampling_params.token_counts, unique_counts));
+  EXPECT_TRUE(equal(sampling_params.unique_token_counts, unique_counts));
 
   const std::vector<int32_t> token_ids_lens = {6, 5, 16};
-  EXPECT_TRUE(equal(sampling_params.token_ids_lens, token_ids_lens));
+  EXPECT_TRUE(equal(sampling_params.unique_token_ids_lens, token_ids_lens));
 
   // clang-format on
 }

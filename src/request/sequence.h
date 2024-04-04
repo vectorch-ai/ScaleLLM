@@ -148,14 +148,6 @@ class Sequence final {
   // get the offset of output tokens
   size_t output_offset() const { return output_offset_; }
 
-  // get the sampling parameters
-  const SamplingParameter& sampling_param() const { return sampling_param_; }
-
-  // get the stopping criteria
-  const StoppingCriteria& stopping_criteria() const {
-    return stopping_criteria_;
-  }
-
   // get the prompt string
   std::string_view prompt() const { return prompt_; }
 
@@ -173,6 +165,14 @@ class Sequence final {
     size_t& num_kv_cache_tokens = num_kv_cache_tokens_[engine_type_];
     CHECK(num_kv_cache_tokens + size <= kv_cache_capacity());
     num_kv_cache_tokens += size;
+  }
+
+  // get the sampling parameters
+  const SamplingParameter* sampling_param() const { return &sampling_param_; }
+
+  // get the stopping criteria
+  const StoppingCriteria* stopping_criteria() const {
+    return &stopping_criteria_;
   }
 
  private:

@@ -24,7 +24,7 @@ struct ModelInput {
 // output information.
 struct ModelOutput {
   // sample carried over from input, used for speculative decoding
-  std::vector<bool> do_sample;
+  torch::Tensor do_sample;
 
   // output of sampling
   SampleOutput sample_output;

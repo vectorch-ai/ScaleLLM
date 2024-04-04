@@ -347,8 +347,6 @@ ModelOutput LLMEngine::execute_model(Batch& batch) {
     // only one worker, call blocking forward
     auto model_output = workers_[0]->execute_model(model_inputs);
     batch.process_sample_output(model_output.sample_output);
-    // carry over the sampling params
-    model_output.do_sample = model_inputs.sampling_params.do_sample;
     return model_output;
   }
 
@@ -363,8 +361,6 @@ ModelOutput LLMEngine::execute_model(Batch& batch) {
   // return the result from the first worker
   auto model_output = results.front().value();
   batch.process_sample_output(model_output.sample_output);
-  // carry over the sampling params
-  model_output.do_sample = model_inputs.sampling_params.do_sample;
   return model_output;
 }
 

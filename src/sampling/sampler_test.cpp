@@ -15,7 +15,8 @@ TEST(SamplerTest, Greedy) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   const auto options = torch::dtype(dtype).device(device);
-  Sampler sampler({false, false}, options);
+  const auto do_sample = torch::tensor({false, false}, device);
+  Sampler sampler(do_sample);
 
   int64_t batch_size = 2;
   int64_t vocab_size = 32000;
@@ -33,7 +34,8 @@ TEST(SamplerTest, Random) {
   torch::ScalarType dtype(torch::kFloat32);
   torch::Device device(torch::kCPU);
   const auto options = torch::dtype(dtype).device(device);
-  Sampler sampler({true, false}, options);
+  const auto do_sample = torch::tensor({true, false}, device);
+  Sampler sampler(do_sample);
 
   int64_t batch_size = 2;
   int64_t vocab_size = 32000;

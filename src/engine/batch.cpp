@@ -5,26 +5,25 @@
 #include <vector>
 
 #include "common/slice.h"
+#include "common/tensor_helper.h"
 #include "models/parameters.h"
 #include "request/sequence.h"
+#include "sampling/parameters.h"
 
 namespace llm {
 
 namespace {
 
 template <typename T>
-torch::Tensor create_2d_tensor(std::vector<std::vector<T>>& vec,
-                               size_t max_col_size,
-                               torch::ScalarType dtype,
-                               T pad_value = 0) {
-  const int64_t n_rows = vec.size();
-  auto tensor =
-      torch::empty({n_rows, static_cast<int64_t>(max_col_size)}, dtype);
-  for (int64_t i = 0; i < n_rows; ++i) {
-    vec[i].resize(max_col_size, pad_value);
-    tensor[i] = torch::tensor(vec[i], dtype);
+void pad_2d_vector(std::vector<std::vector<T>>& vec, T pad_value) {
+  size_t max_col_size = 0;
+  for (const auto& row : vec) {
+    max_col_size = std::max(max_col_size, row.size());
   }
-  return tensor;
+
+  for (auto& row : vec) {
+    row.resize(max_col_size, pad_value);
+  }
 }
 
 }  // namespace
@@ -67,15 +66,15 @@ ModelInput Batch::prepare_model_input() {
 
   // sleceted tokens to return logits, including generated tokens and last
   // prompt token
+  std::vector<const SamplingParameter*> sampling_params;
   std::vector<int32_t> selected_token_idxes;
   // track the last token of selected tokens for sampling
   std::vector<int32_t> sample_idxes;
 
-  // track the token ids and counts in the batch
-  std::vector<std::vector<int64_t>> token_ids_vec;
-  std::vector<int32_t> token_ids_lens_vec;
-  std::vector<std::vector<int32_t>> token_counts_vec;
-  size_t max_unique_tokens = 0;
+  // track the unique token ids and counts in the batch
+  std::vector<std::vector<int64_t>> unique_token_ids_vec;
+  std::vector<std::vector<int32_t>> unique_token_counts_vec;
+  std::vector<int32_t> unique_token_lens_vec;
 
   bool empty_kv_cache = true;
   uint32_t max_seq_len = 0;
@@ -85,7 +84,6 @@ ModelInput Batch::prepare_model_input() {
   // slot ids for new token
   std::vector<int32_t> new_token_slot_ids;
   std::vector<std::vector<int32_t>> block_tables_vec;
-  int32_t max_block_table_len = 0;
   const int32_t num_sequences = static_cast<int32_t>(sequences_.size());
   for (int32_t i = 0; i < num_sequences; ++i) {
     auto* sequence = sequences_[i];
@@ -120,6 +118,15 @@ ModelInput Batch::prepare_model_input() {
     // pack the token ids and positions into one-dimensional tensors
     // and select tokens for sampling the next token
     const uint32_t n_prompt_tokens = sequence->num_prompt_tokens();
+    std::unordered_map<int32_t, int32_t> adjusted_token_to_count_map;
+    for (uint32_t j = n_tokens_in_kv_cache; j < seq_len; ++j) {
+      // skip prompt tokens except the last one
+      if (j + 1 < n_prompt_tokens) {
+        continue;
+      }
+      ++adjusted_token_to_count_map[token_ids[j]];
+    }
+
     bool has_selected_token = false;
     for (uint32_t j = n_tokens_in_kv_cache; j < seq_len; ++j) {
       flatten_tokens_vec.push_back(token_ids[j]);
@@ -129,34 +136,38 @@ ModelInput Batch::prepare_model_input() {
       if (j + 1 < n_prompt_tokens) {
         continue;
       }
+
+      // adjust token count for current token
+      --adjusted_token_to_count_map[token_ids[j]];
+
       // select tokens for sampling the next token
       selected_token_idxes.push_back(flatten_tokens_vec.size() - 1);
-      has_selected_token = true;
+      sampling_params.push_back(sequence->sampling_param());
+
+      // add token id and count for sampling
+      const auto& seq_token_counts = sequence->token_to_count_map();
+      const auto unique_tokens = seq_token_counts.size();
+
+      auto& ids = unique_token_ids_vec.emplace_back();
+      auto& counts = unique_token_counts_vec.emplace_back();
+      ids.reserve(unique_tokens);
+      counts.reserve(unique_tokens);
+      for (const auto& [token_id, count] : seq_token_counts) {
+        const auto it = adjusted_token_to_count_map.find(token_id);
+        const auto adjust_count =
+            it != adjusted_token_to_count_map.end() ? it->second : 0;
+        if (count > adjust_count) {
+          ids.push_back(token_id);
+          counts.push_back(count - adjust_count);
+        }
+      }
+      unique_token_lens_vec.push_back(static_cast<int32_t>(ids.size()));
+
       // sample last token in the sequence
       if (j == seq_len - 1) {
         sample_idxes.push_back(
             static_cast<int32_t>(selected_token_idxes.size() - 1));
       }
-    }
-
-    if (has_selected_token) {
-      // add token id and count for sampling
-      const auto& seq_token_counts = sequence->token_to_count_map();
-      const auto unique_tokens = seq_token_counts.size();
-
-      auto& ids = token_ids_vec.emplace_back();
-      auto& counts = token_counts_vec.emplace_back();
-      ids.reserve(unique_tokens);
-      counts.reserve(unique_tokens);
-      for (const auto& [token_id, count] : seq_token_counts) {
-        ids.push_back(token_id);
-        counts.push_back(count);
-      }
-      token_ids_lens_vec.push_back(static_cast<int32_t>(unique_tokens));
-      max_unique_tokens = std::max(max_unique_tokens, unique_tokens);
-
-      // add sampling parameters
-      model_inputs.sampling_params.add(sequence->sampling_param());
     }
 
     // commit kv cache to advance kv_cache pos in sequence
@@ -176,12 +187,10 @@ ModelInput Batch::prepare_model_input() {
       block_ids.push_back(block.id());
     }
     block_tables_vec.push_back(block_ids);
-    max_block_table_len =
-        std::max(max_block_table_len, static_cast<int32_t>(blocks.size()));
   }
 
-  auto block_tables = create_2d_tensor(
-      block_tables_vec, max_block_table_len, torch::kInt, /*pad_value=*/0);
+  pad_2d_vector(block_tables_vec, /*pad_value=*/0);
+  auto block_tables = create_2d_tensor(block_tables_vec, torch::kInt);
 
   model_inputs.token_ids = torch::tensor(flatten_tokens_vec, torch::kInt);
   model_inputs.positions = torch::tensor(flatten_positions_vec, torch::kInt);
@@ -196,26 +205,16 @@ ModelInput Batch::prepare_model_input() {
   input_params.new_cache_slots = torch::tensor(new_token_slot_ids, torch::kInt);
   input_params.block_tables = block_tables;
 
-  auto& sampling_params = model_inputs.sampling_params;
+  CHECK_EQ(sampling_params.size(), selected_token_idxes.size());
   if (!selected_token_idxes.empty()) {
-    // construct two-dimensional tensors for token ids and counts
-    auto token_ids = create_2d_tensor(token_ids_vec,
-                                      max_unique_tokens,
-                                      torch::kInt64,
-                                      /*pad_value=*/int64_t(0));
-    auto token_counts = create_2d_tensor(
-        token_counts_vec, max_unique_tokens, torch::kInt, /*pad_value=*/0);
-
-    sampling_params.selected_token_idxes =
-        torch::tensor(selected_token_idxes, torch::kInt);
-    sampling_params.token_ids = token_ids;
-    sampling_params.token_counts = token_counts;
-    sampling_params.token_ids_lens =
-        torch::tensor(token_ids_lens_vec, torch::kInt);
-  }
-
-  if (!sample_idxes.empty()) {
-    sampling_params.sample_idxes = torch::tensor(sample_idxes, torch::kInt);
+    pad_2d_vector<int64_t>(unique_token_ids_vec, /*pad_value=*/0);
+    pad_2d_vector(unique_token_counts_vec, /*pad_value=*/0);
+    model_inputs.sampling_params.init(sampling_params,
+                                      selected_token_idxes,
+                                      sample_idxes,
+                                      unique_token_ids_vec,
+                                      unique_token_counts_vec,
+                                      unique_token_lens_vec);
   }
 
   return model_inputs;
