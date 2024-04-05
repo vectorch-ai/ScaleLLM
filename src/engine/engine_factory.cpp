@@ -68,7 +68,7 @@ std::unique_ptr<Engine> EngineFactory::create(
     CHECK(engine->init(model_path, draft_model_path));
     return engine;
   }
-  
+
   auto engine = std::make_unique<LLMEngine>(devices);
   CHECK(engine->init(model_path));
   return engine;

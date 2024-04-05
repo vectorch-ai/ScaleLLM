@@ -225,7 +225,7 @@ ModelInput Batch::prepare_model_input() {
   input_params.kv_cu_seq_lens = torch::tensor(cu_seq_lens, torch::kInt);
   input_params.q_cu_seq_lens = torch::tensor(q_cu_seq_lens, torch::kInt);
   input_params.new_cache_slots = torch::tensor(new_token_slot_ids, torch::kInt);
-  
+
   pad_2d_vector(block_tables_vec, /*pad_value=*/0);
   input_params.block_tables = create_2d_tensor(block_tables_vec, torch::kInt);
 
