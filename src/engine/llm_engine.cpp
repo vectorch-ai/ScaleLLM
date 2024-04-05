@@ -343,6 +343,11 @@ bool LLMEngine::init_kv_cache(int64_t n_blocks) {
 ModelOutput LLMEngine::execute_model(Batch& batch) {
   // prepare inputs for workers
   auto model_inputs = batch.prepare_model_input();
+  if (!model_inputs.token_ids.defined()) {
+    // empty input, just return
+    return {};
+  }
+
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     auto model_output = workers_[0]->execute_model(model_inputs);

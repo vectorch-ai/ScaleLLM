@@ -1,13 +1,12 @@
 #pragma once
 
 #include "batch.h"
+#include "memory/block_manager.h"
 #include "models/model_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 
 namespace llm {
-
-class BlockManager;
 class Engine {
  public:
   virtual ~Engine() = default;

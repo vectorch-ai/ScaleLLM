@@ -63,6 +63,9 @@ class Batch {
   // max number of tokens to process for each sequence
   // default to max value
   std::vector<uint32_t> token_budgets_;
+
+  // number of used budget for each sequence
+  std::vector<uint32_t> budget_used_;
 };
 
 }  // namespace llm
