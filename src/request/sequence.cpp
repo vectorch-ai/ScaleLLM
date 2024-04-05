@@ -8,7 +8,7 @@
 
 #include "tokenizer/tokenizer.h"
 
-DEFINE_int32(num_speculative_steps, 0, "number of speculative steps");
+DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 
 namespace llm {
 namespace {
@@ -55,7 +55,7 @@ Sequence::Sequence(const std::string_view& prompt,
   // allocate space for the token ids and add the prompt tokens
   const size_t max_tokens = stopping_criteria.max_tokens +
                             prompt_token_ids.size() +
-                            FLAGS_num_speculative_steps + /*bouns_token*/ 1;
+                            FLAGS_num_speculative_tokens + /*bouns_token*/ 1;
   token_ids_.resize(max_tokens);
   for (const auto token_id : prompt_token_ids) {
     token_ids_[num_tokens_++] = token_id;
@@ -272,15 +272,14 @@ bool Sequence::check_finished(size_t last_token_idx) const {
   }
 
   // check against max tokens and max context length
-  const size_t max_new_tokens = stopping_criteria_.max_tokens;
   const size_t max_context_length = stopping_criteria_.max_context_length;
   const bool max_context_length_reached =
       max_context_length > 0 &&
-      num_tokens_ + FLAGS_num_speculative_steps + /*bouns_token*/ 1 >=
-          max_context_length;
-  const bool max_new_tokens_reached =
-      max_new_tokens > 0 && num_generated_tokens() >= max_new_tokens;
-  if (max_context_length_reached || max_new_tokens_reached) {
+      num_tokens_ + FLAGS_num_speculative_tokens >= max_context_length;
+  const size_t max_tokens = stopping_criteria_.max_tokens;
+  const bool max_tokens_reached =
+      max_tokens > 0 && num_generated_tokens() >= max_tokens;
+  if (max_context_length_reached || max_tokens_reached) {
     finish_reason_ = FinishReason::LENGTH;
     return is_finished_ = true;
   }

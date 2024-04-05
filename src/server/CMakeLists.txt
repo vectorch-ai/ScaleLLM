@@ -48,8 +48,7 @@ cc_binary(
   SRCS 
     simple.cpp
   DEPS
-    :engine
-    :speculative
+    :engine_factory
     torch
     absl::strings
     gflags::gflags
@@ -65,7 +64,7 @@ cc_binary(
   DEPS
     :grpc_server
     :http_server
-    :engine
+    :engine_factory
     absl::strings
     gflags::gflags
     glog::glog

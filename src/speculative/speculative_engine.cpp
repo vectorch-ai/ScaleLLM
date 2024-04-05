@@ -9,18 +9,20 @@
 #include "rejection_sampler.h"
 
 DECLARE_int32(block_size);
-DECLARE_int32(num_speculative_steps);
+DECLARE_int32(num_speculative_tokens);
 
 namespace llm {
 
 SpeculativeEngine::SpeculativeEngine(
     const std::vector<torch::Device>& devices,
     const std::vector<torch::Device>& draft_devices) {
-  CHECK_GT(FLAGS_num_speculative_steps, 0) << "speculative steps should be > 0";
+  CHECK_GT(FLAGS_num_speculative_tokens, 0)
+      << "speculative tokens should not be zero";
 
   engine_ = std::make_unique<LLMEngine>(devices);
   draft_engine_ = std::make_unique<LLMEngine>(draft_devices);
 
+  // check if llm and ssm are using the same device
   for (const auto& target : devices) {
     for (const auto& draft : draft_devices) {
       if (target == draft) {
@@ -91,7 +93,7 @@ ModelOutput SpeculativeEngine::execute_model(Batch& batch) {
   // run the draft model to get proposals
   std::vector<ModelOutput> draft_outputs;
   batch.set_engine_type(EngineType::SSM);
-  for (size_t i = 0; i < FLAGS_num_speculative_steps; ++i) {
+  for (size_t i = 0; i < FLAGS_num_speculative_tokens; ++i) {
     auto draft_output = draft_engine_->execute_model(batch);
     // TODO: check if draft_output is valid/empty
     draft_outputs.push_back(draft_output);

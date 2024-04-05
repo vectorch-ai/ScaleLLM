@@ -43,6 +43,7 @@ void Batch::add(Sequence* sequence, uint32_t token_budget) {
 
   sequences_.push_back(sequence);
   token_budgets_.push_back(token_budget);
+  budget_used_.push_back(0);
 }
 
 void Batch::add(const std::vector<Sequence*>& sequences) {
@@ -51,15 +52,23 @@ void Batch::add(const std::vector<Sequence*>& sequences) {
   }
 }
 
+void Batch::set_engine_type(EngineType engine_type) {
+  // set engine type for all sequences in the batch
+  for (auto* sequence : sequences_) {
+    sequence->set_engine_type(engine_type);
+  }
+  // reset the budget used
+  std::fill(budget_used_.begin(), budget_used_.end(), 0);
+}
+
 void Batch::clear() {
   sequences_.clear();
   token_budgets_.clear();
+  budget_used_.clear();
 }
 
 // prepare inputs for the batch
 ModelInput Batch::prepare_model_input() {
-  ModelInput model_inputs;
-
   // flatten the token ids and positions
   std::vector<int32_t> flatten_tokens_vec;
   std::vector<int32_t> flatten_positions_vec;
@@ -93,8 +102,15 @@ ModelInput Batch::prepare_model_input() {
 
     const uint32_t n_tokens = token_ids.size();
     const uint32_t n_tokens_in_kv_cache = sequence->kv_cache_size();
+    const uint32_t remaining_token_budget = token_budgets_[i] - budget_used_[i];
+    if (remaining_token_budget == 0) {
+      // no token budget left for the prefill sequence
+      CHECK(sequence->is_prefill_stage());
+      continue;
+    }
+
     const uint32_t q_seq_len =
-        std::min(n_tokens - n_tokens_in_kv_cache, token_budgets_[i]);
+        std::min(n_tokens - n_tokens_in_kv_cache, remaining_token_budget);
 
     const uint32_t seq_len = q_seq_len + n_tokens_in_kv_cache;
 
@@ -108,6 +124,9 @@ ModelInput Batch::prepare_model_input() {
                           << ", kv_cache_capacity: "
                           << sequence->kv_cache_capacity()
                           << ", token_budget: " << token_budgets_[i];
+
+    // update budget used
+    budget_used_[i] += q_seq_len;
 
     // update sequence length
     max_seq_len = std::max(max_seq_len, seq_len);
@@ -189,9 +208,12 @@ ModelInput Batch::prepare_model_input() {
     block_tables_vec.push_back(block_ids);
   }
 
-  pad_2d_vector(block_tables_vec, /*pad_value=*/0);
-  auto block_tables = create_2d_tensor(block_tables_vec, torch::kInt);
+  if (flatten_tokens_vec.empty()) {
+    // no tokens to process
+    return {};
+  }
 
+  ModelInput model_inputs;
   model_inputs.token_ids = torch::tensor(flatten_tokens_vec, torch::kInt);
   model_inputs.positions = torch::tensor(flatten_positions_vec, torch::kInt);
 
@@ -203,7 +225,9 @@ ModelInput Batch::prepare_model_input() {
   input_params.kv_cu_seq_lens = torch::tensor(cu_seq_lens, torch::kInt);
   input_params.q_cu_seq_lens = torch::tensor(q_cu_seq_lens, torch::kInt);
   input_params.new_cache_slots = torch::tensor(new_token_slot_ids, torch::kInt);
-  input_params.block_tables = block_tables;
+  
+  pad_2d_vector(block_tables_vec, /*pad_value=*/0);
+  input_params.block_tables = create_2d_tensor(block_tables_vec, torch::kInt);
 
   CHECK_EQ(sampling_params.size(), selected_token_idxes.size());
   if (!selected_token_idxes.empty()) {
@@ -261,13 +285,6 @@ void Batch::process_validate_output(const torch::Tensor& accepted_ids) {
     seq->validate_token_ids(accepted_token_ids);
   }
   CHECK_EQ(output_idx, num_seqs);
-}
-
-void Batch::set_engine_type(EngineType engine_type) {
-  // set engine type for all sequences in the batch
-  for (auto* sequence : sequences_) {
-    sequence->set_engine_type(engine_type);
-  }
 }
 
 }  // namespace llm
