@@ -286,6 +286,9 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     };
   }
 
+  // set callback for checking rpc status
+  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
+  
   // add one sequence, the rest will be expanded by scheduler
   request->add_sequence();
   return request;

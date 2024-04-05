@@ -91,7 +91,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
   for (auto it = running_requests_.rbegin(); it != running_requests_.rend();
        ++it) {
     Request* request = *it;
-    if (request->is_finished()) {
+    if (request->is_finished() || request->is_cancelled()) {
       // release the ownership of the request
       response_handler_->on_request_finish(std::unique_ptr<Request>(request));
       continue;
@@ -139,6 +139,8 @@ Batch ContinuousScheduler::build_sequence_batch() {
          remaining_token_budget > FLAGS_num_speculative_tokens &&
          remaining_seq_budget > 0) {
     Request* request = priority_queue_.top();
+    // TODO: check if request is timeout
+    
     std::vector<SequenceData> candidates;
     candidates.reserve(request->sequences.size());
 

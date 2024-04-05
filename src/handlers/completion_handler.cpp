@@ -269,7 +269,10 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     };
   }
 
-  // add sequences
+  // set callback for checking rpc status
+  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
+
+  // add one sequence, rest will be added by scheduler
   request->add_sequence();
   return request;
 }

@@ -8,7 +8,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 
 namespace llm {
 
@@ -65,28 +64,28 @@ class StreamCallData : public CallData {
 
   const Request& request() const { return request_; }
 
+  // returns true if the rpc is ok
+  bool is_rpc_ok() const { return rpc_ok_.load(std::memory_order_relaxed); }
+
   // call following methods to reply to client
   // returns true if the response has been accepted and will be delivered
   // asynchronously.
   // returns false if the rpc channel has been closed/cancelled.
   bool write(Response response) {
-    if (!rpc_ok_.load(std::memory_order_relaxed)) {
-      return false;
-    }
-
     // pack the response with state
     auto new_response =
         std::make_shared<ResponseWithState>(std::move(response));
     // wait previous response to be processed
-    while (std::atomic_load(&next_response_)) {
-      std::this_thread::yield();
+    std::shared_ptr<ResponseWithState> expected = nullptr;
+    while (!std::atomic_compare_exchange_weak(
+        &response_, &expected, new_response)) {
+      expected = nullptr;
     }
-    std::atomic_store(&next_response_, new_response);
 
     // notify the grpc handler thread
-    write_alarm_.Set(
+    notify_alarm_.Set(
         cq_, gpr_time_0(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
-    return true;
+    return rpc_ok_.load(std::memory_order_relaxed);
   }
 
   // returns false if the rpc channel has been closed/cancelled.
@@ -100,13 +99,14 @@ class StreamCallData : public CallData {
     // pack status with grpc status
     auto new_response = std::make_shared<ResponseWithState>(grpc_status);
     // wait previous response to be processed
-    while (std::atomic_load(&next_response_)) {
-      std::this_thread::yield();
+    std::shared_ptr<ResponseWithState> expected = nullptr;
+    while (!std::atomic_compare_exchange_weak(
+        &response_, &expected, new_response)) {
+      expected = nullptr;
     }
-    std::atomic_store(&next_response_, new_response);
 
     // notify the grpc handler thread
-    finish_alarm_.Set(
+    notify_alarm_.Set(
         cq_, gpr_time_0(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
     return rpc_ok_.load(std::memory_order_relaxed);
   }
@@ -122,21 +122,20 @@ class StreamCallData : public CallData {
 
     // it is notification from cq for new request
     if (status_ == Status::CREATE) {
+      // Spawn a new CallData instance to serve new clients
+      new StreamCallData(cq_, on_register_, on_new_request_);
+
       // rpc error before acctually processing the request, release the calldata
       if (!rpc_ok) {
         return false;
       }
-
-      // Spawn a new CallData instance to serve new clients while we process
-      // the one for this CallData.
-      new StreamCallData(cq_, on_register_, on_new_request_);
 
       // set status to WRITE to process response
       status_ = Status::WRITE;
       // The actual processing.
       on_new_request_(this);
     } else if (status_ == Status::WRITE) {
-      if (auto rs = std::atomic_load(&next_response_)) {
+      if (auto rs = std::atomic_load(&response_)) {
         // send the response to client
         if (rs->response.has_value()) {
           // if rpc is ok, send the response to client, otherwise, wait for
@@ -145,6 +144,8 @@ class StreamCallData : public CallData {
             // change the status to pending to wait for write op to finish
             status_ = Status::PENDING;
             responder_.Write(rs->response.value(), this);
+          } else {
+            std::atomic_store(&response_, {});
           }
         } else {
           if (rpc_ok) {
@@ -160,7 +161,7 @@ class StreamCallData : public CallData {
     } else if (status_ == Status::PENDING) {
       // the write op has been finished, proceed to the next write op
       status_ = Status::WRITE;
-      std::atomic_store(&next_response_, {});
+      std::atomic_store(&response_, {});
     } else if (status_ == Status::FINISH) {
       // Once in the FINISH state, deallocate CallData.
       return false;
@@ -178,11 +179,8 @@ class StreamCallData : public CallData {
   // context for the request.
   grpc::ServerContext ctx_;
 
-  // write alarm for notifying the grpc handler thread
-  grpc::Alarm write_alarm_;
-
-  // finish alarm for notifying the grpc handler thread
-  grpc::Alarm finish_alarm_;
+  // alarm for notifying the grpc handler thread
+  grpc::Alarm notify_alarm_;
 
   // request get from client
   Request request_;
@@ -200,7 +198,7 @@ class StreamCallData : public CallData {
   OnRequest on_new_request_;
 
   // next response to be sent to client
-  std::shared_ptr<ResponseWithState> next_response_;
+  std::shared_ptr<ResponseWithState> response_;
 };
 
 }  // namespace llm
