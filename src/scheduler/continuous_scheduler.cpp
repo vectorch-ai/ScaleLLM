@@ -140,7 +140,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
          remaining_seq_budget > 0) {
     Request* request = priority_queue_.top();
     // TODO: check if request is timeout
-    
+
     std::vector<SequenceData> candidates;
     candidates.reserve(request->sequences.size());
 
