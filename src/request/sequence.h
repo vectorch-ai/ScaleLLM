@@ -143,7 +143,11 @@ class Sequence final {
   bool is_streaming() const { return on_delta_ != nullptr; }
 
   // stream the delta text to the client
+  // cancel the sequence if the callback returns false
   void stream_delta(const std::string& delta, FinishReason reason);
+
+  // check if the sequence is cancelled
+  bool is_cancelled() const;
 
   // get the offset of output tokens
   size_t output_offset() const { return output_offset_; }
@@ -219,7 +223,10 @@ class Sequence final {
   // physical blocks that hold the kv cache.
   std::vector<Block> blocks_;
 
-  // has the sequence been finished
+  // is the sequence cancelled
+  std::atomic_bool is_cancelled_{false};
+
+  // is the sequence finished
   mutable bool is_finished_ = false;
 
   // is the finish status invalidated

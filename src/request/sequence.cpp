@@ -2,6 +2,7 @@
 
 #include <absl/strings/match.h>
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -231,10 +232,14 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
 void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
   if (on_delta_) {
     if (!on_delta_(delta, reason)) {
-      LOG(ERROR) << "failed to stream the delta";
-      // TODO: handle the failure
+      // cancel the sequence if the callback returns false
+      is_cancelled_.store(true, std::memory_order_relaxed);
     }
   }
+}
+
+bool Sequence::is_cancelled() const {
+  return is_cancelled_.load(std::memory_order_relaxed);
 }
 
 bool Sequence::is_finished() const {

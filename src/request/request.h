@@ -69,6 +69,9 @@ using OnStreamDelta = std::function<bool(size_t index,
 // Function to call when a stream request is finished.
 using OnStreamFinish = std::function<bool(const Status& status)>;
 
+// Function to check rpc health.
+using IsRpcOK = std::function<bool()>;
+
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
 // container, holding essential data, such as input parameters, configuration
@@ -87,6 +90,8 @@ struct Request final {
   void add_sequence();
 
   bool is_finished() const;
+
+  bool is_cancelled() const;
 
   size_t num_prompt_tokens() const { return prompt_tokens.size(); }
 
@@ -141,6 +146,9 @@ struct Request final {
 
   // function to call when a stream request is finished.
   OnStreamFinish on_stream_finish;
+
+  // function to check rpc health.
+  IsRpcOK is_rpc_ok;
 };
 
 // Compare two request contexts based on priority then scheduled time.
