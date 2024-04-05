@@ -110,8 +110,7 @@ int main(int argc, char** argv) {
   auto models_handler = std::make_unique<ModelsHandler>(FLAGS_model_id);
 
   // start grpc server
-  GrpcServer grpc_server(
-    std::move(completion_handler),
+  GrpcServer grpc_server(std::move(completion_handler),
                          std::move(chat_handler),
                          std::move(models_handler));
   GrpcServer::Options options;
