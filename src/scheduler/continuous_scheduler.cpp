@@ -12,8 +12,8 @@
 #include "request/request.h"
 #include "request/sequence.h"
 
-DEFINE_int32(max_tokens_per_batch, 1024, "max number of tokens per batch");
-DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
+DEFINE_int32(max_tokens_per_batch, 256, "max number of tokens per batch");
+DEFINE_int32(max_seqs_per_batch, 64, "max number of sequences per batch");
 
 DECLARE_bool(enable_prefix_cache);
 DECLARE_int32(num_speculative_tokens);

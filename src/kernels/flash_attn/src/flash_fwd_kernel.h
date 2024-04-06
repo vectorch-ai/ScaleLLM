@@ -444,11 +444,10 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params &params, cons
     constexpr int kHeadDim = Kernel_traits::kHeadDim;
     constexpr int kNWarps = Kernel_traits::kNWarps;
 
-    using GmemTiledCopyO = std::conditional_t<
-        !Split,
-        typename Kernel_traits::GmemTiledCopyOaccum,
-        typename Kernel_traits::GmemTiledCopyO
-    >;
+    using GmemTiledCopyO =
+        std::conditional_t<!Split,
+                           typename Kernel_traits::GmemTiledCopyO,
+                           typename Kernel_traits::GmemTiledCopyOaccum>;
     using ElementO = std::conditional_t<!Split, Element, ElementAccum>;
 
     const BlockInfo</*Varlen=*/!Is_even_MN> binfo(params, bidb);
