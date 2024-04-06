@@ -269,13 +269,16 @@ bool TiktokenTokenizer::encode(const std::string_view& text,
   return true;
 }
 
-std::string TiktokenTokenizer::decode(const Slice<int32_t>& ids) const {
+std::string TiktokenTokenizer::decode(const Slice<int32_t>& ids,
+                                      bool skip_special_tokens) const {
   std::stringstream ss;
   for (const auto& id : ids) {
     // encode special token
     const auto sit = special_token_decoder_.find(id);
     if (sit != special_token_decoder_.end()) {
-      ss << sit->second;
+      if (!skip_special_tokens) {
+        ss << sit->second;
+      }
       continue;
     }
 

@@ -146,8 +146,10 @@ std::string Sequence::decode_delta_text(size_t end,
 
   const auto tokens = token_ids();
   const auto prefix_text =
-      tokenizer.decode(tokens.slice(prefix_offset_, output_offset_));
-  const auto new_text = tokenizer.decode(tokens.slice(prefix_offset_, end));
+      tokenizer.decode(tokens.slice(prefix_offset_, output_offset_),
+                       sampling_param_.skip_special_tokens);
+  const auto new_text = tokenizer.decode(tokens.slice(prefix_offset_, end),
+                                         sampling_param_.skip_special_tokens);
   // utf-8 char � at the end means it is a potential unfinished byte sequence
   // from byte fallback tokenization.
   if (new_text.size() > prefix_text.size() && !absl::EndsWith(new_text, "�")) {

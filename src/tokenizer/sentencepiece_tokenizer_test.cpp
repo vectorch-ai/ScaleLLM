@@ -15,9 +15,14 @@ TEST(SentencePieceTokenizerTest, EncodeDecodeTest) {
   ASSERT_TRUE(tokenizer.encode(test_text, &ids));
   const std::vector<int> desired_ids = {1, 15043, 29892, 3186, 29991};
   EXPECT_EQ(ids, desired_ids);
-
-  const auto text = tokenizer.decode(ids);
-  EXPECT_EQ(text, test_text);
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(text, test_text);
+  }
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/true);
+    EXPECT_EQ(text, test_text);
+  }
 }
 
 TEST(SentencePieceTokenizerTest, CJKTest) {
@@ -32,9 +37,16 @@ TEST(SentencePieceTokenizerTest, CJKTest) {
   const std::vector<int> desired_ids = {
       1, 29871, 30919, 31076, 30214, 30793, 30967, 30584};
   EXPECT_EQ(ids, desired_ids);
-
-  const auto decoded_text = tokenizer.decode(ids);
-  EXPECT_EQ(decoded_text, test_text);
+  {
+    const auto decoded_text =
+        tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(decoded_text, test_text);
+  }
+  {
+    const auto decoded_text =
+        tokenizer.decode(ids, /*skip_special_tokens=*/true);
+    EXPECT_EQ(decoded_text, test_text);
+  }
 }
 
 TEST(SentencePieceTokenizerTest, SpecialTokenTest) {
@@ -54,8 +66,16 @@ TEST(SentencePieceTokenizerTest, SpecialTokenTest) {
     std::vector<int> ids;
     ASSERT_TRUE(tokenizer.encode(token, &ids));
     EXPECT_EQ(ids.size(), 1);
-    const auto decoded_token = tokenizer.decode(ids);
-    EXPECT_EQ(decoded_token, token);
+    {
+      const auto decoded_token =
+          tokenizer.decode(ids, /*skip_special_tokens=*/false);
+      EXPECT_EQ(decoded_token, token);
+    }
+    {
+      const auto decoded_token =
+          tokenizer.decode(ids, /*skip_special_tokens=*/true);
+      EXPECT_EQ(decoded_token, "");
+    }
   }
 
   // test encode text with special tokens
@@ -72,7 +92,13 @@ TEST(SentencePieceTokenizerTest, SpecialTokenTest) {
   // clang-format on
   EXPECT_EQ(ids, desired_ids);
 
-  const auto text = tokenizer.decode(ids);
-  EXPECT_EQ(text, test_text);
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(text, test_text);
+  }
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/true);
+    EXPECT_EQ(text, " Hello world  Hello ");
+  }
 }
 }  // namespace llm

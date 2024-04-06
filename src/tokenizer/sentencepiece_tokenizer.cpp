@@ -174,19 +174,23 @@ void SentencePieceTokenizer::decode_internal(const Slice<int32_t>& ids,
   (*ss) << spt.text();
 }
 
-std::string SentencePieceTokenizer::decode(
-    const Slice<int32_t>& ids) const {
+std::string SentencePieceTokenizer::decode(const Slice<int32_t>& ids,
+                                           bool skip_special_tokens) const {
   std::stringstream ss;
   size_t start = 0;
   for (size_t i = 0; i < ids.size(); ++i) {
+    // identify special token
     const auto sit = special_token_decoder_.find(ids[i]);
     if (sit == special_token_decoder_.end()) {
       continue;
     }
     // decode text before special token if exists
     decode_internal(ids, start, i, &ss);
-    // output special token
-    ss << sit->second;
+
+    if (!skip_special_tokens) {
+      // output special token
+      ss << sit->second;
+    }
     start = i + 1;
   }
 
