@@ -305,10 +305,10 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
   }
 
   // number of tokens in the kv cache, which are already processed
-  const size_t num_tokens_in_kv_cache = sequence->kv_cache_size();
+  const size_t num_kv_cache_tokens = sequence->num_kv_cache_tokens();
   // the total number tokens for the sequence
   size_t num_tokens =
-      std::min(num_tokens_in_kv_cache + token_budget, sequence->num_tokens());
+      std::min(num_kv_cache_tokens + token_budget, sequence->num_tokens());
 
   // speculative decoding specific logic
   // make sure sequence either in prefill or decode phase in one step
@@ -317,7 +317,7 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
     // reach decode phase, try to allocate slots for speculative tokens
     const size_t adjusted_num_tokens =
         num_tokens + FLAGS_num_speculative_tokens;
-    if (adjusted_num_tokens > num_tokens_in_kv_cache + token_budget) {
+    if (adjusted_num_tokens > num_kv_cache_tokens + token_budget) {
       // over budget, force the sequence in prefill phase
       num_tokens = num_prompt_tokens - 1;
     } else {
@@ -327,11 +327,11 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
   }
 
   // make sure the sequence proceeds forward
-  CHECK(num_tokens > num_tokens_in_kv_cache);
+  CHECK(num_tokens > num_kv_cache_tokens);
 
   // the actual allocated tokens is the difference between the total
   // number of tokens and the number of tokens already processed
-  *actual_tokens = num_tokens - num_tokens_in_kv_cache;
+  *actual_tokens = num_tokens - num_kv_cache_tokens;
   // allocate blocks for the sequence
   return block_manager_->allocate_blocks_for(sequence, num_tokens);
 }

@@ -96,12 +96,12 @@ ModelInput Batch::prepare_model_input() {
   const int32_t num_sequences = static_cast<int32_t>(sequences_.size());
   for (int32_t i = 0; i < num_sequences; ++i) {
     auto* sequence = sequences_[i];
-    empty_kv_cache = empty_kv_cache && (sequence->kv_cache_size() == 0);
-
     const auto token_ids = sequence->token_ids();
-
     const uint32_t n_tokens = token_ids.size();
-    const uint32_t n_tokens_in_kv_cache = sequence->kv_cache_size();
+    const uint32_t n_kv_cache_tokens = sequence->num_kv_cache_tokens();
+
+    empty_kv_cache = empty_kv_cache && (n_kv_cache_tokens == 0);
+
     const uint32_t remaining_token_budget = token_budgets_[i] - budget_used_[i];
     if (remaining_token_budget == 0) {
       // no token budget left for the prefill sequence
@@ -110,9 +110,9 @@ ModelInput Batch::prepare_model_input() {
     }
 
     const uint32_t q_seq_len =
-        std::min(n_tokens - n_tokens_in_kv_cache, remaining_token_budget);
+        std::min(n_tokens - n_kv_cache_tokens, remaining_token_budget);
 
-    const uint32_t seq_len = q_seq_len + n_tokens_in_kv_cache;
+    const uint32_t seq_len = q_seq_len + n_kv_cache_tokens;
 
     // check if the sequence has enough cache slots
     CHECK_GE(sequence->kv_cache_capacity(), seq_len);
@@ -120,7 +120,7 @@ ModelInput Batch::prepare_model_input() {
     // at least one token to process otherwise the sequence should be finished.
     CHECK(q_seq_len != 0) << "at least one token should be processed. "
                           << "n_tokens: " << n_tokens
-                          << ", n_tokens_in_kv_cache: " << n_tokens_in_kv_cache
+                          << ", n_kv_cache_tokens: " << n_kv_cache_tokens
                           << ", kv_cache_capacity: "
                           << sequence->kv_cache_capacity()
                           << ", token_budget: " << token_budgets_[i];
@@ -138,7 +138,7 @@ ModelInput Batch::prepare_model_input() {
     // and select tokens for sampling the next token
     const uint32_t n_prompt_tokens = sequence->num_prompt_tokens();
     std::unordered_map<int32_t, int32_t> adjusted_token_to_count_map;
-    for (uint32_t j = n_tokens_in_kv_cache; j < seq_len; ++j) {
+    for (uint32_t j = n_kv_cache_tokens; j < seq_len; ++j) {
       // skip prompt tokens except the last one
       if (j + 1 < n_prompt_tokens) {
         continue;
@@ -147,7 +147,7 @@ ModelInput Batch::prepare_model_input() {
     }
 
     bool has_selected_token = false;
-    for (uint32_t j = n_tokens_in_kv_cache; j < seq_len; ++j) {
+    for (uint32_t j = n_kv_cache_tokens; j < seq_len; ++j) {
       flatten_tokens_vec.push_back(token_ids[j]);
       flatten_positions_vec.push_back(static_cast<int32_t>(j));
 
@@ -194,8 +194,7 @@ ModelInput Batch::prepare_model_input() {
 
     // assign slot ids for new tokens [n_tokens_in_kvcache, total_tokens)
     const auto blocks = sequence->blocks();
-    const auto slot_ids =
-        sequence->kv_cache_slots(n_tokens_in_kv_cache, seq_len);
+    const auto slot_ids = sequence->kv_cache_slots(n_kv_cache_tokens, seq_len);
     new_token_slot_ids.insert(
         new_token_slot_ids.end(), slot_ids.begin(), slot_ids.end());
 

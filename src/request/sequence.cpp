@@ -7,22 +7,12 @@
 #include <string>
 #include <vector>
 
+#include "common/slice.h"
 #include "tokenizer/tokenizer.h"
 
 DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 
 namespace llm {
-namespace {
-// Returns whether a given `sequence` ends with `suffix`.
-inline bool sequence_end_withs(const Slice<int32_t>& sequence,
-                               const Slice<int32_t>& suffix) noexcept {
-  return suffix.empty() ||
-         (sequence.size() >= suffix.size() &&
-          memcmp(sequence.data() + (sequence.size() - suffix.size()),
-                 suffix.data(),
-                 suffix.size() * sizeof(int32_t)) == 0);
-}
-}  // namespace
 
 // NOLINTNEXTLINE
 std::atomic<int64_t> Sequence::next_id_{1};
@@ -72,7 +62,7 @@ Sequence::Sequence(const std::string_view& prompt,
 
 void Sequence::append_new_token_id(int32_t next_token_id) {
   CHECK(num_tokens_ < token_ids_.size())
-      << "exceed the maximum number of tokens in the sequence";
+      << "exceed the token capacity of the sequence";
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
   CHECK(!is_prefill_stage()) << "cannot append token to a prefill sequence";
 
@@ -80,46 +70,52 @@ void Sequence::append_new_token_id(int32_t next_token_id) {
   token_ids_[num_tokens_++] = next_token_id;
   ++token_to_count_map_[next_token_id];
 
-  // reset the finish status once a new token is appended
+  // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
 }
 
-void Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
+size_t Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
   const size_t len = accpeted_token_ids.size();
   CHECK_GT(num_tokens_, len) << "accepted tokens exceed the sequence length";
 
   // validate the accepted tokens with draft tokens, stop at the first mismatch
   const size_t start_idx = num_tokens_ - len;
-  size_t i = 0;
-  for (; i < len; ++i) {
-    const int32_t draft_token_id = token_ids_[start_idx + i];
+  size_t accpeted_len = 0;
+  for (size_t i = 0; i < len; ++i) {
+    const size_t cur_idx = start_idx + i;
+    const int32_t draft_token_id = token_ids_[cur_idx];
     const int32_t target_token_id = static_cast<int32_t>(accpeted_token_ids[i]);
 
     // stop at first rejected token id
     if (target_token_id == -1) {
-      num_tokens_ = start_idx + i;
+      num_tokens_ = cur_idx;
       break;
     }
 
+    ++accpeted_len;
     if (target_token_id != draft_token_id) {
       // overwrite the token id with the accepted token id
-      token_ids_[start_idx + i] = target_token_id;
+      token_ids_[cur_idx] = target_token_id;
       // update the token count
       --token_to_count_map_[draft_token_id];
       ++token_to_count_map_[target_token_id];
     }
 
     // check if sequence is finished
-    if (check_finished(start_idx + i)) {
-      // update num tokens, including the last token
-      num_tokens_ = start_idx + i + 1;
-      ++i;
+    const Slice<int32_t> token_ids(token_ids_, cur_idx + 1);
+    auto finish_reason =
+        stopping_criteria_.check_finished(token_ids, num_prompt_tokens_);
+    if (finish_reason != FinishReason::NONE) {
+      finish_reason_ = finish_reason;
+      is_finished_ = true;
+      // update num tokens, including current token
+      num_tokens_ = cur_idx + 1;
       break;
     }
   }
 
   // adjust the token count for remaining discarded tokens
-  for (; i < len; ++i) {
+  for (size_t i = accpeted_len; i < len; ++i) {
     const auto token_id = token_ids_[start_idx + i];
     --token_to_count_map_[token_id];
   }
@@ -129,6 +125,10 @@ void Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
   for (auto& num_kv_cache_tokens : num_kv_cache_tokens_) {
     num_kv_cache_tokens = std::min(num_kv_cache_tokens, num_tokens_ - 1);
   }
+
+  // the finish status is valid after the validation
+  finish_status_invalidated_ = false;
+  return accpeted_len;
 }
 
 // decode the sequence to get delta text using the tokenizer
@@ -157,12 +157,6 @@ std::string Sequence::decode_delta_text(size_t end,
     return delta_text + new_text.substr(prefix_text.size());
   }
   return delta_text;
-}
-
-size_t Sequence::num_generated_tokens() const {
-  const size_t n_tokens = num_tokens();
-  const size_t n_prompt_tokens = num_prompt_tokens();
-  return (n_tokens <= n_prompt_tokens) ? 0 : n_tokens - n_prompt_tokens;
 }
 
 void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
@@ -247,48 +241,18 @@ bool Sequence::is_finished() const {
   if (!finish_status_invalidated_) {
     return is_finished_;
   }
-  CHECK_GT(num_tokens_, 0) << "empty sequence";
-  return check_finished(num_tokens_ - 1);
-}
 
-bool Sequence::check_finished(size_t last_token_idx) const {
   // reset the finish status invalidation flag
   finish_status_invalidated_ = false;
 
-  const auto last_token_id = token_ids_[last_token_idx];
-  if (!stopping_criteria_.ignore_eos_token &&
-      last_token_id == stopping_criteria_.eos_token_id) {
-    finish_reason_ = FinishReason::STOP;
-    return is_finished_ = true;
+  auto finish_reason =
+      stopping_criteria_.check_finished(token_ids(), num_prompt_tokens_);
+  if (finish_reason != FinishReason::NONE) {
+    finish_reason_ = finish_reason;
+    is_finished_ = true;
+    return true;
   }
-  // check against stop tokens ids
-  if (stopping_criteria_.stop_token_ids.count(last_token_id) > 0) {
-    finish_reason_ = FinishReason::STOP;
-    return is_finished_ = true;
-  }
-
-  // check against stop sequences after adding the token
-  for (const auto& stop_sequence : stopping_criteria_.stop_sequences) {
-    if (stop_sequence.back() == last_token_id &&
-        sequence_end_withs(token_ids(), stop_sequence)) {
-      finish_reason_ = FinishReason::STOP;
-      return is_finished_ = true;
-    }
-  }
-
-  // check against max tokens and max context length
-  const size_t max_context_length = stopping_criteria_.max_context_length;
-  const bool max_context_length_reached =
-      max_context_length > 0 &&
-      num_tokens_ + FLAGS_num_speculative_tokens >= max_context_length;
-  const size_t max_tokens = stopping_criteria_.max_tokens;
-  const bool max_tokens_reached =
-      max_tokens > 0 && num_generated_tokens() >= max_tokens;
-  if (max_context_length_reached || max_tokens_reached) {
-    finish_reason_ = FinishReason::LENGTH;
-    return is_finished_ = true;
-  }
-  return is_finished_ = false;
+  return false;
 }
 
 }  // namespace llm

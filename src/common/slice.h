@@ -37,6 +37,10 @@ class Slice final {
   // index operator
   const T& operator[](size_t i) const { return data_[i]; }
 
+  const T& front() const { return data_[0]; }
+
+  const T& back() const { return data_[size_ - 1]; }
+
   // get a sub slice
   Slice<T> slice(size_t start) const {
     CHECK(start <= size_);

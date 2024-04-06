@@ -14,16 +14,6 @@
 
 namespace llm {
 
-// "stop" - the model hit a natural stop point or a provided stop sequence.
-// "length" - the maximum number of tokens specified in the request was reached.
-// "function_call" - the model called a function.
-enum class FinishReason {
-  NONE = 0,
-  STOP = 1,
-  LENGTH,
-  FUNCTION_CALL,
-};
-
 using OnDelta =
     std::function<bool(const std::string& delta, FinishReason reason)>;
 
@@ -77,19 +67,33 @@ class Sequence final {
 
   // get the number of generated tokens
   // returns 0 if still in prefill stage
-  size_t num_generated_tokens() const;
+  size_t num_generated_tokens() const {
+    return num_tokens_ - num_prompt_tokens_;
+  }
 
   // get token ids in kv cache
   Slice<int32_t> tokens_in_kv_cache() const {
-    return {token_ids_, num_kv_cache_tokens()};
+    // it is a little bit tricky to get the tokens in kv cache for speculative
+    // decoding where the number of tokens in kv cache may be out of sync by at
+    // most 1 between LLM and SSM.
+    const size_t ssm_kv_cache_size = num_kv_cache_tokens(EngineType::SSM);
+    const size_t llm_kv_cache_size = num_kv_cache_tokens(EngineType::LLM);
+    CHECK_GE(llm_kv_cache_size, ssm_kv_cache_size);
+    const size_t diff = llm_kv_cache_size - ssm_kv_cache_size;
+    // at most one token difference between LLM and SSM for speculative decoding
+    const size_t kv_cache_size =
+        diff <= 1 ? ssm_kv_cache_size : llm_kv_cache_size;
+    return {token_ids_, kv_cache_size};
   }
 
   // get the number of tokens in the kvcache
-  size_t kv_cache_size() const { return num_kv_cache_tokens(); }
+  size_t num_kv_cache_tokens() const {
+    return num_kv_cache_tokens_[engine_type_];
+  }
 
-  size_t kv_cache_size(EngineType engine_type) const {
-    CHECK(engine_type < EngineType::COUNT) << "Invalid engine type.";
-    return num_kv_cache_tokens(static_cast<size_t>(engine_type));
+  size_t num_kv_cache_tokens(EngineType engine_type) const {
+    CHECK(engine_type < EngineType::COUNT) << "Invalid engine type";
+    return num_kv_cache_tokens_[static_cast<size_t>(engine_type)];
   }
 
   // get the capacity of the kv cache allocated
@@ -113,9 +117,9 @@ class Sequence final {
   void append_new_token_id(int32_t next_token_id);
 
   // validate draft tokens with accepted tokens for speculative decoding
-  // N.B. take int64_t as input to be compatible with torch::Tensor to avoid
-  // copy
-  void validate_token_ids(const Slice<int64_t>& accpeted_token_ids);
+  // N.B. take int64_t as input to be compatible with torch::Tensor
+  // returns the number of accepted tokens
+  size_t validate_token_ids(const Slice<int64_t>& accpeted_token_ids);
 
   // add new cache blocks
   void append_blocks(const std::vector<Block>& new_blocks);
@@ -180,17 +184,6 @@ class Sequence final {
   }
 
  private:
-  size_t num_kv_cache_tokens() const {
-    return num_kv_cache_tokens_[engine_type_];
-  }
-
-  size_t num_kv_cache_tokens(size_t engine_type) const {
-    return num_kv_cache_tokens_[engine_type];
-  }
-
-  // force recheck if the sequence is finished based on the stopping criteria.
-  bool check_finished(size_t last_token_idx) const;
-
   // global unique id for the sequence
   const int64_t id_;
 

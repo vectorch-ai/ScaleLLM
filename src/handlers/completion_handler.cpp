@@ -104,18 +104,33 @@ bool send_delta_to_client(CompletionCallData* call_data,
                           uint32_t index,
                           const std::string& delta,
                           FinishReason reason) {
-  CompletionResponse response;
-  response.set_object("text_completion");
-  response.set_id(request->id);
-  response.set_created(request->created_time);
-  // response.set_model(request->model);
-  auto* choice = response.add_choices();
-  choice->set_index(index);
-  choice->set_text(delta);
-  if (reason != FinishReason::NONE) {
-    choice->set_finish_reason(finish_reason_to_string(reason));
+  if (!delta.empty()) {
+    CompletionResponse response;
+    response.set_object("text_completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_index(index);
+    choice->set_text(delta);
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
   }
-  return call_data->write(response);
+
+  if (reason != FinishReason::NONE) {
+    CompletionResponse response;
+    response.set_object("text_completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_finish_reason(finish_reason_to_string(reason));
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool send_result_to_client(CompletionCallData* call_data,

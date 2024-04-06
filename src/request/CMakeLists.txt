@@ -10,6 +10,7 @@ cc_library(
     status.h
     request.h
   SRCS 
+    stopping_criteria.cpp
     sequence.cpp
     request.cpp
   DEPS
