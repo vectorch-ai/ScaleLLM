@@ -89,24 +89,42 @@ bool send_delta_to_client(ChatCallData* call_data,
                           bool first_message,
                           const std::string& delta,
                           FinishReason reason) {
-  ChatResponse response;
-  response.set_object("chat.completion.chunk");
-  response.set_id(request->id);
-  response.set_created(request->created_time);
-  // response.set_model(request->model);
-  auto* choice = response.add_choices();
-  choice->set_index(index);
-  // add message
-  auto* message = choice->mutable_delta();
-  // only set role for first message
-  if (first_message) {
-    message->set_role("assistant");
+  // send delta to client
+  if (!delta.empty()) {
+    ChatResponse response;
+    response.set_object("chat.completion.chunk");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_index(index);
+    // add message
+    auto* message = choice->mutable_delta();
+    // only set role for first message
+    if (first_message) {
+      message->set_role("assistant");
+    }
+    message->set_content(delta);
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
   }
-  message->set_content(delta);
+
+  // send finish reason as a separate message
   if (reason != FinishReason::NONE) {
+    ChatResponse response;
+    response.set_object("chat.completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_index(index);
     choice->set_finish_reason(finish_reason_to_string(reason));
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
   }
-  return call_data->write(response);
+  return true;
 }
 
 bool send_result_to_client(ChatCallData* call_data,

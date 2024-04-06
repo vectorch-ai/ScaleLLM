@@ -95,7 +95,6 @@ ModelOutput SpeculativeEngine::execute_model(Batch& batch) {
   batch.set_engine_type(EngineType::SSM);
   for (size_t i = 0; i < FLAGS_num_speculative_tokens; ++i) {
     auto draft_output = draft_engine_->execute_model(batch);
-    // TODO: check if draft_output is valid/empty
     draft_outputs.push_back(draft_output);
   }
 

@@ -73,10 +73,10 @@ TEST(BatchTest, Basic) {
   Batch batch({&seq1, &seq2, &seq3});
   ModelInput model_input = batch.prepare_model_input();
 
-  // check kv cache pos in sequence
-  EXPECT_EQ(seq1.kv_cache_size(), 9);
-  EXPECT_EQ(seq2.kv_cache_size(), 8);
-  EXPECT_EQ(seq3.kv_cache_size(), 16);
+  // check num tokens in kv cache
+  EXPECT_EQ(seq1.num_kv_cache_tokens(), 9);
+  EXPECT_EQ(seq2.num_kv_cache_tokens(), 8);
+  EXPECT_EQ(seq3.num_kv_cache_tokens(), 16);
 
   // clang-format off
   // check the flatten token ids
