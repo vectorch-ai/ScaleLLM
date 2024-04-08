@@ -26,8 +26,6 @@ DEFINE_string(model_allow_patterns,
               "*.json,*.tiktoken,*.model,*.safetensors",
               "Allow patterns for model files.");
 
-DEFINE_string(token, "", "hugging face token");
-
 DEFINE_string(device,
               "cuda",
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
@@ -58,12 +56,10 @@ std::string download_model(const std::string& model_name) {
   py::scoped_interpreter guard{};  // Start the interpreter
 
   py::dict globals = py::globals();
-  globals["token"] = FLAGS_token;
   globals["repo_id"] = model_name;
   globals["allow_patterns"] = FLAGS_model_allow_patterns;
   py::exec(R"(
-    from huggingface_hub import snapshot_download,login
-    login(token)
+    from huggingface_hub import snapshot_download
     model_path = snapshot_download(repo_id, allow_patterns=allow_patterns.split(','))
   )",
            globals,
@@ -114,16 +110,16 @@ int main(int argc, char* argv[]) {
   stopping_criteria.eos_token_id = model_args.eos_token_id();
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
   stopping_criteria.max_context_length = model_args.max_position_embeddings();
-
   std::string prompt = "Enter a prompt: ";
-  std::cout << prompt;
-
+  //std::cout << prompt;
+  LOG(INFO)<<prompt;
   std::string input;
+
   while (std::getline(std::cin, input) && input != "exit") {
     if (input.empty()) {
       continue;
     }
-
+   
     // create a request
     std::vector<int> prompt_tokens;
     tokenizer->encode(input, &prompt_tokens);
@@ -153,7 +149,7 @@ int main(int argc, char* argv[]) {
       }
 
       // decode the output and print delta
-      std::cout << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer)
+      LOG(INFO) << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer)
                 << std::flush;
     }
 
@@ -161,7 +157,8 @@ int main(int argc, char* argv[]) {
     block_manager->release_blocks_for(&sequence);
 
     // print the prompt and wait for the next input
-    std::cout << "\n\n" << prompt;
+    //std::cout << "\n\n" << prompt;
+    LOG(INFO)<<"\n\n"<<prompt;
   }
 
   return 0;

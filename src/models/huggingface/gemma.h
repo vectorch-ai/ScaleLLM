@@ -129,8 +129,7 @@ class GemmaAttentionImpl : public torch::nn::Module {
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
     // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
-    // line 141 calculate attention, output: (num_tokens, n_local_heads *
-    // head_dim)
+    // line 141 calculate attention, output: (num_tokens, n_local_heads*head_dim)
     auto output =
         atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return o_proj_(output);
@@ -351,7 +350,11 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                         const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    return model_(tokens, positions, kv_caches, input_params);
+    auto h = model_(tokens, positions, kv_caches, input_params);
+  
+    //LOG(INFO) << "GemmaForCausalLMImpl forward:" << h.sizes();
+    //LOG(INFO) << "GemmaForCausalLMImpl forward tensor value"<<h;
+    return h;
   }
 
   // hidden_states: [num_tokens, hidden_size]
@@ -364,18 +367,23 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
     if (seleted_idxes.defined()) {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
-    return lm_head_(h);
+    h=lm_head_(h);
+    //LOG(INFO) << "GemmaForCausalLMImpl logits:" << h.sizes();
+    //LOG(INFO) << "GemmaForCausalLMImpl logits tensor value:"<<h[0][255998]<<h[0][255999];
+    return h;
   }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     model_->load_state_dict(state_dict.select("model."));
-    // lm_head_->load_state_dict(state_dict.select("lm_head."));
+    // lm_head is not used in vllm as it is tied with embed_token.
+    // Share the embedding weights with the final llm_head layer.
+    lm_head_->load_state_dict(state_dict.select("model.embed_tokens."));
   }
 
   void verify_loaded_weights() const {
     model_->verify_loaded_weights("model.");
-    // lm_head_->verify_loaded_weights("lm_head.");
+    lm_head_->verify_loaded_weights("model.embed_tokens.");
   }
 
  private:
@@ -385,7 +393,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
   ColumnParallelLinear lm_head_{nullptr};
 };
 TORCH_MODULE(GemmaForCausalLM);
-// TODO
+
 class GemmaChatTemplate final : public CodedChatTemplate {
  public:
   std::optional<std::string> get_prompt(
@@ -419,27 +427,29 @@ class GemmaChatTemplate final : public CodedChatTemplate {
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gemma, GemmaForCausalLM);
-// TODO I don't know the meaning of "REGISTER_DEFAULT_CHAT_TEMPLATE"
+
 REGISTER_DEFAULT_CHAT_TEMPLATE(gemma, GemmaChatTemplate);
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/gemma/configuration_gemma.py
+
 REGISTER_MODEL_ARGS(gemma, [&] {
+  // example config
+  // https://huggingface.co/google/gemma-2b/blob/main/config.json
   LOAD_ARG_OR(model_type, "model_type", "gemma");
-  LOAD_ARG_OR(dtype, "torch_dtype", "");
+  LOAD_ARG_OR(dtype, "torch_dtype", "bfloat16");
   LOAD_ARG_OR(vocab_size, "vocab_size", 256000);
-  LOAD_ARG_OR(hidden_size, "hidden_size", 3072);
-  LOAD_ARG_OR(intermediate_size, "intermediate_size", 24576);
-  LOAD_ARG_OR(n_layers, "num_hidden_layers", 28);
-  LOAD_ARG_OR(n_heads, "num_attention_heads", 16);
-  LOAD_ARG_OR(n_kv_heads, "num_key_value_heads", 16);
-  // TODO LOAD_ARG_OR(head_dim,"head_dim",256); has no the member
-  LOAD_ARG_OR(hidden_act, "hidden_act", "gelu_pytorch_tanh");
+  LOAD_ARG_OR(hidden_size, "hidden_size", 2048);
+  LOAD_ARG_OR(intermediate_size, "intermediate_size", 16384);
+  LOAD_ARG_OR(n_heads, "num_attention_heads", 8);
+  LOAD_ARG_OR(n_layers, "num_hidden_layers", 18);
+  LOAD_ARG_OR(n_kv_heads, "num_key_value_heads", 1);
+  //  LOAD_ARG_OR(head_dim,"head_dim",256);
+  LOAD_ARG_OR(hidden_act, "hidden_act", "gelu");
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
   LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-6);
-  // TODO LOAD_ARG_OR(pad_token_id,"pad_token_id",1);has no the member
+  // LOAD_ARG_OR(pad_token_id,"pad_token_id",0);
   LOAD_ARG_OR(bos_token_id, "bos_token_id", 2);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 1);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-  // TODO LOAD_ARG_OR(attention_dropout,"attention_dropout",0f);has no the
+  //  LOAD_ARG_OR(attention_dropout,"attention_dropout",0f);
   // member
 });
 
