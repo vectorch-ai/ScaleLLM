@@ -111,15 +111,15 @@ int main(int argc, char* argv[]) {
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
   stopping_criteria.max_context_length = model_args.max_position_embeddings();
   std::string prompt = "Enter a prompt: ";
-  //std::cout << prompt;
-  LOG(INFO)<<prompt;
+  // std::cout << prompt;
+  LOG(INFO) << prompt;
   std::string input;
 
   while (std::getline(std::cin, input) && input != "exit") {
     if (input.empty()) {
       continue;
     }
-   
+
     // create a request
     std::vector<int> prompt_tokens;
     tokenizer->encode(input, &prompt_tokens);
@@ -157,8 +157,8 @@ int main(int argc, char* argv[]) {
     block_manager->release_blocks_for(&sequence);
 
     // print the prompt and wait for the next input
-    //std::cout << "\n\n" << prompt;
-    LOG(INFO)<<"\n\n"<<prompt;
+    // std::cout << "\n\n" << prompt;
+    LOG(INFO) << "\n\n" << prompt;
   }
 
   return 0;

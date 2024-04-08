@@ -129,7 +129,8 @@ class GemmaAttentionImpl : public torch::nn::Module {
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
     // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
-    // line 141 calculate attention, output: (num_tokens, n_local_heads*head_dim)
+    // line 141 calculate attention, output: (num_tokens,
+    // n_local_heads*head_dim)
     auto output =
         atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return o_proj_(output);
@@ -351,9 +352,9 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
     auto h = model_(tokens, positions, kv_caches, input_params);
-  
-    //LOG(INFO) << "GemmaForCausalLMImpl forward:" << h.sizes();
-    //LOG(INFO) << "GemmaForCausalLMImpl forward tensor value"<<h;
+
+    // LOG(INFO) << "GemmaForCausalLMImpl forward:" << h.sizes();
+    // LOG(INFO) << "GemmaForCausalLMImpl forward tensor value"<<h;
     return h;
   }
 
@@ -367,9 +368,10 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
     if (seleted_idxes.defined()) {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
-    h=lm_head_(h);
-    //LOG(INFO) << "GemmaForCausalLMImpl logits:" << h.sizes();
-    //LOG(INFO) << "GemmaForCausalLMImpl logits tensor value:"<<h[0][255998]<<h[0][255999];
+    h = lm_head_(h);
+    // LOG(INFO) << "GemmaForCausalLMImpl logits:" << h.sizes();
+    // LOG(INFO) << "GemmaForCausalLMImpl logits tensor
+    // value:"<<h[0][255998]<<h[0][255999];
     return h;
   }
 
