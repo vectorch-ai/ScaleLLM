@@ -25,15 +25,7 @@ std::string generate_request_id() {
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 bool verify_request_arguments(CompletionCallData* call_data) {
   const auto& request = call_data->request();
-  // n is not implemented yet for stream request
-  const bool stream = request.has_stream() ? request.stream() : false;
   const uint32_t n = request.has_n() ? request.n() : 1;
-  if (stream && n > 1) {
-    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
-                                 "n > 1 is not supported yet");
-    return false;
-  }
-
   if (request.has_best_of() && request.best_of() != n) {
     call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
                                  "best_of != n is not supported yet");
@@ -112,18 +104,33 @@ bool send_delta_to_client(CompletionCallData* call_data,
                           uint32_t index,
                           const std::string& delta,
                           FinishReason reason) {
-  CompletionResponse response;
-  response.set_object("text_completion");
-  response.set_id(request->id);
-  response.set_created(request->created_time);
-  // response.set_model(request->model);
-  auto* choice = response.add_choices();
-  choice->set_index(index);
-  choice->set_text(delta);
-  if (reason != FinishReason::NONE) {
-    choice->set_finish_reason(finish_reason_to_string(reason));
+  if (!delta.empty()) {
+    CompletionResponse response;
+    response.set_object("text_completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_index(index);
+    choice->set_text(delta);
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
   }
-  return call_data->write(response);
+
+  if (reason != FinishReason::NONE) {
+    CompletionResponse response;
+    response.set_object("text_completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_finish_reason(finish_reason_to_string(reason));
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool send_result_to_client(CompletionCallData* call_data,
@@ -219,6 +226,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     max_tokens = std::min(max_tokens, kDefaultMaxTokens);
   }
   stopping_criteria.max_tokens = max_tokens;
+  stopping_criteria.max_context_length = model_args.max_position_embeddings();
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 
@@ -276,7 +284,10 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     };
   }
 
-  // add sequences
+  // set callback for checking rpc status
+  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
+
+  // add one sequence, rest will be added by scheduler
   request->add_sequence();
   return request;
 }

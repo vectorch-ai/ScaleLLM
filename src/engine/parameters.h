@@ -23,6 +23,9 @@ struct ModelInput {
 // output for the model that encapsulates all the necessary
 // output information.
 struct ModelOutput {
+  // sample carried over from input, used for speculative decoding
+  torch::Tensor do_sample;
+
   // output of sampling
   SampleOutput sample_output;
 

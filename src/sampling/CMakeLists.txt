@@ -9,6 +9,7 @@ cc_library(
     logits_processor.h
     sampler.h
   SRCS 
+    parameters.cpp
     logits_processor.cpp
     sampler.cpp
   DEPS

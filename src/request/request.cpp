@@ -53,12 +53,21 @@ bool Request::is_finished() const {
     return false;
   }
 
-  for (const auto& seq : sequences) {
-    if (!seq.is_finished()) {
-      return false;
-    }
+  return std::all_of(sequences.begin(),
+                     sequences.end(),
+                     [](const Sequence& seq) { return seq.is_finished(); });
+}
+
+bool Request::is_cancelled() const {
+  if (is_rpc_ok != nullptr && !is_rpc_ok()) {
+    // if rpc is not ok, cancel the request
+    return true;
   }
-  return true;
+
+  // if any sequence is cancelled, then the request is cancelled
+  return std::any_of(sequences.begin(),
+                     sequences.end(),
+                     [](const Sequence& seq) { return seq.is_cancelled(); });
 }
 
 bool Request::should_expand_sequences() const {
@@ -66,7 +75,7 @@ bool Request::should_expand_sequences() const {
     CHECK(!sequences.empty());
     const auto& first_sequence = sequences.front();
     // if all prompt tokens are in kv cache, then expand
-    return first_sequence.num_tokens_in_kv_cache() >=
+    return first_sequence.num_kv_cache_tokens() >=
            first_sequence.num_prompt_tokens();
   }
   return false;

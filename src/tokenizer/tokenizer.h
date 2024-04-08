@@ -29,7 +29,8 @@ class Tokenizer {
   virtual bool encode(const std::string_view& text,
                       std::vector<int32_t>* ids) const = 0;
 
-  virtual std::string decode(const Slice<int32_t>& tokens) const = 0;
+  virtual std::string decode(const Slice<int32_t>& tokens,
+                             bool skip_special_tokens) const = 0;
 
   virtual size_t vocab_size() const = 0;
 

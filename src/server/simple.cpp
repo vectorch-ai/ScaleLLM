@@ -9,13 +9,17 @@
 #include <iostream>
 #include <string>
 
-#include "engine/llm_engine.h"
+#include "engine/engine_factory.h"
 #include "request/sequence.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
-
+using namespace llm;
 DEFINE_string(model_name_or_path,
               "THUDM/chatglm3-6b",
+              "hf model name or path to the model file.");
+
+DEFINE_string(draft_model_name_or_path,
+              "",
               "hf model name or path to the model file.");
 
 DEFINE_string(model_allow_patterns,
@@ -29,6 +33,12 @@ DEFINE_string(device,
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
               "auto to use all available gpus.");
 
+DEFINE_string(
+    draft_device,
+    "cuda",
+    "Device to run the draft model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
+    "auto to use all available gpus.");
+
 DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
 
 DEFINE_double(temperature, 0, "Temperature for sampling.");
@@ -40,6 +50,8 @@ DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
 
 DEFINE_double(frequency_penalty, 0.0, "Frequency penalty for sampling.");
 DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
+
+DECLARE_int32(num_speculative_tokens);
 
 std::string download_model(const std::string& model_name) {
   namespace py = pybind11;
@@ -58,50 +70,6 @@ std::string download_model(const std::string& model_name) {
            globals);
   return globals["model_path"].cast<std::string>();
 }
-
-std::vector<torch::Device> parse_devices(const std::string& device_str) {
-  std::vector<torch::Device> devices;
-  if (device_str == "auto") {
-    // use all available gpus if any
-    const auto num_gpus = torch::cuda::device_count();
-    if (num_gpus == 0) {
-      LOG(INFO) << "no gpus found, using cpu.";
-      return {torch::kCPU};
-    }
-    devices.reserve(num_gpus);
-    for (int i = 0; i < num_gpus; ++i) {
-      devices.emplace_back(torch::kCUDA, i);
-    }
-    return devices;
-  }
-
-  // parse device string
-  const std::vector<std::string> device_strs = absl::StrSplit(device_str, ',');
-  std::set<torch::DeviceType> device_types;
-  devices.reserve(device_strs.size());
-  for (const auto& device_str : device_strs) {
-    devices.emplace_back(device_str);
-    device_types.insert(devices.back().type());
-  }
-  CHECK(!devices.empty()) << "No devices specified.";
-  CHECK(device_types.size() == 1)
-      << "All devices must be of the same type. Got: " << FLAGS_device;
-  return devices;
-}
-
-std::string to_string(const std::vector<torch::Device>& devices) {
-  std::stringstream ss;
-  for (size_t i = 0; i < devices.size(); ++i) {
-    const auto& device = devices[i];
-    if (i == 0) {
-      ss << device;
-    } else {
-      ss << "," << device;
-    }
-  }
-  return ss.str();
-}
-
 int main(int argc, char* argv[]) {
   // initialize glog and gflags
   google::InitGoogleLogging(argv[0]);
@@ -109,22 +77,30 @@ int main(int argc, char* argv[]) {
 
   // check if model path exists
   std::string model_path = FLAGS_model_name_or_path;
+  CHECK(!model_path.empty()) << "model_name_or_path is empty.";
   if (!std::filesystem::exists(model_path)) {
     // not a model path, try to download the model from huggingface hub
     model_path = download_model(FLAGS_model_name_or_path);
   }
 
-  // parse devices
-  const auto devices = parse_devices(FLAGS_device);
-  LOG(INFO) << "Using devices: " << to_string(devices);
+  std::string draft_model_path = FLAGS_draft_model_name_or_path;
+  if (!draft_model_path.empty() && !std::filesystem::exists(draft_model_path)) {
+    if (FLAGS_draft_model_name_or_path == FLAGS_model_name_or_path) {
+      draft_model_path = model_path;
+    } else {
+      // not a model path, try to download the model from huggingface hub
+      draft_model_path = download_model(FLAGS_draft_model_name_or_path);
+    }
+  }
 
-  llm::LLMEngine engine(devices);
-  CHECK(engine.init(model_path));
-  auto tokenizer = engine.tokenizer();
-  llm::BlockManager* block_manager = engine.block_manager();
-  const auto& model_args = engine.model_args();
+  std::unique_ptr<Engine> engine = EngineFactory::create(
+      model_path, FLAGS_device, draft_model_path, FLAGS_draft_device);
 
-  llm::SamplingParameter sampling_param;
+  auto tokenizer = engine->tokenizer();
+  BlockManager* block_manager = engine->block_manager();
+  const auto& model_args = engine->model_args();
+
+  SamplingParameter sampling_param;
   sampling_param.temperature = FLAGS_temperature;
   sampling_param.top_p = FLAGS_top_p;
   sampling_param.top_k = FLAGS_top_k;
@@ -132,11 +108,12 @@ int main(int argc, char* argv[]) {
   sampling_param.frequency_penalty = FLAGS_frequency_penalty;
   sampling_param.presence_penalty = FLAGS_presence_penalty;
 
-  llm::StoppingCriteria stopping_criteria;
+  StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = FLAGS_max_seq_len;
   stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
+  stopping_criteria.max_context_length = model_args.max_position_embeddings();
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -152,22 +129,23 @@ int main(int argc, char* argv[]) {
     tokenizer->encode(input, &prompt_tokens);
     const int64_t prompt_token_len = static_cast<int64_t>(prompt_tokens.size());
 
-    llm::Sequence sequence(input,
-                           prompt_tokens,
-                           sampling_param,
-                           stopping_criteria,
-                           /*echo=*/true,
-                           /*on_stream=*/nullptr);
+    Sequence sequence(input,
+                      prompt_tokens,
+                      sampling_param,
+                      stopping_criteria,
+                      /*echo=*/true,
+                      /*on_stream=*/nullptr);
+
+    // allocate all slots for the sequence
+    const size_t num_tokens = prompt_tokens.size() + FLAGS_max_seq_len +
+                              FLAGS_num_speculative_tokens + 1;
+    CHECK(block_manager->allocate_blocks_for(&sequence, num_tokens));
 
     // generate tokens until the end of sentence token is generated
-    for (int64_t cur_pos = prompt_token_len; cur_pos < FLAGS_max_seq_len;
-         ++cur_pos) {
-      // allocate slots for the sequence
-      CHECK(block_manager->allocate_blocks_for(&sequence));
-
+    while (sequence.num_generated_tokens() < FLAGS_max_seq_len) {
       // run inference
-      llm::Batch batch(&sequence);
-      engine.execute_model(batch);
+      Batch batch(&sequence);
+      engine->execute_model(batch);
 
       // check if sequence is finished
       if (sequence.is_finished()) {

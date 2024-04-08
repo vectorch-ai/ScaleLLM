@@ -28,8 +28,20 @@ cc_library(
     glog::glog
     Folly::folly
     absl::synchronization
-  LINKOPTS
-    atomic
+)
+
+cc_library(
+  NAME 
+    engine_factory
+  HDRS
+    engine_factory.h
+  SRCS
+    engine_factory.cpp
+  DEPS
+    :engine
+    :speculative
+    absl::strings
+    glog::glog
 )
 
 cc_test(

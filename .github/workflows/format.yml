@@ -19,14 +19,14 @@ jobs:
 
       - name: Run clang-format
         run: |
-          extensions="c,h,m,mm,cc,cp,cpp,c++,cxx,hh,hpp,hxx,inc,cu,cuh,proto,protodevel"
-          diff=`git-clang-format --extensions=$extensions --diff --commit ${{ github.event.pull_request.base.sha }}`
+          diff=`git-clang-format --extensions="c,h,m,mm,cc,cp,cpp,c++,cxx,hh,hpp,hxx,inc,cu,cuh,proto,protodevel" --diff --commit ${{ github.event.pull_request.base.sha }}`
           [ "$diff" = "no modified files to format" ] && exit 0
           [ "$diff" = "clang-format did not modify any files" ] && exit 0
 
           printf "\nYou have introduced coding style breakages. You can:\n"
-          echo "- 1> Fix the errors with git-clang-format"
-          echo "- 2> Disable checks on section of the code with:"
+          echo "1> Fix the errors with git-clang-format:"
+          echo "     git-clang-format --commit ${{ github.event.pull_request.base.sha }}"
+          echo "2> Disable checks on section of the code with:"
           echo "     // clang-format off"
           echo "     code"
           echo "     // clang-format on"

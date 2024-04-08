@@ -1,6 +1,5 @@
 #include "batch.h"
 
-#include <common/logging.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -36,7 +35,9 @@ TEST(BatchTest, Basic) {
   EXPECT_EQ(block_0.id(), 0);
 
   SamplingParameter sampling_param;
+  sampling_param.frequency_penalty = 0.1;
   StoppingCriteria stopping_criteria;
+  stopping_criteria.max_tokens = 20;
 
   // prepare sequences
   // sequence in prefill phase
@@ -72,10 +73,10 @@ TEST(BatchTest, Basic) {
   Batch batch({&seq1, &seq2, &seq3});
   ModelInput model_input = batch.prepare_model_input();
 
-  // check kv cache pos in sequence
-  EXPECT_EQ(seq1.num_tokens_in_kv_cache(), 9);
-  EXPECT_EQ(seq2.num_tokens_in_kv_cache(), 8);
-  EXPECT_EQ(seq3.num_tokens_in_kv_cache(), 16);
+  // check num tokens in kv cache
+  EXPECT_EQ(seq1.num_kv_cache_tokens(), 9);
+  EXPECT_EQ(seq2.num_kv_cache_tokens(), 8);
+  EXPECT_EQ(seq3.num_kv_cache_tokens(), 16);
 
   // clang-format off
   // check the flatten token ids
@@ -94,7 +95,7 @@ TEST(BatchTest, Basic) {
 
   // check the input parameters
   const InputParameters& input_params = model_input.input_params;
-  EXPECT_FALSE(input_params.all_prefill_sequences);
+  EXPECT_FALSE(input_params.empty_kv_cache);
   EXPECT_EQ(input_params.num_sequences, 3);
   EXPECT_EQ(input_params.q_max_seq_len, 9);
   EXPECT_EQ(input_params.kv_max_seq_len, 16);
@@ -126,17 +127,17 @@ TEST(BatchTest, Basic) {
     /*seq2*/ 100,  8,  6,  4,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
     /*seq3*/ 200,  19, 17, 1,  2,  15, 3,  4,  5,  6,  7,  8,  9, 10, 11, 13
     };
-  EXPECT_TRUE(equal(sampling_params.token_ids, unique_ids));
+  EXPECT_TRUE(equal(sampling_params.unique_token_ids, unique_ids));
 
   const std::vector<int32_t> unique_counts = {
     /*seq1*/  1,  1,  1,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  
     /*seq2*/  1,  1,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  
     /*seq3*/  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1
   };
-  EXPECT_TRUE(equal(sampling_params.token_counts, unique_counts));
+  EXPECT_TRUE(equal(sampling_params.unique_token_counts, unique_counts));
 
   const std::vector<int32_t> token_ids_lens = {6, 5, 16};
-  EXPECT_TRUE(equal(sampling_params.token_ids_lens, token_ids_lens));
+  EXPECT_TRUE(equal(sampling_params.unique_token_ids_lens, token_ids_lens));
 
   // clang-format on
 }

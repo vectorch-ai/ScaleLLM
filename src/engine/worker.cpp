@@ -172,16 +172,10 @@ std::tuple<int64_t, int64_t> Worker::profile_device_memory(
 ModelOutput Worker::execute_model(const ModelInput& inputs) {
   torch::DeviceGuard device_guard(device_);
 
-  torch::Device input_device = inputs.token_ids.device();
-
   // all tensors should be on the same device as model
   auto flatten_tokens = inputs.token_ids.to(device_);
   auto flatten_positions = inputs.positions.to(device_);
   InputParameters params = inputs.input_params.to(device_);
-  const SamplingParameters& sampling_params = inputs.sampling_params;
-  auto safe_to = [](const torch::Tensor& t, const torch::Device& device) {
-    return t.defined() ? t.to(device) : t;
-  };
 
   // call model forward to get hidden states
   auto hidden_states =
@@ -192,43 +186,35 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
 
   // prepare model output
   ModelOutput output;
-
-  auto selected_token_idxes =
-      safe_to(sampling_params.selected_token_idxes, device_);
-  torch::Tensor logits;
-  if (selected_token_idxes.defined()) {
+  if (inputs.sampling_params.selected_token_idxes.defined()) {
+    SamplingParameters sampling_params =
+        inputs.sampling_params.to(device_, dtype_);
     // call model to get logits
-    logits = model_->logits(hidden_states, selected_token_idxes);
+    torch::Tensor logits =
+        model_->logits(hidden_states, sampling_params.selected_token_idxes);
 
     // create and call logits processors
-    const auto options = torch::dtype(dtype_).device(device_);
-    auto logits_processor = LogitsProcessor::create(sampling_params, options);
-    // apply logits processors to logits
-    auto token_ids = safe_to(sampling_params.token_ids, device_);
-    auto token_counts = safe_to(sampling_params.token_counts, device_);
-    auto token_ids_lens = safe_to(sampling_params.token_ids_lens, device_);
-    logits = logits_processor->forward(
-        logits, token_ids, token_counts, token_ids_lens);
+    auto logits_processor = LogitsProcessor::create(sampling_params);
+    // apply logits processors to logits (in place)
+    logits = logits_processor->forward(logits,
+                                       sampling_params.unique_token_ids,
+                                       sampling_params.unique_token_counts,
+                                       sampling_params.unique_token_ids_lens);
     // set logits to output
     output.logits = logits;
-  }
 
-  auto sample_idxes = safe_to(sampling_params.sample_idxes, device_);
-  if (logits.defined() && sample_idxes.defined()) {
-    auto sampler = std::make_unique<Sampler>(sampling_params);
+    auto sampler = std::make_unique<Sampler>(sampling_params.do_sample);
     // select sample logits
-    auto sample_logits = logits.index_select(/*dim=*/0, sample_idxes);
+    auto sample_logits =
+        logits.index_select(/*dim=*/0, sampling_params.sample_idxes);
     auto sample_output = sampler->forward(sample_logits);
     // set sample output to output
     output.sample_output = sample_output;
+
+    // carry over the sampling params
+    output.do_sample = sampling_params.do_sample;
   }
   return output;
-}
-
-ModelOutput Worker::validate(const ModelInput& inputs) {
-  LOG(FATAL) << "Not implemented.";
-  ModelOutput output_params;
-  return output_params;
 }
 
 folly::SemiFuture<std::tuple<int64_t, int64_t>>
@@ -258,18 +244,6 @@ folly::SemiFuture<ModelOutput> Worker::execute_model_async(
       [this, inputs = inputs, promise = std::move(promise)]() mutable {
         // run the model on the given input in working thread
         const auto output = this->execute_model(inputs);
-        promise.setValue(output);
-      });
-  return future;
-}
-
-folly::SemiFuture<ModelOutput> Worker::validate_async(
-    const ModelInput& inputs) {
-  folly::Promise<ModelOutput> promise;
-  auto future = promise.getSemiFuture();
-  threadpool_.schedule(
-      [this, inputs = inputs, promise = std::move(promise)]() mutable {
-        const auto output = this->validate(inputs);
         promise.setValue(output);
       });
   return future;

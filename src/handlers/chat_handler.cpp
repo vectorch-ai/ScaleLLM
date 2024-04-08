@@ -38,19 +38,6 @@ bool verify_request_arguments(ChatCallData* call_data) {
     return false;
   }
 
-  const bool stream = request.has_stream() ? request.stream() : false;
-  // n is not implemented for stream requests
-  // N.B. grpc stream requires user to send messages in sequence for order
-  // guarantee. If we want to support n > 1 for stream requests, we need to add
-  // support in call_data to send messages in sequence explicitly to workaround
-  // the grpc stream limitation.
-  if (stream && request.has_n() && request.n() > 1) {
-    call_data->finish_with_error(
-        grpc::StatusCode::UNIMPLEMENTED,
-        "n != 1 is not supported yet for stream requests");
-    return false;
-  }
-
   // up to 4 stop sequences
   if (request.stop_size() > 4) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
@@ -102,24 +89,42 @@ bool send_delta_to_client(ChatCallData* call_data,
                           bool first_message,
                           const std::string& delta,
                           FinishReason reason) {
-  ChatResponse response;
-  response.set_object("chat.completion.chunk");
-  response.set_id(request->id);
-  response.set_created(request->created_time);
-  // response.set_model(request->model);
-  auto* choice = response.add_choices();
-  choice->set_index(index);
-  // add message
-  auto* message = choice->mutable_delta();
-  // only set role for first message
-  if (first_message) {
-    message->set_role("assistant");
+  // send delta to client
+  if (!delta.empty()) {
+    ChatResponse response;
+    response.set_object("chat.completion.chunk");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_index(index);
+    // add message
+    auto* message = choice->mutable_delta();
+    // only set role for first message
+    if (first_message) {
+      message->set_role("assistant");
+    }
+    message->set_content(delta);
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
   }
-  message->set_content(delta);
+
+  // send finish reason as a separate message
   if (reason != FinishReason::NONE) {
+    ChatResponse response;
+    response.set_object("chat.completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_index(index);
     choice->set_finish_reason(finish_reason_to_string(reason));
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
   }
-  return call_data->write(response);
+  return true;
 }
 
 bool send_result_to_client(ChatCallData* call_data,
@@ -193,10 +198,11 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     LOG(ERROR) << "Failed to encode prompt: " << prompt.value();
     return nullptr;
   }
-  if (prompt_tokens.size() > max_context_len) {
+  if (prompt_tokens.size() >= max_context_len) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Prompt is too long");
-    LOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
+    LOG(ERROR) << "Prompt is too long, prompt_len:" << prompt_tokens.size()
+               << ", max_context_len: " << max_context_len;
     return nullptr;
   }
 
@@ -235,6 +241,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     max_tokens = std::min(max_tokens, kDefaultMaxTokens);
   }
   stopping_criteria.max_tokens = max_tokens;
+  stopping_criteria.max_context_length = model_args.max_position_embeddings();
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 
@@ -296,6 +303,9 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
           call_data, request, seq_results, status, stats);
     };
   }
+
+  // set callback for checking rpc status
+  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
 
   // add one sequence, the rest will be expanded by scheduler
   request->add_sequence();
