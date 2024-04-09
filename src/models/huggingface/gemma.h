@@ -82,11 +82,11 @@ class GemmaAttentionImpl : public torch::nn::Module {
                      const ParallelArgs& parallel_args,
                      const torch::TensorOptions& options,
                      AttentionHandler* handler) {
-    const int64_t hidden_size = args.hidden_size();
     const int32_t world_size = parallel_args.world_size();
+    const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
     const int64_t head_dim = hidden_size / n_heads;
+    const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
     const int64_t n_local_heads = n_heads / world_size;
     const int64_t n_local_kv_heads = n_kv_heads / world_size;
 
@@ -126,8 +126,15 @@ class GemmaAttentionImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
+    LOG(INFO) << "Before GemmAttention qkv pro.qkv:" << x[0][0] << "\n"
+              << x[0][1] << "\n"
+              << x[0][2];
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
+    LOG(INFO) << "GemmAttention qkv pro.qkv:" << qkv[0][0][0] << "\n"
+              << qkv[1][0][0] << "\n"
+              << qkv[2][0][0];
+
     // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
     // line 141 calculate attention, output: (num_tokens,
     // n_local_heads*head_dim)
@@ -194,6 +201,7 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
     // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
     // line 185
     torch::Tensor hidden_states;
+
     if (!residual.defined()) {
       residual = x;
       torch::Tensor placeholder;
@@ -201,6 +209,7 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
     } else {
       hidden_states = input_layernorm_(x, residual);
     }
+
     hidden_states =
         self_attn_(hidden_states, positions, kv_cache, input_params);
 
@@ -210,12 +219,11 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
   }
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    self_attn_->load_state_dict(state_dict.select("self_attn."));
-    mlp_->load_state_dict(state_dict.select("mlp."));
     input_layernorm_->load_state_dict(state_dict.select("input_layernorm."));
+    mlp_->load_state_dict(state_dict.select("mlp."));
     post_attention_layernorm_->load_state_dict(
         state_dict.select("post_attention_layernorm."));
+    self_attn_->load_state_dict(state_dict.select("self_attn."));
   }
   void verify_loaded_weights(const std::string& prefix) const {
     self_attn_->verify_loaded_weights(prefix + "self_attn.");
@@ -274,6 +282,7 @@ class GemmaModelImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     // embedding tokens
     auto h = embed_tokens_(tokens);
+
     // normalize the embedding by sqrt(hidden_size)
     h *= sqrt(modelArgs_.hidden_size());
 
@@ -282,7 +291,11 @@ class GemmaModelImpl : public torch::nn::Module {
     torch::Tensor residual;
     for (int32_t i = 0; i < modelArgs_.n_layers(); i++) {
       auto& layer = layers_[i];
-      h = layer(h, positions, kv_caches[i], input_params, residual);
+
+      // TODO after debug,please delete the i==0 candition
+      if (i == 0) {
+        h = layer(h, positions, kv_caches[i], input_params, residual);
+      }
     }
 
     return norm_(h, residual);
@@ -290,13 +303,18 @@ class GemmaModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    embed_tokens_->load_state_dict(state_dict.select("embed_tokens."));
+    // "GemmaRMSNorm is different from Llama's in that it multiplies
+    // (1 + weight) to the output, instead of just weight." from vllm project
+    StateDict new_state_dict =
+        state_dict.add_scalar_with_suffix("norm.weight", 1);
+
+    embed_tokens_->load_state_dict(new_state_dict.select("embed_tokens."));
     // call each layer's load_state_dict function
     for (int i = 0; i < layers_.size(); i++) {
       layers_[i]->load_state_dict(
-          state_dict.select("layers." + std::to_string(i) + "."));
+          new_state_dict.select("layers." + std::to_string(i) + "."));
     }
-    norm_->load_state_dict(state_dict.select("norm."));
+    norm_->load_state_dict(new_state_dict.select("norm."));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -332,6 +350,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                        const ParallelArgs& parallel_args,
                        const torch::TensorOptions& options) {
     // register submodules
+
     model_ = register_module(
         "model", GemmaModel(args, quant_args, parallel_args, options));
 
@@ -342,6 +361,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                                                     /*gather_output=*/true,
                                                     parallel_args,
                                                     options));
+    index = 0;
   }
 
   // tokens: [num_tokens]
@@ -351,10 +371,13 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                         const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
+    if (index == 1) {
+      LOG(INFO) << "Index:" << index << " Tokens:" << tokens.sizes()
+                << " Positions:" << positions.sizes();
+    }
     auto h = model_(tokens, positions, kv_caches, input_params);
-
-    // LOG(INFO) << "GemmaForCausalLMImpl forward:" << h.sizes();
-    // LOG(INFO) << "GemmaForCausalLMImpl forward tensor value"<<h;
+    // LOG(INFO)<<"GemmaForCausalLMImpl Hidden State:"<<h.sizes();
+    index++;
     return h;
   }
 
@@ -369,15 +392,14 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
     h = lm_head_(h);
-    // LOG(INFO) << "GemmaForCausalLMImpl logits:" << h.sizes();
-    // LOG(INFO) << "GemmaForCausalLMImpl logits tensor
-    // value:"<<h[0][255998]<<h[0][255999];
+
     return h;
   }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     model_->load_state_dict(state_dict.select("model."));
+
     // lm_head is not used in vllm as it is tied with embed_token.
     // Share the embedding weights with the final llm_head layer.
     lm_head_->load_state_dict(state_dict.select("model.embed_tokens."));
@@ -393,6 +415,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
   GemmaModel model_{nullptr};
 
   ColumnParallelLinear lm_head_{nullptr};
+  int index;
 };
 TORCH_MODULE(GemmaForCausalLM);
 
@@ -433,26 +456,26 @@ REGISTER_CAUSAL_MODEL(gemma, GemmaForCausalLM);
 REGISTER_DEFAULT_CHAT_TEMPLATE(gemma, GemmaChatTemplate);
 
 REGISTER_MODEL_ARGS(gemma, [&] {
-  // example config
-  // https://huggingface.co/google/gemma-2b/blob/main/config.json
+  // example config from vllm project:
+  // transformers/models/gemma/configuration_gemma.py
   LOAD_ARG_OR(model_type, "model_type", "gemma");
-  LOAD_ARG_OR(dtype, "torch_dtype", "bfloat16");
-  LOAD_ARG_OR(vocab_size, "vocab_size", 256000);
-  LOAD_ARG_OR(hidden_size, "hidden_size", 2048);
-  LOAD_ARG_OR(intermediate_size, "intermediate_size", 16384);
-  LOAD_ARG_OR(n_heads, "num_attention_heads", 8);
-  LOAD_ARG_OR(n_layers, "num_hidden_layers", 18);
-  LOAD_ARG_OR(n_kv_heads, "num_key_value_heads", 1);
-  //  LOAD_ARG_OR(head_dim,"head_dim",256);
-  LOAD_ARG_OR(hidden_act, "hidden_act", "gelu");
-  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
-  LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-6);
-  // LOAD_ARG_OR(pad_token_id,"pad_token_id",0);
+  // LOAD_ARG_OR(attention_dropout,"attention_dropout",0f);
+  // LOAD_ARG_OR(attention_bias,"attention_bias",false);
   LOAD_ARG_OR(bos_token_id, "bos_token_id", 2);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 1);
+  LOAD_ARG_OR(hidden_act, "hidden_act", "gelu");
+  LOAD_ARG_OR(hidden_size, "hidden_size", 2048);
+  LOAD_ARG_OR(intermediate_size, "intermediate_size", 16384);
+  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
+  LOAD_ARG_OR(n_heads, "num_attention_heads", 8);
+  LOAD_ARG_OR(n_layers, "num_hidden_layers", 18);
+  LOAD_ARG_OR(n_kv_heads, "num_key_value_heads", 1);  // MQA
+  LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-6);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-  //  LOAD_ARG_OR(attention_dropout,"attention_dropout",0f);
-  // member
+  LOAD_ARG_OR(dtype, "torch_dtype", "bfloat16");
+  LOAD_ARG_OR(vocab_size, "vocab_size", 256000);
+
+  // LOAD_ARG_OR(pad_token_id,"pad_token_id",0);
 });
 
 }  // namespace llm::hf

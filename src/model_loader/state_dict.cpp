@@ -238,6 +238,20 @@ StateDict StateDict::select(const std::string_view& prefix) const {
   }
   return {std::move(selected), shard_id_, num_shards_};
 }
+// in place add the scalar value into the selected tensors ending with suffix
+StateDict StateDict::add_scalar_with_suffix(const std::string_view& suffix,
+                                            int scalar) const {
+  std::unordered_map<std::string, torch::Tensor> selected;
+  for (const auto& [name, tensor] : dict_) {
+    if (suffix.length() <= name.length() &&
+        (name.find(suffix) == (name.length() - suffix.length()))) {
+      selected[name] = tensor.clone() + scalar;
+    } else {
+      selected[name] = tensor.clone();
+    }
+  }
+  return {std::move(selected), shard_id_, num_shards_};
+}
 
 StateDict StateDict::select_with_transform(
     const std::string_view& prefix,
