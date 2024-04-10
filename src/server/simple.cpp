@@ -111,8 +111,7 @@ int main(int argc, char* argv[]) {
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
   stopping_criteria.max_context_length = model_args.max_position_embeddings();
   std::string prompt = "Enter a prompt: ";
-  // std::cout << prompt;
-  LOG(INFO) << prompt;
+  std::cout << prompt;
   std::string input;
 
   while (std::getline(std::cin, input) && input != "exit") {
@@ -149,7 +148,7 @@ int main(int argc, char* argv[]) {
       }
 
       // decode the output and print delta
-      LOG(INFO) << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer)
+      std::cout << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer)
                 << std::flush;
     }
 
@@ -157,8 +156,7 @@ int main(int argc, char* argv[]) {
     block_manager->release_blocks_for(&sequence);
 
     // print the prompt and wait for the next input
-    // std::cout << "\n\n" << prompt;
-    LOG(INFO) << "\n\n" << prompt;
+    std::cout << "\n\n" << prompt;
   }
 
   return 0;

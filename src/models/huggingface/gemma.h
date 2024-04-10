@@ -126,14 +126,8 @@ class GemmaAttentionImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
-    LOG(INFO) << "Before GemmAttention qkv pro.qkv:" << x[0][0] << "\n"
-              << x[0][1] << "\n"
-              << x[0][2];
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
-    LOG(INFO) << "GemmAttention qkv pro.qkv:" << qkv[0][0][0] << "\n"
-              << qkv[1][0][0] << "\n"
-              << qkv[2][0][0];
 
     // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
     // line 141 calculate attention, output: (num_tokens,
@@ -214,7 +208,8 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
         self_attn_(hidden_states, positions, kv_cache, input_params);
 
     // fully connected
-    hidden_states = post_attention_layernorm_(x, residual);
+    hidden_states = post_attention_layernorm_(hidden_states, residual);
+
     return mlp_(hidden_states);
   }
   // load the weight from the checkpoint
@@ -291,11 +286,7 @@ class GemmaModelImpl : public torch::nn::Module {
     torch::Tensor residual;
     for (int32_t i = 0; i < modelArgs_.n_layers(); i++) {
       auto& layer = layers_[i];
-
-      // TODO after debug,please delete the i==0 candition
-      if (i == 0) {
-        h = layer(h, positions, kv_caches[i], input_params, residual);
-      }
+      h = layer(h, positions, kv_caches[i], input_params, residual);
     }
 
     return norm_(h, residual);
@@ -361,7 +352,6 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                                                     /*gather_output=*/true,
                                                     parallel_args,
                                                     options));
-    index = 0;
   }
 
   // tokens: [num_tokens]
@@ -371,13 +361,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                         const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    if (index == 1) {
-      LOG(INFO) << "Index:" << index << " Tokens:" << tokens.sizes()
-                << " Positions:" << positions.sizes();
-    }
     auto h = model_(tokens, positions, kv_caches, input_params);
-    // LOG(INFO)<<"GemmaForCausalLMImpl Hidden State:"<<h.sizes();
-    index++;
     return h;
   }
 
@@ -391,6 +375,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
     if (seleted_idxes.defined()) {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
+
     h = lm_head_(h);
 
     return h;
