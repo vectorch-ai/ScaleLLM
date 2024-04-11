@@ -43,7 +43,7 @@ class StateDict final {
   StateDict select(const std::string_view& prefix) const;
 
   // select all the tensors whose name ends with suffix
-  // and add scalar value into all the tensors in place
+  // and add scalar value into all the tensors
   StateDict add_scalar_with_suffix(const std::string_view& suffix,
                                    int scalar) const;
 
