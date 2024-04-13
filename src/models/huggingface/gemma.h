@@ -129,9 +129,8 @@ class GemmaAttentionImpl : public torch::nn::Module {
     auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
 
-    // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
-    // line 141 calculate attention, output: (num_tokens,
-    // n_local_heads*head_dim)
+    // calculate attention,
+    // output: (num_tokens, n_local_heads*head_dim)
     auto output =
         atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return o_proj_(output);
@@ -192,8 +191,6 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
                         KVCache& kv_cache,
                         const InputParameters& input_params,
                         torch::Tensor& residual) {
-    // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
-    // line 185
     torch::Tensor hidden_states;
 
     if (!residual.defined()) {
@@ -281,8 +278,6 @@ class GemmaModelImpl : public torch::nn::Module {
     // normalize the embedding by sqrt(hidden_size)
     h *= sqrt(modelArgs_.hidden_size());
 
-    // https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/gemma.py
-    // line:236
     torch::Tensor residual;
     for (int32_t i = 0; i < modelArgs_.n_layers(); i++) {
       auto& layer = layers_[i];
@@ -294,8 +289,8 @@ class GemmaModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    // "GemmaRMSNorm is different from Llama's in that it multiplies
-    // (1 + weight) to the output, instead of just weight." from vllm project
+    // GemmaRMSNorm is different from Llama's in that it multiplies
+    // (1 + weight) to the output, instead of just weight.
     StateDict new_state_dict =
         state_dict.add_scalar_with_suffix("norm.weight", 1);
 
@@ -413,7 +408,7 @@ class GemmaChatTemplate final : public CodedChatTemplate {
     if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
-    // example:https://huggingface.co/google/gemma-2b-it
+    // prompt:https://huggingface.co/google/gemma-2b-it
     /*
      * <bos><start_of_turn>user
      * Write a hello world program<end_of_turn>
