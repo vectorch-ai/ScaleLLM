@@ -110,11 +110,10 @@ int main(int argc, char* argv[]) {
   stopping_criteria.eos_token_id = model_args.eos_token_id();
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
   stopping_criteria.max_context_length = model_args.max_position_embeddings();
-
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
-
   std::string input;
+
   while (std::getline(std::cin, input) && input != "exit") {
     if (input.empty()) {
       continue;
