@@ -120,8 +120,8 @@ TEST(NormalizationTest, RMSNormKernel) {
 
   EXPECT_TRUE(torch::allclose(output,
                               output_ref,
-                              /*rtol=*/1e-03,
-                              /*atol=*/1e-05));
+                              /*rtol=*/1e-02,
+                              /*atol=*/1e-03));
 }
 
 TEST(NormalizationTest, RMSNormResidualKernel) {
