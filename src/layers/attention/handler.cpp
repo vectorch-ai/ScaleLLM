@@ -61,7 +61,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
     const ModelArgs& args,
     bool interleaved,
     const torch::TensorOptions& options) {
-  const int64_t head_dim = args.hidden_size() / args.n_heads();
+  const int64_t head_dim = args.head_dim();
   // default to use head_dim if rotary_dim is not specified
   int64_t rotary_dim = args.rotary_dim() > 0 ? args.rotary_dim() : head_dim;
   // apply rotary_dim percentage

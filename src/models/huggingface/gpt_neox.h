@@ -85,7 +85,7 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t n_local_heads = args.n_heads() / world_size;
     hidden_size_ = args.hidden_size();
-    head_dim_ = args.hidden_size() / args.n_heads();
+    head_dim_ = args.head_dim();
 
     // register submodules
     query_key_value_ =
@@ -411,6 +411,10 @@ REGISTER_MODEL_ARGS(gpt_neox, [&] {
   LOAD_ARG_OR(bos_token_id, "bos_token_id", 0);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(use_parallel_residual, "use_parallel_residual", true);
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 });
 
 }  // namespace llm::hf

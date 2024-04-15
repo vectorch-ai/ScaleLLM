@@ -87,7 +87,7 @@ class BloomAttentionImpl : public torch::nn::Module {
     const int64_t n_heads = args.n_heads();
     const int64_t n_local_heads = n_heads / world_size;
     hidden_size_ = args.hidden_size();
-    head_dim_ = hidden_size_ / n_heads;
+    head_dim_ = args.head_dim();
 
     // register submodules
     query_key_value_ =
@@ -450,6 +450,10 @@ REGISTER_MODEL_ARGS(bloom, [&] {
 
   LOAD_ARG_OR_FUNC(intermediate_size, "intermediate_size", [&] {
     return args->hidden_size() * 4;
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 });
 

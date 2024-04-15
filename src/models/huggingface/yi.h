@@ -89,7 +89,7 @@ class YiAttentionImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
-    const int64_t head_dim = hidden_size / n_heads;
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
     const int64_t n_local_kv_heads = n_kv_heads / world_size;
 
@@ -416,6 +416,10 @@ REGISTER_MODEL_ARGS(Yi, [&] {
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(rope_theta, "rope_theta", 5000000.0f);
   LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 
   // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>", "<|im_sep|>"
   SET_ARG(stop_token_ids, std::unordered_set<int32_t>({2, 6, 7, 8}));

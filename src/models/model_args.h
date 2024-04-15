@@ -25,6 +25,9 @@ struct ModelArgs {
   // number of hidden layers in the encoder.
   DEFINE_ARG(int64_t, n_layers) = 0;
 
+  // dimension of the attention head.
+  DEFINE_ARG(int64_t, head_dim) = 0;
+
   // number of attention heads.
   DEFINE_ARG(int64_t, n_heads) = 0;
 
@@ -109,6 +112,7 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", hidden_act: " << args.hidden_act();
   os << ", intermediate_size: " << args.intermediate_size();
   os << ", n_layers: " << args.n_layers();
+  os << ", head_dim: " << args.head_dim();
   os << ", n_heads: " << args.n_heads();
   os << ", n_kv_heads: " << args.n_kv_heads().value_or(-1);
   os << ", vocab_size: " << args.vocab_size();
