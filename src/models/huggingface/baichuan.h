@@ -4,6 +4,7 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
+#include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
@@ -204,14 +205,7 @@ class BaichuanDecoderLayerImpl : public torch::nn::Module {
                         torch::Tensor& residual,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    torch::Tensor hidden_states;
-    if (!residual.defined()) {
-      residual = x;
-      torch::Tensor placeholder;
-      hidden_states = input_layernorm_(x, placeholder);
-    } else {
-      hidden_states = input_layernorm_(x, residual);
-    }
+    auto hidden_states = input_layernorm_(x, residual);
 
     hidden_states =
         self_attn_(hidden_states, positions, kv_cache, input_params);
