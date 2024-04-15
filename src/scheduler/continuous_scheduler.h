@@ -58,7 +58,7 @@ class ContinuousScheduler final : public Scheduler {
                            size_t* actual_tokens);
 
   const Options options_;
-  
+
   // the engine to run the batch
   Engine* engine_;
 

@@ -9,7 +9,6 @@
 #include "block_allocator.h"
 #include "request/request.h"
 
-
 namespace llm {
 
 BlockManager::BlockManager(const Options& options)
