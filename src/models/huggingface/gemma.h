@@ -211,10 +211,14 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
   }
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    input_layernorm_->load_state_dict(state_dict.select("input_layernorm."));
+    input_layernorm_->load_state_dict((state_dict.select_with_transform(
+        "input_layernorm.",
+        [](torch::Tensor tensor) { return tensor + 1.0f; })));
     mlp_->load_state_dict(state_dict.select("mlp."));
     post_attention_layernorm_->load_state_dict(
-        state_dict.select("post_attention_layernorm."));
+        (state_dict.select_with_transform(
+            "post_attention_layernorm.",
+            [](torch::Tensor tensor) { return tensor + 1.0f; })));
     self_attn_->load_state_dict(state_dict.select("self_attn."));
   }
   void verify_loaded_weights(const std::string& prefix) const {
@@ -289,18 +293,16 @@ class GemmaModelImpl : public torch::nn::Module {
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    // GemmaRMSNorm is different from Llama's in that it multiplies
-    // (1 + weight) to the output, instead of just weight.
-    StateDict new_state_dict =
-        state_dict.add_scalar_with_suffix("norm.weight", 1);
-
-    embed_tokens_->load_state_dict(new_state_dict.select("embed_tokens."));
+    embed_tokens_->load_state_dict(state_dict.select("embed_tokens."));
     // call each layer's load_state_dict function
     for (int i = 0; i < layers_.size(); i++) {
       layers_[i]->load_state_dict(
-          new_state_dict.select("layers." + std::to_string(i) + "."));
+          state_dict.select("layers." + std::to_string(i) + "."));
     }
-    norm_->load_state_dict(new_state_dict.select("norm."));
+    // GemmaRMSNorm is different from Llama's in that it multiplies
+    // (1 + weight) to the output, instead of just weight.
+    norm_->load_state_dict((state_dict.select_with_transform(
+        "norm.", [](torch::Tensor tensor) { return tensor + 1.0f; })));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
