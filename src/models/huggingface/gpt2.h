@@ -86,7 +86,7 @@ class GPT2AttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t n_local_heads = args.n_heads() / world_size;
     hidden_size_ = args.hidden_size();
-    head_dim_ = args.hidden_size() / args.n_heads();
+    head_dim_ = args.head_dim();
 
     // register submodules
     c_attn_ = register_module("c_attn",

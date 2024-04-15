@@ -449,10 +449,10 @@ REGISTER_MODEL_ARGS(gemma, [&] {
   LOAD_ARG_OR_FUNC(hidden_act, "hidden_activation", [&] {
     const auto hidden_act = json.value<std::string>("hidden_act");
     if (hidden_act.has_value()) {
-      LOG(WARNING) << "Gemma's activation function was incorrectly set to "
-                      "exact GeLU when it was initially released. Override the "
-                      "activation function from "
-                   << hidden_act.value() << " to gelu_pytorch_tanh.";
+      LOG(WARNING) << "Gemma's activation function was initially released with "
+                      "an incorrect setting. Override the "
+                      "activation function from '"
+                   << hidden_act.value() << "' to 'gelu_pytorch_tanh'";
     }
     return "gelu_pytorch_tanh";
   });

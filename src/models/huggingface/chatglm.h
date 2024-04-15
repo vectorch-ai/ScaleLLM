@@ -3,6 +3,7 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
+#include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
