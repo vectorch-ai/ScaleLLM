@@ -142,7 +142,7 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   const int64_t n_heads = args_.n_heads();
   const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
   n_local_kv_heads_ = n_kv_heads / world_size;
-  head_dim_ = args_.hidden_size() / n_heads;
+  head_dim_ = args_.head_dim();
   dtype_ = parse_dtype(args_.dtype(), devices_[0]);
 
   // key + value for all layers

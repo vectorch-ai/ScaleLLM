@@ -86,7 +86,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
-    const int64_t head_dim = hidden_size / n_heads;
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
     const int64_t n_local_kv_heads = n_kv_heads / world_size;
 
@@ -387,6 +387,10 @@ REGISTER_MODEL_ARGS(llama2, [&] {
     intermediate_size =
         multiple_of * ((intermediate_size + multiple_of - 1) / multiple_of);
     return intermediate_size;
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 });
 

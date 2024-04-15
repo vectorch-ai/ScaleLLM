@@ -87,7 +87,7 @@ class MPTAttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    const int64_t head_dim = hidden_size / args.n_heads();
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
     hidden_size_ = hidden_size;
     head_dim_ = head_dim;
@@ -511,6 +511,10 @@ REGISTER_MODEL_ARGS(mpt, [&] {
     const int64_t expansion_ratio =
         json.value_or<int64_t>("expansion_ratio", 4);
     return expansion_ratio * args->hidden_size();
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 
   // stop token ids: [0, 50278]

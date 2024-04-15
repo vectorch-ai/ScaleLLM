@@ -80,7 +80,7 @@ class GPTJAttentionImpl : public torch::nn::Module {
                     AttentionHandler* handler) {
     const int64_t n_local_heads = args.n_heads() / parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
-    const int64_t head_dim = args.hidden_size() / args.n_heads();
+    const int64_t head_dim = args.head_dim();
 
     // register submodules
     qkv_proj_ = register_module("qkv_proj",
@@ -364,6 +364,10 @@ REGISTER_MODEL_ARGS(gptj, [&] {
   LOAD_ARG_OR_FUNC(intermediate_size, "n_inner", [&] {
     // set it to 4 times n_embd
     return args->hidden_size() * 4;
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 });
 }  // namespace llm::hf

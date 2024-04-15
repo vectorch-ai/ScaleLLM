@@ -88,7 +88,7 @@ class ChatGLMAttentionImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
-    const int64_t head_dim = hidden_size / n_heads;
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
     const int64_t n_local_kv_heads = n_kv_heads / world_size;
 
@@ -531,6 +531,10 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
     const int64_t hidden_size = json.value_or<int64_t>("hidden_size", 4096);
     const int64_t n_heads = json.value_or<int64_t>("num_attention_heads", 32);
     return hidden_size / n_heads;
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 
   // stop token ids: "</s>", "<|user|>", "<|assistant|>", "<|observation|>"

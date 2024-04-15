@@ -1,5 +1,5 @@
 #pragma once
-
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include "chat_template/coded_chat_template.h"
@@ -17,21 +17,14 @@
 // gemma model compatible with huggingface weight
 namespace llm::hf {
 
-// TODO only support the gemma-2B now
-enum GemmaType {
-  gemma_2B,
-  gemma_2B_it,
-  gemma_7B,
-  gemma_7B_it,
-};
-
 class GemmaMLPImpl : public torch::nn::Module {
  public:
   GemmaMLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
                const torch::TensorOptions& options) {
-    act_with_mul_ = Activation::get_act_with_mul_func("gelu", options.device());
+    act_with_mul_ =
+        Activation::get_act_with_mul_func(args.hidden_act(), options.device());
     CHECK(act_with_mul_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
@@ -94,7 +87,7 @@ class GemmaAttentionImpl : public torch::nn::Module {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    const int64_t head_dim = hidden_size / n_heads;
+    const int64_t head_dim = args.head_dim();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
     const int64_t n_local_heads = n_heads / world_size;
     const int64_t n_local_kv_heads = n_kv_heads / world_size;
@@ -116,7 +109,7 @@ class GemmaAttentionImpl : public torch::nn::Module {
                              options));
 
     o_proj_ = register_module("o_proj",
-                              RowParallelLinear(hidden_size,
+                              RowParallelLinear(n_heads * head_dim,
                                                 hidden_size,
                                                 /*bias=*/false,
                                                 /*input_is_parallelized=*/true,
@@ -125,10 +118,10 @@ class GemmaAttentionImpl : public torch::nn::Module {
                                                 options));
 
     // initialize attention
-    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     atten_ = register_module(
         "atten", Attention(n_local_heads, n_local_kv_heads, head_dim, handler));
   }
+
   torch::Tensor forward(torch::Tensor x,
                         torch::Tensor positions,
                         KVCache& kv_cache,
@@ -254,6 +247,14 @@ class GemmaModelImpl : public torch::nn::Module {
         ParallelEmbedding(
             args.vocab_size(), args.hidden_size(), parallel_args, options));
 
+    // normalize the embedding by sqrt(hidden_size)
+    // N.B. the data type of the normalizer should be the same as the embedding
+    // ref to:
+    // https://github.com/keras-team/keras-nlp/blob/v0.8.2/keras_nlp/models/gemma/gemma_causal_lm.py#L426
+    const float normalizer = std::sqrt(args.hidden_size());
+    normalizer_ =
+        register_buffer("normalizer", torch::tensor({normalizer}, options));
+
     norm_ = register_module(
         "norm",
         RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
@@ -278,10 +279,7 @@ class GemmaModelImpl : public torch::nn::Module {
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
     // embedding tokens
-    auto h = embed_tokens_(tokens);
-
-    // normalize the embedding by sqrt(hidden_size)
-    h *= sqrt(modelArgs_.hidden_size());
+    auto h = embed_tokens_(tokens) * normalizer_;
 
     torch::Tensor residual;
     for (int32_t i = 0; i < modelArgs_.n_layers(); i++) {
@@ -322,6 +320,9 @@ class GemmaModelImpl : public torch::nn::Module {
   // embedding module
   ParallelEmbedding embed_tokens_{nullptr};
 
+  // embedding normalizer
+  torch::Tensor normalizer_{nullptr};
+
   RMSNormResidual norm_{nullptr};
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
@@ -359,8 +360,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
                         const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = model_(tokens, positions, kv_caches, input_params);
-    return h;
+    return model_(tokens, positions, kv_caches, input_params);
   }
 
   // hidden_states: [num_tokens, hidden_size]
@@ -374,16 +374,13 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
 
-    h = lm_head_(h);
-
-    return h;
+    return lm_head_(h);
   }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     model_->load_state_dict(state_dict.select("model."));
 
-    // lm_head is not used in vllm as it is tied with embed_token.
     // Share the embedding weights with the final llm_head layer.
     lm_head_->load_state_dict(state_dict.select("model.embed_tokens."));
   }
@@ -398,14 +395,13 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
   GemmaModel model_{nullptr};
 
   ColumnParallelLinear lm_head_{nullptr};
-  int index;
 };
 TORCH_MODULE(GemmaForCausalLM);
 
 class GemmaChatTemplate final : public CodedChatTemplate {
  public:
   std::optional<std::string> get_prompt(
-      const std::string_view& system_message,
+      const std::string_view& /*system_message*/,
       const std::vector<std::string_view>& messages) const override {
     // at least one user message
     if (messages.size() % 2 == 0) {
@@ -418,11 +414,6 @@ class GemmaChatTemplate final : public CodedChatTemplate {
      * <start_of_turn>model
      */
     std::stringstream ss;
-    // start with system message
-    if (!system_message.empty()) {
-      ss << "<bos> <start_of_turn> model\n"
-         << system_message << "<end_of_turn>";
-    }
     // then user message
     for (size_t i = 0; i < messages.size(); i++) {
       ss << "\n<start_of_turn> user\n" << messages[i] << "<end_of_turn>";
@@ -439,14 +430,11 @@ REGISTER_CAUSAL_MODEL(gemma, GemmaForCausalLM);
 REGISTER_DEFAULT_CHAT_TEMPLATE(gemma, GemmaChatTemplate);
 
 REGISTER_MODEL_ARGS(gemma, [&] {
-  // example config from vllm project:
-  // transformers/models/gemma/configuration_gemma.py
+  // example config from
+  // https://huggingface.co/google/gemma-2b/blob/main/config.json
   LOAD_ARG_OR(model_type, "model_type", "gemma");
-  // LOAD_ARG_OR(attention_dropout,"attention_dropout",0f);
-  // LOAD_ARG_OR(attention_bias,"attention_bias",false);
   LOAD_ARG_OR(bos_token_id, "bos_token_id", 2);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 1);
-  LOAD_ARG_OR(hidden_act, "hidden_act", "gelu");
   LOAD_ARG_OR(hidden_size, "hidden_size", 2048);
   LOAD_ARG_OR(intermediate_size, "intermediate_size", 16384);
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
@@ -458,7 +446,20 @@ REGISTER_MODEL_ARGS(gemma, [&] {
   LOAD_ARG_OR(dtype, "torch_dtype", "bfloat16");
   LOAD_ARG_OR(vocab_size, "vocab_size", 256000);
 
-  // LOAD_ARG_OR(pad_token_id,"pad_token_id",0);
+  LOAD_ARG_OR_FUNC(hidden_act, "hidden_activation", [&] {
+    const auto hidden_act = json.value<std::string>("hidden_act");
+    if (hidden_act.has_value()) {
+      LOG(WARNING) << "Gemma's activation function was incorrectly set to "
+                      "exact GeLU when it was initially released. Override the "
+                      "activation function from "
+                   << hidden_act.value() << " to gelu_pytorch_tanh.";
+    }
+    return "gelu_pytorch_tanh";
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 });
 
 }  // namespace llm::hf

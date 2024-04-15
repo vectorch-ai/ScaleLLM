@@ -15,6 +15,7 @@
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/parameters.h"
+#include "models/model_registry.h"
 
 // QWen model compatible with huggingface weights
 // adopted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
@@ -90,7 +91,7 @@ class QWenAttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    const int64_t head_dim = hidden_size / args.n_heads();
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
 
     // register submodules
@@ -398,6 +399,10 @@ REGISTER_MODEL_ARGS(qwen, [&] {
   // LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
   // LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 
   // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>"
   SET_ARG(stop_token_ids,

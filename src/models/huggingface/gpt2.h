@@ -385,6 +385,10 @@ REGISTER_MODEL_ARGS(gpt2, [&] {
 
   LOAD_ARG_OR_FUNC(
       intermediate_size, "n_inner", [&] { return args->hidden_size() * 4; });
+      
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 });
 
 }  // namespace llm::hf
