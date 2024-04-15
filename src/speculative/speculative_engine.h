@@ -1,10 +1,10 @@
 #pragma once
 
+#include "common/macros.h"
 #include "engine/batch.h"
 #include "engine/engine.h"
 #include "engine/llm_engine.h"
 #include "memory/block_manager.h"
-#include "quantization/quant_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 
@@ -12,9 +12,32 @@ namespace llm {
 
 class SpeculativeEngine : public Engine {
  public:
+  struct Options {
+    DEFINE_ARG(std::vector<torch::Device>, devices);
+
+    DEFINE_ARG(std::vector<torch::Device>, draft_devices);
+
+    // the number of slots per block, default 16, value must be multiple of 16
+    DEFINE_ARG(int32_t, block_size) = 16;
+
+    // the maximum cache size in bytes, default 10GB
+    DEFINE_ARG(int64_t, max_cache_size) = 0;
+
+    // maximum memory utilization allowed, default 0.9
+    DEFINE_ARG(double, max_memory_utilization) = 0;
+
+    // enable CUDAGraph to optimize model execution
+    DEFINE_ARG(bool, enable_cuda_graph) = false;
+
+    // enable prefix cache
+    DEFINE_ARG(bool, enable_prefix_cache) = true;
+
+    // the number of speculative tokens per step
+    DEFINE_ARG(int32_t, num_speculative_tokens) = 0;
+  };
+
   // create an engine with the given devices
-  SpeculativeEngine(const std::vector<torch::Device>& devices,
-                    const std::vector<torch::Device>& draft_devices);
+  SpeculativeEngine(const Options& options);
 
   virtual ~SpeculativeEngine() = default;
 
@@ -50,6 +73,9 @@ class SpeculativeEngine : public Engine {
   static void validate(Batch& batch,
                        const std::vector<ModelOutput>& draft_outputs,
                        const ModelOutput& target_output);
+
+  // options
+  const Options options_;
 
   // engine
   std::unique_ptr<LLMEngine> engine_;

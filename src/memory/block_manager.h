@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "block_allocator.h"
+#include "common/macros.h"
 #include "prefix_cache.h"
 #include "request/request.h"
 #include "request/sequence.h"
@@ -12,7 +13,15 @@ namespace llm {
 
 class BlockManager final {
  public:
-  BlockManager(uint32_t num_blocks, int32_t block_size);
+  struct Options {
+    DEFINE_ARG(uint32_t, num_blocks) = 0;
+
+    DEFINE_ARG(int32_t, block_size) = 0;
+
+    DEFINE_ARG(bool, enable_prefix_cache) = true;
+  };
+
+  BlockManager(const Options& options);
 
   bool allocate_blocks_for(Sequence* sequence);
 
@@ -33,13 +42,16 @@ class BlockManager final {
   // cache the blocks for the sequence
   void cache_blocks_for(Sequence* sequence);
 
+  // get the options for the block manager
+  const Options& options() const { return options_; }
+
  private:
   // check if block allocator has enough slots, if not, try to evict some blocks
   // from the prefix cache
   bool has_enough_blocks(uint32_t num_blocks);
 
-  // number of slots per block
-  int32_t block_size_ = 0;
+  // the options for the block manager
+  Options options_;
 
   // the block allocator that manages the memory blocks
   BlockAllocator block_allocator_;

@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "batch.h"
+#include "common/macros.h"
 #include "engine.h"
 #include "memory/block_manager.h"
 #include "quantization/quant_args.h"
@@ -28,8 +29,27 @@ namespace llm {
 
 class LLMEngine : public Engine {
  public:
+  struct Options {
+    DEFINE_ARG(std::vector<torch::Device>, devices);
+
+    // the number of slots per block, default 16, value must be multiple of 16
+    DEFINE_ARG(int32_t, block_size) = 16;
+
+    // the maximum cache size in bytes, default 10GB
+    DEFINE_ARG(int64_t, max_cache_size) = 10737418240;
+
+    // maximum memory utilization allowed, default 0.9
+    DEFINE_ARG(double, max_memory_utilization) = 0.9;
+
+    // enable CUDAGraph to optimize model execution
+    DEFINE_ARG(bool, enable_cuda_graph) = false;
+
+    // enable prefix cache
+    DEFINE_ARG(bool, enable_prefix_cache) = true;
+  };
+
   // create an engine with the given devices
-  LLMEngine(const std::vector<torch::Device>& devices);
+  LLMEngine(const Options& options);
 
   virtual ~LLMEngine() = default;
 
@@ -48,10 +68,12 @@ class LLMEngine : public Engine {
     return tokenizer_args_;
   }
 
+  const QuantArgs& quant_args() const { return quant_args_; }
+
+  const Options& options() const { return options_; }
+
   // initialize the engine with the given model weights
   bool init(const std::string& model_weights_path);
-
-  const QuantArgs& quant_args() const { return quant_args_; }
 
   bool init_model(const std::string& model_weights_path);
 
@@ -69,8 +91,8 @@ class LLMEngine : public Engine {
  private:
   bool warmup_model();
 
-  // devices
-  const std::vector<torch::Device> devices_;
+  // options
+  const Options options_;
 
   // dtype
   torch::ScalarType dtype_;

@@ -38,6 +38,11 @@ DEFINE_string(
 DEFINE_int32(http_port, 9999, "Port for http server.");
 DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 
+DEFINE_int32(max_tokens_per_batch, 256, "max number of tokens per batch");
+DEFINE_int32(max_seqs_per_batch, 64, "max number of sequences per batch");
+
+DECLARE_int32(num_speculative_tokens);
+
 // NOLINTNEXTLINE
 static std::atomic<uint32_t> signal_received{0};
 void shutdown_handler(int signal) {
@@ -102,7 +107,12 @@ int main(int argc, char** argv) {
                                       FLAGS_draft_device);
 
   // create scheduler and grpc handlers
-  auto scheduler = std::make_unique<ContinuousScheduler>(engine.get());
+  ContinuousScheduler::Options scheduler_options;
+  scheduler_options.max_tokens_per_batch(FLAGS_max_tokens_per_batch)
+      .max_seqs_per_batch(FLAGS_max_seqs_per_batch)
+      .num_speculative_tokens(FLAGS_num_speculative_tokens);
+  auto scheduler =
+      std::make_unique<ContinuousScheduler>(engine.get(), scheduler_options);
   auto completion_handler =
       std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
   auto chat_handler =

@@ -5,9 +5,10 @@
 namespace llm {
 
 TEST(BlockManagerTest, Basic) {
-  const uint32_t n_blocks = 10;
-  const uint32_t block_size = 2;
-  BlockManager manager(n_blocks, block_size);
+  BlockManager::Options options;
+  options.num_blocks(10).block_size(2);
+
+  BlockManager manager(options);
   // TODO: add more tests
 }
 

@@ -6,6 +6,7 @@
 #include <memory>
 #include <queue>
 
+#include "common/macros.h"
 #include "engine/batch.h"
 #include "memory/block_manager.h"
 #include "request/request.h"
@@ -19,7 +20,18 @@ class Engine;
 // number of seqs per batch and the time out value.
 class ContinuousScheduler final : public Scheduler {
  public:
-  ContinuousScheduler(Engine* engine);
+  struct Options {
+    // the maximum number of tokens per batch
+    DEFINE_ARG(int32_t, max_tokens_per_batch) = 256;
+
+    // the maximum number of sequences per batch
+    DEFINE_ARG(int32_t, max_seqs_per_batch) = 64;
+
+    // the number of speculative tokens per step
+    DEFINE_ARG(int32_t, num_speculative_tokens) = 0;
+  };
+
+  ContinuousScheduler(Engine* engine, const Options& options);
 
   ~ContinuousScheduler();
 
@@ -45,6 +57,8 @@ class ContinuousScheduler final : public Scheduler {
                            size_t token_budget,
                            size_t* actual_tokens);
 
+  const Options options_;
+  
   // the engine to run the batch
   Engine* engine_;
 
@@ -73,6 +87,8 @@ class ContinuousScheduler final : public Scheduler {
   std::deque<Request*> preemptable_requests_;
 
   std::unique_ptr<ResponseHandler> response_handler_;
+
+  bool enable_prefix_cache_ = false;
 };
 
 }  // namespace llm

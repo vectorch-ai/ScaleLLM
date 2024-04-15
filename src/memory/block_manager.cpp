@@ -9,16 +9,13 @@
 #include "block_allocator.h"
 #include "request/request.h"
 
-DEFINE_bool(enable_prefix_cache,
-            true,
-            "enable the prefix cache for the block manager");
 
 namespace llm {
 
-BlockManager::BlockManager(uint32_t num_blocks, int32_t block_size)
-    : block_size_(block_size),
-      block_allocator_(num_blocks, block_size),
-      prefix_cache_(block_size) {}
+BlockManager::BlockManager(const Options& options)
+    : options_(options),
+      block_allocator_(options.num_blocks(), options.block_size()),
+      prefix_cache_(options.block_size()) {}
 
 bool BlockManager::allocate_blocks_for(Sequence* sequence) {
   DCHECK(sequence != nullptr);
@@ -34,7 +31,8 @@ bool BlockManager::allocate_blocks_for(Sequence* sequence, size_t num_tokens) {
 
   const size_t num_blocks = sequence->num_blocks();
   // round up to the nearest block number
-  const size_t num_blocks_needed = (num_tokens + block_size_ - 1) / block_size_;
+  const size_t block_size = options_.block_size();
+  const size_t num_blocks_needed = (num_tokens + block_size - 1) / block_size;
   if (num_blocks_needed <= num_blocks) {
     return true;
   }
@@ -89,7 +87,7 @@ bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
   }
 
   // prefix cache is disabled, no way to evict blocks
-  if (!FLAGS_enable_prefix_cache) {
+  if (!options_.enable_prefix_cache()) {
     return false;
   }
 
@@ -113,7 +111,7 @@ bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
 
 void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
   // only allocate shared blocks for prefill sequences
-  if (FLAGS_enable_prefix_cache) {
+  if (options_.enable_prefix_cache()) {
     const auto tokens_ids = sequence->token_ids();
     std::vector<Block> shared_blocks = prefix_cache_.match(tokens_ids);
     sequence->append_shared_blocks(shared_blocks);
@@ -121,7 +119,7 @@ void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
 }
 
 void BlockManager::cache_blocks_for(Sequence* sequence) {
-  if (FLAGS_enable_prefix_cache) {
+  if (options_.enable_prefix_cache()) {
     // only insert tokens in kv cache to the prefix cache
     const auto tokens_ids = sequence->tokens_in_kv_cache();
     const auto blocks = sequence->blocks();

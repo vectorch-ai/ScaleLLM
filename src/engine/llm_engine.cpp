@@ -14,17 +14,6 @@
 #include "utils.h"
 #include "worker.h"
 
-static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
-
-DEFINE_int32(block_size, 16, "slots per block, value must be multiple of 16");
-DEFINE_int64(max_cache_size, 10 * GB, "max cache size in bytes, default 10GB");
-DEFINE_double(max_memory_utilization,
-              0.9,
-              "maximum memory utilization allowed, default 0.9");
-DEFINE_bool(enable_cudagraph,
-            false,
-            "Enable CUDAGraph to optimize model execution.");
-
 // following two parameters are used for profiling and warmup the engine.
 // the profiling result would be used to determine kv cache size.
 DEFINE_int64(max_num_tokens_per_batch,
@@ -63,8 +52,8 @@ torch::ScalarType parse_dtype(const std::string& dtype_str,
 }
 }  // namespace
 
-LLMEngine::LLMEngine(const std::vector<torch::Device>& devices)
-    : devices_(devices) {
+LLMEngine::LLMEngine(const Options& options) : options_(options) {
+  const auto& devices = options.devices();
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   const auto device_type = devices[0].type();
@@ -143,10 +132,10 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
   n_local_kv_heads_ = n_kv_heads / world_size;
   head_dim_ = args_.head_dim();
-  dtype_ = parse_dtype(args_.dtype(), devices_[0]);
+  dtype_ = parse_dtype(args_.dtype(), options_.devices()[0]);
 
   // key + value for all layers
-  LOG(INFO) << "Block info, block_size: " << FLAGS_block_size
+  LOG(INFO) << "Block info, block_size: " << options_.block_size()
             << ", n_local_kv_heads: " << n_local_kv_heads_
             << ", head_dim: " << head_dim_ << ", n_layers: " << args_.n_layers()
             << ", dtype: " << dtype_;
@@ -224,14 +213,15 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
 bool LLMEngine::warmup_model() {
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
-    return workers_[0]->warmup_model(FLAGS_enable_cudagraph);
+    return workers_[0]->warmup_model(options_.enable_cuda_graph());
   }
 
   // multiple workers, call async forward
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.emplace_back(worker->warmup_model_async(FLAGS_enable_cudagraph));
+    futures.emplace_back(
+        worker->warmup_model_async(options_.enable_cuda_graph()));
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
@@ -244,14 +234,17 @@ bool LLMEngine::warmup_model() {
 }
 
 int64_t LLMEngine::profile_memory_for_kv_cache() {
+  const int64_t max_cache_size = options_.max_cache_size();
+  const double max_memory_utilization = options_.max_memory_utilization();
+
   // use first device to profile memory usage
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
     // use max memory cache size for CPU
     LOG(INFO) << "Initializing CPU cache with max cache size: "
-              << readable_size(FLAGS_max_cache_size);
+              << readable_size(max_cache_size);
     // TODO: add CPU memory profiling
-    return FLAGS_max_cache_size;
+    return max_cache_size;
   }
   CHECK(device.is_cuda()) << "Only support CPU and CUDA device for now.";
 
@@ -290,17 +283,16 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
               << ": available memory: " << readable_size(available_memory)
               << ", total memory: " << readable_size(total_memory);
 
-    LOG(INFO) << "Using max_memory_utilization: "
-              << FLAGS_max_memory_utilization
-              << ", max_cache_size: " << readable_size(FLAGS_max_cache_size);
+    LOG(INFO) << "Using max_memory_utilization: " << max_memory_utilization
+              << ", max_cache_size: " << readable_size(max_cache_size);
     // apply memory cap from config if it is set
-    if (FLAGS_max_memory_utilization < 1.0) {
+    if (max_memory_utilization < 1.0) {
       const int64_t buffer_memory =
-          total_memory * (1.0 - FLAGS_max_memory_utilization);
+          total_memory * (1.0 - max_memory_utilization);
       available_memory -= buffer_memory;
     }
-    if (FLAGS_max_cache_size > 0) {
-      available_memory = std::min(available_memory, FLAGS_max_cache_size);
+    if (max_cache_size > 0) {
+      available_memory = std::min(available_memory, max_cache_size);
     }
     smallest_available_memory =
         std::min(smallest_available_memory, available_memory);
@@ -310,14 +302,19 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
 
 bool LLMEngine::init_kv_cache(int64_t n_blocks) {
   CHECK_GT(n_blocks, 0) << "no memory for kv cache";
+  const int32_t block_size = options_.block_size();
 
   // init kv cache for each worker
   const std::vector<int64_t> kv_cache_shape = {
-      n_blocks, FLAGS_block_size, n_local_kv_heads_, head_dim_};
+      n_blocks, block_size, n_local_kv_heads_, head_dim_};
   LOG(INFO) << "Initializing kv cache with shape: [" << kv_cache_shape << "]";
 
   // initialize block manager
-  block_manager_ = std::make_unique<BlockManager>(n_blocks, FLAGS_block_size);
+  BlockManager::Options options;
+  options.num_blocks(n_blocks)
+      .block_size(block_size)
+      .enable_prefix_cache(options_.enable_prefix_cache());
+  block_manager_ = std::make_unique<BlockManager>(options);
 
   // init kv cache for each worker in parallel
   if (workers_.size() == 1) {
@@ -379,8 +376,9 @@ int64_t LLMEngine::kv_cache_slot_size_in_bytes() const {
 
 int64_t LLMEngine::calculate_kv_cache_blocks(
     int64_t cache_size_in_bytes) const {
+  const int32_t block_size = options_.block_size();
   const int64_t block_size_in_bytes =
-      FLAGS_block_size * kv_cache_slot_size_in_bytes();
+      block_size * kv_cache_slot_size_in_bytes();
   return cache_size_in_bytes / block_size_in_bytes;
 }
 
