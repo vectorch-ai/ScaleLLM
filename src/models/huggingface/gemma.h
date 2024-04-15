@@ -2,9 +2,18 @@
 
 #include <torch/torch.h>
 
+#include "chat_template/coded_chat_template.h"
+#include "layers/activation.h"
+#include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
+#include "layers/linear.h"
 #include "layers/normalization.h"
+#include "memory/kv_cache.h"
+#include "models/model_args.h"
+#include "models/model_registry.h"
+#include "models/parameters.h"
+
 // gemma model compatible with huggingface weight
 namespace llm::hf {
 
@@ -191,15 +200,7 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
                         KVCache& kv_cache,
                         const InputParameters& input_params,
                         torch::Tensor& residual) {
-    torch::Tensor hidden_states;
-
-    if (!residual.defined()) {
-      residual = x;
-      torch::Tensor placeholder;
-      hidden_states = input_layernorm_(x, placeholder);
-    } else {
-      hidden_states = input_layernorm_(x, residual);
-    }
+    auto hidden_states = input_layernorm_(x, residual);
 
     hidden_states =
         self_attn_(hidden_states, positions, kv_cache, input_params);
