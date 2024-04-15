@@ -5,6 +5,25 @@
 #include "engine/llm_engine.h"
 #include "speculative/speculative_engine.h"
 
+static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
+
+DEFINE_int32(block_size, 16, "slots per block, value must be multiple of 16");
+
+DEFINE_int64(max_cache_size, 10 * GB, "max cache size in bytes, default 10GB");
+DEFINE_double(max_memory_utilization,
+              0.9,
+              "maximum memory utilization allowed, default 0.9");
+
+DEFINE_bool(enable_prefix_cache,
+            true,
+            "enable the prefix cache for the block manager");
+
+DEFINE_bool(enable_cuda_graph,
+            false,
+            "Enable CUDAGraph to optimize model execution.");
+
+DECLARE_int32(num_speculative_tokens);
+
 namespace llm {
 namespace {
 
@@ -64,12 +83,29 @@ std::unique_ptr<Engine> EngineFactory::create(
   if (!draft_model_path.empty()) {
     const auto draft_devices = parse_devices(draft_devices_str);
     LOG(INFO) << "Using draft devices: " << to_string(draft_devices);
-    auto engine = std::make_unique<SpeculativeEngine>(devices, draft_devices);
+    SpeculativeEngine::Options options;
+    options.devices(devices)
+        .draft_devices(draft_devices)
+        .block_size(FLAGS_block_size)
+        .max_cache_size(FLAGS_max_cache_size)
+        .max_memory_utilization(FLAGS_max_memory_utilization)
+        .enable_prefix_cache(FLAGS_enable_prefix_cache)
+        .enable_cuda_graph(FLAGS_enable_cuda_graph)
+        .num_speculative_tokens(FLAGS_num_speculative_tokens);
+    auto engine = std::make_unique<SpeculativeEngine>(options);
     CHECK(engine->init(model_path, draft_model_path));
     return engine;
   }
 
-  auto engine = std::make_unique<LLMEngine>(devices);
+  LLMEngine::Options options;
+  options.devices(devices)
+      .block_size(FLAGS_block_size)
+      .max_cache_size(FLAGS_max_cache_size)
+      .max_memory_utilization(FLAGS_max_memory_utilization)
+      .enable_prefix_cache(FLAGS_enable_prefix_cache)
+      .enable_cuda_graph(FLAGS_enable_cuda_graph);
+
+  auto engine = std::make_unique<LLMEngine>(options);
   CHECK(engine->init(model_path));
   return engine;
 }
@@ -78,7 +114,15 @@ std::unique_ptr<Engine> EngineFactory::create(const std::string& model_path,
                                               const std::string& devices_str) {
   const auto devices = parse_devices(devices_str);
   LOG(INFO) << "Using devices: " << to_string(devices);
-  auto engine = std::make_unique<LLMEngine>(devices);
+
+  LLMEngine::Options options;
+  options.devices(devices)
+      .block_size(FLAGS_block_size)
+      .max_cache_size(FLAGS_max_cache_size)
+      .max_memory_utilization(FLAGS_max_memory_utilization)
+      .enable_prefix_cache(FLAGS_enable_prefix_cache)
+      .enable_cuda_graph(FLAGS_enable_cuda_graph);
+  auto engine = std::make_unique<LLMEngine>(options);
   CHECK(engine->init(model_path));
   return engine;
 }

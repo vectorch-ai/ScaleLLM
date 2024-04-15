@@ -12,23 +12,19 @@
 #include "request/request.h"
 #include "request/sequence.h"
 
-DEFINE_int32(max_tokens_per_batch, 256, "max number of tokens per batch");
-DEFINE_int32(max_seqs_per_batch, 64, "max number of sequences per batch");
-
-DECLARE_bool(enable_prefix_cache);
-DECLARE_int32(num_speculative_tokens);
-
 namespace llm {
 
 constexpr size_t kRequestQueueSize = 100000;
 
-ContinuousScheduler::ContinuousScheduler(Engine* engine)
-    : engine_(engine), request_queue_(kRequestQueueSize) {
+ContinuousScheduler::ContinuousScheduler(Engine* engine, const Options& options)
+    : options_(options), engine_(engine), request_queue_(kRequestQueueSize) {
   CHECK(engine_ != nullptr);
   block_manager_ = engine_->block_manager();
   tokenizer_ = engine_->tokenizer();
   CHECK(block_manager_ != nullptr);
   CHECK(tokenizer_ != nullptr);
+
+  enable_prefix_cache_ = block_manager_->options().enable_prefix_cache();
 
   response_handler_ =
       std::make_unique<ResponseHandler>(block_manager_, tokenizer_.get());
@@ -78,7 +74,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
     CHECK(request != nullptr);
 
     // expand sequences to the target number if prefix cache is disabled.
-    if (!FLAGS_enable_prefix_cache) {
+    if (!enable_prefix_cache_) {
       // expand sequences to the target number
       request->expand_sequences();
     }
@@ -120,23 +116,23 @@ Batch ContinuousScheduler::build_sequence_batch() {
   std::vector<SequenceData> new_batch;
 
   // at least one sequence per batch
-  const size_t max_seqs_per_batch = std::max(FLAGS_max_seqs_per_batch, 1);
+  const size_t max_seqs_per_batch = std::max(options_.max_seqs_per_batch(), 1);
 
   // average number of token budget for each sequence.
   const size_t avg_sequence_token_budget =
-      std::max<size_t>(FLAGS_max_tokens_per_batch / max_seqs_per_batch,
-                       1 + FLAGS_num_speculative_tokens);
+      std::max<size_t>(options_.max_tokens_per_batch() / max_seqs_per_batch,
+                       1 + options_.num_speculative_tokens());
 
   // remaining budget for the current batch
   // at least avg_sequence_token_budget token per sequence
   size_t remaining_token_budget =
-      std::max<size_t>(FLAGS_max_tokens_per_batch,
+      std::max<size_t>(options_.max_tokens_per_batch(),
                        max_seqs_per_batch * avg_sequence_token_budget);
   size_t remaining_seq_budget = max_seqs_per_batch;
 
   // schedule the requests in the priority queue until budgets are exhausted
   while (!priority_queue_.empty() &&
-         remaining_token_budget > FLAGS_num_speculative_tokens &&
+         remaining_token_budget > options_.num_speculative_tokens() &&
          remaining_seq_budget > 0) {
     Request* request = priority_queue_.top();
     // TODO: check if request is timeout
@@ -153,7 +149,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
         continue;
       }
       // no budget left
-      if (allocated_tokens + FLAGS_num_speculative_tokens >=
+      if (allocated_tokens + options_.num_speculative_tokens() >=
               remaining_token_budget ||
           allocated_seqs >= remaining_seq_budget) {
         break;
@@ -297,7 +293,7 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
                                               size_t token_budget,
                                               size_t* actual_tokens) {
   // token budget should be large enough for one speculative decoding step
-  CHECK_GT(token_budget, FLAGS_num_speculative_tokens);
+  CHECK_GT(token_budget, options_.num_speculative_tokens());
 
   if (sequence->num_blocks() == 0) {
     // need to allocate shared blocks explicitly to avoid kv_cache_pos change
@@ -313,10 +309,11 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
   // speculative decoding specific logic
   // make sure sequence either in prefill or decode phase in one step
   const size_t num_prompt_tokens = sequence->num_prompt_tokens();
-  if (FLAGS_num_speculative_tokens > 0 && num_tokens >= num_prompt_tokens) {
+  if (options_.num_speculative_tokens() > 0 &&
+      num_tokens >= num_prompt_tokens) {
     // reach decode phase, try to allocate slots for speculative tokens
     const size_t adjusted_num_tokens =
-        num_tokens + FLAGS_num_speculative_tokens;
+        num_tokens + options_.num_speculative_tokens();
     if (adjusted_num_tokens > num_kv_cache_tokens + token_budget) {
       // over budget, force the sequence in prefill phase
       num_tokens = num_prompt_tokens - 1;

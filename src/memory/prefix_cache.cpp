@@ -30,7 +30,7 @@ size_t round_down(size_t n, size_t multiple) {
 }  // namespace
 
 PrefixCache::PrefixCache(uint32_t block_size) : block_size_(block_size) {
-  CHECK(block_size_ > 0) << "Block size should be greater than 0";
+  CHECK_GT(block_size, 0) << "Block size should be greater than 0";
 
   // initialize the lru list
   lru_front_.next = &lru_back_;

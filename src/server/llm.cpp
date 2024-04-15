@@ -2,6 +2,7 @@
 
 #include <absl/strings/str_split.h>
 
+#include "engine/llm_engine.h"
 #include "request/sequence.h"
 
 namespace llm {
@@ -13,7 +14,9 @@ LLM::LLM(const std::string& model_path,
          const std::string& device_str)
     : sampling_param_(sp), stopping_criteria_(sc), max_seq_len_(max_seq_len) {
   auto devices = parse_devices(device_str);
-  engine_ = new llm::LLMEngine(devices);
+  LLMEngine::Options options;
+  options.devices(devices);
+  engine_ = new LLMEngine(options);
   CHECK(engine_->init(model_path));
   block_manager_ = engine_->block_manager();
   tokenizer_ = engine_->tokenizer();

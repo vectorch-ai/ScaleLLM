@@ -5,26 +5,35 @@
 
 #include <memory>
 
+#include "engine/llm_engine.h"
 #include "engine/parameters.h"
 #include "rejection_sampler.h"
 
-DECLARE_int32(block_size);
-DECLARE_int32(num_speculative_tokens);
-
 namespace llm {
 
-SpeculativeEngine::SpeculativeEngine(
-    const std::vector<torch::Device>& devices,
-    const std::vector<torch::Device>& draft_devices) {
-  CHECK_GT(FLAGS_num_speculative_tokens, 0)
+SpeculativeEngine::SpeculativeEngine(const Options& options)
+    : options_(options) {
+  CHECK_GT(options.num_speculative_tokens(), 0)
       << "speculative tokens should not be zero";
 
-  engine_ = std::make_unique<LLMEngine>(devices);
-  draft_engine_ = std::make_unique<LLMEngine>(draft_devices);
+  // carry over the options
+  LLMEngine::Options engine_options;
+  engine_options.block_size(options.block_size())
+      .max_cache_size(options.max_cache_size())
+      .max_memory_utilization(options.max_memory_utilization())
+      .enable_cuda_graph(options.enable_cuda_graph())
+      .enable_prefix_cache(options.enable_prefix_cache());
+  // target engine
+  engine_options.devices(options.devices());
+  engine_ = std::make_unique<LLMEngine>(engine_options);
+
+  // draft engine
+  engine_options.devices(options.draft_devices());
+  draft_engine_ = std::make_unique<LLMEngine>(engine_options);
 
   // check if llm and ssm are using the same device
-  for (const auto& target : devices) {
-    for (const auto& draft : draft_devices) {
+  for (const auto& target : options.devices()) {
+    for (const auto& draft : options.draft_devices()) {
       if (target == draft) {
         share_device_ = true;
         break;
@@ -93,7 +102,7 @@ ModelOutput SpeculativeEngine::execute_model(Batch& batch) {
   // run the draft model to get proposals
   std::vector<ModelOutput> draft_outputs;
   batch.set_engine_type(EngineType::SSM);
-  for (size_t i = 0; i < FLAGS_num_speculative_tokens; ++i) {
+  for (size_t i = 0; i < options_.num_speculative_tokens(); ++i) {
     auto draft_output = draft_engine_->execute_model(batch);
     draft_outputs.push_back(draft_output);
   }
@@ -163,6 +172,7 @@ void SpeculativeEngine::validate(Batch& batch,
 int64_t SpeculativeEngine::calculate_kv_cache_blocks(
     int64_t cache_size_in_bytes) const {
   CHECK_GT(cache_size_in_bytes, 0) << "no memory for kv cache";
+  const int32_t block_size = options_.block_size();
 
   // compute the kv cache slot size in bytes
   const int64_t target_slot_size = engine_->kv_cache_slot_size_in_bytes();
@@ -170,7 +180,7 @@ int64_t SpeculativeEngine::calculate_kv_cache_blocks(
 
   // compute the number of blocks
   const int64_t block_size_in_bytes =
-      FLAGS_block_size * (target_slot_size + draft_slot_size);
+      block_size * (target_slot_size + draft_slot_size);
   return cache_size_in_bytes / block_size_in_bytes;
 }
 

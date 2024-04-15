@@ -67,7 +67,9 @@ class TestableWorker {
     const std::vector<int64_t> kv_cache_shape = {
         n_blocks, block_size, n_heads, head_dim};
 
-    block_manager_ = std::make_unique<BlockManager>(n_blocks, block_size);
+    BlockManager::Options options;
+    options.num_blocks(n_blocks).block_size(block_size);
+    block_manager_ = std::make_unique<BlockManager>(options);
     return worker_->init_kv_cache(kv_cache_shape);
   }
 
