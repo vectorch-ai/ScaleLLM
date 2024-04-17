@@ -71,8 +71,12 @@ void ModelRunner::capture_graphs(std::vector<KVCache>& kv_cache) {
         /*dim=*/0, /*start=*/0, /*end=*/batch_size);
 
     // capture graph
-    graph->capture(
-        shared_mem_pool, model_, flatten_tokens, flatten_positions, params, kv_cache);
+    graph->capture(shared_mem_pool,
+                   model_,
+                   flatten_tokens,
+                   flatten_positions,
+                   params,
+                   kv_cache);
 
     // save the graph
     graphs_[batch_size] = std::move(graph);
