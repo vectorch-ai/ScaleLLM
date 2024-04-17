@@ -1,4 +1,5 @@
 include(cc_library)
+include(cc_binary)
 
 cc_library(
   NAME 
@@ -72,6 +73,24 @@ cc_library(
     torch
 )
 
+# cc_test(
+# NAME
+# layernorm_kernels_test
+# SRCS
+# layernrom_kernels_test.cu
+# layernorm_kernels.cu
+# DEPS
+# DEFINES
+# )
+cc_binary(
+  NAME
+  layernorm_kernels_test
+  SRCS
+  layernrom_kernels_test.cu
+  layernorm_kernels.cu
+  DEPS
+  torch
+)
+
 add_subdirectory(flash_attn)
 add_subdirectory(flash_infer)
-
