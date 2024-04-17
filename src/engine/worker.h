@@ -6,6 +6,7 @@
 #include "common/threadpool.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
+#include "model_runner.h"
 #include "models/causal_lm.h"
 #include "models/model_args.h"
 #include "models/parameters.h"
@@ -14,10 +15,11 @@
 
 namespace llm {
 
-class CudaGraphRunner;
 class Worker final {
  public:
-  Worker(const ParallelArgs& parallel_args, const torch::Device& device);
+  Worker(const ParallelArgs& parallel_args,
+         const torch::Device& device,
+         const ModelRunner::Options& runner_options);
 
   ~Worker() = default;
 
@@ -45,7 +47,7 @@ class Worker final {
   // Run the model on the given input. blocking call
   ModelOutput execute_model(const ModelInput& inputs);
 
-  bool warmup_model(bool enable_cudagraph);
+  bool warmup_model();
 
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
@@ -70,14 +72,11 @@ class Worker final {
   // the future returns a successfull status with no meaningful value
   folly::SemiFuture<ModelOutput> execute_model_async(const ModelInput& inputs);
 
-  folly::SemiFuture<bool> warmup_model_async(bool enable_cudagraph);
+  folly::SemiFuture<bool> warmup_model_async();
 
   const torch::Device& device() const { return device_; }
 
  private:
-  // capture cuda graph
-  void capture_graph();
-
   // working thread
   ThreadPool threadpool_;
 
@@ -96,11 +95,14 @@ class Worker final {
   // kv caches
   std::vector<llm::KVCache> kv_caches_;
 
-  // model
+  // causal LM model
   std::unique_ptr<CausalLM> model_;
 
-  // graph runner
-  std::map<int64_t, CudaGraphRunner*> graph_runners_;
+  // runner options
+  ModelRunner::Options runner_options_;
+
+  // model runner that runs the model, with cuda graph if enabled
+  std::unique_ptr<ModelRunner> model_runner_;
 };
 
 }  // namespace llm

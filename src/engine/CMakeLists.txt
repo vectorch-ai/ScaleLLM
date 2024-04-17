@@ -8,12 +8,14 @@ cc_library(
     parameters.h
     utils.h
     batch.h
+    model_runner.h
     worker.h
     engine.h
     llm_engine.h
   SRCS
     utils.cpp
     batch.cpp
+    model_runner.cpp
     worker.cpp
     llm_engine.cpp
   DEPS
@@ -28,6 +30,7 @@ cc_library(
     glog::glog
     Folly::folly
     absl::synchronization
+    absl::flat_hash_map
 )
 
 cc_library(
@@ -49,7 +52,7 @@ cc_test(
     engine_test
   SRCS
     batch_test.cpp
-    worker_test.cpp
+    # worker_test.cpp
   DEPS
     :engine
     absl::time

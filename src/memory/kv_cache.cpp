@@ -23,8 +23,7 @@ KVCache::KVCache(torch::Tensor key_cache, torch::Tensor value_cache)
 
 void KVCache::set_kv_cache(const torch::Tensor& slot_ids,
                            const torch::Tensor& keys,
-                           const torch::Tensor& values,
-                           cudaStream_t stream) {
+                           const torch::Tensor& values) {
   DCHECK_EQ(slot_ids.size(0), keys.size(0));
   DCHECK_EQ(slot_ids.size(0), values.size(0));
   DCHECK_EQ(slot_ids.device(), keys.device());
@@ -32,7 +31,7 @@ void KVCache::set_kv_cache(const torch::Tensor& slot_ids,
 
   if (keys.is_cuda()) {
     // use cuda kernel
-    return set_kv_cache_cuda(slot_ids, keys, values, stream);
+    return set_kv_cache_cuda(slot_ids, keys, values);
   }
   return set_kv_cache_slow(slot_ids, keys, values);
 }
@@ -59,10 +58,8 @@ void KVCache::set_kv_cache_slow(const torch::Tensor& slot_ids,
 
 void KVCache::set_kv_cache_cuda(const torch::Tensor& slot_ids,
                                 const torch::Tensor& keys,
-                                const torch::Tensor& values,
-                                cudaStream_t stream) {
-  kernel::set_kv_cache(
-      slot_ids, keys, values, key_cache_, value_cache_, stream);
+                                const torch::Tensor& values) {
+  kernel::set_kv_cache(slot_ids, keys, values, key_cache_, value_cache_);
 }
 
 std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(
