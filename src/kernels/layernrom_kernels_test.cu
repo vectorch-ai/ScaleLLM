@@ -1,14 +1,36 @@
 #include <cuda_fp16.h>
-
 #include <cstdio>
-
 #include "layernorm_kernels.h"
+#include <torch/nn/functional.h>
+#include <gtest/gtest.h>
 
 template <typename T>
 void printMatrix(T* a, int m, int n) {
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < n; j++) {
       printf("%f ", (float)a[i * n + j]);
+    }
+    puts("");
+  }
+  puts("");
+}
+
+template <>
+void printMatrix<float>(float* a, int m, int n) {
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%f ", a[i * n + j]);
+    }
+    puts("");
+  }
+  puts("");
+}
+
+template <>
+void printMatrix<half>(half* a, int m, int n) {
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%f ", __half2float(a[i * n + j]));
     }
     puts("");
   }
@@ -122,8 +144,44 @@ void layernorm_kernel_float_test() {
   printMatrix<float>(out, m, n);
 }
 
-int main() {
-  layernorm_kernel_float_test();
-  layernorm_kernel_half2_test();
-  return 0;
+TEST(NormalizationKernelTest, LayernormFloatTest) {
+  float epsilon = 1e-6;
+  int m = 32;
+  int n = 512;
+
+  auto input = torch::randn({m, n});
+  auto weight = torch::randn({n});
+  auto bias = torch::randn({n});
+  auto desired_out = torch::nn::functional::layer_norm(input, torch::nn::functional::LayerNormFuncOptions({n}).weight(weight).bias(bias));
+
+  float* hout = (float*)malloc(m * n * sizeof(float));
+  float* hinput = input.data_ptr<float>();
+  float* hweight = weight.data_ptr<float>();
+  float* hbias = bias.data_ptr<float>();
+
+  float* dout;
+  float* dinput;
+  float* dweight;
+  float* dbias;
+  cudaMalloc((void**)&dout, sizeof(float) * m * n);
+  cudaMalloc((void**)&dinput, sizeof(float) * m * n);
+  cudaMalloc((void**)&dweight, sizeof(float) * n);
+  cudaMalloc((void**)&dbias, sizeof(float) * n);
+
+  cudaMemcpy(dinput, hinput, sizeof(float) * m * n, cudaMemcpyHostToDevice);
+  cudaMemcpy(dweight, hweight, sizeof(float) * n, cudaMemcpyHostToDevice);
+  cudaMemcpy(dbias, hbias, sizeof(float) * n, cudaMemcpyHostToDevice);
+
+  llm::kernel::invoke_layernorm_kernel<float>(
+      dout, dinput, dweight, dbias, epsilon, m, n);
+
+  cudaMemcpy(hout, dout, sizeof(float) * m * n, cudaMemcpyDeviceToHost);
+
+  auto out = torch::from_blob(hout, {m, n});
+  EXPECT_TRUE(torch::allclose(out, desired_out, 1e-3, 1e-5));
+  free(hout);
+  cudaFree(dout);
+  cudaFree(dinput);
+  cudaFree(dweight);
+  cudaFree(dbias);
 }
