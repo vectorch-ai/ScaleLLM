@@ -14,11 +14,11 @@ namespace llm {
 
 class ModelRunner final {
  public:
-  ModelRunner(CausalLM* model) : model_(model) {}
+  ModelRunner(CausalLM* model, const torch::Device& device)
+      : model_(model), device_(device) {}
 
   // capture graph with batch size list
-  void capture_graphs(const std::vector<uint32_t>& batch_size_list,
-                      std::vector<KVCache>& kv_cache);
+  void capture_graphs(std::vector<KVCache>& kv_cache);
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
@@ -26,18 +26,21 @@ class ModelRunner final {
   torch::Tensor forward(const torch::Tensor& tokens,
                         const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
-                        const InputParameters& parameters);
+                        const InputParameters& params);
 
  private:
   // model, do not own
   CausalLM* model_;
+
+  // device
+  torch::Device device_;
 
   // number of decoding tokens per sequence
   int64_t num_decoding_tokens_ = 1;
 
   class CudaGraph;
   // captured cuda graphs, mapping from batch size to cudagraph
-  std::unordered_map<int32_t, std::unique_ptr<CudaGraph>> graphs_;
+  std::unordered_map<uint32_t, std::unique_ptr<CudaGraph>> graphs_;
 
   class CudaGraph final {
    public:
@@ -49,8 +52,7 @@ class ModelRunner final {
 
     torch::Tensor replay(torch::Tensor flatten_tokens,
                          torch::Tensor flatten_positions,
-                         const InputParameters& params,
-                         const std::vector<KVCache>& /*kv_cache*/);
+                         const InputParameters& params);
 
    private:
     std::unique_ptr<at::cuda::CUDAGraph> graph_;

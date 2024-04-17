@@ -52,10 +52,11 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
 }
 
 bool Worker::warmup_model(bool enable_cudagraph) {
+  CHECK(model_ != nullptr) << "Model is not initialized.";
+  model_runner_ = std::make_unique<ModelRunner>(model_.get(), device_);
   if (enable_cudagraph) {
-    LOG(INFO) << "Start to capture cuda graph";
-    // capture_graph();
-    LOG(INFO) << "Finish capturing cuda graph";
+    CHECK(device_.is_cuda()) << "CUDA graph is only supported on GPU.";
+    model_runner_->capture_graphs(kv_caches_);
   }
   return true;
 }
@@ -109,9 +110,9 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   auto flatten_positions = inputs.positions.to(device_);
   InputParameters params = inputs.input_params.to(device_);
 
-  // call model forward to get hidden states
-  auto hidden_states =
-      model_->forward(flatten_tokens, flatten_positions, kv_caches_, params);
+  // call model runner forward to get hidden states
+  auto hidden_states = model_runner_->forward(
+      flatten_tokens, flatten_positions, kv_caches_, params);
 
   // waits for all kernels in all streams to complete.
   torch::cuda::synchronize();
@@ -233,37 +234,5 @@ folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
       });
   return future;
 }
-
-// // Only support decode in CUDAGraph
-// void Worker::capture_graph() {
-//   torch::DeviceGuard device_guard(device_);
-
-//   const int64_t max_seq_len = 1024;  // TODO: need to optimize
-//   for (auto batch_size : BatchSizeForCudaGraph) {
-//     torch::Tensor flatten_token_ids;
-//     torch::Tensor flatten_positions;
-//     InputParameters input_params;
-//     Utils::prepare_capture_inputs(max_seq_len,
-//                                   batch_size,
-//                                   &flatten_token_ids,
-//                                   &flatten_positions,
-//                                   &input_params);
-
-//     // all tensors should be on the same device as model
-//     flatten_token_ids = flatten_token_ids.to(device_);
-//     flatten_positions = flatten_positions.to(device_);
-//     InputParameters d_params = input_params.to(device_);
-
-//     auto graph_runner = new CudaGraphRunner(model_.get());
-//     graph_runner->capture(flatten_token_ids,
-//                           flatten_positions,
-//                           d_params,
-//                           // TODO: if use shared buffer, we need to share
-//                           // memory pool between different cudagraph
-//                           kv_caches_);
-//     // TODO graph_memory_pool = graph_runner.graph.pool()
-//     graph_runners_[batch_size] = graph_runner;
-//   }
-// }
 
 }  // namespace llm

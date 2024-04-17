@@ -10,31 +10,6 @@
 
 namespace llm {
 
-// Only support all decode sequences
-void Utils::prepare_capture_inputs(int64_t max_seq_len,
-                                   int64_t batch_size,
-                                   torch::Tensor* flatten_token_ids,
-                                   torch::Tensor* flatten_positions,
-                                   InputParameters* input_params) {
-  // create flatten tensor with shape [batch_size], only support decode.
-  *flatten_token_ids = torch::ones({batch_size}, torch::kInt32);
-  *flatten_positions = torch::ones({batch_size}, torch::kInt32);
-  torch::Tensor cu_seq_lens = torch::range(
-      /*start=*/0, /*end=*/batch_size + 1, /*step=*/1, torch::kInt32);
-
-  InputParameters params;
-  input_params->empty_kv_cache = false;
-  input_params->num_sequences = batch_size;
-  input_params->q_max_seq_len = 1;
-  input_params->kv_max_seq_len = max_seq_len;
-  input_params->q_cu_seq_lens = cu_seq_lens;
-  input_params->kv_cu_seq_lens = cu_seq_lens;
-
-  input_params->new_cache_slots = torch::zeros({batch_size}, torch::kInt);
-  input_params->block_tables =
-      torch::zeros({batch_size, max_seq_len}, torch::kInt);
-}
-
 void Utils::prepare_profile_inputs(int64_t max_num_tokens,
                                    int64_t max_num_seqs,
                                    torch::Tensor* flatten_token_ids,

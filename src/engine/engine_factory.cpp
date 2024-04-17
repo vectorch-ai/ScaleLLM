@@ -19,7 +19,7 @@ DEFINE_bool(enable_prefix_cache,
             "enable the prefix cache for the block manager");
 
 DEFINE_bool(enable_cuda_graph,
-            false,
+            true,
             "Enable CUDAGraph to optimize model execution.");
 
 DECLARE_int32(num_speculative_tokens);
