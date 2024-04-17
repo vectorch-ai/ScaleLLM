@@ -59,8 +59,7 @@ void KVCache::set_kv_cache_slow(const torch::Tensor& slot_ids,
 void KVCache::set_kv_cache_cuda(const torch::Tensor& slot_ids,
                                 const torch::Tensor& keys,
                                 const torch::Tensor& values) {
-  kernel::set_kv_cache(
-      slot_ids, keys, values, key_cache_, value_cache_);
+  kernel::set_kv_cache(slot_ids, keys, values, key_cache_, value_cache_);
 }
 
 std::tuple<torch::Tensor, torch::Tensor> KVCache::get_kv_cache(

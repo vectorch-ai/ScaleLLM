@@ -24,11 +24,9 @@ FlashAttnHandler::FlashAttnHandler(float scale,
 
 FlashAttnHandler::FlashAttnHandler(float scale,
                                    torch::optional<torch::Tensor> alibi_slopes)
-    : scale_(scale), alibi_slopes_(alibi_slopes) {
-}
+    : scale_(scale), alibi_slopes_(alibi_slopes) {}
 
-FlashAttnHandler::~FlashAttnHandler() {
-}
+FlashAttnHandler::~FlashAttnHandler() {}
 
 std::tuple<torch::Tensor, torch::Tensor> FlashAttnHandler::apply_pos_emb(
     const torch::Tensor& query,
@@ -73,7 +71,6 @@ void FlashAttnHandler::batch_decode(
     const KVCache& kv_cache,              // where to retrieval key and value
     const InputParameters& input_params,  // input paras used for attention
     torch::Tensor& output) {
-
   auto [key_cache, value_cache] = kv_cache.get_kv_cache();
   mha_varlen_fwd(output,
                  query,
