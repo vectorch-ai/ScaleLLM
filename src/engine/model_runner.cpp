@@ -45,6 +45,7 @@ void ModelRunner::capture_graphs(std::vector<KVCache>& kv_cache) {
       torch::zeros({max_batch_size, max_block_len}, options);
 
   LOG(INFO) << "Capturing CUDA graphs for batch sizes: " << batch_sizes;
+  // TODO: share MempoolId_t between graphs
   for (auto batch_size : batch_sizes) {
     auto graph = std::make_unique<CudaGraph>();
 
