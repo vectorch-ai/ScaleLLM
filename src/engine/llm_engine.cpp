@@ -80,15 +80,16 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
 
   // create a worker for each device
   ModelRunner::Options runner_options;
-  // TODO: pass in proper parameter values
-  runner_options.block_size(16).num_decoding_tokens(1).cuda_graph_max_seq_len(
-      1024);
+  runner_options.block_size(options_.block_size())
+      .num_decoding_tokens(options_.num_decoding_tokens())
+      .cuda_graph_max_seq_len(options_.cuda_graph_max_seq_len())
+      .cuda_graph_batch_sizes(options_.cuda_graph_batch_sizes());
   for (size_t i = 0; i < devices.size(); ++i) {
     const int32_t rank = static_cast<int32_t>(i);
     ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
     ParallelArgs parallel_args(rank, world_size, pg);
-    workers_.emplace_back(std::make_unique<Worker>(
-        parallel_args, devices[i], runner_options));
+    workers_.emplace_back(
+        std::make_unique<Worker>(parallel_args, devices[i], runner_options));
   }
 
   if (FLAGS_disable_custom_kernels) {
@@ -218,15 +219,14 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
 bool LLMEngine::warmup_model() {
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
-    return workers_[0]->warmup_model(options_.enable_cuda_graph());
+    return workers_[0]->warmup_model();
   }
 
   // multiple workers, call async forward
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.emplace_back(
-        worker->warmup_model_async(options_.enable_cuda_graph()));
+    futures.emplace_back(worker->warmup_model_async());
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();

@@ -1,5 +1,6 @@
 #include "engine_factory.h"
 
+#include <absl/strings/numbers.h>
 #include <absl/strings/str_split.h>
 
 #include "engine/llm_engine.h"
@@ -18,14 +19,49 @@ DEFINE_bool(enable_prefix_cache,
             true,
             "enable the prefix cache for the block manager");
 
+// TODO: enalbe cuda graph by default
 DEFINE_bool(enable_cuda_graph,
-            true,
-            "Enable CUDAGraph to optimize model execution.");
+            false,
+            "Enable CUDA Graph to optimize model execution.");
+
+DEFINE_int64(cuda_graph_max_seq_len,
+             1024,
+             "max sequence length used to capture cuda graphs");
+DEFINE_string(cuda_graph_batch_sizes,
+              "auto",
+              "batch sizes to capture cuda graphs, comma separated list");
 
 DECLARE_int32(num_speculative_tokens);
 
 namespace llm {
 namespace {
+
+const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph = {
+    1,   2,   3,   4,   5,   6,   7,   8,   16,  24,  32,  40,  48,
+    56,  64,  72,  80,  88,  96,  104, 112, 120, 128, 136, 144, 152,
+    160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256};
+
+std::vector<uint32_t> parse_cuda_graph_batch_sizes(
+    const std::string& batch_sizes_str) {
+  if (batch_sizes_str == "auto") {
+    return kDefaultBatchSizesForCudaGraph;
+  }
+
+  // parse device string
+  const std::vector<std::string> size_strs =
+      absl::StrSplit(batch_sizes_str, ',');
+  // remove duplicates
+  std::unordered_set<uint32_t> sizes_set;
+  for (const auto& size_str : size_strs) {
+    uint32_t batch_size = 0;
+    if (!absl::SimpleAtoi(size_str, &batch_size)) {
+      LOG(ERROR) << "Failed to parse batch size: " << size_str;
+      continue;
+    }
+    sizes_set.insert(batch_size);
+  }
+  return {sizes_set.begin(), sizes_set.end()};
+}
 
 std::vector<torch::Device> parse_devices(const std::string& device_str) {
   std::vector<torch::Device> devices;
@@ -90,8 +126,15 @@ std::unique_ptr<Engine> EngineFactory::create(
         .max_cache_size(FLAGS_max_cache_size)
         .max_memory_utilization(FLAGS_max_memory_utilization)
         .enable_prefix_cache(FLAGS_enable_prefix_cache)
-        .enable_cuda_graph(FLAGS_enable_cuda_graph)
         .num_speculative_tokens(FLAGS_num_speculative_tokens);
+    if (FLAGS_enable_cuda_graph) {
+      LOG(INFO) << "Using cuda graph optimization, batch sizes: "
+                << FLAGS_cuda_graph_batch_sizes;
+      const auto batch_sizes =
+          parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes);
+      options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
+          .cuda_graph_batch_sizes(batch_sizes);
+    }
     auto engine = std::make_unique<SpeculativeEngine>(options);
     CHECK(engine->init(model_path, draft_model_path));
     return engine;
@@ -102,8 +145,15 @@ std::unique_ptr<Engine> EngineFactory::create(
       .block_size(FLAGS_block_size)
       .max_cache_size(FLAGS_max_cache_size)
       .max_memory_utilization(FLAGS_max_memory_utilization)
-      .enable_prefix_cache(FLAGS_enable_prefix_cache)
-      .enable_cuda_graph(FLAGS_enable_cuda_graph);
+      .enable_prefix_cache(FLAGS_enable_prefix_cache);
+  if (FLAGS_enable_cuda_graph) {
+    LOG(INFO) << "Using cuda graph optimization, batch sizes: "
+              << FLAGS_cuda_graph_batch_sizes;
+    const auto batch_sizes =
+        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes);
+    options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
+        .cuda_graph_batch_sizes(batch_sizes);
+  }
 
   auto engine = std::make_unique<LLMEngine>(options);
   CHECK(engine->init(model_path));
@@ -120,8 +170,15 @@ std::unique_ptr<Engine> EngineFactory::create(const std::string& model_path,
       .block_size(FLAGS_block_size)
       .max_cache_size(FLAGS_max_cache_size)
       .max_memory_utilization(FLAGS_max_memory_utilization)
-      .enable_prefix_cache(FLAGS_enable_prefix_cache)
-      .enable_cuda_graph(FLAGS_enable_cuda_graph);
+      .enable_prefix_cache(FLAGS_enable_prefix_cache);
+  if (FLAGS_enable_cuda_graph) {
+    LOG(INFO) << "Using cuda graph optimization, batch sizes: "
+              << FLAGS_cuda_graph_batch_sizes;
+    const auto batch_sizes =
+        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes);
+    options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
+        .cuda_graph_batch_sizes(batch_sizes);
+  }
   auto engine = std::make_unique<LLMEngine>(options);
   CHECK(engine->init(model_path));
   return engine;

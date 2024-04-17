@@ -13,12 +13,18 @@
 namespace llm {
 
 // capture graph with batch size list
-void ModelRunner::capture_graphs(const std::vector<uint32_t>& batch_sizes,
-                                 std::vector<KVCache>& kv_cache) {
-  CHECK(!batch_sizes.empty()) << "batch_sizes is empty";
+void ModelRunner::capture_graphs(std::vector<KVCache>& kv_cache) {
+  if (!device_.is_cuda()) {
+    // only capture CUDA graphs
+    return;
+  }
+  if (options_.cuda_graph_batch_sizes().empty()) {
+    // no batch sizes to capture CUDA graphs
+    return;
+  }
 
   // sort batch_sizes in descending order
-  std::vector<uint32_t> sorted_batch_sizes = batch_sizes;
+  std::vector<uint32_t> sorted_batch_sizes = options_.cuda_graph_batch_sizes();
   std::sort(
       sorted_batch_sizes.begin(), sorted_batch_sizes.end(), std::greater<>());
 
@@ -51,7 +57,8 @@ void ModelRunner::capture_graphs(const std::vector<uint32_t>& batch_sizes,
   torch::Tensor block_tables =
       torch::zeros({max_batch_size, max_block_table_len}, options);
 
-  LOG(INFO) << "Capturing CUDA graphs for batch sizes: " << batch_sizes;
+  LOG(INFO) << "Capturing CUDA graphs, num_decoding_tokens: "
+            << num_decoding_tokens << ", batch sizes: " << sorted_batch_sizes;
   const auto shared_mem_pool = at::cuda::graph_pool_handle();
   for (auto batch_size : sorted_batch_sizes) {
     const int64_t n_tokens = num_decoding_tokens * batch_size;
@@ -165,6 +172,8 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
 torch::Tensor ModelRunner::CudaGraph::replay(torch::Tensor flatten_tokens,
                                              torch::Tensor flatten_positions,
                                              const InputParameters& params) {
+  CHECK(graph_ != nullptr) << "graph not captured";
+
   const int64_t batch_size = params.num_sequences;
   const int64_t num_tokens = flatten_tokens.size(/*dim=*/0);
   const int64_t block_table_len = params.block_tables.size(/*dim=*/1);

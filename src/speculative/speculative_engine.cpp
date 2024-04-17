@@ -21,14 +21,17 @@ SpeculativeEngine::SpeculativeEngine(const Options& options)
   engine_options.block_size(options.block_size())
       .max_cache_size(options.max_cache_size())
       .max_memory_utilization(options.max_memory_utilization())
-      .enable_cuda_graph(options.enable_cuda_graph())
-      .enable_prefix_cache(options.enable_prefix_cache());
+      .enable_prefix_cache(options.enable_prefix_cache())
+      .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+      .cuda_graph_batch_sizes(options.cuda_graph_batch_sizes());
   // target engine
   engine_options.devices(options.devices());
+  engine_options.num_decoding_tokens(options.num_speculative_tokens() + 1);
   engine_ = std::make_unique<LLMEngine>(engine_options);
 
   // draft engine
   engine_options.devices(options.draft_devices());
+  engine_options.num_decoding_tokens(1);
   draft_engine_ = std::make_unique<LLMEngine>(engine_options);
 
   // check if llm and ssm are using the same device
@@ -50,6 +53,11 @@ bool SpeculativeEngine::init(const std::string& model_weights_path,
 
   // init kv cache
   if (!init_kv_cache()) {
+    return false;
+  }
+
+  // warmup the model
+  if (!engine_->warmup_model() || !draft_engine_->warmup_model()) {
     return false;
   }
 

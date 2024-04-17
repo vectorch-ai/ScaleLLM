@@ -16,7 +16,7 @@ namespace llm {
 
 class ModelRunner final {
  public:
-    struct Options {
+  struct Options {
     // number of decoding tokens per sequence
     // in speculative decoding, it is the number of speculative tokens + 1
     DEFINE_ARG(int64_t, num_decoding_tokens) = 1;
@@ -37,8 +37,7 @@ class ModelRunner final {
       : model_(model), device_(device), options_(options) {}
 
   // capture graph with batch size list
-  void capture_graphs(const std::vector<uint32_t>& batch_sizes,
-                      std::vector<KVCache>& kv_cache);
+  void capture_graphs(std::vector<KVCache>& kv_cache);
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
