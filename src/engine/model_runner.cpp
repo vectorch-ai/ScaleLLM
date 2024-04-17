@@ -1,6 +1,7 @@
 #include "model_runner.h"
 
 #include <c10/core/TensorOptions.h>
+#include <c10/cuda/CUDAGraphsC10Utils.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
@@ -45,7 +46,7 @@ void ModelRunner::capture_graphs(std::vector<KVCache>& kv_cache) {
       torch::zeros({max_batch_size, max_block_len}, options);
 
   LOG(INFO) << "Capturing CUDA graphs for batch sizes: " << batch_sizes;
-  // TODO: share MempoolId_t between graphs
+  const auto shared_mem_pool = at::cuda::graph_pool_handle();
   for (auto batch_size : batch_sizes) {
     auto graph = std::make_unique<CudaGraph>();
 
@@ -70,7 +71,8 @@ void ModelRunner::capture_graphs(std::vector<KVCache>& kv_cache) {
         /*dim=*/0, /*start=*/0, /*end=*/batch_size);
 
     // capture graph
-    graph->capture(model_, flatten_tokens, flatten_positions, params, kv_cache);
+    graph->capture(
+        shared_mem_pool, model_, flatten_tokens, flatten_positions, params, kv_cache);
 
     // save the graph
     graphs_[batch_size] = std::move(graph);
@@ -107,7 +109,8 @@ torch::Tensor ModelRunner::forward(const torch::Tensor& tokens,
   return model_->forward(tokens, positions, kv_caches, params);
 }
 
-void ModelRunner::CudaGraph::capture(CausalLM* model,
+void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
+                                     CausalLM* model,
                                      torch::Tensor flatten_tokens,
                                      torch::Tensor flatten_positions,
                                      const InputParameters& params,
@@ -129,7 +132,7 @@ void ModelRunner::CudaGraph::capture(CausalLM* model,
   at::cuda::CUDAStreamGuard stream_guard(capture_stream);
 
   graph_ = std::make_unique<at::cuda::CUDAGraph>();
-  graph_->capture_begin();
+  graph_->capture_begin(mem_pool);
   auto hidden_states =
       model->forward(flatten_tokens, flatten_positions, kv_cache, params);
   graph_->capture_end();

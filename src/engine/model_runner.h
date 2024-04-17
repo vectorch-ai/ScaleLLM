@@ -44,7 +44,8 @@ class ModelRunner final {
 
   class CudaGraph final {
    public:
-    void capture(CausalLM* model,
+    void capture(at::cuda::MempoolId_t mem_pool,
+                 CausalLM* model,
                  torch::Tensor flatten_tokens,
                  torch::Tensor flatten_positions,
                  const InputParameters& params,
