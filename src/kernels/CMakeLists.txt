@@ -73,23 +73,15 @@ cc_library(
     torch
 )
 
-# cc_test(
-# NAME
-# layernorm_kernels_test
-# SRCS
-# layernrom_kernels_test.cu
-# layernorm_kernels.cu
-# DEPS
-# DEFINES
-# )
-cc_binary(
-  NAME
-  layernorm_kernels_test
-  SRCS
-  layernrom_kernels_test.cu
-  layernorm_kernels.cu
-  DEPS
-  torch
+cc_test(
+  NAME 
+    layernorm_kernels_test
+  SRCS 
+    layernrom_kernels_test.cu
+    layernorm_kernels.cu
+  DEPS 
+    torch
+    GTest::gtest_main
 )
 
 add_subdirectory(flash_attn)
