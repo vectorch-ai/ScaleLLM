@@ -1,8 +1,9 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/torch.h>
+
 #include "dispatch.h"
-#include "reduce_kernel_utils.cuh"
 #include "layernorm_kernels.h"
+#include "reduce_kernel_utils.cuh"
 
 namespace llm::kernel {
 
@@ -116,11 +117,11 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
 // The mean and standard-deviation are calculated over the last dimension
 template <>
 __global__ void layer_norm_kernel<half2>(half2* __restrict__ out,
-                                  const half2* __restrict__ input,
-                                  const half2* __restrict__ weight,
-                                  const half2* __restrict__ bias,
-                                  const float epsilon,
-                                  int n) {
+                                         const half2* __restrict__ input,
+                                         const half2* __restrict__ weight,
+                                         const half2* __restrict__ bias,
+                                         const float epsilon,
+                                         int n) {
   const int tidx = threadIdx.x;
   const int bidx = blockIdx.x;
 
@@ -147,7 +148,6 @@ __global__ void layer_norm_kernel<half2>(half2* __restrict__ out,
   }
   variance = block_reduce_sum<half2>(variance);
   if (tidx == 0) {
-    // const half2 e = make_half2(__float2half(epsilon), __float2half(epsilon));
     s_variance = __hadd(variance.x, variance.y);
     s_variance = __hdiv(s_variance, __float2half((float)n * 2));
     s_variance = __hadd(s_variance, __float2half(epsilon));
@@ -157,16 +157,11 @@ __global__ void layer_norm_kernel<half2>(half2* __restrict__ out,
 
   for (int i = tidx; i < n; i += blockDim.x) {
     const int idx = bidx * n + i;
-    // float local_out =
-    //     (__ldg(&input[idx]) - s_mean) * s_variance * __ldg(&weight[i]);
-    // if (bias != nullptr) {
-    //   local_out += __ldg(&bias[i]);
-    // }
     half2 local_out = __ldg(&input[idx]);
     local_out = __hsub2(local_out, make_half2(s_mean, s_mean));
     local_out = __hmul2(local_out, make_half2(s_variance, s_variance));
     local_out = __hmul2(local_out, __ldg(&weight[i]));
-    if (bias != nullptr){
+    if (bias != nullptr) {
       local_out = __hadd2(local_out, __ldg(&bias[i]));
     }
     out[idx] = local_out;
@@ -199,52 +194,34 @@ void layer_norm(torch::Tensor& out,
 
 template <typename T>
 void invoke_layernorm_kernel(T* out,
-                                  const T* input,
-                                  const T* weight,
-                                  const T* bias,
-                                  const float epsilon,
-                                  int m,
-                                  int n) {
+                             const T* input,
+                             const T* weight,
+                             const T* bias,
+                             const float epsilon,
+                             int m,
+                             int n) {
   layer_norm_kernel<T><<<m, n>>>(out, input, weight, bias, epsilon, n);
 }
 
 template <>
 void invoke_layernorm_kernel<half2>(half2* out,
-                                  const half2* input,
-                                  const half2* weight,
-                                  const half2* bias,
-                                  const float epsilon,
-                                  int m,
-                                  int n) {
+                                    const half2* input,
+                                    const half2* weight,
+                                    const half2* bias,
+                                    const float epsilon,
+                                    int m,
+                                    int n) {
   layer_norm_kernel<half2><<<m, n>>>(out, input, weight, bias, epsilon, n);
 }
 template <>
 void invoke_layernorm_kernel<float>(float* out,
-                                  const float* input,
-                                  const float* weight,
-                                  const float* bias,
-                                  const float epsilon,
-                                  int m,
-                                  int n) {
+                                    const float* input,
+                                    const float* weight,
+                                    const float* bias,
+                                    const float epsilon,
+                                    int m,
+                                    int n) {
   layer_norm_kernel<float><<<m, n>>>(out, input, weight, bias, epsilon, n);
-                                  }
-// void invoke_float_layernorm_kernel(float* out,
-//                                    const float* input,
-//                                    const float* weight,
-//                                    const float* bias,
-//                                    const float epsilon,
-//                                    int m,
-//                                    int n){
-//   layer_norm_kernel<float><<<m, n>>>(out, input, weight, bias, epsilon, n);
-//                                    }
+}
 
-// void invoke_half2_layernorm_kernel(half2* out,
-//                                    const half2* input,
-//                                    const half2* weight,
-//                                    const half2* bias,
-//                                    const float epsilon,
-//                                    int m,
-//                                    int n){
-//   layer_norm_kernel<half2><<<m, n>>>(out, input, weight, bias, epsilon, n);
-// }
 }  // namespace llm::kernel
