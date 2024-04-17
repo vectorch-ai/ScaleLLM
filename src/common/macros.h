@@ -2,10 +2,10 @@
 
 namespace llm {
 // a central place to define common macros for the project
-
+// clang-format off
 #define DEFINE_ARG(T, name)                                       \
  public:                                                          \
-  inline auto name(const T& name) -> decltype(*this) {            \
+  inline auto name(const T& name) ->decltype(*this) {             \
     this->name##_ = name;                                         \
     return *this;                                                 \
   }                                                               \
@@ -17,7 +17,7 @@ namespace llm {
 
 #define DEFINE_PTR_ARG(T, name)                             \
  public:                                                    \
-  inline auto name(T* name) -> decltype(*this) {            \
+  inline auto name(T* name) ->decltype(*this) {             \
     this->name##_ = name;                                   \
     return *this;                                           \
   }                                                         \
@@ -25,6 +25,8 @@ namespace llm {
                                                             \
  private:                                                   \
   T* name##_
+
+// clang-format on
 
 #ifndef UNUSED_PARAMETER
 #define UNUSED_PARAMETER(x) ((void)(x))
