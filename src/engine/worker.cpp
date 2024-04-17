@@ -45,7 +45,7 @@ bool Worker::init_model(torch::ScalarType dtype,
 bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   CHECK(kv_caches_.empty()) << "KV caches are already initialized.";
-  
+
   // create a KVCache for each layer
   const int64_t num_layers = args_.n_layers();
   kv_caches_.reserve(num_layers);
