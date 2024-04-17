@@ -8,12 +8,14 @@ cc_library(
     parameters.h
     utils.h
     batch.h
+    model_runner.h
     worker.h
     engine.h
     llm_engine.h
   SRCS
     utils.cpp
     batch.cpp
+    model_runner.cpp
     worker.cpp
     llm_engine.cpp
   DEPS

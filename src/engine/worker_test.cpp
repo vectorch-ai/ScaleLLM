@@ -3,10 +3,10 @@
 #include <gtest/gtest.h>
 
 #include "engine/batch.h"
+#include "engine/utils.h"
 #include "memory/block_manager.h"
 #include "models/simple_model.h"
 #include "quantization/quant_args.h"
-
 namespace llm {
 
 class TestableWorker {
@@ -158,17 +158,30 @@ TEST(WorkerTest, InitSimpleModelWithCudaGraph) {
 
 // TODO: fix coredump
 TEST(WorkerTest, ExecuteSimpleModelWithCudaGraph) {
-  /*
   torch::Device device(torch::kCUDA);
   TestableWorker worker(device);
   // enable cudagraph
   EXPECT_TRUE(worker.init(true));
-  torch::Tensor flatten_tokens;
+
+  const int64_t max_seq_len = 1024;
+  torch::Tensor flatten_token_ids;
   torch::Tensor flatten_positions;
-  InputParameters params;
-  SamplingParameters sampling_params;
-  worker.execute_model(flatten_tokens, flatten_positions, params,
-      sampling_params);*/
+  InputParameters input_params;
+  Utils::prepare_capture_inputs(max_seq_len,
+                                /*batch_size=*/2,
+                                &flatten_token_ids,
+                                &flatten_positions,
+                                &input_params);
+
+  // all tensors should be on the same device as model
+  flatten_token_ids = flatten_token_ids.to(device);
+  flatten_positions = flatten_positions.to(device);
+  InputParameters d_params = input_params.to(device);
+  ModelInput input;
+  input.token_ids = flatten_token_ids;
+  input.positions = flatten_positions;
+  input.input_params = input_params;
+  worker.execute_model(input);
 }
 
 }  // namespace llm

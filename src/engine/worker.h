@@ -6,6 +6,7 @@
 #include "common/threadpool.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
+#include "model_runner.h"
 #include "models/causal_lm.h"
 #include "models/model_args.h"
 #include "models/parameters.h"
@@ -14,7 +15,6 @@
 
 namespace llm {
 
-class CudaGraphRunner;
 class Worker final {
  public:
   Worker(const ParallelArgs& parallel_args, const torch::Device& device);
@@ -75,9 +75,6 @@ class Worker final {
   const torch::Device& device() const { return device_; }
 
  private:
-  // capture cuda graph
-  void capture_graph();
-
   // working thread
   ThreadPool threadpool_;
 
@@ -99,8 +96,8 @@ class Worker final {
   // model
   std::unique_ptr<CausalLM> model_;
 
-  // graph runner
-  std::map<int64_t, CudaGraphRunner*> graph_runners_;
+  // model runner that runs the model, with cuda graph if enabled
+  std::unique_ptr<ModelRunner> model_runner_;
 };
 
 }  // namespace llm
