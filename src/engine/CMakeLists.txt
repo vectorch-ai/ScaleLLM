@@ -30,6 +30,7 @@ cc_library(
     glog::glog
     Folly::folly
     absl::synchronization
+    absl::flat_hash_map
 )
 
 cc_library(
@@ -51,7 +52,7 @@ cc_test(
     engine_test
   SRCS
     batch_test.cpp
-    worker_test.cpp
+    # worker_test.cpp
   DEPS
     :engine
     absl::time

@@ -17,7 +17,9 @@ namespace llm {
 
 class Worker final {
  public:
-  Worker(const ParallelArgs& parallel_args, const torch::Device& device);
+  Worker(const ParallelArgs& parallel_args,
+         const torch::Device& device,
+         const ModelRunner::Options& runner_options);
 
   ~Worker() = default;
 
@@ -93,8 +95,11 @@ class Worker final {
   // kv caches
   std::vector<llm::KVCache> kv_caches_;
 
-  // model
+  // causal LM model
   std::unique_ptr<CausalLM> model_;
+
+  // runner options
+  ModelRunner::Options runner_options_;
 
   // model runner that runs the model, with cuda graph if enabled
   std::unique_ptr<ModelRunner> model_runner_;

@@ -79,11 +79,16 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
   }
 
   // create a worker for each device
+  ModelRunner::Options runner_options;
+  // TODO: pass in proper parameter values
+  runner_options.block_size(16).num_decoding_tokens(1).cuda_graph_max_seq_len(
+      1024);
   for (size_t i = 0; i < devices.size(); ++i) {
     const int32_t rank = static_cast<int32_t>(i);
     ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
     ParallelArgs parallel_args(rank, world_size, pg);
-    workers_.emplace_back(std::make_unique<Worker>(parallel_args, devices[i]));
+    workers_.emplace_back(std::make_unique<Worker>(
+        parallel_args, devices[i], runner_options));
   }
 
   if (FLAGS_disable_custom_kernels) {

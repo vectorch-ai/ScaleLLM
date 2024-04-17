@@ -20,9 +20,17 @@
 #include "sampling/sampler.h"
 
 namespace llm {
+const static std::vector<uint32_t> kBatchSizesForCudaGraph = {
+    1,   2,   4,   8,   16,  24,  32,  40,  48,  56,  64,  72,
+    80,  88,  96,  104, 112, 120, 128, 136, 144, 152, 160, 168,
+    176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256};
 
-Worker::Worker(const ParallelArgs& parallel_args, const torch::Device& device)
-    : parallel_args_(parallel_args), device_(device) {}
+Worker::Worker(const ParallelArgs& parallel_args,
+               const torch::Device& device,
+               const ModelRunner::Options& runner_options)
+    : parallel_args_(parallel_args),
+      device_(device),
+      runner_options_(runner_options) {}
 
 bool Worker::init_model(torch::ScalarType dtype,
                         const ModelArgs& args,
@@ -53,10 +61,11 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
 
 bool Worker::warmup_model(bool enable_cudagraph) {
   CHECK(model_ != nullptr) << "Model is not initialized.";
-  model_runner_ = std::make_unique<ModelRunner>(model_.get(), device_);
+  model_runner_ =
+      std::make_unique<ModelRunner>(model_.get(), device_, runner_options_);
   if (enable_cudagraph) {
     CHECK(device_.is_cuda()) << "CUDA graph is only supported on GPU.";
-    model_runner_->capture_graphs(kv_caches_);
+    model_runner_->capture_graphs(kBatchSizesForCudaGraph, kv_caches_);
   }
   return true;
 }
