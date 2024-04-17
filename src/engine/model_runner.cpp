@@ -124,12 +124,12 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
   torch::cuda::synchronize();
 
   // save input tensors
-  flatten_tokens_buffer_ = flatten_tokens;
-  flatten_positions_buffer_ = flatten_positions;
-  new_cache_slots_buffer_ = params.new_cache_slots;
-  block_tables_buffer_ = params.block_tables;
-  q_cu_seq_lens_buffer_ = params.q_cu_seq_lens;
-  kv_cu_seq_lens_buffer_ = params.kv_cu_seq_lens;
+  flatten_tokens_ = flatten_tokens;
+  flatten_positions_ = flatten_positions;
+  new_cache_slots_ = params.new_cache_slots;
+  block_tables_ = params.block_tables;
+  q_cu_seq_lens_ = params.q_cu_seq_lens;
+  kv_cu_seq_lens_ = params.kv_cu_seq_lens;
 
   // create cuda graph and capture
   at::cuda::CUDAStream capture_stream = at::cuda::getStreamFromPool();
@@ -142,30 +142,29 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
   graph_->capture_end();
   torch::cuda::synchronize();
 
-  hidden_states_buffer_ = hidden_states;
+  hidden_states_ = hidden_states;
 }
 
 torch::Tensor ModelRunner::CudaGraph::replay(torch::Tensor flatten_tokens,
                                              torch::Tensor flatten_positions,
                                              const InputParameters& params) {
-  // TODO: use non_blocking copy
   // prepare input tensors
-  flatten_tokens_buffer_.copy_(flatten_tokens, /*non_blocking=*/false);
-  flatten_positions_buffer_.copy_(flatten_positions, /*non_blocking=*/false);
-  q_cu_seq_lens_buffer_.copy_(params.q_cu_seq_lens, /*non_blocking=*/false);
-  kv_cu_seq_lens_buffer_.copy_(params.kv_cu_seq_lens, /*non_blocking=*/false);
-  new_cache_slots_buffer_.copy_(params.new_cache_slots, /*non_blocking=*/false);
+  flatten_tokens_.copy_(flatten_tokens, /*non_blocking=*/true);
+  flatten_positions_.copy_(flatten_positions, /*non_blocking=*/true);
+  q_cu_seq_lens_.copy_(params.q_cu_seq_lens, /*non_blocking=*/true);
+  kv_cu_seq_lens_.copy_(params.kv_cu_seq_lens, /*non_blocking=*/true);
+  new_cache_slots_.copy_(params.new_cache_slots, /*non_blocking=*/true);
 
   // it is possible that the block table with different padding length
-  const int64_t block_table_len = params.block_tables.size(1);
-  block_tables_buffer_.slice(/*dim=*/1, /*start=*/0, /*end=*/block_table_len)
-      .copy_(params.block_tables, /*non_blocking=*/false);
+  const int64_t block_table_len = params.block_tables.size(/*dim=*/1);
+  block_tables_.slice(/*dim=*/1, /*start=*/0, /*end=*/block_table_len)
+      .copy_(params.block_tables, /*non_blocking=*/true);
 
   // replay the graph
   graph_->replay();
 
   // return the hidden states
-  return hidden_states_buffer_;
+  return hidden_states_;
 }
 
 }  // namespace llm

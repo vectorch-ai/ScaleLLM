@@ -58,15 +58,15 @@ class ModelRunner final {
    private:
     std::unique_ptr<at::cuda::CUDAGraph> graph_;
     // input tensors
-    torch::Tensor flatten_tokens_buffer_;
-    torch::Tensor flatten_positions_buffer_;
-    torch::Tensor new_cache_slots_buffer_;
-    torch::Tensor block_tables_buffer_;
-    torch::Tensor q_cu_seq_lens_buffer_;
-    torch::Tensor kv_cu_seq_lens_buffer_;
+    torch::Tensor flatten_tokens_;
+    torch::Tensor flatten_positions_;
+    torch::Tensor new_cache_slots_;
+    torch::Tensor block_tables_;
+    torch::Tensor q_cu_seq_lens_;
+    torch::Tensor kv_cu_seq_lens_;
 
     // output tensors
-    torch::Tensor hidden_states_buffer_;
+    torch::Tensor hidden_states_;
   };
 };
 
