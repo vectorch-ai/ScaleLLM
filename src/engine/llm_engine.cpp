@@ -114,7 +114,7 @@ bool LLMEngine::init(const std::string& model_weights_path) {
     LOG(ERROR) << "Failed to initialize kv cache";
     return false;
   }
-  if (!warmup_model()) {
+  if (!capture_cuda_graphs()) {
     LOG(ERROR) << "Failed to warmup model.";
     return false;
   }
@@ -216,17 +216,26 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   return true;
 }
 
-bool LLMEngine::warmup_model() {
+bool LLMEngine::capture_cuda_graphs() {
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
-    return workers_[0]->warmup_model();
+    return workers_[0]->capture_cuda_graphs();
+  }
+
+  if (!options_.cuda_graph_batch_sizes().empty()) {
+    LOG(WARNING)
+        << "It is a known issue "
+           "(https://github.com/vectorch-ai/ScaleLLM/issues/131) that CUDA "
+           "graph capture may occasionally become stuck when multiple workers "
+           "are in use. If you encounter this problem, please set "
+           "'cuda_graph_batch_sizes' to empty to workaround it.";
   }
 
   // multiple workers, call async forward
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.emplace_back(worker->warmup_model_async());
+    futures.emplace_back(worker->capture_cuda_graphs_async());
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
@@ -242,7 +251,6 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
   const int64_t max_cache_size = options_.max_cache_size();
   const double max_memory_utilization = options_.max_memory_utilization();
 
-  // use first device to profile memory usage
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
     // use max memory cache size for CPU
@@ -253,24 +261,11 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
   }
   CHECK(device.is_cuda()) << "Only support CPU and CUDA device for now.";
 
-  // Prepare dummy inputs for memory profiling
-  torch::Tensor flatten_token_ids;
-  torch::Tensor flatten_positions;
-  InputParameters input_params;
-  Utils::prepare_profile_inputs(FLAGS_max_num_tokens_per_batch,
-                                FLAGS_max_num_seqs_per_batch,
-                                &flatten_token_ids,
-                                &flatten_positions,
-                                &input_params);
-  LOG(INFO) << "Warming up the engine with input shape: "
-            << flatten_token_ids.sizes();
-
   // call worker to profile memory usage
   std::vector<folly::SemiFuture<std::tuple<int64_t, int64_t>>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->profile_device_memory_async(
-        flatten_token_ids, flatten_positions, input_params));
+    futures.push_back(worker->profile_device_memory_async());
   }
 
   // pick smallest available memory from all devices

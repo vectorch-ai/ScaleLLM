@@ -19,17 +19,20 @@ DEFINE_bool(enable_prefix_cache,
             true,
             "enable the prefix cache for the block manager");
 
-// TODO: enalbe cuda graph by default
 DEFINE_bool(enable_cuda_graph,
-            false,
+            true,
             "Enable CUDA Graph to optimize model execution.");
 
 DEFINE_int64(cuda_graph_max_seq_len,
-             1024,
+             4096,
              "max sequence length used to capture cuda graphs");
 DEFINE_string(cuda_graph_batch_sizes,
               "auto",
               "batch sizes to capture cuda graphs, comma separated list");
+DEFINE_string(
+    draft_cuda_graph_batch_sizes,
+    "auto",
+    "batch sizes to capture cuda graphs for draft model, comma separated list");
 
 DECLARE_int32(num_speculative_tokens);
 
@@ -37,14 +40,22 @@ namespace llm {
 namespace {
 
 const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph = {
-    1,   2,   3,   4,   5,   6,   7,   8,   16,  24,  32,  40,  48,
-    56,  64,  72,  80,  88,  96,  104, 112, 120, 128, 136, 144, 152,
-    160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256};
+    1,  2,  3,  4,  5,  6,  7,  8,   16,  24,  32, 40,
+    48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128};
 
 std::vector<uint32_t> parse_cuda_graph_batch_sizes(
-    const std::string& batch_sizes_str) {
+    const std::string& batch_sizes_str,
+    const std::vector<torch::Device>& devices) {
   if (batch_sizes_str == "auto") {
-    return kDefaultBatchSizesForCudaGraph;
+    if (devices.size() == 1 && devices[0].is_cuda()) {
+      // use default batch sizes for cuda graph
+      return kDefaultBatchSizesForCudaGraph;
+    }
+
+    // It is a known issue (https://github.com/vectorch-ai/ScaleLLM/issues/131)
+    // that CUDA graph capture may occasionally become stuck with multiple gpus.
+    // disable cuda graph for multi-gpus by default
+    return {};
   }
 
   // parse device string
@@ -131,9 +142,12 @@ std::unique_ptr<Engine> EngineFactory::create(
       LOG(INFO) << "Using cuda graph optimization, batch sizes: "
                 << FLAGS_cuda_graph_batch_sizes;
       const auto batch_sizes =
-          parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes);
+          parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes, devices);
+      const auto draft_batch_sizes = parse_cuda_graph_batch_sizes(
+          FLAGS_draft_cuda_graph_batch_sizes, draft_devices);
       options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
-          .cuda_graph_batch_sizes(batch_sizes);
+          .cuda_graph_batch_sizes(batch_sizes)
+          .draft_cuda_graph_batch_sizes(draft_batch_sizes);
     }
     auto engine = std::make_unique<SpeculativeEngine>(options);
     CHECK(engine->init(model_path, draft_model_path));
@@ -150,7 +164,7 @@ std::unique_ptr<Engine> EngineFactory::create(
     LOG(INFO) << "Using cuda graph optimization, batch sizes: "
               << FLAGS_cuda_graph_batch_sizes;
     const auto batch_sizes =
-        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes);
+        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes, devices);
     options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
         .cuda_graph_batch_sizes(batch_sizes);
   }
@@ -175,7 +189,7 @@ std::unique_ptr<Engine> EngineFactory::create(const std::string& model_path,
     LOG(INFO) << "Using cuda graph optimization, batch sizes: "
               << FLAGS_cuda_graph_batch_sizes;
     const auto batch_sizes =
-        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes);
+        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes, devices);
     options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
         .cuda_graph_batch_sizes(batch_sizes);
   }

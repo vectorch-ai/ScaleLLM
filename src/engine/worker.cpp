@@ -59,14 +59,14 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
   return true;
 }
 
-bool Worker::warmup_model() {
+bool Worker::capture_cuda_graphs() {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   CHECK(!kv_caches_.empty()) << "KV caches are not initialized.";
 
   model_runner_ =
       std::make_unique<ModelRunner>(model_.get(), device_, runner_options_);
   // capture graphs if needed
-  model_runner_->capture_graphs(kv_caches_);
+  model_runner_->capture_cuda_graphs(kv_caches_);
   return true;
 }
 
@@ -80,30 +80,9 @@ void Worker::verify_loaded_weights() const {
   model_->verify_loaded_weights();
 }
 
-std::tuple<int64_t, int64_t> Worker::profile_device_memory(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params) {
+std::tuple<int64_t, int64_t> Worker::profile_device_memory() {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   CHECK(device_.is_cuda()) << "Memory profiling is only supported on GPU.";
-
-  torch::DeviceGuard device_guard(device_);
-
-  // initialize dummy kv caches for profiling
-  std::vector<KVCache> dummy_kv_caches(args_.n_layers());
-
-  // release all unocupied cached memory
-  // torch::cuda::empty_cache();
-  c10::cuda::CUDACachingAllocator::emptyCache();
-
-  // call model forward and discard the result
-  model_->forward(flatten_tokens.to(device_),
-                  flatten_positions.to(device_),
-                  dummy_kv_caches,
-                  params.to(device_));
-
-  // waits for all kernels in all streams to complete.
-  torch::cuda::synchronize();
 
   const auto available_memory = memory::available_memory(device_);
   const auto total_memory = memory::total_memory(device_);
@@ -123,8 +102,8 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   auto hidden_states = model_runner_->forward(
       flatten_tokens, flatten_positions, kv_caches_, params);
 
-  // waits for all kernels in all streams to complete.
-  torch::cuda::synchronize();
+  // waits for all kernels in current streams to complete.
+  at::cuda::getCurrentCUDAStream().synchronize();
 
   // prepare model output
   ModelOutput output;
@@ -160,19 +139,11 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
 }
 
 folly::SemiFuture<std::tuple<int64_t, int64_t>>
-Worker::profile_device_memory_async(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params) {
+Worker::profile_device_memory_async() {
   folly::Promise<std::tuple<int64_t, int64_t>> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule([this,
-                        tokens = flatten_tokens,
-                        positions = flatten_positions,
-                        parameters = params,
-                        promise = std::move(promise)]() mutable {
-    const auto output =
-        this->profile_device_memory(tokens, positions, parameters);
+  threadpool_.schedule([this, promise = std::move(promise)]() mutable {
+    const auto output = this->profile_device_memory();
     promise.setValue(output);
   });
   return future;
@@ -220,11 +191,11 @@ folly::SemiFuture<bool> Worker::init_kv_cache_async(
   return future;
 }
 
-folly::SemiFuture<bool> Worker::warmup_model_async() {
+folly::SemiFuture<bool> Worker::capture_cuda_graphs_async() {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
   threadpool_.schedule([this, promise = std::move(promise)]() mutable {
-    const bool success = this->warmup_model();
+    const bool success = this->capture_cuda_graphs();
     promise.setValue(success);
   });
   return future;

@@ -86,7 +86,7 @@ class LLMEngine : public Engine {
 
   bool init_kv_cache(int64_t n_blocks);
 
-  bool warmup_model();
+  bool capture_cuda_graphs();
 
   // returns the memory size for the kv cache
   int64_t profile_memory_for_kv_cache();

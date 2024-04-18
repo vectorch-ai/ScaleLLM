@@ -37,7 +37,7 @@ class ModelRunner final {
       : model_(model), device_(device), options_(options) {}
 
   // capture graph with batch size list
-  void capture_graphs(std::vector<KVCache>& kv_cache);
+  void capture_cuda_graphs(std::vector<KVCache>& kv_cache);
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence

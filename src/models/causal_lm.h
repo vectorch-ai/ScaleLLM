@@ -1,5 +1,6 @@
 #pragma once
 
+#include <c10/core/Device.h>
 #include <torch/torch.h>
 
 #include <vector>
@@ -38,6 +39,10 @@ class CausalLM : public torch::nn::Module {
   // verify if the model is loaded correctly
   virtual void verify_loaded_weights() const = 0;
 
+  virtual torch::Device device() const = 0;
+
+  virtual const torch::TensorOptions& options() const = 0;
+
   // factory method to create a causal language model
   static std::unique_ptr<CausalLM> create(const ModelArgs& args,
                                           const QuantArgs& quant_args,
@@ -49,7 +54,8 @@ class CausalLM : public torch::nn::Module {
 template <typename Model>
 class CausalLMImpl : public CausalLM {
  public:
-  CausalLMImpl(Model model) : model_(std::move(model)) {}
+  CausalLMImpl(Model model, const torch::TensorOptions& options)
+      : model_(std::move(model)), options_(options) {}
 
   torch::Tensor forward(const torch::Tensor& tokens,     // [num_tokens]
                         const torch::Tensor& positions,  // [num_tokens]
@@ -71,8 +77,16 @@ class CausalLMImpl : public CausalLM {
     return model_->verify_loaded_weights();
   }
 
+  torch::Device device() const override { return options_.device(); }
+
+  const torch::TensorOptions& options() const override { return options_; }
+
  private:
+  // underlying model
   Model model_;
+
+  // tensor options
+  torch::TensorOptions options_;
 };
 
 }  // namespace llm
