@@ -217,6 +217,9 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
 }
 
 bool LLMEngine::warmup_model() {
+  // wait for the operation to complete
+  torch::cuda::synchronize();
+
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     return workers_[0]->warmup_model();

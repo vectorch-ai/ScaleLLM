@@ -128,12 +128,6 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
       /*op=*/ncclSum,
       /*comm=*/comm_,
       /*stream=*/stream));
-
-  // at::cuda::CUDAEvent event;
-  // // insert the event into the current stream
-  // event.record(stream);
-  // // block the current stream until the event completes
-  // event.block(stream);
 }
 
 void ProcessGroupNCCL::allgather(torch::Tensor input,
@@ -158,12 +152,6 @@ void ProcessGroupNCCL::allgather(torch::Tensor input,
       /*datatype=*/data_type,
       /*comm=*/comm_,
       /*stream=*/stream));
-
-  // at::cuda::CUDAEvent event;
-  // // insert the event into the current stream
-  // event.record(stream);
-  // // block the current stream until the event completes
-  // event.block(stream);
 
   // copy the flattened output tensors to the outputs.
   for (int i = 0; i < outputs.size(); ++i) {

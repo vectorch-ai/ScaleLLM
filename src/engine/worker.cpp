@@ -66,7 +66,6 @@ bool Worker::warmup_model() {
   model_runner_ =
       std::make_unique<ModelRunner>(model_.get(), device_, runner_options_);
   // capture graphs if needed
-  torch::cuda::synchronize();
   model_runner_->capture_graphs(kv_caches_);
   return true;
 }
@@ -90,21 +89,17 @@ std::tuple<int64_t, int64_t> Worker::profile_device_memory(
 
   torch::DeviceGuard device_guard(device_);
 
-  // initialize dummy kv caches for profiling
-  std::vector<KVCache> dummy_kv_caches(args_.n_layers());
+  // // initialize dummy kv caches for profiling
+  // std::vector<KVCache> dummy_kv_caches(args_.n_layers());
 
-  // release all unocupied cached memory
-  // torch::cuda::empty_cache();
-  c10::cuda::CUDACachingAllocator::emptyCache();
+  // // call model forward and discard the result
+  // model_->forward(flatten_tokens.to(device_),
+  //                 flatten_positions.to(device_),
+  //                 dummy_kv_caches,
+  //                 params.to(device_));
 
-  // call model forward and discard the result
-  model_->forward(flatten_tokens.to(device_),
-                  flatten_positions.to(device_),
-                  dummy_kv_caches,
-                  params.to(device_));
-
-  // waits for all kernels in all streams to complete.
-  torch::cuda::synchronize();
+  // // waits for all kernels in current streams to complete.
+  // at::cuda::getCurrentCUDAStream().synchronize();
 
   const auto available_memory = memory::available_memory(device_);
   const auto total_memory = memory::total_memory(device_);
@@ -124,8 +119,8 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   auto hidden_states = model_runner_->forward(
       flatten_tokens, flatten_positions, kv_caches_, params);
 
-  // waits for all kernels in all streams to complete.
-  torch::cuda::synchronize();
+  // waits for all kernels in current streams to complete.
+  at::cuda::getCurrentCUDAStream().synchronize();
 
   // prepare model output
   ModelOutput output;

@@ -157,7 +157,7 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
 
   // run model once to avoid captured graph including initial benchmarking
   model->forward(flatten_tokens, flatten_positions, kv_cache, params);
-  torch::cuda::synchronize();
+  capture_stream.synchronize();
 
   // capture the graph
   graph_ = std::make_unique<at::cuda::CUDAGraph>();
@@ -165,7 +165,7 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
   hidden_states_ =
       model->forward(flatten_tokens, flatten_positions, kv_cache, params);
   graph_->capture_end();
-  torch::cuda::synchronize();
+  capture_stream.synchronize();
 }
 
 torch::Tensor ModelRunner::CudaGraph::replay(torch::Tensor flatten_tokens,
