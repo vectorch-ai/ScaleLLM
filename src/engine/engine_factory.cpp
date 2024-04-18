@@ -52,9 +52,9 @@ std::vector<uint32_t> parse_cuda_graph_batch_sizes(
       return kDefaultBatchSizesForCudaGraph;
     }
 
-    // there is an known issue with multi-gpu cuda graph, so we disable it for
-    // now by default
-    // TODO: enable multi-gpu cuda graph
+    // It is a known issue (https://github.com/vectorch-ai/ScaleLLM/issues/131)
+    // that CUDA graph capture may occasionally become stuck with multiple gpus.
+    // disable cuda graph for multi-gpus by default
     return {};
   }
 
