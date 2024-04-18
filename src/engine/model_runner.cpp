@@ -57,8 +57,9 @@ void ModelRunner::capture_graphs(std::vector<KVCache>& kv_cache) {
   torch::Tensor block_tables =
       torch::zeros({max_batch_size, max_block_table_len}, options);
 
-  LOG(INFO) << "Capturing CUDA graphs, num_decoding_tokens: "
-            << num_decoding_tokens << ", batch sizes: " << sorted_batch_sizes;
+  LOG(INFO) << "Capturing CUDA graphs on device: " << device_
+            << ", num_decoding_tokens: " << num_decoding_tokens
+            << ", batch sizes: " << sorted_batch_sizes;
   const auto shared_mem_pool = at::cuda::graph_pool_handle();
   for (auto batch_size : sorted_batch_sizes) {
     const int64_t n_tokens = num_decoding_tokens * batch_size;
@@ -138,10 +139,6 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
                                      std::vector<KVCache>& kv_cache) {
   CHECK(graph_ == nullptr) << "graph already captured";
 
-  // run model once to avoid captured graph including initial benchmarking
-  model->forward(flatten_tokens, flatten_positions, kv_cache, params);
-  torch::cuda::synchronize();
-
   // save parameters
   batch_size_ = params.num_sequences;
   num_tokens_ = flatten_tokens.size(/*dim=*/0);
@@ -158,15 +155,17 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
   at::cuda::CUDAStream capture_stream = at::cuda::getStreamFromPool();
   at::cuda::CUDAStreamGuard stream_guard(capture_stream);
 
+  // run model once to avoid captured graph including initial benchmarking
+  model->forward(flatten_tokens, flatten_positions, kv_cache, params);
+  torch::cuda::synchronize();
+
+  // capture the graph
   graph_ = std::make_unique<at::cuda::CUDAGraph>();
-  graph_->capture_begin(mem_pool);
-  auto hidden_states =
+  graph_->capture_begin(mem_pool, cudaStreamCaptureModeThreadLocal);
+  hidden_states_ =
       model->forward(flatten_tokens, flatten_positions, kv_cache, params);
   graph_->capture_end();
   torch::cuda::synchronize();
-
-  // save output tensor
-  hidden_states_ = hidden_states;
 }
 
 torch::Tensor ModelRunner::CudaGraph::replay(torch::Tensor flatten_tokens,

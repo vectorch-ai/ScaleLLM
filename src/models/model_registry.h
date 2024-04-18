@@ -90,7 +90,7 @@ class ModelRegistry {
           ModelClass model(args, quant_args, parallel_args, options);      \
           model->eval();                                                   \
           return std::make_unique<llm::CausalLMImpl<ModelClass>>(          \
-              std::move(model));                                           \
+              std::move(model), options);                                  \
         });                                                                \
     return true;                                                           \
   }()

@@ -66,6 +66,7 @@ bool Worker::warmup_model() {
   model_runner_ =
       std::make_unique<ModelRunner>(model_.get(), device_, runner_options_);
   // capture graphs if needed
+  torch::cuda::synchronize();
   model_runner_->capture_graphs(kv_caches_);
   return true;
 }

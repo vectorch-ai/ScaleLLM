@@ -1,6 +1,8 @@
 #include "process_group.h"
 
+#include <ATen/cuda/CUDAEvent.h>
 #include <c10/core/Device.h>
+#include <c10/cuda/CUDAStream.h>
 #include <cuda_runtime.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
@@ -102,16 +104,10 @@ ProcessGroupNCCL::ProcessGroupNCCL(int rank,
                                    int world_size,
                                    const torch::Device& device,
                                    ncclComm_t comm)
-    : ProcessGroup(rank, world_size, device), comm_(comm) {
-  torch::DeviceGuard device_guard(device);
-  CUDACHECK(cudaStreamCreate(&stream_));
-}
+    : ProcessGroup(rank, world_size, device), comm_(comm) {}
 
 // Destructor.
-ProcessGroupNCCL::~ProcessGroupNCCL() {
-  CUDACHECK(cudaStreamDestroy(stream_));
-  NCCLCHECK(ncclCommDestroy(comm_));
-}
+ProcessGroupNCCL::~ProcessGroupNCCL() { NCCLCHECK(ncclCommDestroy(comm_)); }
 
 void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
   DCHECK(input.device() == device())
@@ -122,6 +118,7 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
   const auto count = input.numel();
   const auto data_type = to_nccl_data_type(input);
 
+  auto stream = at::cuda::getCurrentCUDAStream();
   torch::DeviceGuard device_guard(device());
   NCCLCHECK(ncclAllReduce(
       /*sendbuff=*/input.data_ptr(),
@@ -130,10 +127,13 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
       /*datatype=*/data_type,
       /*op=*/ncclSum,
       /*comm=*/comm_,
-      /*stream=*/stream_));
+      /*stream=*/stream));
 
-  // wait for the operation to complete
-  CUDACHECK(cudaStreamSynchronize(stream_));
+  // at::cuda::CUDAEvent event;
+  // // insert the event into the current stream
+  // event.record(stream);
+  // // block the current stream until the event completes
+  // event.block(stream);
 }
 
 void ProcessGroupNCCL::allgather(torch::Tensor input,
@@ -150,15 +150,20 @@ void ProcessGroupNCCL::allgather(torch::Tensor input,
   const auto count = input.numel();
   const auto data_type = to_nccl_data_type(input);
 
+  auto stream = at::cuda::getCurrentCUDAStream();
   NCCLCHECK(ncclAllGather(
       /*sendbuff=*/input.data_ptr(),
       /*recvbuff=*/flattened_output.data_ptr(),
       /*sendcount=*/count,
       /*datatype=*/data_type,
       /*comm=*/comm_,
-      /*stream=*/stream_));
-  // wait for the operation to complete
-  CUDACHECK(cudaStreamSynchronize(stream_));
+      /*stream=*/stream));
+
+  // at::cuda::CUDAEvent event;
+  // // insert the event into the current stream
+  // event.record(stream);
+  // // block the current stream until the event completes
+  // event.block(stream);
 
   // copy the flattened output tensors to the outputs.
   for (int i = 0; i < outputs.size(); ++i) {
