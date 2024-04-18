@@ -37,6 +37,9 @@ class SpeculativeEngine : public Engine {
 
     // batch sizes to capture cuda graphs
     DEFINE_ARG(std::vector<uint32_t>, cuda_graph_batch_sizes);
+
+    // batch sizes to capture cuda graphs for draft model
+    DEFINE_ARG(std::vector<uint32_t>, draft_cuda_graph_batch_sizes);
   };
 
   // create an engine with the given devices

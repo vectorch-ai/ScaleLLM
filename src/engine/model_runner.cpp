@@ -13,7 +13,7 @@
 namespace llm {
 
 // capture graph with batch size list
-void ModelRunner::capture_graphs(std::vector<KVCache>& kv_cache) {
+void ModelRunner::capture_cuda_graphs(std::vector<KVCache>& kv_cache) {
   if (!device_.is_cuda()) {
     // only capture CUDA graphs
     return;
