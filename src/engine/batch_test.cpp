@@ -71,7 +71,8 @@ TEST(BatchTest, Basic) {
 
   // define outputs
   Batch batch({&seq1, &seq2, &seq3});
-  ModelInput model_input = batch.prepare_model_input();
+  ModelInput model_input = batch.prepare_model_input(
+      /*num_decoding_tokens=*/1, /*min_decoding_bach_size=*/0);
 
   // check num tokens in kv cache
   EXPECT_EQ(seq1.num_kv_cache_tokens(), 9);

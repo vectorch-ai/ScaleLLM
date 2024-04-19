@@ -99,7 +99,7 @@ class LLMEngine : public Engine {
 
  private:
   // options
-  const Options options_;
+  Options options_;
 
   // dtype
   torch::ScalarType dtype_;

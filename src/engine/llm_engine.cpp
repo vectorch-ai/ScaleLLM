@@ -4,6 +4,7 @@
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <memory>
 
@@ -77,6 +78,10 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
     // create a process group for each device if there are multiple gpus
     process_groups_ = ProcessGroup::create_process_groups(devices);
   }
+
+  // sort cuda graph batch sizes
+  auto& batch_sizes = options_.cuda_graph_batch_sizes();
+  std::sort(batch_sizes.begin(), batch_sizes.end());
 
   // create a worker for each device
   ModelRunner::Options runner_options;
@@ -339,7 +344,15 @@ bool LLMEngine::init_kv_cache(int64_t n_blocks) {
 
 ModelOutput LLMEngine::execute_model(Batch& batch) {
   // prepare inputs for workers
-  auto model_inputs = batch.prepare_model_input();
+  const auto& batch_sizes = options_.cuda_graph_batch_sizes();
+  const auto batch_size = batch.size();
+  // find the closest batch size in the captured graph
+  auto it =
+      std::lower_bound(batch_sizes.begin(), batch_sizes.end(), batch_size);
+  uint32_t adjusted_batch_size = it == batch_sizes.end() ? 0 : *it;
+
+  auto model_inputs = batch.prepare_model_input(options_.num_decoding_tokens(),
+                                                adjusted_batch_size);
   if (!model_inputs.token_ids.defined()) {
     // empty input, just return
     return {};
