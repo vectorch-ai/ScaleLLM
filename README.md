@@ -57,7 +57,7 @@ ScaleLLM is a cutting-edge inference system engineered for large language models
 |  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
 |    GPT2    |       Yes       |     Yes      |    No    | [gpt2](https://huggingface.co/gpt2)|
 | InternLM   |       Yes       |     Yes      |    Yes   | [internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b) |
-|   Llama3/2 |       Yes       |     Yes      |    Yes   | [meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B), [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
+|   Llama3/2 |       Yes       |     Yes      |    Yes   | [meta-llama/Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct), [meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B), [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b) |
 |  Mistral   |       Yes       |     Yes      |    Yes   | [mistralai/Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) |
 |    MPT     |       Yes       |     Yes      |    Yes   | [mosaicml/mpt-30b](https://huggingface.co/mosaicml/mpt-30b) |
 |   Phi2     |       Yes       |     Yes      |    No   | [microsoft/phi-2](https://huggingface.co/microsoft/phi-2) |
@@ -89,7 +89,7 @@ Once you have Docker installed, you can run ScaleLLM Docker container with [late
 docker pull docker.io/vectorchai/scalellm:latest
 docker run -it --gpus=all --net=host --shm-size=1g \
   -v $HOME/.cache/huggingface/hub:/models \
-  -e HF_MODEL_ID=meta-llama/Meta-Llama-3-8B \
+  -e HF_MODEL_ID=meta-llama/Meta-Llama-3-8B-Instruct \
   -e DEVICE=cuda:0 \
   docker.io/vectorchai/scalellm:latest --logtostderr
 ``` 
@@ -100,7 +100,7 @@ This command starts the Docker container with GPU support and various configurat
 - `HF_MODEL_REVISION` specifies which Hugging Face model revision you want to run. By default, it is set to `"main"`.
 - `DEVICE` specifies the device on which this model should run. By default, it is set to `"auto"`, using all available GPUs. You can also specify specific GPUs by using `"cuda:0,cuda:1"`, or use CPU by using `"cpu"`.
 - `HF_MODEL_ALLOW_PATTERN` specifies which types of files are allowed to be downloaded. By default, it will be configured automatically based on tensor type. Only use this option if the default configuration is not working for you.
-- `HUGGING_FACE_HUB_TOKEN` specifies the token from [huggingface](https://huggingface.co/settings/tokens) for gated models.
+- `HUGGING_FACE_HUB_TOKEN` specifies the token from [huggingface](https://huggingface.co/settings/tokens) for gated models. `-e HUGGING_FACE_HUB_TOKEN=$HUGGING_FACE_HUB_TOKEN`
 
 > **Warning**<br />
 > * The docker image with tag '[latest](https://hub.docker.com/r/vectorchai/scalellm/tags)' could be changed to a new version upon new release. In order to use latest image, you may need to repull the image with specific tag.
@@ -155,7 +155,7 @@ Using Docker Compose is the easiest way to run ScaleLLM with all the services to
 
 ```bash
 curl https://raw.githubusercontent.com/vectorch-ai/ScaleLLM/main/scalellm.yml -sSf > scalellm_compose.yml
-HF_MODEL_ID=meta-llama/Meta-Llama-3-8B DEVICE=cuda docker compose -f ./scalellm_compose.yml up
+HF_MODEL_ID=meta-llama/Meta-Llama-3-8B-Instruct DEVICE=cuda docker compose -f ./scalellm_compose.yml up
 ```
 
 you will get following running services:
@@ -173,7 +173,7 @@ You can get chat completions with the following example:
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta-llama/Meta-Llama-3-8B",
+    "model": "meta-llama/Meta-Llama-3-8B-Instruct",
     "messages": [
       {
         "role": "system",
@@ -198,7 +198,7 @@ openai.api_base = "http://localhost:8080/v1"
 print("==== Available models ====")
 models = openai.Model.list()
 
-model = "meta-llama/Meta-Llama-3-8B"
+model = "meta-llama/Meta-Llama-3-8B-Instruct"
 
 completion = openai.ChatCompletion.create(
     model=model,
@@ -225,7 +225,7 @@ For regular completions, you can use this example:
 curl http://localhost:8080/v1/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta-llama/Meta-Llama-3-8B",
+    "model": "meta-llama/Meta-Llama-3-8B-Instruct",
     "prompt": "hello",
     "max_tokens": 32,
     "temperature": 0.7,
@@ -244,7 +244,7 @@ openai.api_base = "http://localhost:8080/v1"
 print("==== Available models ====")
 models = openai.Model.list()
 
-model = "meta-llama/Meta-Llama-3-8B"
+model = "meta-llama/Meta-Llama-3-8B-Instruct"
 
 completion = openai.Completion.create(
     model=model,
