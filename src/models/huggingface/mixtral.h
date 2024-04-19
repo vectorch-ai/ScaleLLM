@@ -21,7 +21,11 @@ class MixtralMoEImpl : public torch::nn::Module {
                  const QuantArgs& quant_args,
                  const ParallelArgs& parallel_args,
                  const torch::TensorOptions& options) {}
-  torch::Tensor forward() {}
+  torch::Tensor forward(torch::Tensor x) { return torch::Tensor(); }
+
+  void load_state_dict(const StateDict& state_dict) {}
+
+  void verify_loaded_weights(const std::string& prefix) const {}
 };
 TORCH_MODULE(MixtralMoE);
 
@@ -85,6 +89,17 @@ class MixtralAttentionImpl : public torch::nn::Module {
     return o_proj_(output);
   }
 
+  void load_state_dict(const StateDict& state_dict) {
+    // call each submodule's load_state_dict function
+    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
+    o_proj_->load_state_dict(state_dict.select("o_proj."));
+  }
+
+  void verify_loaded_weights(const std::string& prefix) const {
+    qkv_proj_->verify_loaded_weights(prefix + "[q_proj,k_proj,v_proj].");
+    o_proj_->verify_loaded_weights(prefix + "o_proj.");
+  }
+
  private:
   // parameter members, must be registered
   ColumnParallelLinear qkv_proj_{nullptr};
@@ -99,13 +114,13 @@ class MixtralAttentionImpl : public torch::nn::Module {
 };
 TORCH_MODULE(MixtralAttention);
 
-class MixtraDecoderLayerImpl : public torch::nn::Module {
+class MixtralDecoderLayerImpl : public torch::nn::Module {
  public:
-  MixtraDecoderLayerImpl(const ModelArgs& args,
-                         const QuantArgs& quant_args,
-                         const ParallelArgs& parallel_args,
-                         const torch::TensorOptions& options,
-                         AttentionHandler* handler) {
+  MixtralDecoderLayerImpl(const ModelArgs& args,
+                          const QuantArgs& quant_args,
+                          const ParallelArgs& parallel_args,
+                          const torch::TensorOptions& options,
+                          AttentionHandler* handler) {
     // register submodules
     self_attn_ = register_module(
         "self_attn",
@@ -139,6 +154,22 @@ class MixtraDecoderLayerImpl : public torch::nn::Module {
     return moe_(hidden_states);
   }
 
+  void load_state_dict(const StateDict& state_dict) {
+    self_attn_->load_state_dict(state_dict.select("self_attn."));
+    input_layernorm_->load_state_dict(state_dict.select("input_layernorm."));
+    post_attention_layernorm_->load_state_dict(
+        state_dict.select("post_attention_layernorm."));
+    moe_->load_state_dict(state_dict.select("block_sparse_moe."));
+  }
+
+  void verify_loaded_weights(const std::string& prefix) const {
+    self_attn_->verify_loaded_weights(prefix + "self_attn.");
+    input_layernorm_->verify_loaded_weights(prefix + "input_layernorm.");
+    post_attention_layernorm_->verify_loaded_weights(
+        prefix + "post_attention_layernorm.");
+    moe_->verify_loaded_weights(prefix + "block_sparse_moe.");
+  }
+
  private:
   MixtralAttention self_attn_{nullptr};
 
@@ -148,7 +179,7 @@ class MixtraDecoderLayerImpl : public torch::nn::Module {
 
   RMSNormResidual post_attention_layernorm_{nullptr};
 };
-TORCH_MODULE(MixtraDecoderLayer);
+TORCH_MODULE(MixtralDecoderLayer);
 
 class MixtralModelImpl : public torch::nn::Module {
  public:
@@ -156,6 +187,8 @@ class MixtralModelImpl : public torch::nn::Module {
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
                    const torch::TensorOptions& options) {
+    modelArgs_ = args;
+
     // TODO: If we have implemented the lora, the vocab_size should be
     // processed.
     embed_tokens_ = register_module(
@@ -184,7 +217,7 @@ class MixtralModelImpl : public torch::nn::Module {
                         torch::Tensor positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    hidden_states = embed_tokens(tokens);
+    auto h = embed_tokens_(tokens);
 
     torch::Tensor residual;
     for (int32_t i = 0; i < modelArgs_.n_layers(); i++) {
@@ -195,7 +228,29 @@ class MixtralModelImpl : public torch::nn::Module {
     return norm_(h, residual);
   }
 
+  void load_state_dict(const StateDict& state_dict) {
+    embed_tokens_->load_state_dict(state_dict.select("embed_tokens.weight"));
+
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->load_state_dict(
+          state_dict.select("layers." + std::to_string(i) + "."));
+    }
+    norm_->load_state_dict(state_dict.select("norm.weight"));
+  }
+
+  void verify_loaded_weights(const std::string& prefix) const {
+    embed_tokens_->verify_loaded_weights(prefix + "embed_tokens.weight");
+
+    for (int i = 0; i < layers_.size(); i++) {
+      layers_[i]->verify_loaded_weights(prefix + "layers." + std::to_string(i) +
+                                        ".");
+    }
+
+    norm_->verify_loaded_weights(prefix + "norm.weight");
+  }
+
  private:
+  ModelArgs modelArgs_;
   // parameter members, must be registered
   // embedding module
   ParallelEmbedding embed_tokens_{nullptr};
@@ -241,8 +296,8 @@ class MixtralForCausalLMImpl : public torch::nn::Module {
                        const torch::Tensor& selected_idxes) {
     // select tokens if provided
     auto h = hidden_states;
-    if (seleted_idxes.defined()) {
-      h = h.index_select(/*dim=*/0, seleted_idxes);
+    if (selected_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, selected_idxes);
     }
     return lm_head_(h);
   }
@@ -266,7 +321,7 @@ class MixtralForCausalLMImpl : public torch::nn::Module {
 TORCH_MODULE(MixtralForCausalLM);
 
 // register the model to make it available
-REGISTER_CAUSAL_MODEL(mixtral, MixtralForCasualLM);
+REGISTER_CAUSAL_MODEL(mixtral, MixtralForCausalLM);
 
 REGISTER_MODEL_ARGS(mixtral, [&] {
   // example config from huggingface
@@ -278,14 +333,14 @@ REGISTER_MODEL_ARGS(mixtral, [&] {
   LOAD_ARG_OR(intermediate_size, "intermediate_size", 14336);
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 32768);
   LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
-  // LOAD_ARG_OR(n_experts_per_tok,"num_experts_per_tok",2)
+  LOAD_ARG_OR(n_experts_per_tok, "num_experts_per_tok", 2);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
   LOAD_ARG_OR(n_kv_heads, "num_key_value_heads", 8);
-  // LOAD_ARG_OR(n_local_experts,"num_local_experts",8);
-  // LOAD_ARG_OR(out_router_logits,"output_router_logits",false);
+  LOAD_ARG_OR(n_local_experts, "num_local_experts", 8);
+  LOAD_ARG_OR(out_router_logits, "output_router_logits", false);
   LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-  // LOAD_ARG_OR(router_aux_loss_coef,"router_aux_loss_coef",0.02);
+  LOAD_ARG_OR(router_aux_loss_coef, "router_aux_loss_coef", 0.02);
   LOAD_ARG_OR(dtype, "torch_dtype", "bfloat16");
   LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
 
