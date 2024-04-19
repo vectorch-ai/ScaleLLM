@@ -5,6 +5,7 @@
 
 #include "block_allocator.h"
 #include "common/macros.h"
+#include "memory/block.h"
 #include "prefix_cache.h"
 #include "request/request.h"
 #include "request/sequence.h"
@@ -58,6 +59,9 @@ class BlockManager final {
 
   // prefix cache
   PrefixCache prefix_cache_;
+
+  // reserved block id for padding
+  Block padding_block_;
 };
 
 }  // namespace llm
