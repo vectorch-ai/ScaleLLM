@@ -5,16 +5,14 @@
 [![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn)](https://discord.gg/PKe5gvBZfn)
 
 
-> **Warning**<br />
-> ScaleLLM is currently in the active development stage and may not yet provide the optimal level of inference efficiency. We are fully dedicated to continuously enhancing its efficiency while also adding more features.
+ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. We appreciate your understanding and look forward to delivering an even better solution.
 
-
-In the coming weeks, we have exciting plans to focus on [**_speculative decoding_**](https://github.com/orgs/vectorch-ai/projects/1) and [**_stateful conversation_**](https://github.com/orgs/vectorch-ai/projects/2), alongside further kernel optimizations. We appreciate your understanding and look forward to delivering an even better solution.
+Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
 
 
 ## Latest News:
-* [11/2023] - First [official release](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1) with support for popular open-source models.
-
+* [03/2024] - We've implemented several [advanced feature enhancements](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.7), including support for CUDA graph, dynamic prefix cache, dynamic chunked prefill and speculative decoding.
+* [11/2023] - We're excited to announce the first release with support for popular open-source models. Check it out [here](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1).
 
 ## Table of contents
 
@@ -49,16 +47,6 @@ ScaleLLM is a cutting-edge inference system engineered for large language models
 
 ## Supported Models
 
-Please note that in order to use Yi models, you need to add `--model_type=Yi` to the command line. For example:
-```bash
-docker pull docker.io/vectorchai/scalellm:latest
-docker run -it --gpus=all --net=host --shm-size=1g \
-  -v $HOME/.cache/huggingface/hub:/models \
-  -e HF_MODEL_ID=01-ai/Yi-34B-Chat-4bits \
-  -e DEVICE=auto \
-  docker.io/vectorchai/scalellm:latest --logtostderr --model_type=Yi
-```
-
 |   Models   | Tensor Parallel | Quantization | Chat API | HF models examples |
 | :--------: | :-------------: | :----------: | :------: | :---------------------------:|
 |   Aquila   |       Yes       |     Yes      |    Yes   | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
@@ -69,7 +57,7 @@ docker run -it --gpus=all --net=host --shm-size=1g \
 |  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
 |    GPT2    |       Yes       |     Yes      |    No    | [gpt2](https://huggingface.co/gpt2)|
 | InternLM   |       Yes       |     Yes      |    Yes   | [internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b) |
-|   Llama2   |       Yes       |     Yes      |    Yes   | [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
+|   Llama3/2 |       Yes       |     Yes      |    Yes   | [meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B), [meta-llama/Llama-2-7b](https://huggingface.co/meta-llama/Llama-2-7b), [TheBloke/Llama-2-13B-chat-GPTQ](https://huggingface.co/TheBloke/Llama-2-13B-chat-GPTQ), [TheBloke/Llama-2-70B-AWQ](https://huggingface.co/TheBloke/Llama-2-70B-AWQ) |
 |  Mistral   |       Yes       |     Yes      |    Yes   | [mistralai/Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) |
 |    MPT     |       Yes       |     Yes      |    Yes   | [mosaicml/mpt-30b](https://huggingface.co/mosaicml/mpt-30b) |
 |   Phi2     |       Yes       |     Yes      |    No   | [microsoft/phi-2](https://huggingface.co/microsoft/phi-2) |
@@ -101,7 +89,7 @@ Once you have Docker installed, you can run ScaleLLM Docker container with [late
 docker pull docker.io/vectorchai/scalellm:latest
 docker run -it --gpus=all --net=host --shm-size=1g \
   -v $HOME/.cache/huggingface/hub:/models \
-  -e HF_MODEL_ID=TheBloke/Llama-2-7B-chat-AWQ \
+  -e HF_MODEL_ID=meta-llama/Meta-Llama-3-8B \
   -e DEVICE=cuda:0 \
   docker.io/vectorchai/scalellm:latest --logtostderr
 ``` 
@@ -167,7 +155,7 @@ Using Docker Compose is the easiest way to run ScaleLLM with all the services to
 
 ```bash
 curl https://raw.githubusercontent.com/vectorch-ai/ScaleLLM/main/scalellm.yml -sSf > scalellm_compose.yml
-HF_MODEL_ID=TheBloke/Llama-2-7B-chat-AWQ DEVICE=cuda docker compose -f ./scalellm_compose.yml up
+HF_MODEL_ID=meta-llama/Meta-Llama-3-8B DEVICE=cuda docker compose -f ./scalellm_compose.yml up
 ```
 
 you will get following running services:
@@ -185,7 +173,7 @@ You can get chat completions with the following example:
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "TheBloke/Llama-2-7B-chat-AWQ",
+    "model": "meta-llama/Meta-Llama-3-8B",
     "messages": [
       {
         "role": "system",
@@ -210,7 +198,7 @@ openai.api_base = "http://localhost:8080/v1"
 print("==== Available models ====")
 models = openai.Model.list()
 
-model = "TheBloke/Llama-2-7B-chat-AWQ"
+model = "meta-llama/Meta-Llama-3-8B"
 
 completion = openai.ChatCompletion.create(
     model=model,
@@ -237,7 +225,7 @@ For regular completions, you can use this example:
 curl http://localhost:8080/v1/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "TheBloke/Llama-2-7B-chat-AWQ",
+    "model": "meta-llama/Meta-Llama-3-8B",
     "prompt": "hello",
     "max_tokens": 32,
     "temperature": 0.7,
@@ -256,7 +244,7 @@ openai.api_base = "http://localhost:8080/v1"
 print("==== Available models ====")
 models = openai.Model.list()
 
-model = "TheBloke/Llama-2-7B-chat-AWQ"
+model = "meta-llama/Meta-Llama-3-8B"
 
 completion = openai.Completion.create(
     model=model,
