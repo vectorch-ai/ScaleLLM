@@ -14,6 +14,7 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
+#include "tokenizer/tokenizer_args.h"
 
 // ChatGLM model compatible with huggingface weights
 
@@ -546,17 +547,22 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
 // Register tokenizer args since chatglm is using sentencepiece tokenizer.
 REGISTER_TOKENIZER_ARGS(chatglm, [&] {
   SET_ARG(tokenizer_type, "sentencepiece");
-  // adapted from
-  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/tokenization_chatglm.py
   SET_ARG(vocab_file, "tokenizer.model");
 
   // set special tokens
-  // clang-format off
-  const std::vector<std::string> special_tokens({
-    "[MASK]", "[gMASK]", "[sMASK]", "sop", "eop",
-    "<|system|>", "<|user|>", "<|assistant|>", "<|observation|>"
+  // ref to:
+  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/tokenizer_config.json
+  const std::vector<SpecialToken> special_tokens({
+      {"[MASK]", 64789},
+      {"[gMASK]", 64790},
+      {"[sMASK]", 64791},
+      {"sop", 64792},
+      {"eop", 64793},
+      {"<|system|>", 64794},
+      {"<|user|>", 64795},
+      {"<|assistant|>", 64796},
+      {"<|observation|>", 64797}
   });
-  // clang-format on
   SET_ARG(special_tokens, special_tokens);
   SET_ARG(prefix_tokens, std::vector<std::string>({"[gMASK]", "sop"}));
 });

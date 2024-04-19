@@ -28,8 +28,7 @@ class TiktokenTokenizer : public Tokenizer {
   std::unique_ptr<Tokenizer> clone() const override;
 
  private:
-  void load_special_tokens(const std::vector<std::string>& special_tokens,
-                           int32_t start_id);
+  void load_special_tokens(const std::vector<SpecialToken>& special_tokens);
 
   void load_vocab(const std::string& vocab_file_path);
 

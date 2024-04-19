@@ -20,7 +20,7 @@
 
 namespace llm::hf {
 
-enum BaichuanType {
+enum class BaichuanType : uint8_t {
   Baichuan_7B,
   Baichuan2_7B,
   Baichuan_13B,

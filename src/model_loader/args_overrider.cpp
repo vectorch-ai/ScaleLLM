@@ -63,9 +63,8 @@ DEFINE_string(tokenizer_type,
               "",
               "tokenizer type, e.g. sentencepiece, tiktoken");
 DEFINE_string(vocab_file, "", "vocab file name");
-DEFINE_string(special_tokens, "", "special tokens to add to the vocabulary");
+// DEFINE_string(special_tokens, "", "special tokens to add to the vocabulary");
 DEFINE_string(pattern, "", "regex pattern used by tiktok tokenizer");
-DEFINE_string(special_start_id, "", "start id for special tokens");
 DEFINE_string(prefix_tokens,
               "",
               "tokens to add to the beginning of the input sequence");
@@ -195,8 +194,7 @@ void override_args_from_gflag(ModelArgs& args,
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, tokenizer_type);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, vocab_file);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, pattern);
-  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, special_start_id);
-  OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, special_tokens);
+  // OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, special_tokens);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, prefix_tokens);
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, chat_template);
 }
