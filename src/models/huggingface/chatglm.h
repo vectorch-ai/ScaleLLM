@@ -552,17 +552,15 @@ REGISTER_TOKENIZER_ARGS(chatglm, [&] {
   // set special tokens
   // ref to:
   // https://huggingface.co/THUDM/chatglm3-6b/blob/main/tokenizer_config.json
-  const std::vector<SpecialToken> special_tokens({
-      {"[MASK]", 64789},
-      {"[gMASK]", 64790},
-      {"[sMASK]", 64791},
-      {"sop", 64792},
-      {"eop", 64793},
-      {"<|system|>", 64794},
-      {"<|user|>", 64795},
-      {"<|assistant|>", 64796},
-      {"<|observation|>", 64797}
-  });
+  const std::vector<SpecialToken> special_tokens({{"[MASK]", 64789},
+                                                  {"[gMASK]", 64790},
+                                                  {"[sMASK]", 64791},
+                                                  {"sop", 64792},
+                                                  {"eop", 64793},
+                                                  {"<|system|>", 64794},
+                                                  {"<|user|>", 64795},
+                                                  {"<|assistant|>", 64796},
+                                                  {"<|observation|>", 64797}});
   SET_ARG(special_tokens, special_tokens);
   SET_ARG(prefix_tokens, std::vector<std::string>({"[gMASK]", "sop"}));
 });
