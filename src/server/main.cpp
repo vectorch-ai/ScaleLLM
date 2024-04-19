@@ -38,8 +38,8 @@ DEFINE_string(
 DEFINE_int32(http_port, 9999, "Port for http server.");
 DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 
-DEFINE_int32(max_tokens_per_batch, 256, "max number of tokens per batch");
-DEFINE_int32(max_seqs_per_batch, 64, "max number of sequences per batch");
+DEFINE_int32(max_tokens_per_batch, 512, "max number of tokens per batch");
+DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
 DECLARE_int32(num_speculative_tokens);
 

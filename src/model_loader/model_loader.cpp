@@ -203,10 +203,6 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     return false;
   }
 
-  // override model type from gflag if exists
-  if (!FLAGS_model_type.empty()) {
-    model_type = FLAGS_model_type;
-  }
   auto args_loader = ModelRegistry::get_model_args_loader(model_type);
   if (args_loader == nullptr) {
     LOG(ERROR) << "Failed to find model args loader for model type "
