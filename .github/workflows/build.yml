@@ -48,7 +48,7 @@ jobs:
         # Tells ccache where to store its cache.
         CCACHE_DIR: ${{ github.workspace }}/.ccache
         # LIBTORCH_ROOT
-        # LIBTORCH_ROOT: ${{ github.workspace }}/../../../libtorch
+        LIBTORCH_ROOT: ${{ github.workspace }}/../../../libtorch
 
     steps:
     - name: Install toolkits
