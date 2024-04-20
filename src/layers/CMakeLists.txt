@@ -6,9 +6,11 @@ cc_library(
     linear 
   HDRS
     linear.h
+    qkv_linear.h
     linear_impl.h
   SRCS
     linear.cpp
+    qkv_linear.cpp
     linear_impl.cpp
   DEPS
     :state_dict
