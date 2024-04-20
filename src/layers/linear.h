@@ -37,30 +37,6 @@ class ParallelLinearImpl : public torch::nn::Module {
   }
 };
 
-// a wrapper to take care of state_dict loading and verification for QKV with
-// support of MQA/GQA
-class QKVColumnParallelLinearImpl : public ParallelLinearImpl {
- public:
-  QKVColumnParallelLinearImpl(int64_t hidden_size,
-                              int64_t n_heads,
-                              int64_t n_kv_heads,
-                              int64_t head_size,
-                              bool bias,
-                              const ParallelArgs& parallel_args,
-                              const torch::TensorOptions& options);
-
-  torch::Tensor forward(torch::Tensor input) const override {
-    return parallel_linear_->forward(input);
-  }
-
-  void load_state_dict(const StateDict& state_dict) override;
-
-  void verify_loaded_weights(const std::string& prefix = "") const override;
-
- private:
-  std::unique_ptr<ParallelLinearImpl> parallel_linear_;
-};
-
 class ColumnParallelLinear
     : public torch::nn::ModuleHolder<ParallelLinearImpl> {
  public:
@@ -83,13 +59,6 @@ class ColumnParallelLinear
                        bool gather_output,
                        const ParallelArgs& parallel_args,
                        const torch::TensorOptions& options);
-};
-
-class QKVColumnParallelLinear
-    : public torch::nn::ModuleHolder<ParallelLinearImpl> {
- public:
-  using torch::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
-  using Impl __attribute__((__unused__)) = ParallelLinearImpl;
 };
 
 class RowParallelLinear : public torch::nn::ModuleHolder<ParallelLinearImpl> {
