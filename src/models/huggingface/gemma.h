@@ -93,10 +93,7 @@ class GemmaAttentionImpl : public torch::nn::Module {
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
     const int64_t head_dim = args.head_dim();
-    CHECK_EQ(n_heads % world_size, 0)
-        << "n_heads should be divisible by world_size";
     const int64_t n_local_heads = n_heads / world_size;
-
     const int64_t n_local_kv_heads =
         std::max<int64_t>(1, n_kv_heads / world_size);
 
@@ -171,8 +168,6 @@ class GemmaAttentionImpl : public torch::nn::Module {
 
   // size for q, k, v
   std::vector<int64_t> qkv_sizes_;
-
-  int64_t kv_replication_ratio_ = 1;
 };
 TORCH_MODULE(GemmaAttention);
 
