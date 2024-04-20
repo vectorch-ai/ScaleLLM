@@ -64,8 +64,12 @@ void SentencePieceTokenizer::load_special_tokens(
     if (token.empty()) {
       continue;
     }
-    if (!special_token_encoder_.try_emplace(token, id).second ||
-        !special_token_decoder_.try_emplace(id, token).second) {
+
+    if (!special_token_encoder_.try_emplace(token, id).second) {
+      LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
+    }
+
+    if (!special_token_decoder_.try_emplace(id, token).second) {
       LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
     }
   }

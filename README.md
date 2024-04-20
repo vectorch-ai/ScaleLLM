@@ -1,22 +1,29 @@
 # ScaleLLM: An efficient LLM Inference solution
-[![build and test](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) [![GitHub Repo stars](https://img.shields.io/github/stars/vectorch-ai/ScaleLLM?style=social)](https://github.com/vectorch-ai/ScaleLLM/stargazers)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![GitHub Repo stars](https://img.shields.io/github/stars/vectorch-ai/ScaleLLM?style=social)](https://github.com/vectorch-ai/ScaleLLM/stargazers) [![build and test](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) 
+
 
 [![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn)](https://discord.gg/PKe5gvBZfn)
 
+[ScaleLLM]() is a cutting-edge inference system engineered for large language models (LLMs), meticulously designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3](https://github.com/meta-llama/llama3), [Gemma](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more. 
 
-ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. We appreciate your understanding and look forward to delivering an even better solution.
-
-Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
+ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
 
 
-## Latest News:
-* [03/2024] - We've implemented several [advanced feature enhancements](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.7), including support for CUDA graph, dynamic prefix cache, dynamic chunked prefill and speculative decoding.
-* [11/2023] - We're excited to announce the first release with support for popular open-source models. Check it out [here](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1).
+## News:
+* [03/2024] - [Advanced feature](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.7) support for CUDA graph, [dynamic prefix cache](), [dynamic chunked prefill]() and [speculative decoding]().
+* [11/2023] - [First release](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1) with support for popular [open-source models](#supported-models).
+
+## Key Features
+
+- [High Efficiency](): Excels in high-performance LLM inference, leveraging state-of-the-art techniques and technologies like [Flash Attention](https://github.com/Dao-AILab/flash-attention), [Paged Attention](https://github.com/vllm-project/vllm), [Continuous batching](https://www.anyscale.com/blog/continuous-batching-llm-inference), and more.
+- [Tensor Parallelism](): Utilizes tensor parallelism for efficient model execution.
+- [OpenAI-compatible API](): An efficient [golang](https://en.wikipedia.org/wiki/Go_(programming_language)) rest api server that compatible with OpenAI.
+- [Huggingface models](): Seamless integration with most popular [HF models](#supported-models), supporting safetensors.
+- [Customizable](): Offers flexibility for customization to meet your specific needs, and provides an easy way to add new models.
+- [Production Ready](): Engineered with production environments in mind, ScaleLLM is equipped with robust system monitoring and management features to ensure a seamless deployment experience.
 
 ## Table of contents
 
-- [Overview](#overview)
 - [Supported Models](#supported-models)
 - [Get Started](#get-started)
   - [ScaleLLM server](#scalellm-server)
@@ -30,21 +37,6 @@ Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
 
-
-## Overview
-
-ScaleLLM is a cutting-edge inference system engineered for large language models (LLMs), meticulously designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including Llama2, Bloom, GPT-NeoX, and more. 
-
-## Key Features
-
-- [High Efficiency](): Excels in high-performance LLM inference, leveraging state-of-the-art techniques and technologies like [Flash Attention](https://github.com/Dao-AILab/flash-attention), [Paged Attention](https://github.com/vllm-project/vllm), [Continuous batching](https://www.anyscale.com/blog/continuous-batching-llm-inference), and more.
-- [Tensor Parallelism](): Utilizes tensor parallelism for efficient model execution.
-- [OpenAI-compatible API](): An efficient [golang](https://en.wikipedia.org/wiki/Go_(programming_language)) rest api server that compatible with OpenAI.
-- [Huggingface models](): Seamless integration with most popular [HF models](#supported-models), supporting safetensors.
-- [Customizable](): Offers flexibility for customization to meet your specific needs, and provides an easy way to add new models.
-- [Production Ready](): Engineered with production environments in mind, ScaleLLM is equipped with robust system monitoring and management features to ensure a seamless deployment experience.
-
-
 ## Supported Models
 
 |   Models   | Tensor Parallel | Quantization | Chat API | HF models examples |
@@ -53,6 +45,7 @@ ScaleLLM is a cutting-edge inference system engineered for large language models
 |   Bloom    |       Yes       |     Yes      |    No    | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
 |   Baichuan |       Yes       |     Yes      |    Yes   | [baichuan-inc/Baichuan2-7B-Chat](https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat) |
 |   ChatGLM3 |       Yes       |     Yes      |    Yes   | [THUDM/chatglm3-6b](https://huggingface.co/THUDM/chatglm3-6b) |
+|   Gemma    |       Yes       |     Yes      |    Yes   | [google/gemma-2b](https://huggingface.co/google/gemma-2b) |
 |   GPT_j    |       Yes       |     Yes      |    No    | [EleutherAI/gpt-j-6b](https://huggingface.co/EleutherAI/gpt-j-6b) |
 |  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
 |    GPT2    |       Yes       |     Yes      |    No    | [gpt2](https://huggingface.co/gpt2)|
