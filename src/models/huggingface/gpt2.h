@@ -57,9 +57,15 @@ class GPT2MLPImpl : public torch::nn::Module {
     // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
     // need to transpose the weight.
     c_fc_->load_state_dict(state_dict.select_with_transform(
-        "c_fc.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_fc.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
     c_proj_->load_state_dict(state_dict.select_with_transform(
-        "c_proj.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_proj.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -134,9 +140,15 @@ class GPT2AttentionImpl : public torch::nn::Module {
     // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
     // need to transpose the weight.
     c_attn_->load_state_dict(state_dict.select_with_transform(
-        "c_attn.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_attn.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
     c_proj_->load_state_dict(state_dict.select_with_transform(
-        "c_proj.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_proj.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {

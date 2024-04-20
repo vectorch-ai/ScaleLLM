@@ -158,8 +158,9 @@ class MPTAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    auto qkv_state_dict =
-        state_dict.select_with_transform("Wqkv.", [this](torch::Tensor tensor) {
+    auto qkv_state_dict = state_dict.select_with_transform(
+        "Wqkv.",
+        [this](const std::string_view& /*name*/, const torch::Tensor& tensor) {
           return reshape_qkv_before_sharding(tensor);
         });
     // reshape local qkv back to [3, n_heads, ...] after sharding

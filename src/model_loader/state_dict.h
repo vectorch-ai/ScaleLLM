@@ -44,7 +44,8 @@ class StateDict final {
 
   // select all tensors whose name starts with prefix and apply the transform
   // for each tensor.
-  using TensorTransform = std::function<torch::Tensor(torch::Tensor)>;
+  using TensorTransform = std::function<torch::Tensor(const std::string_view&,
+                                                      const torch::Tensor&)>;
   StateDict select_with_transform(const std::string_view& prefix,
                                   TensorTransform transform_func) const;
 
