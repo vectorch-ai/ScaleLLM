@@ -65,6 +65,7 @@ std::vector<Block> PrefixCache::match(const Slice<int32_t>& token_ids) {
   Node* next_node = &root_;
   while (next_node != nullptr && !tokens_slice.empty()) {
     Node* curr = next_node;
+    // reset the next node
     next_node = nullptr;
 
     // match with children
@@ -92,6 +93,9 @@ std::vector<Block> PrefixCache::match(const Slice<int32_t>& token_ids) {
         if (prefix_length == child->token_ids.size()) {
           // full match, continue to grand children
           next_node = child;
+        } else {
+          // partial match, split the child node on the common prefix
+          split_node(child, prefix_length);
         }
         break;
       }
@@ -120,6 +124,7 @@ size_t PrefixCache::insert(const Slice<int32_t>& token_ids,
   Node* next_node = &root_;
   while (next_node != nullptr && !tokens_slice.empty()) {
     Node* curr = next_node;
+    // reset the next node
     next_node = nullptr;
 
     // match with children
@@ -259,8 +264,8 @@ void PrefixCache::split_node(Node* node, size_t common_prefix_length) {
   Slice<int32_t> token_ids(node->token_ids);
   Slice<Block> blocks(node->blocks);
 
-  child->token_ids = token_ids.slice(common_prefix_length).to_vector();
-  child->blocks = blocks.slice(n_blocks).to_vector();
+  child->token_ids = token_ids.slice(common_prefix_length);
+  child->blocks = blocks.slice(n_blocks);
   child->last_access_time = node->last_access_time;
   // point to parent
   child->parent = node;
@@ -291,8 +296,8 @@ void PrefixCache::create_child(Node* node,
 
   num_blocks_ += blocks.size();
 
-  child->token_ids = tokens.to_vector();
-  child->blocks = blocks.to_vector();
+  child->token_ids = tokens;
+  child->blocks = blocks;
   child->last_access_time = now;
   child->parent = node;
   node->children.insert(child);

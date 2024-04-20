@@ -77,7 +77,7 @@ TEST(SequenceTest, EosTokenId) {
   EXPECT_EQ(sequence.num_tokens(), 4);
 
   std::vector<int32_t> desired_tokens = {1, 2, 4, eos_token_id};
-  EXPECT_EQ(sequence.token_ids().to_vector(), desired_tokens);
+  EXPECT_EQ(sequence.token_ids(), desired_tokens);
 }
 
 TEST(SequenceTest, StopTokenIds) {
@@ -119,7 +119,7 @@ TEST(SequenceTest, StopTokenIds) {
   EXPECT_EQ(sequence.num_generated_tokens(), 6);
   EXPECT_EQ(sequence.num_tokens(), 9);
   std::vector<int32_t> desired_tokens = {1, 2, 4, 3, 4, 3, 5, 6, 20};
-  EXPECT_EQ(sequence.token_ids().to_vector(), desired_tokens);
+  EXPECT_EQ(sequence.token_ids(), desired_tokens);
 }
 
 TEST(SequenceTest, StopSequences) {
@@ -161,7 +161,7 @@ TEST(SequenceTest, StopSequences) {
   EXPECT_EQ(sequence.num_generated_tokens(), 6);
   EXPECT_EQ(sequence.num_tokens(), 9);
   std::vector<int32_t> desired_tokens = {1, 2, 4, 3, 4, 3, 5, 6, 7};
-  EXPECT_EQ(sequence.token_ids().to_vector(), desired_tokens);
+  EXPECT_EQ(sequence.token_ids(), desired_tokens);
 }
 
 TEST(SequenceTest, DiscardTokenIds) {
@@ -195,7 +195,7 @@ TEST(SequenceTest, DiscardTokenIds) {
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
   EXPECT_EQ(sequence.num_generated_tokens(), 0);
   EXPECT_EQ(sequence.num_tokens(), 3);
-  EXPECT_EQ(sequence.token_ids().to_vector(), prompt_tokens);
+  EXPECT_EQ(sequence.token_ids(), prompt_tokens);
 
   sequence.append_blocks(allocator.allocate(10));
   sequence.commit_kv_cache(prompt_tokens.size());
@@ -209,7 +209,7 @@ TEST(SequenceTest, DiscardTokenIds) {
   EXPECT_EQ(sequence.num_tokens(), 5);
 
   std::vector<int32_t> desired_tokens = {1, 2, 4, 40, 50};
-  EXPECT_EQ(sequence.token_ids().to_vector(), desired_tokens);
+  EXPECT_EQ(sequence.token_ids(), desired_tokens);
 }
 
 }  // namespace llm
