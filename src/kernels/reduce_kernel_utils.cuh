@@ -198,9 +198,8 @@ struct TopK {
 
 // operator for cub::BlockReduce to get topk across a thread block
 template <typename T, int K>
-__device__ __forceinline__ TopK<T, K> reduce_topk_op(
-    const TopK<T, K>& a,
-    const TopK<T, K>& b) {
+__device__ __forceinline__ TopK<T, K> reduce_topk_op(const TopK<T, K>& a,
+                                                     const TopK<T, K>& b) {
   TopK<T, K> res = a;
   for (int i = 0; i < K; ++i) {
     res.insert(b.u[i], b.p[i]);

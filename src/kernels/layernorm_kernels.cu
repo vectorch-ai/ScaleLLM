@@ -224,4 +224,22 @@ void invoke_layernorm_kernel<float>(float* out,
   layer_norm_kernel<float><<<m, n>>>(out, input, weight, bias, epsilon, n);
 }
 
+template <>
+void invoke_layernorm_kernel<half>(half* out,
+                                   const half* input,
+                                   const half* weight,
+                                   const half* bias,
+                                   const float epsilon,
+                                   int m,
+                                   int n) {
+  int half_n = n / 2;
+  half2* out_ptr = (half2*)out;
+  const half2* input_ptr = (const half2*)input;
+  const half2* weight_ptr = (const half2*)weight;
+  const half2* bias_ptr = (const half2*)bias;
+
+  dim3 block(std::min(half_n, 1024));
+  layer_norm_kernel<half2>
+      <<<m, block>>>(out_ptr, input_ptr, weight_ptr, bias_ptr, epsilon, half_n);
+}
 }  // namespace llm::kernel
