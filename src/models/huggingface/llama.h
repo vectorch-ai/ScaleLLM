@@ -441,4 +441,21 @@ REGISTER_MODEL_ARGS(llama, [&] {
   }
 });
 
+// Register tokenizer args since Yi is using sentencepiece tokenizer.
+REGISTER_TOKENIZER_ARGS(Yi, [&] {
+  SET_ARG(tokenizer_type, "sentencepiece");
+  SET_ARG(vocab_file, "tokenizer.model");
+
+  // set special tokens
+  // ref to:
+  // https://huggingface.co/01-ai/Yi-34B-Chat-4bits/blob/main/tokenizer_config.json
+  const std::vector<SpecialToken> special_tokens({{"<unk>", 0},
+                                                  {"<|startoftext|>", 1},
+                                                  {"<|endoftext|>", 2},
+                                                  {"<|im_start|>", 6},
+                                                  {"<|im_end|>", 7},
+                                                  {"<|im_sep|>", 8}});
+  SET_ARG(special_tokens, special_tokens);
+});
+
 }  // namespace llm::hf

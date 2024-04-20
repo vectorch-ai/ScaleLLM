@@ -170,19 +170,19 @@ std::unique_ptr<Tokenizer> HFModelLoader::tokenizer() const {
   // check if fast tokenizer exists
   const std::string tokenizer_path = model_weights_path_ + "/tokenizer.json";
   if (std::filesystem::exists(tokenizer_path)) {
+    LOG(INFO) << "Using fast tokenizer.";
     // load fast tokenizer
     return HFTokenizer::from_file(tokenizer_path);
   }
 
   // fallback to sentencepiece/tiktoken tokenizer if no fast tokenizer exists
-  LOG(WARNING)
-      << "Failed to locate tokenizer.json, falling back on slow tokenizers "
-         "instead.";
-
   if (tokenizer_args_.tokenizer_type() == "tiktoken") {
+    LOG(INFO) << "Using Tiktoken tokenizer.";
     return std::make_unique<TiktokenTokenizer>(model_weights_path_,
                                                tokenizer_args_);
   }
+
+  LOG(INFO) << "Using SentencePiece tokenizer.";
   return std::make_unique<SentencePieceTokenizer>(model_weights_path_,
                                                   tokenizer_args_);
 }
@@ -290,10 +290,6 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
                  << tokenizer_args_file_path;
       return false;
     }
-  } else {
-    // use default values if no tokenizer args loader exists
-    LOG(WARNING) << "Failed to find tokenizer args loader for model type "
-                 << args_.model_type();
   }
 
   // apply args override from gflag if exists
