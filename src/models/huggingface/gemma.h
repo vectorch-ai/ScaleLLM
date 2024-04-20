@@ -1,6 +1,9 @@
 #pragma once
+#include <absl/strings/match.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
+
+#include <string>
 
 #include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
@@ -88,9 +91,27 @@ class GemmaAttentionImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t head_dim = args.head_dim();
-    const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
+    CHECK_EQ(n_heads % world_size, 0)
+        << "n_heads should be divisible by world_size";
     const int64_t n_local_heads = n_heads / world_size;
+
+    // calculate logical kv heads with support of MQA/GQA
+    int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
+    if (n_kv_heads >= world_size) {
+      // partition kv heads evenly across world_size for MHA
+      CHECK_EQ(n_kv_heads % world_size, 0)
+          << "kv_heads can't be partitioned evenly across world_size";
+      kv_replication_ratio_ = 1;
+    } else {
+      // replicate kv heads evenly across world_size for GQA/MQA
+      CHECK_EQ(world_size % n_kv_heads, 0)
+          << "kv heads can't be replicated evenly across world_size";
+      kv_replication_ratio_ = world_size / n_kv_heads;
+      n_kv_heads = world_size;
+    }
     const int64_t n_local_kv_heads = n_kv_heads / world_size;
+    CHECK_GT(n_local_kv_heads, 0)
+        << "n_local_kv_heads should be greater than 0";
 
     // size for q, k, v
     qkv_sizes_ = {n_local_heads * head_dim,
@@ -141,7 +162,21 @@ class GemmaAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
+    if (kv_replication_ratio_ > 1) {
+      // replicate kv heads
+      auto kv_replicated_state_dict = state_dict.select_with_transform(
+          "", [&](const std::string_view& name, const torch::Tensor& tensor) {
+            if (absl::StartsWith(name, "k_proj.") ||
+                absl::StartsWith(name, "v_proj.")) {
+              return tensor.repeat({kv_replication_ratio_, 1});
+            }
+            return tensor;
+          });
+      qkv_proj_->load_state_dict(kv_replicated_state_dict,
+                                 {"q_proj.", "k_proj.", "v_proj."});
+    } else {
+      qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
+    }
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
@@ -161,6 +196,8 @@ class GemmaAttentionImpl : public torch::nn::Module {
 
   // size for q, k, v
   std::vector<int64_t> qkv_sizes_;
+
+  int64_t kv_replication_ratio_ = 1;
 };
 TORCH_MODULE(GemmaAttention);
 
@@ -207,12 +244,16 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
   void load_state_dict(const StateDict& state_dict) {
     input_layernorm_->load_state_dict((state_dict.select_with_transform(
         "input_layernorm.",
-        [](torch::Tensor tensor) { return tensor + 1.0f; })));
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor + 1.0f;
+        })));
     mlp_->load_state_dict(state_dict.select("mlp."));
     post_attention_layernorm_->load_state_dict(
         (state_dict.select_with_transform(
             "post_attention_layernorm.",
-            [](torch::Tensor tensor) { return tensor + 1.0f; })));
+            [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+              return tensor + 1.0f;
+            })));
     self_attn_->load_state_dict(state_dict.select("self_attn."));
   }
   void verify_loaded_weights(const std::string& prefix) const {
@@ -301,7 +342,10 @@ class GemmaModelImpl : public torch::nn::Module {
     // GemmaRMSNorm is different from Llama's in that it multiplies
     // (1 + weight) to the output, instead of just weight.
     norm_->load_state_dict((state_dict.select_with_transform(
-        "norm.", [](torch::Tensor tensor) { return tensor + 1.0f; })));
+        "norm.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor + 1.0f;
+        })));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {

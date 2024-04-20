@@ -62,13 +62,13 @@ class Slice final {
 
 // help comparison operators between slices and std::vector
 template <typename T>
-bool operator==(const Slice<T>& lhs, const std::vector<T>& rhs) {
+inline bool operator==(const Slice<T>& lhs, const std::vector<T>& rhs) {
   return lhs.size() == rhs.size() &&
          std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
 
 template <typename T>
-bool operator==(const std::vector<T>& lhs, const Slice<T>& rhs) {
+inline bool operator==(const std::vector<T>& lhs, const Slice<T>& rhs) {
   return lhs.size() == rhs.size() &&
          std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
