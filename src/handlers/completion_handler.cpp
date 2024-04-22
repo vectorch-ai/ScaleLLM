@@ -14,6 +14,8 @@
 #include "scheduler/scheduler.h"
 #include "utils.h"
 
+DECLARE_int32(num_speculative_tokens);
+
 namespace llm {
 
 namespace {
@@ -102,9 +104,8 @@ bool verify_request_arguments(CompletionCallData* call_data) {
 bool send_delta_to_client(CompletionCallData* call_data,
                           Request* request,
                           uint32_t index,
-                          const std::string& delta,
-                          FinishReason reason) {
-  if (!delta.empty()) {
+                          const SequenceDeltaOutput& output) {
+  if (!output.delta.empty()) {
     CompletionResponse response;
     response.set_object("text_completion");
     response.set_id(request->id);
@@ -112,20 +113,20 @@ bool send_delta_to_client(CompletionCallData* call_data,
     // response.set_model(request->model);
     auto* choice = response.add_choices();
     choice->set_index(index);
-    choice->set_text(delta);
+    choice->set_text(output.delta);
     if (!call_data->write(std::move(response))) {
       return false;
     }
   }
 
-  if (reason != FinishReason::NONE) {
+  if (output.finish_reason != FinishReason::NONE) {
     CompletionResponse response;
     response.set_object("text_completion");
     response.set_id(request->id);
     response.set_created(request->created_time);
     // response.set_model(request->model);
     auto* choice = response.add_choices();
-    choice->set_finish_reason(finish_reason_to_string(reason));
+    choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -135,7 +136,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
 
 bool send_result_to_client(CompletionCallData* call_data,
                            Request* request,
-                           const std::vector<SequenceResult>& seq_results,
+                           const std::vector<SequenceOutput>& outputs,
                            const Status& /*status*/,
                            const Statistics& stats) {
   CompletionResponse response;
@@ -145,15 +146,14 @@ bool send_result_to_client(CompletionCallData* call_data,
   // response.set_model(request->model);
 
   // add choices into response
-  for (uint32_t i = 0; i < seq_results.size(); ++i) {
-    const auto& seq_result = seq_results[i];
+  for (uint32_t i = 0; i < outputs.size(); ++i) {
+    const auto& output = outputs[i];
     auto* choice = response.add_choices();
     choice->set_index(i);
-    choice->set_text(seq_result.output_text);
+    choice->set_text(output.text);
     // choice->set_logprobs(0);
-    if (seq_result.finish_reason != FinishReason::NONE) {
-      choice->set_finish_reason(
-          finish_reason_to_string(seq_result.finish_reason));
+    if (output.finish_reason != FinishReason::NONE) {
+      choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
     }
   }
 
@@ -191,9 +191,24 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     return nullptr;
   }
 
+  uint32_t max_tokens = 0;
+  if (grpc_request.has_max_tokens()) {
+    max_tokens = grpc_request.max_tokens();
+  } else {
+    const uint32_t kDefaultMaxTokens = 16;
+    max_tokens = kDefaultMaxTokens;
+  }
+  // allocate enough capacity for prompt tokens, max tokens, and speculative
+  // tokens
+  const size_t capacity = prompt_tokens.size() + max_tokens +
+                          FLAGS_num_speculative_tokens + /*bouns_token*/ 1;
+
   const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
-  auto request = std::make_unique<Request>(
-      generate_request_id(), grpc_request.prompt(), num_seqs, prompt_tokens);
+  auto request = std::make_unique<Request>(generate_request_id(),
+                                           grpc_request.prompt(),
+                                           prompt_tokens,
+                                           capacity,
+                                           num_seqs);
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -217,16 +232,9 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
-  auto max_tokens =
-      static_cast<uint32_t>(max_context_len - prompt_tokens.size());
-  if (grpc_request.has_max_tokens()) {
-    max_tokens = std::min(max_tokens, grpc_request.max_tokens());
-  } else {
-    const uint32_t kDefaultMaxTokens = 128;
-    max_tokens = std::min(max_tokens, kDefaultMaxTokens);
-  }
   stopping_criteria.max_tokens = max_tokens;
-  stopping_criteria.max_context_length = model_args.max_position_embeddings();
+  stopping_criteria.max_context_len =
+      max_context_len - FLAGS_num_speculative_tokens;
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 
@@ -263,10 +271,8 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   if (request->stream) {
     request->on_stream_delta = [call_data, request = request.get()](
                                    size_t index,
-                                   bool /*first_message*/,
-                                   const std::string& delta,
-                                   FinishReason reason) -> bool {
-      return send_delta_to_client(call_data, request, index, delta, reason);
+                                   const SequenceDeltaOutput& output) -> bool {
+      return send_delta_to_client(call_data, request, index, output);
     };
 
     // add on_stream_finish callback
@@ -276,7 +282,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   } else {
     // add on_finish callback
     request->on_finish = [call_data, request = request.get()](
-                             const std::vector<SequenceResult>& seq_results,
+                             const std::vector<SequenceOutput>& seq_results,
                              const Status& status,
                              const Statistics& stats) -> bool {
       return send_result_to_client(

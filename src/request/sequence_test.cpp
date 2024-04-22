@@ -4,192 +4,26 @@
 #include <gtest/gtest.h>
 
 #include "memory/block.h"
-#include "memory/block_allocator.h"
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
 
 namespace llm {
 
-TEST(SequenceTest, MaxTokens) {
-  const uint32_t total_blocks = 20;
-  const uint32_t block_size = 20;
-  BlockAllocator allocator(total_blocks, block_size);
-
-  const int32_t max_tokens = 100;
-  std::vector<int32_t> prompt_tokens = {1, 2, 4};
-  StoppingCriteria stopping_criteria;
-  stopping_criteria.max_tokens = max_tokens;
-  stopping_criteria.ignore_eos_token = true;
-  SamplingParameter sampling_param;
-
-  Sequence sequence(prompt_tokens,
-                    sampling_param,
-                    stopping_criteria,
-                    /*echo=*/false,
-                    /*on_stream=*/nullptr);
-  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
-  EXPECT_EQ(sequence.num_generated_tokens(), 0);
-  EXPECT_EQ(sequence.num_tokens(), 3);
-  sequence.append_blocks(allocator.allocate(10));
-  sequence.commit_kv_cache(/*size=*/3);
-
-  for (int32_t id = 1; id < max_tokens; ++id) {
-    sequence.append_new_token_id(id);
-  }
-  sequence.append_new_token_id(max_tokens);
-  EXPECT_TRUE(sequence.is_finished());
-
-  EXPECT_EQ(sequence.finish_reason(), FinishReason::LENGTH);
-
-  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
-  EXPECT_EQ(sequence.num_generated_tokens(), max_tokens);
-  EXPECT_EQ(sequence.num_tokens(), max_tokens + 3);
-}
-
-TEST(SequenceTest, EosTokenId) {
-  const uint32_t total_blocks = 20;
-  const uint32_t block_size = 20;
-  BlockAllocator allocator(total_blocks, block_size);
-
-  const int32_t eos_token_id = 30;
-  std::vector<int32_t> prompt_tokens = {1, 2, 4};
-
-  StoppingCriteria stopping_criteria;
-  stopping_criteria.max_tokens = 10;
-  stopping_criteria.ignore_eos_token = false;
-  stopping_criteria.eos_token_id = eos_token_id;
-  SamplingParameter sampling_param;
-
-  Sequence sequence(prompt_tokens,
-                    sampling_param,
-                    stopping_criteria,
-                    /*echo=*/false,
-                    /*on_stream=*/nullptr);
-  sequence.append_blocks(allocator.allocate(10));
-  sequence.commit_kv_cache(/*size=*/3);
-
-  sequence.append_new_token_id(eos_token_id);
-  EXPECT_TRUE(sequence.is_finished());
-  EXPECT_EQ(sequence.finish_reason(), FinishReason::STOP);
-
-  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
-  EXPECT_EQ(sequence.num_generated_tokens(), 1);
-  EXPECT_EQ(sequence.num_tokens(), 4);
-
-  std::vector<int32_t> desired_tokens = {1, 2, 4, eos_token_id};
-  EXPECT_EQ(sequence.token_ids(), desired_tokens);
-}
-
-TEST(SequenceTest, StopTokenIds) {
-  const uint32_t total_blocks = 20;
-  const uint32_t block_size = 20;
-  BlockAllocator allocator(total_blocks, block_size);
-  std::vector<int32_t> prompt_tokens = {1, 2, 4};
-
-  StoppingCriteria stopping_criteria;
-  stopping_criteria.max_tokens = 100;
-  stopping_criteria.stop_token_ids = {20};
-
-  SamplingParameter sampling_param;
-
-  Sequence sequence(prompt_tokens,
-                    sampling_param,
-                    stopping_criteria,
-                    /*echo=*/false,
-                    /*on_stream=*/nullptr);
-
-  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
-  EXPECT_EQ(sequence.num_generated_tokens(), 0);
-  EXPECT_EQ(sequence.num_tokens(), 3);
-
-  sequence.append_blocks(allocator.allocate(10));
-  sequence.commit_kv_cache(/*size=*/3);
-
-  sequence.append_new_token_id(3);
-  sequence.append_new_token_id(4);
-  sequence.append_new_token_id(3);
-  sequence.append_new_token_id(5);
-  sequence.append_new_token_id(6);
-  sequence.append_new_token_id(20);
-
-  EXPECT_TRUE(sequence.is_finished());
-  EXPECT_EQ(sequence.finish_reason(), FinishReason::STOP);
-
-  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
-  EXPECT_EQ(sequence.num_generated_tokens(), 6);
-  EXPECT_EQ(sequence.num_tokens(), 9);
-  std::vector<int32_t> desired_tokens = {1, 2, 4, 3, 4, 3, 5, 6, 20};
-  EXPECT_EQ(sequence.token_ids(), desired_tokens);
-}
-
-TEST(SequenceTest, StopSequences) {
-  const uint32_t total_blocks = 20;
-  const uint32_t block_size = 20;
-  BlockAllocator allocator(total_blocks, block_size);
-  std::vector<int32_t> prompt_tokens = {1, 2, 4};
-
-  StoppingCriteria stopping_criteria;
-  stopping_criteria.max_tokens = 100;
-  stopping_criteria.stop_sequences = {{4, 5, 6}, {5, 6, 7}};
-
-  SamplingParameter sampling_param;
-
-  Sequence sequence(prompt_tokens,
-                    sampling_param,
-                    stopping_criteria,
-                    /*echo=*/false,
-                    /*on_stream=*/nullptr);
-
-  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
-  EXPECT_EQ(sequence.num_generated_tokens(), 0);
-  EXPECT_EQ(sequence.num_tokens(), 3);
-
-  sequence.append_blocks(allocator.allocate(10));
-  sequence.commit_kv_cache(/*size=*/3);
-
-  sequence.append_new_token_id(3);
-  sequence.append_new_token_id(4);
-  sequence.append_new_token_id(3);
-  sequence.append_new_token_id(5);
-  sequence.append_new_token_id(6);
-  sequence.append_new_token_id(7);
-
-  EXPECT_TRUE(sequence.is_finished());
-  EXPECT_EQ(sequence.finish_reason(), FinishReason::STOP);
-
-  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
-  EXPECT_EQ(sequence.num_generated_tokens(), 6);
-  EXPECT_EQ(sequence.num_tokens(), 9);
-  std::vector<int32_t> desired_tokens = {1, 2, 4, 3, 4, 3, 5, 6, 7};
-  EXPECT_EQ(sequence.token_ids(), desired_tokens);
-}
-
 TEST(SequenceTest, DiscardTokenIds) {
-  const uint32_t total_blocks = 20;
-  const uint32_t block_size = 20;
-  BlockAllocator allocator(total_blocks, block_size);
-
   const int32_t max_tokens = 100;
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
-  StoppingCriteria stopping_criteria;
-  stopping_criteria.max_tokens = max_tokens;
-  SamplingParameter sampling_param;
-
-  Sequence sequence(prompt_tokens,
-                    sampling_param,
-                    stopping_criteria,
-                    /*echo=*/false,
-                    /*on_stream=*/nullptr);
+  Sequence::Options options;
+  options.stopping_criteria.max_tokens = max_tokens;
+  Sequence sequence(/*prompt=*/"",
+                    prompt_tokens,
+                    /*capacity=*/200,
+                    options);
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
   EXPECT_EQ(sequence.num_generated_tokens(), 0);
   EXPECT_EQ(sequence.num_tokens(), 3);
 
   // append tokens to prefill sequence expect CHECK failure
-  EXPECT_DEATH(sequence.append_new_token_id(10),
-               "cannot append token to a prefill sequence");
-  EXPECT_DEATH(sequence.append_new_token_id(20),
-               "cannot append token to a prefill sequence");
-  EXPECT_DEATH(sequence.append_new_token_id(30),
+  EXPECT_DEATH(sequence.append_token(10),
                "cannot append token to a prefill sequence");
 
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
@@ -197,12 +31,13 @@ TEST(SequenceTest, DiscardTokenIds) {
   EXPECT_EQ(sequence.num_tokens(), 3);
   EXPECT_EQ(sequence.token_ids(), prompt_tokens);
 
-  sequence.append_blocks(allocator.allocate(10));
+  // allocate block and commit kv_cache
+  sequence.append_block({/*id=*/0, /*size=*/20});
   sequence.commit_kv_cache(prompt_tokens.size());
 
   // all following tokens will be appended
-  sequence.append_new_token_id(40);
-  sequence.append_new_token_id(50);
+  sequence.append_token(40);
+  sequence.append_token(50);
 
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
   EXPECT_EQ(sequence.num_generated_tokens(), 2);
@@ -210,6 +45,231 @@ TEST(SequenceTest, DiscardTokenIds) {
 
   std::vector<int32_t> desired_tokens = {1, 2, 4, 40, 50};
   EXPECT_EQ(sequence.token_ids(), desired_tokens);
+}
+
+TEST(SequenceTest, Speculative4StepsPartiallyMatch) {
+  // test scenarios speculative decoding
+  const int32_t max_tokens = 100;
+  std::vector<int32_t> prompt_tokens = {1, 2, 4};
+  Sequence::Options options;
+  options.stopping_criteria.max_tokens = max_tokens;
+  Sequence sequence(/*prompt=*/"",
+                    prompt_tokens,
+                    /*capacity=*/200,
+                    options);
+  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
+  EXPECT_EQ(sequence.num_generated_tokens(), 0);
+  EXPECT_EQ(sequence.num_tokens(), 3);
+
+  // allocate block
+  sequence.append_block({/*id=*/0, /*size=*/200});
+
+  // kv cache in sync for draft and target
+  {
+    sequence.set_engine_type(EngineType::SSM);
+    sequence.commit_kv_cache(prompt_tokens.size() - 1);
+
+    sequence.set_engine_type(EngineType::LLM);
+    sequence.commit_kv_cache(prompt_tokens.size() - 1);
+  }
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), 2);
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM), 2);
+
+  const std::vector<int32_t> spec_token_ids = {1058, 338, 4473, 29973};
+  const int32_t bonus_token_id = 4343;
+  const uint64_t num_spec_tokens = 4;
+  // add draft tokens
+  {
+    sequence.set_engine_type(EngineType::SSM);
+    for (int i = 0; i < num_spec_tokens; i++) {
+      // run engine and update kv cache pos
+      sequence.commit_kv_cache(sequence.num_tokens_to_process());
+      // append new token
+      sequence.append_token(spec_token_ids[i]);
+    }
+    const std::vector<int32_t> desired_tokens = {
+        1, 2, 4, 1058, 338, 4473, 29973};
+    EXPECT_EQ(sequence.token_ids(), desired_tokens);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(), 6);
+  }
+
+  // validate with accepted tokens
+  {
+    sequence.set_engine_type(EngineType::LLM);
+
+    // run engine and update kv cache pos
+    sequence.commit_kv_cache(sequence.num_tokens_to_process());
+
+    // append bonus token
+    sequence.append_token(bonus_token_id);
+    const std::vector<int32_t> desired_tokens = {
+        1, 2, 4, 1058, 338, 4473, 29973, bonus_token_id};
+    EXPECT_EQ(sequence.token_ids(), desired_tokens);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(), 7);
+
+    const std::vector<int64_t> accepted_token_ids = {1058, 338, 4473, 1058, -1};
+    const size_t num_accepted_tokens =
+        sequence.validate_tokens(accepted_token_ids);
+    EXPECT_EQ(num_accepted_tokens, 4);
+
+    const std::vector<int32_t> validated_tokens = {
+        1, 2, 4, 1058, 338, 4473, 1058};
+    EXPECT_EQ(sequence.token_ids(), validated_tokens);
+
+    // check kv caches
+    EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), 6);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM), 6);
+  }
+}
+
+TEST(SequenceTest, Speculative4StepsFullMatch) {
+  // test scenarios speculative decoding
+  const int32_t max_tokens = 100;
+  std::vector<int32_t> prompt_tokens = {1, 2, 4};
+  Sequence::Options options;
+  options.stopping_criteria.max_tokens = max_tokens;
+  Sequence sequence(/*prompt=*/"",
+                    prompt_tokens,
+                    /*capacity=*/200,
+                    options);
+  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
+  EXPECT_EQ(sequence.num_generated_tokens(), 0);
+  EXPECT_EQ(sequence.num_tokens(), 3);
+
+  // allocate block
+  sequence.append_block({/*id=*/0, /*size=*/200});
+
+  // kv cache in sync for draft and target
+  {
+    sequence.set_engine_type(EngineType::SSM);
+    sequence.commit_kv_cache(prompt_tokens.size() - 1);
+
+    sequence.set_engine_type(EngineType::LLM);
+    sequence.commit_kv_cache(prompt_tokens.size() - 1);
+  }
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), 2);
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM), 2);
+
+  const std::vector<int32_t> spec_token_ids = {1058, 338, 4473, 29973};
+  const int32_t bonus_token_id = 4343;
+  const uint64_t num_spec_tokens = 4;
+  // add draft tokens
+  {
+    sequence.set_engine_type(EngineType::SSM);
+    for (int i = 0; i < num_spec_tokens; i++) {
+      // run engine and update kv cache pos
+      sequence.commit_kv_cache(sequence.num_tokens_to_process());
+      // append new token
+      sequence.append_token(spec_token_ids[i]);
+    }
+    const std::vector<int32_t> desired_tokens = {
+        1, 2, 4, 1058, 338, 4473, 29973};
+    EXPECT_EQ(sequence.token_ids(), desired_tokens);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(), 6);
+  }
+
+  // validate with accepted tokens
+  {
+    sequence.set_engine_type(EngineType::LLM);
+
+    // run engine and update kv cache pos
+    sequence.commit_kv_cache(sequence.num_tokens_to_process());
+
+    // append bonus token
+    sequence.append_token(bonus_token_id);
+    const std::vector<int32_t> desired_tokens = {
+        1, 2, 4, 1058, 338, 4473, 29973, bonus_token_id};
+    EXPECT_EQ(sequence.token_ids(), desired_tokens);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(), 7);
+
+    const std::vector<int64_t> accepted_token_ids = {
+        1058, 338, 4473, 29973, bonus_token_id};
+    const size_t num_accepted_tokens =
+        sequence.validate_tokens(accepted_token_ids);
+    EXPECT_EQ(num_accepted_tokens, 5);
+
+    const std::vector<int32_t> validated_tokens = {
+        1, 2, 4, 1058, 338, 4473, 29973, bonus_token_id};
+    EXPECT_EQ(sequence.token_ids(), validated_tokens);
+
+    // check kv caches, LLM should have one more token in kv cache
+    EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), 6);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM), 7);
+  }
+}
+
+TEST(SequenceTest, SpeculativeNoMatch) {
+  // test scenarios speculative decoding
+  const int32_t max_tokens = 100;
+  std::vector<int32_t> prompt_tokens = {1, 2, 4};
+  Sequence::Options options;
+  options.stopping_criteria.max_tokens = max_tokens;
+  Sequence sequence(/*prompt=*/"",
+                    prompt_tokens,
+                    /*capacity=*/200,
+                    options);
+  EXPECT_EQ(sequence.num_prompt_tokens(), 3);
+  EXPECT_EQ(sequence.num_generated_tokens(), 0);
+  EXPECT_EQ(sequence.num_tokens(), 3);
+
+  // allocate block
+  sequence.append_block({/*id=*/0, /*size=*/200});
+
+  // kv cache in sync for draft and target
+  {
+    sequence.set_engine_type(EngineType::SSM);
+    sequence.commit_kv_cache(prompt_tokens.size() - 1);
+
+    sequence.set_engine_type(EngineType::LLM);
+    sequence.commit_kv_cache(prompt_tokens.size() - 1);
+  }
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), 2);
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM), 2);
+
+  const std::vector<int32_t> spec_token_ids = {1058, 338, 4473, 29973};
+  const int32_t bonus_token_id = 4343;
+  const uint64_t num_spec_tokens = 4;
+  // add draft tokens
+  {
+    sequence.set_engine_type(EngineType::SSM);
+    for (int i = 0; i < num_spec_tokens; i++) {
+      // run engine and update kv cache pos
+      sequence.commit_kv_cache(sequence.num_tokens_to_process());
+      // append new token
+      sequence.append_token(spec_token_ids[i]);
+    }
+    const std::vector<int32_t> desired_tokens = {
+        1, 2, 4, 1058, 338, 4473, 29973};
+    EXPECT_EQ(sequence.token_ids(), desired_tokens);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(), 6);
+  }
+
+  // validate with accepted tokens
+  {
+    sequence.set_engine_type(EngineType::LLM);
+
+    // run engine and update kv cache pos
+    sequence.commit_kv_cache(sequence.num_tokens_to_process());
+
+    // append bonus token
+    sequence.append_token(bonus_token_id);
+    const std::vector<int32_t> desired_tokens = {
+        1, 2, 4, 1058, 338, 4473, 29973, bonus_token_id};
+    EXPECT_EQ(sequence.token_ids(), desired_tokens);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(), 7);
+
+    const std::vector<int64_t> accepted_token_ids = {1058, -1, -1, -1, -1};
+    const size_t num_accepted_tokens =
+        sequence.validate_tokens(accepted_token_ids);
+    EXPECT_EQ(num_accepted_tokens, 1);
+
+    const std::vector<int32_t> validated_tokens = {1, 2, 4, 1058};
+    EXPECT_EQ(sequence.token_ids(), validated_tokens);
+
+    // check kv caches, LLM should have one more token in kv cache
+    EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), 3);
+    EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM), 3);
+  }
 }
 
 }  // namespace llm

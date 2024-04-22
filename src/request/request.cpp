@@ -15,36 +15,31 @@ namespace llm {
 
 Request::Request(const std::string& id,
                  const std::string_view& prompt,
-                 size_t n,
-                 const std::vector<int32_t>& prompt_tokens)
+                 const std::vector<int32_t>& prompt_tokens,
+                 size_t seq_capacity,
+                 size_t num_seqs)
     : id(id),
       prompt(prompt),
-      num_seqs(n),
+      seq_capacity(seq_capacity),
+      num_seqs(num_seqs),
       created_time(absl::ToUnixSeconds(absl::Now())),
       prompt_tokens(prompt_tokens) {}
 
-Request::Request(const std::string& id,
-                 const std::vector<int32_t>& prompt_tokens)
-    : Request(id, /*prompt=*/"", /*n=*/1, prompt_tokens) {}
-
 void Request::add_sequence() {
-  OnDelta on_delta = nullptr;
+  Sequence::Options options;
+  options.echo = this->echo;
+  options.sampling_param = this->sampling_param;
+  options.stopping_criteria = this->stopping_criteria;
 
   if (stream) {
     CHECK(on_stream_delta);
-    on_delta = [this, index = sequences.size(), first_message = true](
-                   const std::string& delta, FinishReason reason) mutable {
-      bool ret = this->on_stream_delta(index, first_message, delta, reason);
-      first_message = false;
-      return ret;
-    };
+    options.on_delta =
+        [this, index = sequences.size()](const SequenceDeltaOutput& output) {
+          return this->on_stream_delta(index, output);
+        };
   }
-  sequences.emplace_back(this->prompt,
-                         this->prompt_tokens,
-                         this->sampling_param,
-                         this->stopping_criteria,
-                         this->echo,
-                         on_delta);
+  sequences.emplace_back(
+      this->prompt, this->prompt_tokens, this->seq_capacity, options);
 }
 
 bool Request::is_finished() const {
