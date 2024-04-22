@@ -80,10 +80,9 @@ struct Request final {
   // caller needs to gurantee prompt's lifecycle
   Request(const std::string& id,
           const std::string_view& prompt,
-          size_t n,
-          const std::vector<int32_t>& prompt_tokens);
-
-  Request(const std::string& id, const std::vector<int32_t>& prompt_tokens);
+          const std::vector<int32_t>& prompt_tokens,
+          size_t seq_capacity,
+          size_t num_seqs);
 
   void add_sequence();
 
@@ -116,6 +115,10 @@ struct Request final {
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
   const std::vector<int32_t> prompt_tokens;
+
+  // max number of tokens per sequence.
+  // NOLINTNEXTLINE
+  const size_t seq_capacity;
 
   // sampling parameters
   SamplingParameter sampling_param;

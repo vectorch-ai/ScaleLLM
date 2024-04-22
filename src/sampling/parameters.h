@@ -24,9 +24,6 @@ struct SamplingParameter {
 
   // not used for now
   uint64_t seed = 0;
-
-  // ########### following parameters are used to control output ###########
-  bool skip_special_tokens = true;
 };
 
 // SamplingParameters is used to specify sampling parameters for a batch of

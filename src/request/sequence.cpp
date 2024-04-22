@@ -10,8 +10,6 @@
 #include "common/slice.h"
 #include "tokenizer/tokenizer.h"
 
-DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
-
 namespace llm {
 
 // NOLINTNEXTLINE
@@ -19,42 +17,36 @@ std::atomic<int64_t> Sequence::next_id_{1};
 
 Sequence::Sequence(const std::string_view& prompt,
                    const std::vector<int32_t>& prompt_token_ids,
-                   const SamplingParameter& sampling_param,
-                   const StoppingCriteria& stopping_criteria,
-                   bool echo,
-                   OnDelta on_delta)
+                   size_t capacity,
+                   const Options& option)
     : id_(next_id_.fetch_add(1)),
-      sampling_param_(sampling_param),
-      stopping_criteria_(stopping_criteria),
+      option_(option),
       decoder_(prompt,
                prompt_token_ids.size(),
-               echo,
-               sampling_param.skip_special_tokens),
-      num_kv_cache_tokens_(static_cast<size_t>(EngineType::COUNT), 0),
-      on_delta_(on_delta) {
+               option.echo,
+               option.skip_special_tokens),
+      num_kv_cache_tokens_(static_cast<size_t>(EngineType::COUNT), 0) {
   CHECK(!prompt_token_ids.empty()) << "empty prompt token ids";
+  CHECK_GT(capacity, prompt_token_ids.size()) << "capacity too small";
 
   // allocate space for the token ids and add the prompt tokens
-  const size_t max_tokens = stopping_criteria.max_tokens +
-                            prompt_token_ids.size() +
-                            FLAGS_num_speculative_tokens + /*bouns_token*/ 1;
-  token_ids_.resize(max_tokens);
+  num_prompt_tokens_ = prompt_token_ids.size();
+  token_ids_.resize(capacity);
   for (const auto token_id : prompt_token_ids) {
     token_ids_[num_tokens_++] = token_id;
     token_to_count_map_[token_id]++;
   }
-  num_prompt_tokens_ = num_tokens_;
 }
 
-void Sequence::append_new_token_id(int32_t next_token_id) {
+void Sequence::append_new_token_id(int32_t token_id) {
   CHECK(num_tokens_ < token_ids_.size())
       << "exceed the token capacity of the sequence";
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
   CHECK(!is_prefill_stage()) << "cannot append token to a prefill sequence";
 
   // append the token id and update the token count
-  token_ids_[num_tokens_++] = next_token_id;
-  ++token_to_count_map_[next_token_id];
+  token_ids_[num_tokens_++] = token_id;
+  token_to_count_map_[token_id]++;
 
   // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
@@ -90,7 +82,7 @@ size_t Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
     // check if sequence is finished
     const Slice<int32_t> token_ids(token_ids_, cur_idx + 1);
     auto finish_reason =
-        stopping_criteria_.check_finished(token_ids, num_prompt_tokens_);
+        option_.stopping_criteria.check_finished(token_ids, num_prompt_tokens_);
     if (finish_reason != FinishReason::NONE) {
       finish_reason_ = finish_reason;
       is_finished_ = true;
@@ -188,8 +180,8 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
 }
 
 void Sequence::stream_delta(const SequenceDeltaOutput& output) {
-  if (on_delta_) {
-    if (!on_delta_(output)) {
+  if (option_.on_delta) {
+    if (!option_.on_delta(output)) {
       // cancel the sequence if the callback returns false
       is_cancelled_.store(true, std::memory_order_relaxed);
     }
@@ -210,7 +202,7 @@ bool Sequence::is_finished() const {
   finish_status_invalidated_ = false;
 
   auto finish_reason =
-      stopping_criteria_.check_finished(token_ids(), num_prompt_tokens_);
+      option_.stopping_criteria.check_finished(token_ids(), num_prompt_tokens_);
   if (finish_reason != FinishReason::NONE) {
     finish_reason_ = finish_reason;
     is_finished_ = true;

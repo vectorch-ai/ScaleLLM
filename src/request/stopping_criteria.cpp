@@ -1,12 +1,11 @@
 #include "stopping_criteria.h"
 
+#include <absl/strings/match.h>
 #include <gflags/gflags_declare.h>
 
 #include <cstdint>
 #include <unordered_set>
 #include <vector>
-
-DECLARE_int32(num_speculative_tokens);
 
 namespace llm {
 
@@ -45,15 +44,14 @@ FinishReason StoppingCriteria::check_finished(const Slice<int32_t>& token_ids,
   }
 
   // check against max tokens and max context length
-  const size_t num_tokens = token_ids.size();
-  const bool max_context_length_reached =
-      max_context_length > 0 &&
-      num_tokens + FLAGS_num_speculative_tokens >= max_context_length;
-  CHECK_GE(num_tokens, num_prompt_tokens);
-  const size_t num_generated_tokens = num_tokens - num_prompt_tokens;
+  const size_t n_tokens = token_ids.size();
+  const bool max_context_len_reached =
+      max_context_len > 0 && n_tokens >= max_context_len;
+  CHECK_GE(n_tokens, num_prompt_tokens);
+  const size_t num_generated_tokens = n_tokens - num_prompt_tokens;
   const bool max_tokens_reached =
       max_tokens > 0 && num_generated_tokens >= max_tokens;
-  if (max_context_length_reached || max_tokens_reached) {
+  if (max_context_len_reached || max_tokens_reached) {
     return FinishReason::LENGTH;
   }
   return FinishReason::NONE;

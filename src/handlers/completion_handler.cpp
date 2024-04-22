@@ -14,6 +14,8 @@
 #include "scheduler/scheduler.h"
 #include "utils.h"
 
+DECLARE_int32(num_speculative_tokens);
+
 namespace llm {
 
 namespace {
@@ -189,9 +191,24 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     return nullptr;
   }
 
+  uint32_t max_tokens = 0;
+  if (grpc_request.has_max_tokens()) {
+    max_tokens = grpc_request.max_tokens();
+  } else {
+    const uint32_t kDefaultMaxTokens = 16;
+    max_tokens = kDefaultMaxTokens;
+  }
+  // allocate enough capacity for prompt tokens, max tokens, and speculative
+  // tokens
+  const size_t capacity = prompt_tokens.size() + max_tokens +
+                          FLAGS_num_speculative_tokens + /*bouns_token*/ 1;
+
   const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
-  auto request = std::make_unique<Request>(
-      generate_request_id(), grpc_request.prompt(), num_seqs, prompt_tokens);
+  auto request = std::make_unique<Request>(generate_request_id(),
+                                           grpc_request.prompt(),
+                                           prompt_tokens,
+                                           capacity,
+                                           num_seqs);
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -215,16 +232,9 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
-  auto max_tokens =
-      static_cast<uint32_t>(max_context_len - prompt_tokens.size());
-  if (grpc_request.has_max_tokens()) {
-    max_tokens = std::min(max_tokens, grpc_request.max_tokens());
-  } else {
-    const uint32_t kDefaultMaxTokens = 128;
-    max_tokens = std::min(max_tokens, kDefaultMaxTokens);
-  }
   stopping_criteria.max_tokens = max_tokens;
-  stopping_criteria.max_context_length = model_args.max_position_embeddings();
+  stopping_criteria.max_context_len =
+      max_context_len - FLAGS_num_speculative_tokens;
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 

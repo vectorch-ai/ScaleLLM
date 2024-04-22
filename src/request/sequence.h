@@ -41,12 +41,27 @@ enum class EngineType : int8_t {
 // current position in generating tokens, etc.
 class Sequence final {
  public:
+  struct Options {
+    // the sampling parameters for the sequence
+    SamplingParameter sampling_param;
+
+    // the stopping criteria for the sequence
+    StoppingCriteria stopping_criteria;
+
+    // whether to skip special tokens when decoding the output
+    bool skip_special_tokens = true;
+
+    // whether to echo the prompt tokens back
+    bool echo = false;
+
+    // the callback function to call when new tokens are generated
+    OnDelta on_delta = nullptr;
+  };
+
   Sequence(const std::string_view& prompt,
            const std::vector<int32_t>& prompt_token_ids,
-           const SamplingParameter& sampling_param,
-           const StoppingCriteria& stopping_criteria,
-           bool echo,
-           OnDelta on_delta);
+           size_t capacity,
+           const Options& option);
 
   // get the id of the sequence
   int64_t id() const { return id_; }
@@ -114,7 +129,7 @@ class Sequence final {
 
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
-  void append_new_token_id(int32_t next_token_id);
+  void append_new_token_id(int32_t token_id);
 
   // validate draft tokens with accepted tokens for speculative decoding
   // N.B. take int64_t as input to be compatible with torch::Tensor
@@ -122,6 +137,9 @@ class Sequence final {
   size_t validate_token_ids(const Slice<int64_t>& accpeted_token_ids);
 
   // add new cache blocks
+  void append_block(const Block& new_block) {
+    return append_blocks({new_block});
+  }
   void append_blocks(const std::vector<Block>& new_blocks);
 
   // append shared cache blocks from prefix cache
@@ -148,7 +166,7 @@ class Sequence final {
   size_t output_offset() const { return decoder_.output_offset(); }
 
   // check if streaming is enabled
-  bool is_streaming() const { return on_delta_ != nullptr; }
+  bool is_streaming() const { return option_.on_delta != nullptr; }
 
   // stream the delta output to the client
   // cancel the sequence if the callback returns false
@@ -174,22 +192,21 @@ class Sequence final {
   }
 
   // get the sampling parameters
-  const SamplingParameter* sampling_param() const { return &sampling_param_; }
+  const SamplingParameter* sampling_param() const {
+    return &option_.sampling_param;
+  }
 
   // get the stopping criteria
   const StoppingCriteria* stopping_criteria() const {
-    return &stopping_criteria_;
+    return &option_.stopping_criteria;
   }
 
  private:
   // global unique id for the sequence
   const int64_t id_;
 
-  // the sampling parameters
-  const SamplingParameter& sampling_param_;
-
-  // the stopping criteria
-  const StoppingCriteria& stopping_criteria_;
+  // options for the sequence
+  Options option_;
 
   // incremental decoder to decode the tokens
   IncrementalDecoder decoder_;
@@ -225,9 +242,6 @@ class Sequence final {
 
   // the reason why the sequence is finished
   mutable FinishReason finish_reason_ = FinishReason::NONE;
-
-  // function to call when new tokens are generated. (only for streaming)
-  OnDelta on_delta_;
 
   // id allocator for sequences
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)

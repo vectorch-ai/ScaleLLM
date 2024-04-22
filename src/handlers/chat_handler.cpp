@@ -1,5 +1,6 @@
 #include "chat_handler.h"
 
+#include <absl/strings/escaping.h>
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
@@ -17,9 +18,9 @@
 #include "scheduler/scheduler.h"
 #include "utils.h"
 
-DEFINE_bool(disable_default_chat_template,
-            false,
-            "Disable default chat template");
+DEFINE_bool(enable_jinja_chat_template, false, "Enable Jinja chat template");
+
+DECLARE_int32(num_speculative_tokens);
 
 namespace llm {
 
@@ -205,9 +206,21 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     return nullptr;
   }
 
+  uint32_t max_tokens = 0;
+  if (grpc_request.has_max_tokens()) {
+    max_tokens = grpc_request.max_tokens();
+  } else {
+    const uint32_t kDefaultMaxTokens = 16;
+    max_tokens = kDefaultMaxTokens;
+  }
+
   const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
+  // allocate enough capacity for prompt tokens, max tokens, and speculative
+  // tokens
+  const size_t capacity = prompt_tokens.size() + max_tokens +
+                          FLAGS_num_speculative_tokens + /*bouns_token*/ 1;
   auto request = std::make_unique<Request>(
-      generate_request_id(), "", num_seqs, prompt_tokens);
+      generate_request_id(), "", prompt_tokens, capacity, num_seqs);
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -231,16 +244,9 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
 
   // construct stopping criteria
   auto& stopping_criteria = request->stopping_criteria;
-  auto max_tokens =
-      static_cast<uint32_t>(max_context_len - prompt_tokens.size());
-  if (grpc_request.has_max_tokens()) {
-    max_tokens = std::min(max_tokens, grpc_request.max_tokens());
-  } else {
-    const uint32_t kDefaultMaxTokens = 128;
-    max_tokens = std::min(max_tokens, kDefaultMaxTokens);
-  }
   stopping_criteria.max_tokens = max_tokens;
-  stopping_criteria.max_context_length = model_args.max_position_embeddings();
+  stopping_criteria.max_context_len =
+      max_context_len - FLAGS_num_speculative_tokens;
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 
@@ -322,15 +328,15 @@ ChatHandler::ChatHandler(Scheduler* scheduler, const Engine* engine)
   // construct chat template
   auto factory = ModelRegistry::get_default_chat_template_factory(
       model_args_.model_type());
-  if (!FLAGS_disable_default_chat_template && factory) {
-    LOG(INFO) << "Use default chat template for model type: "
+  if (!FLAGS_enable_jinja_chat_template && factory) {
+    LOG(INFO) << "Using default chat template for model type: "
               << model_args_.model_type();
     chat_template_ = factory();
   } else {
     const auto& tokenizer_args = engine->tokenizer_args();
     if (!tokenizer_args.chat_template().empty()) {
-      LOG(INFO) << "Use chat template from tokenizer args for model type: "
-                << model_args_.model_type();
+      LOG(INFO) << "Using jinja chat template: "
+                << absl::CEscape(tokenizer_args.chat_template());
       chat_template_ = std::make_unique<JinjaChatTemplate>(
           tokenizer_args.chat_template(), /*add_generation_prompt=*/true);
     }

@@ -41,7 +41,7 @@ DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 DEFINE_int32(max_tokens_per_batch, 512, "max number of tokens per batch");
 DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
-DECLARE_int32(num_speculative_tokens);
+DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 
 // NOLINTNEXTLINE
 static std::atomic<uint32_t> signal_received{0};

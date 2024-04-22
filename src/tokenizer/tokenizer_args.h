@@ -3,7 +3,6 @@
 #include <absl/strings/str_join.h>
 
 #include <cstdint>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>

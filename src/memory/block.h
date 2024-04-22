@@ -19,6 +19,7 @@ class Block final {
 
   // used for testing
   Block(int32_t id);
+  Block(int32_t id, uint32_t size);
 
   Block(int32_t id, BlockAllocator* allocator);
 
@@ -34,7 +35,7 @@ class Block final {
   int32_t id() const { return id_; }
 
   // get the block size
-  uint32_t size() const;
+  uint32_t size() const { return size_; }
 
   // get the reference count, 0 if the block is invalid after move
   uint32_t ref_count() const { return ref_count_ == nullptr ? 0 : *ref_count_; }
@@ -54,8 +55,13 @@ class Block final {
 
   // block id
   int32_t id_ = -1;
+
+  // block size
+  uint32_t size_ = 0;
+
   // reference count
   uint32_t* ref_count_ = nullptr;
+
   // allocator that manages this block
   BlockAllocator* allocator_ = nullptr;
 };
