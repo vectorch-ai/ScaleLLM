@@ -129,12 +129,12 @@ class Sequence final {
 
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
-  void append_new_token_id(int32_t token_id);
+  void append_token(int32_t token_id);
 
   // validate draft tokens with accepted tokens for speculative decoding
   // N.B. take int64_t as input to be compatible with torch::Tensor
   // returns the number of accepted tokens
-  size_t validate_token_ids(const Slice<int64_t>& accpeted_token_ids);
+  size_t validate_tokens(const Slice<int64_t>& accpeted_token_ids);
 
   // add new cache blocks
   void append_block(const Block& new_block) {
@@ -166,7 +166,7 @@ class Sequence final {
   size_t output_offset() const { return decoder_.output_offset(); }
 
   // check if streaming is enabled
-  bool is_streaming() const { return option_.on_delta != nullptr; }
+  bool is_streaming() const { return options_.on_delta != nullptr; }
 
   // stream the delta output to the client
   // cancel the sequence if the callback returns false
@@ -193,12 +193,12 @@ class Sequence final {
 
   // get the sampling parameters
   const SamplingParameter* sampling_param() const {
-    return &option_.sampling_param;
+    return &options_.sampling_param;
   }
 
   // get the stopping criteria
   const StoppingCriteria* stopping_criteria() const {
-    return &option_.stopping_criteria;
+    return &options_.stopping_criteria;
   }
 
  private:
@@ -206,7 +206,7 @@ class Sequence final {
   const int64_t id_;
 
   // options for the sequence
-  Options option_;
+  Options options_;
 
   // incremental decoder to decode the tokens
   IncrementalDecoder decoder_;

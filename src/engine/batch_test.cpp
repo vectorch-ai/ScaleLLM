@@ -54,7 +54,7 @@ TEST(BatchTest, Basic) {
                 options);
   seq2.append_blocks(allocator.allocate(4));  // [4, 5, 6, 7]
   seq2.commit_kv_cache(/*size=*/7);
-  seq2.append_new_token_id(100);
+  seq2.append_token(100);
 
   // seq in decode phase
   Sequence seq3(
@@ -64,7 +64,7 @@ TEST(BatchTest, Basic) {
       options);
   seq3.append_blocks(allocator.allocate(5));  // [8, 9, 10, 11, 12]
   seq3.commit_kv_cache(/*size=*/15);
-  seq3.append_new_token_id(200);
+  seq3.append_token(200);
 
   // define outputs
   Batch batch({&seq1, &seq2, &seq3});

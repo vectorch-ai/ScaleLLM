@@ -20,7 +20,7 @@ Sequence::Sequence(const std::string_view& prompt,
                    size_t capacity,
                    const Options& option)
     : id_(next_id_.fetch_add(1)),
-      option_(option),
+      options_(option),
       decoder_(prompt,
                prompt_token_ids.size(),
                option.echo,
@@ -38,7 +38,7 @@ Sequence::Sequence(const std::string_view& prompt,
   }
 }
 
-void Sequence::append_new_token_id(int32_t token_id) {
+void Sequence::append_token(int32_t token_id) {
   CHECK(num_tokens_ < token_ids_.size())
       << "exceed the token capacity of the sequence";
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
@@ -52,7 +52,7 @@ void Sequence::append_new_token_id(int32_t token_id) {
   finish_status_invalidated_ = true;
 }
 
-size_t Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
+size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
   const size_t len = accpeted_token_ids.size();
   CHECK_GT(num_tokens_, len) << "accepted tokens exceed the sequence length";
 
@@ -81,8 +81,8 @@ size_t Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
 
     // check if sequence is finished
     const Slice<int32_t> token_ids(token_ids_, cur_idx + 1);
-    auto finish_reason =
-        option_.stopping_criteria.check_finished(token_ids, num_prompt_tokens_);
+    auto finish_reason = options_.stopping_criteria.check_finished(
+        token_ids, num_prompt_tokens_);
     if (finish_reason != FinishReason::NONE) {
       finish_reason_ = finish_reason;
       is_finished_ = true;
@@ -180,8 +180,8 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
 }
 
 void Sequence::stream_delta(const SequenceDeltaOutput& output) {
-  if (option_.on_delta) {
-    if (!option_.on_delta(output)) {
+  if (options_.on_delta) {
+    if (!options_.on_delta(output)) {
       // cancel the sequence if the callback returns false
       is_cancelled_.store(true, std::memory_order_relaxed);
     }
@@ -201,8 +201,8 @@ bool Sequence::is_finished() const {
   // reset the finish status invalidation flag
   finish_status_invalidated_ = false;
 
-  auto finish_reason =
-      option_.stopping_criteria.check_finished(token_ids(), num_prompt_tokens_);
+  auto finish_reason = options_.stopping_criteria.check_finished(
+      token_ids(), num_prompt_tokens_);
   if (finish_reason != FinishReason::NONE) {
     finish_reason_ = finish_reason;
     is_finished_ = true;

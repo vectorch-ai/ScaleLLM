@@ -285,7 +285,7 @@ void Batch::process_sample_output(const SampleOutput& sample_output) {
       // add the next token to sequence
       const int32_t next_token_id =
           static_cast<int32_t>(next_tokens[output_idx++].item<int64_t>());
-      seq->append_new_token_id(next_token_id);
+      seq->append_token(next_token_id);
     }
     CHECK_EQ(output_idx, num_seqs);
   }
@@ -307,7 +307,7 @@ void Batch::process_validate_output(const torch::Tensor& accepted_ids) {
         ids.data_ptr<int64_t>(), static_cast<size_t>(ids.numel())};
 
     // validate the draft tokens with accepted tokens
-    seq->validate_token_ids(accepted_token_ids);
+    seq->validate_tokens(accepted_token_ids);
   }
   CHECK_EQ(output_idx, num_seqs);
 }
