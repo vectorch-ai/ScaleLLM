@@ -3,7 +3,6 @@
 #include <glog/logging.h>
 
 #include "engine/engine.h"
-#include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
 
@@ -12,8 +11,8 @@ namespace llm {
 constexpr uint64_t kStepSleepTimeMs = 10;
 
 SpeculativeScheduler::SpeculativeScheduler(const SchedulerConfig& config,
-                                           Engine* llm_engine,
-                                           Engine* ssm_engine)
+                                           LLMEngine* llm_engine,
+                                           LLMEngine* ssm_engine)
     : config_(config), llm_engine_(llm_engine), ssm_engine_(ssm_engine) {
   CHECK(llm_engine_ != nullptr);
   llm_block_manager_ = llm_engine_->block_manager();
@@ -57,18 +56,10 @@ void SpeculativeScheduler::step(const absl::Duration& timeout) {
   speculate_multiple_steps(spec_sequences_batch);
 
   // run validation on llm.
-  auto output_parameters = validate(spec_sequences_batch);
+  validate(spec_sequences_batch);
 
-  const auto& next_tokens = output_parameters.next_tokens;
-  const int64_t num_seqs = next_tokens.sizes()[0];
-  CHECK(num_seqs == spec_sequences_batch.size());
-
-  for (int64_t i = 0; i < num_seqs; ++i) {
-    Sequence* seq = spec_sequences_batch[i];
-    auto seq_next_tokens =
-        next_tokens.index_select(/*dim=*/0, torch::tensor(i, torch::kInt64));
-    const int64_t* ids = seq_next_tokens.data_ptr<int64_t>();
-    seq->update_valid_token_ids(ids);
+  for (auto* seq : spec_sequences_batch) {
+    // seq->update_valid_token_ids(ids);
     // stream delta to client if streaming is enabled
     if (seq->is_streaming()) {
       response_handler_->on_sequence_stream(seq);
@@ -83,22 +74,14 @@ void SpeculativeScheduler::speculate_multiple_steps(
   // TODO: should not support beam search
   std::vector<Sequence*> spec_batch(sequences_batch);
   for (uint64_t i = 0; i < config_.speculative_steps_; ++i) {
-    auto output_parameters = ssm_engine_->execute_model(spec_batch);
-
-    const auto& next_tokens = output_parameters.next_tokens;
-    const int64_t num_seqs = next_tokens.numel();
-    CHECK(num_seqs == spec_batch.size());
+    Batch batch(spec_batch);
+    ssm_engine_->execute_model(batch);
 
     std::vector<Sequence*> next_spec_batch;
     next_spec_batch.reserve(spec_batch.size());
-    const int64_t* new_token_ids = next_tokens.data_ptr<int64_t>();
-    for (int64_t i = 0; i < num_seqs; ++i) {
-      auto seq = spec_batch[i];
-      const auto next_token_id = static_cast<int32_t>(new_token_ids[i]);
-      seq->append_new_token_id(next_token_id);
-      // record speculative token ids
-      seq->append_spec_token_id(next_token_id);
-
+    for (auto* seq : spec_batch) {
+      // TODO: record speculative token ids
+      // seq->append_spec_token_id(next_token_id);
       if (!seq->is_finished()) {
         next_spec_batch.emplace_back(seq);
       }
@@ -107,9 +90,9 @@ void SpeculativeScheduler::speculate_multiple_steps(
   }
 }
 
-OutputParameters SpeculativeScheduler::validate(
-    std::vector<Sequence*>& sequences_batch) {
-  return llm_engine_->validate(sequences_batch);
+void SpeculativeScheduler::validate(std::vector<Sequence*>& sequences_batch) {
+  Batch batch(sequences_batch);
+  llm_engine_->validate(batch);
 }
 
 }  // namespace llm

@@ -5,9 +5,7 @@
 
 #include "kernels/flash_attn/flash_api.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
-
-DEFINE_bool(use_kv_cache_stream, true, "use separate stream for kv cache");
+#include "models/parameters.h"
 
 namespace llm {
 
@@ -22,25 +20,13 @@ FlashAttnHandler::FlashAttnHandler(float scale,
   // register rotary positional embedding
   pos_emb_ = RotaryEmbedding(
       rotary_dim, max_position, rope_scaling, rope_theta, interleaved, options);
-
-  if (FLAGS_use_kv_cache_stream) {
-    cudaStreamCreate(&stream_);
-  }
 }
 
 FlashAttnHandler::FlashAttnHandler(float scale,
                                    torch::optional<torch::Tensor> alibi_slopes)
-    : scale_(scale), alibi_slopes_(alibi_slopes) {
-  if (FLAGS_use_kv_cache_stream) {
-    cudaStreamCreate(&stream_);
-  }
-}
+    : scale_(scale), alibi_slopes_(alibi_slopes) {}
 
-FlashAttnHandler::~FlashAttnHandler() {
-  if (stream_) {
-    cudaStreamDestroy(stream_);
-  }
-}
+FlashAttnHandler::~FlashAttnHandler() {}
 
 std::tuple<torch::Tensor, torch::Tensor> FlashAttnHandler::apply_pos_emb(
     const torch::Tensor& query,
@@ -85,11 +71,6 @@ void FlashAttnHandler::batch_decode(
     const KVCache& kv_cache,              // where to retrieval key and value
     const InputParameters& input_params,  // input paras used for attention
     torch::Tensor& output) {
-  // wait for the operation to complete
-  if (stream_) {
-    cudaStreamSynchronize(stream_);
-  }
-
   auto [key_cache, value_cache] = kv_cache.get_kv_cache();
   mha_varlen_fwd(output,
                  query,
@@ -116,7 +97,7 @@ void FlashAttnHandler::append_kv_cache(
     const InputParameters& input_params) {
   // append key and value to kv_cache
   if (!kv_cache.empty()) {
-    kv_cache.set_kv_cache(input_params.new_cache_slots, key, value, stream_);
+    kv_cache.set_kv_cache(input_params.new_cache_slots, key, value);
   }
 }
 

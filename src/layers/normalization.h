@@ -10,15 +10,30 @@
 DECLARE_bool(disable_custom_kernels);
 namespace llm {
 namespace detail {
-inline torch::Tensor rms_norm(torch::Tensor input,
+inline torch::Tensor rms_norm(const torch::Tensor& input,
                               const torch::Tensor& weight,
                               float eps) {
   // it is important to use float to calculate the mean and std
   const auto x = input.to(torch::kFloat);
   const auto mean = x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
-  const auto output = x * torch::rsqrt(mean + eps) * weight;
+  const auto output = x * torch::rsqrt(mean + eps);
   // convert back to the original dtype
-  return output.to(input);
+  return output.to(input) * weight;
+}
+
+inline torch::Tensor rms_norm_residual(const torch::Tensor& input,
+                                       torch::Tensor& residual,
+                                       const torch::Tensor& weight,
+                                       float eps) {
+  // it is important to use float for the residual
+  auto x = input.to(torch::kFloat) + residual.to(torch::kFloat);
+  residual = x.to(input);
+
+  // it is important to use float to calculate the mean and std
+  const auto mean = x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
+  const auto output = x * torch::rsqrt(mean + eps);
+  // convert back to the original dtype
+  return output.to(input) * weight;
 }
 
 inline torch::Tensor layer_norm(torch::Tensor input,
@@ -124,7 +139,7 @@ class RMSNormImpl : public torch::nn::Module {
                                  /*requires_grad=*/false);
   }
 
-  torch::Tensor forward(torch::Tensor input) {
+  torch::Tensor forward(const torch::Tensor& input) {
     if (input.is_cuda() && !FLAGS_disable_custom_kernels) {
       auto output = torch::empty_like(input);
       kernel::rms_norm(output, input, weight_, eps_);
@@ -177,20 +192,22 @@ class RMSNormResidualImpl : public torch::nn::Module {
                                  /*requires_grad=*/false);
   }
 
-  torch::Tensor forward(torch::Tensor input, torch::Tensor& residual) {
+  torch::Tensor forward(const torch::Tensor& input, torch::Tensor& residual) {
     if (input.is_cuda() && !FLAGS_disable_custom_kernels) {
       auto output = torch::empty_like(input);
       if (residual.defined()) {
-        input = input + residual;
+        kernel::rms_norm_residual(output, residual, input, weight_, eps_);
+      } else {
         residual = input;
+        kernel::rms_norm(output, input, weight_, eps_);
       }
-      kernel::rms_norm(output, input, weight_, eps_);
       return output;
     }
+
     if (residual.defined()) {
-      input = input + residual;
-      residual = input;
+      return detail::rms_norm_residual(input, residual, weight_, eps_);
     }
+    residual = input;
     return detail::rms_norm(input, weight_, eps_);
   }
 

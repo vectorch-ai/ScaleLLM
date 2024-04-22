@@ -3,24 +3,37 @@
 #include <absl/time/time.h>
 #include <folly/MPMCQueue.h>
 
-#include <cstdint>
 #include <memory>
 #include <queue>
 
-#include "engine/engine.h"
+#include "common/macros.h"
+#include "engine/batch.h"
 #include "memory/block_manager.h"
 #include "request/request.h"
+#include "response_handler.h"
 #include "scheduler.h"
 
 namespace llm {
+class Engine;
 
 // TODO: add schedule config to control the max number of tokens per batch, max
 // number of seqs per batch and the time out value.
-class ContinuousBatchingScheduler final : public Scheduler {
+class ContinuousScheduler final : public Scheduler {
  public:
-  ContinuousBatchingScheduler(Engine* engine);
+  struct Options {
+    // the maximum number of tokens per batch
+    DEFINE_ARG(int32_t, max_tokens_per_batch) = 256;
 
-  ~ContinuousBatchingScheduler();
+    // the maximum number of sequences per batch
+    DEFINE_ARG(int32_t, max_seqs_per_batch) = 64;
+
+    // the number of speculative tokens per step
+    DEFINE_ARG(int32_t, num_speculative_tokens) = 0;
+  };
+
+  ContinuousScheduler(Engine* engine, const Options& options);
+
+  ~ContinuousScheduler();
 
   // schedule a request, thread safe and non-blocking
   // may return false if the queue is full
@@ -32,11 +45,19 @@ class ContinuousBatchingScheduler final : public Scheduler {
 
  private:
   // get a batch of requests from the priority queue
-  void build_sequence_batch();
+  Batch build_sequence_batch();
 
-  void on_request_finish(Request* request);
+  // allocate blocks for a sequence, honoring the tokens budget.
+  // * for prefill sequence, the allocated_tokens will be within
+  // [1, num_prompt_tokens - num_tokens_in_kv_cache].
+  // * for decode sequence, the actual_tokens usually would be 1 or K for
+  // speculative decoding.
+  // returns false if no blocks can be allocated.
+  bool allocate_blocks_for(Sequence* sequence,
+                           size_t token_budget,
+                           size_t* actual_tokens);
 
-  void on_sequence_stream(Sequence* seq);
+  const Options options_;
 
   // the engine to run the batch
   Engine* engine_;
@@ -58,18 +79,16 @@ class ContinuousBatchingScheduler final : public Scheduler {
       std::priority_queue<Request*, std::vector<Request*>, RequestPtrGreater>;
   MinHeap priority_queue_;
 
-  // a batch of requests to be processed, sorted by priority from high to low.
-  std::vector<Request*> request_batch_;
-
-  // a batch of sequence to be processed.
-  std::vector<Sequence*> sequences_batch_;
+  // a batch of requests in running state, sorted by priority from high to low.
+  std::vector<Request*> running_requests_;
 
   // preemptable requests that hold cache slots, sorted by priority from high to
   // low.
-  std::deque<Request*> preemptable_candidates_;
+  std::deque<Request*> preemptable_requests_;
 
-  // the threadpool to handle responses
-  ThreadPool response_threadpool_;
+  std::unique_ptr<ResponseHandler> response_handler_;
+
+  bool enable_prefix_cache_ = false;
 };
 
 }  // namespace llm

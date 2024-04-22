@@ -72,8 +72,5 @@ class ProcessGroupNCCL : public ProcessGroup {
  private:
   // nccl communicator.
   ncclComm_t comm_ = nullptr;
-
-  // cuda stream.
-  cudaStream_t stream_;
 };
 }  // namespace llm

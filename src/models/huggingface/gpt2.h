@@ -10,9 +10,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // gpt2 model compatible with huggingface weights
 
@@ -57,9 +57,15 @@ class GPT2MLPImpl : public torch::nn::Module {
     // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
     // need to transpose the weight.
     c_fc_->load_state_dict(state_dict.select_with_transform(
-        "c_fc.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_fc.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
     c_proj_->load_state_dict(state_dict.select_with_transform(
-        "c_proj.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_proj.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -86,7 +92,7 @@ class GPT2AttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t n_local_heads = args.n_heads() / world_size;
     hidden_size_ = args.hidden_size();
-    head_dim_ = args.hidden_size() / args.n_heads();
+    head_dim_ = args.head_dim();
 
     // register submodules
     c_attn_ = register_module("c_attn",
@@ -134,9 +140,15 @@ class GPT2AttentionImpl : public torch::nn::Module {
     // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
     // need to transpose the weight.
     c_attn_->load_state_dict(state_dict.select_with_transform(
-        "c_attn.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_attn.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
     c_proj_->load_state_dict(state_dict.select_with_transform(
-        "c_proj.", [](torch::Tensor tensor) { return tensor.t(); }));
+        "c_proj.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor.t();
+        }));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -327,13 +339,24 @@ class GPT2ForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = model_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return model_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 
@@ -374,6 +397,10 @@ REGISTER_MODEL_ARGS(gpt2, [&] {
 
   LOAD_ARG_OR_FUNC(
       intermediate_size, "n_inner", [&] { return args->hidden_size() * 4; });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 });
 
 }  // namespace llm::hf

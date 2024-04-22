@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <string>
 
+#include "engine/engine.h"
 #include "models/model_args.h"
 #include "request/request.h"
+#include "scheduler/scheduler.h"
 #include "utils.h"
 
 namespace llm {
@@ -23,15 +25,7 @@ std::string generate_request_id() {
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 bool verify_request_arguments(CompletionCallData* call_data) {
   const auto& request = call_data->request();
-  // n is not implemented yet for stream request
-  const bool stream = request.has_stream() ? request.stream() : false;
   const uint32_t n = request.has_n() ? request.n() : 1;
-  if (stream && n > 1) {
-    call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
-                                 "n > 1 is not supported yet");
-    return false;
-  }
-
   if (request.has_best_of() && request.best_of() != n) {
     call_data->finish_with_error(grpc::StatusCode::UNIMPLEMENTED,
                                  "best_of != n is not supported yet");
@@ -110,18 +104,33 @@ bool send_delta_to_client(CompletionCallData* call_data,
                           uint32_t index,
                           const std::string& delta,
                           FinishReason reason) {
-  CompletionResponse response;
-  response.set_object("text_completion");
-  response.set_id(request->id);
-  response.set_created(request->created_time);
-  // response.set_model(request->model);
-  auto* choice = response.add_choices();
-  choice->set_index(index);
-  choice->set_text(delta);
-  if (reason != FinishReason::NONE) {
-    choice->set_finish_reason(finish_reason_to_string(reason));
+  if (!delta.empty()) {
+    CompletionResponse response;
+    response.set_object("text_completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_index(index);
+    choice->set_text(delta);
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
   }
-  return call_data->write(response);
+
+  if (reason != FinishReason::NONE) {
+    CompletionResponse response;
+    response.set_object("text_completion");
+    response.set_id(request->id);
+    response.set_created(request->created_time);
+    // response.set_model(request->model);
+    auto* choice = response.add_choices();
+    choice->set_finish_reason(finish_reason_to_string(reason));
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool send_result_to_client(CompletionCallData* call_data,
@@ -182,8 +191,9 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     return nullptr;
   }
 
-  auto request =
-      std::make_unique<Request>(generate_request_id(), prompt_tokens);
+  const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
+  auto request = std::make_unique<Request>(
+      generate_request_id(), grpc_request.prompt(), num_seqs, prompt_tokens);
 
   // construct sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -216,6 +226,7 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     max_tokens = std::min(max_tokens, kDefaultMaxTokens);
   }
   stopping_criteria.max_tokens = max_tokens;
+  stopping_criteria.max_context_length = model_args.max_position_embeddings();
   // stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
 
@@ -248,28 +259,21 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
     request->priority = grpc_priority_to_priority(grpc_request.priority());
   }
 
-  // add on_stream and on_finish callbacks
-  const uint32_t num_seqs = grpc_request.has_n() ? grpc_request.n() : 1;
+  // set callbacks
   if (request->stream) {
-    // add sequences with on_stream callback
-    for (uint32_t i = 0; i < num_seqs; ++i) {
-      request->add_sequence(
-          [call_data, request = request.get(), i](const std::string& delta,
-                                                  FinishReason reason) -> bool {
-            return send_delta_to_client(call_data, request, i, delta, reason);
-          });
-    }
+    request->on_stream_delta = [call_data, request = request.get()](
+                                   size_t index,
+                                   bool /*first_message*/,
+                                   const std::string& delta,
+                                   FinishReason reason) -> bool {
+      return send_delta_to_client(call_data, request, index, delta, reason);
+    };
 
     // add on_stream_finish callback
     request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
       return call_data->finish();
     };
   } else {
-    // add sequences
-    for (uint32_t i = 0; i < num_seqs; ++i) {
-      request->add_sequence();
-    }
-
     // add on_finish callback
     request->on_finish = [call_data, request = request.get()](
                              const std::vector<SequenceResult>& seq_results,
@@ -279,6 +283,12 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
           call_data, request, seq_results, status, stats);
     };
   }
+
+  // set callback for checking rpc status
+  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
+
+  // add one sequence, rest will be added by scheduler
+  request->add_sequence();
   return request;
 }
 

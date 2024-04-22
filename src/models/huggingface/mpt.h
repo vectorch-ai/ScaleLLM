@@ -4,6 +4,7 @@
 
 #include <optional>
 
+#include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
@@ -11,9 +12,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // mpt model compatible with huggingface weights
 namespace llm::hf {
@@ -87,7 +88,7 @@ class MPTAttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    const int64_t head_dim = hidden_size / args.n_heads();
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
     hidden_size_ = hidden_size;
     head_dim_ = head_dim;
@@ -157,8 +158,9 @@ class MPTAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    auto qkv_state_dict =
-        state_dict.select_with_transform("Wqkv.", [this](torch::Tensor tensor) {
+    auto qkv_state_dict = state_dict.select_with_transform(
+        "Wqkv.",
+        [this](const std::string_view& /*name*/, const torch::Tensor& tensor) {
           return reshape_qkv_before_sharding(tensor);
         });
     // reshape local qkv back to [3, n_heads, ...] after sharding
@@ -368,9 +370,10 @@ class MPTModelImpl : public torch::nn::Module {
     m.mul_(bias_max / next_power_of_2);
     auto slopes = 1.0f / torch::pow(2, m);
     if (next_power_of_2 != n_heads) {
-      using namespace torch::indexing;
-      slopes = torch::cat({slopes.index({Slice(1, None, 2)}),
-                           slopes.index({Slice(None, None, 2)})});
+      using ISlice = torch::indexing::Slice;
+      using torch::indexing::None;
+      slopes = torch::cat({slopes.index({ISlice(1, None, 2)}),
+                           slopes.index({ISlice(None, None, 2)})});
     }
     if (parallel_args.world_size() > 1) {
       slopes = slopes.chunk(/*chunks=*/parallel_args.world_size(),
@@ -415,13 +418,24 @@ class MPTForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor /*positions*/,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& /*positions*/,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = transformer_(tokens, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return transformer_(tokens, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 
@@ -499,6 +513,10 @@ REGISTER_MODEL_ARGS(mpt, [&] {
     const int64_t expansion_ratio =
         json.value_or<int64_t>("expansion_ratio", 4);
     return expansion_ratio * args->hidden_size();
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 
   // stop token ids: [0, 50278]

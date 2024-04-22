@@ -1,96 +1,30 @@
 #pragma once
 
-#include <ATen/core/TensorBody.h>
-
-#include <memory>
-#include <torch/csrc/distributed/c10d/Backend.hpp>
-
+#include "batch.h"
 #include "memory/block_manager.h"
-#include "quantization/quant_args.h"
+#include "models/model_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
-#include "worker.h"
-
-DECLARE_int32(block_size);
-DECLARE_int64(max_cache_size);
-DECLARE_double(max_memory_utilization);
 
 namespace llm {
-
-// The Large Language Model (LLM) engine is a model runner designed to execute
-// inference procedures incrementally using batches of requests. It comprises
-// three critical components: a model, a tokenizer, and a resource manager.
-// The inference process is primarily divided into two stages: 'prefill' and
-// 'generate'.
-// * 'Prefill': This is the more costly phase, as it involves processing a
-// new prompt and generating the entire initial attention matrix.
-// * 'Generate': In this phase, subsequent tokens are generated using the
-// previously cached attention matrix.
-// A single batch may contain requests from various stages of the inference
-// process. The engine must be adept at handling these diverse requests,
-// ensuring optimal resource management.
-
 class Engine {
  public:
-  // create an engine with the given devices
-  Engine(const std::vector<torch::Device>& devices);
-
   virtual ~Engine() = default;
 
-  virtual bool init(const std::string& model_weights_path);
+  // execute the model with the given batch, results are stored in the batch
+  virtual ModelOutput execute_model(Batch& batch) = 0;
 
-  // step the engine forward by one step with the batch
-  virtual OutputParameters execute_model(const std::vector<Sequence*>& batch);
+  // return a clone of the tokenizer
+  virtual std::unique_ptr<Tokenizer> tokenizer() const = 0;
 
-  // validate multiple speculative tokens when use speculative decoding
-  virtual OutputParameters validate(const std::vector<Sequence*>& batch);
+  // return the block manager
+  virtual BlockManager* block_manager() const = 0;
 
-  virtual std::unique_ptr<Tokenizer> tokenizer() const {
-    return tokenizer_->clone();
-  }
+  // return the model args
+  virtual const ModelArgs& model_args() const = 0;
 
-  virtual BlockManager* block_manager() const { return block_manager_.get(); }
-
-  const ModelArgs& model_args() const { return args_; }
-
-  const QuantArgs& quant_args() const { return quant_args_; }
-
-  const TokenizerArgs& tokenizer_args() const { return tokenizer_args_; }
-
- private:
-  bool init_model(const std::string& model_weights_path);
-
-  bool init_kv_cache(int64_t cache_size_in_bytes);
-
-  // returns the memory size for the kv cache
-  int64_t profile_memory_for_kv_cache();
-
-  // devices
-  const std::vector<torch::Device> devices_;
-
-  // dtype
-  torch::ScalarType dtype_;
-
-  // model args
-  ModelArgs args_;
-
-  // quantization args
-  QuantArgs quant_args_;
-
-  // Tokenizer args
-  TokenizerArgs tokenizer_args_;
-
-  // a list of process groups, with each process group handling a single device
-  std::vector<std::unique_ptr<ProcessGroup>> process_groups_;
-
-  // a list of workers, with each worker handling a partial of model
-  std::vector<std::unique_ptr<Worker>> workers_;
-
-  // tokenizer
-  std::unique_ptr<Tokenizer> tokenizer_;
-
-  // block manager
-  std::unique_ptr<BlockManager> block_manager_;
+  // return the tokenizer args
+  virtual const TokenizerArgs& tokenizer_args() const = 0;
 };
 
 }  // namespace llm

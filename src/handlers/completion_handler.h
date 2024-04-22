@@ -3,13 +3,16 @@
 #include "call_data.h"
 #include "common/threadpool.h"
 #include "completion.grpc.pb.h"  // IWYU pragma: keep
-#include "engine/engine.h"
 #include "models/model_args.h"
-#include "scheduler/scheduler.h"
+#include "tokenizer/tokenizer.h"
 
 namespace llm {
 
-using CompletionCallData = CallData<CompletionRequest, CompletionResponse>;
+using CompletionCallData =
+    StreamCallData<CompletionRequest, CompletionResponse>;
+
+class Scheduler;
+class Engine;
 
 // a class to handle completion requests
 class CompletionHandler final {

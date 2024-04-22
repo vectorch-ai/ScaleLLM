@@ -1,6 +1,7 @@
 #include "state_dict.h"
 
 #include <ATen/core/TensorBody.h>
+#include <absl/strings/match.h>
 #include <caffe2/serialize/inline_container.h>
 #include <glog/logging.h>
 #include <torch/csrc/jit/serialization/import_read.h>
@@ -183,7 +184,8 @@ torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
     return torch::Tensor{nullptr};
   }
   // apply transform function if exists
-  return transform_func_ ? transform_func_(it->second) : it->second;
+  return transform_func_ ? transform_func_(tensor_name, it->second)
+                         : it->second;
 }
 
 torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
@@ -231,8 +233,7 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
 StateDict StateDict::select(const std::string_view& prefix) const {
   std::unordered_map<std::string, torch::Tensor> selected;
   for (const auto& [name, tensor] : dict_) {
-    std::size_t found = name.find(prefix);
-    if (found == 0) {
+    if (absl::StartsWith(name, prefix)) {
       selected[name.substr(prefix.length())] = tensor;
     }
   }

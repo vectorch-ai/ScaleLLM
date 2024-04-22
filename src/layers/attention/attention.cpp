@@ -38,7 +38,7 @@ torch::Tensor AttentionImpl::forward(const torch::Tensor& query,
   handler_->append_kv_cache(kv_cache, k, v, input_params);
 
   auto output = torch::empty_like(q);
-  if (input_params.all_prefill_sequences) {
+  if (input_params.empty_kv_cache) {
     handler_->batch_prefill(q, k, v, input_params, output);
   } else {
     handler_->batch_decode(q, kv_cache, input_params, output);

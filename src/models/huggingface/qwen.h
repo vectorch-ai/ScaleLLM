@@ -13,8 +13,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
+#include "models/model_registry.h"
+#include "models/parameters.h"
 
 // QWen model compatible with huggingface weights
 // adopted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
@@ -90,7 +91,7 @@ class QWenAttentionImpl : public torch::nn::Module {
     const auto world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    const int64_t head_dim = hidden_size / args.n_heads();
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
 
     // register submodules
@@ -307,13 +308,24 @@ class QWenForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = transformer_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return transformer_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 
@@ -388,6 +400,10 @@ REGISTER_MODEL_ARGS(qwen, [&] {
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
   // LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
+
   // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>"
   SET_ARG(stop_token_ids,
           std::unordered_set<int32_t>({151643, 151644, 151645}));
@@ -401,10 +417,14 @@ REGISTER_TOKENIZER_ARGS(qwen, [&] {
   SET_ARG(vocab_file, "qwen.tiktoken");
 
   // set special tokens
-  std::vector<std::string> special_tokens(
-      {"<|endoftext|>", "<|im_start|>", "<|im_end|>"});
+  std::vector<SpecialToken> special_tokens;
+  int32_t next_id = 151643;
+  special_tokens.emplace_back("<|endoftext|>", next_id++);
+  special_tokens.emplace_back("<|im_start|>", next_id++);
+  special_tokens.emplace_back("<|im_end|>", next_id++);
   for (int32_t i = 0; i < 205; ++i) {
-    special_tokens.push_back("<|extra_" + std::to_string(i) + "|>");
+    special_tokens.emplace_back("<|extra_" + std::to_string(i) + "|>",
+                                next_id++);
   }
   SET_ARG(special_tokens, special_tokens);
 
@@ -412,7 +432,6 @@ REGISTER_TOKENIZER_ARGS(qwen, [&] {
   const std::string pattern =
       R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+[^\S]|\s+)";
   SET_ARG(pattern, pattern);
-  SET_ARG(special_start_id, 151643);
 });
 
 }  // namespace llm::hf

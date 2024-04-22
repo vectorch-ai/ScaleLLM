@@ -7,6 +7,7 @@
 #include "huggingface/baichuan.h"  // IWYU pargma: keep
 #include "huggingface/bloom.h"     // IWYU pragma: keep
 #include "huggingface/chatglm.h"   // IWYU pragma: keep
+#include "huggingface/gemma.h"     // IWYU pragma: keep
 #include "huggingface/gpt2.h"      // IWYU pragma: keep
 #include "huggingface/gpt_j.h"     // IWYU pragma: keep
 #include "huggingface/gpt_neox.h"  // IWYU pragma: keep
@@ -16,7 +17,6 @@
 #include "huggingface/mpt.h"       // IWYU pragma: keep
 #include "huggingface/phi.h"       // IWYU pragma: keep
 #include "huggingface/qwen.h"      // IWYU pragma: keep
-#include "huggingface/yi.h"        // IWYU pragma: keep
 #include "llama.h"                 // IWYU pragma: keep
 
 namespace llm {

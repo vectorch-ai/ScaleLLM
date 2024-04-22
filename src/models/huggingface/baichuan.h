@@ -1,8 +1,10 @@
 #pragma once
 
+#include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
+#include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
@@ -10,15 +12,15 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // Baichuan model compatible with huggingface weights
 
 namespace llm::hf {
 
-enum BaichuanType {
+enum class BaichuanType : uint8_t {
   Baichuan_7B,
   Baichuan2_7B,
   Baichuan_13B,
@@ -97,10 +99,8 @@ class BaichuanAttentionImpl : public torch::nn::Module {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    // const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
-    const int64_t head_dim = hidden_size / n_heads;
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
-    // const int64_t n_local_kv_heads = n_kv_heads / world_size;
 
     // size for local q, k, v
     qkv_sizes_ = {n_local_heads * head_dim,
@@ -203,14 +203,7 @@ class BaichuanDecoderLayerImpl : public torch::nn::Module {
                         torch::Tensor& residual,
                         KVCache& kv_cache,
                         const InputParameters& input_params) {
-    torch::Tensor hidden_states;
-    if (!residual.defined()) {
-      residual = x;
-      torch::Tensor placeholder;
-      hidden_states = input_layernorm_(x, placeholder);
-    } else {
-      hidden_states = input_layernorm_(x, residual);
-    }
+    auto hidden_states = input_layernorm_(x, residual);
 
     hidden_states =
         self_attn_(hidden_states, positions, kv_cache, input_params);
@@ -261,13 +254,14 @@ class BaichuanModelImpl : public torch::nn::Module {
         "embed_tokens",
         ParallelEmbedding(
             args.vocab_size(), args.hidden_size(), parallel_args, options));
-    if (baichuan_type == BaichuanType::Baichuan_7B &&
+    if (baichuan_type == BaichuanType::Baichuan_7B ||
         baichuan_type == BaichuanType::Baichuan2_7B) {
       handler_ = AttentionHandler::create_handler_with_rope(
-          args, /*interleaved=*/true, options);
+          args, /*interleaved=*/false, options);
     } else {
       const torch::Tensor alibi_slopes =
           prepare_alibi_slopes(args.n_heads(), parallel_args);
+
       handler_ = AttentionHandler::create_handler_with_alibi(
           args, alibi_slopes, options);
     }
@@ -414,24 +408,42 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = model_(tokens, positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return model_(tokens, positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     model_->load_state_dict(state_dict.select("model."));
-    // lm_head_->load_state_dict(state_dict.select("lm_head."));
-    lm_head_->load_state_dict(
-        state_dict.select_with_transform("lm_head.", [](torch::Tensor tensor) {
-          return torch::nn::functional::normalize(tensor);
-        }));
+    if (baichuan_type_ == BaichuanType::Baichuan2_13B ||
+        baichuan_type_ == BaichuanType::Baichuan2_7B) {
+      // Baichuan2 normalizes the head weights:
+      // https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat/blob/main/modeling_baichuan.py#L508
+      lm_head_->load_state_dict(state_dict.select_with_transform(
+          "lm_head.",
+          [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+            return torch::nn::functional::normalize(tensor);
+          }));
+    } else {
+      lm_head_->load_state_dict(state_dict.select("lm_head."));
+    }
   }
 
   void verify_loaded_weights() const {
@@ -504,6 +516,10 @@ REGISTER_MODEL_ARGS(baichuan, [&] {
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
   LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
   // LOAD_ARG_OR(tie_word_embeddings, "tie_word_embeddings", false);
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 });
 
 }  // namespace llm::hf

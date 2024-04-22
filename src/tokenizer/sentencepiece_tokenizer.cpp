@@ -37,8 +37,7 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string_view& dir_path,
   // add special tokens and construct special token regex
   if (!args.special_tokens().empty()) {
     const auto vocab_size = sp_processor_.GetPieceSize();
-    const int32_t start_id = args.special_start_id().value_or(vocab_size);
-    load_special_tokens(args.special_tokens(), start_id);
+    load_special_tokens(args.special_tokens());
   }
 
   // construct prefix tokens
@@ -59,26 +58,26 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string_view& dir_path,
 }
 
 void SentencePieceTokenizer::load_special_tokens(
-    const std::vector<std::string>& special_tokens,
-    int32_t start_id) {
-  int32_t next_id = start_id;
-  for (const auto& token : special_tokens) {
+    const std::vector<SpecialToken>& special_tokens) {
+  // for each special token, add to encoder and decoder
+  for (const auto& [token, id] : special_tokens) {
     if (token.empty()) {
       continue;
     }
-    if (!special_token_encoder_.try_emplace(token, next_id).second) {
-      LOG(WARNING) << "Duplicate special token: " << token;
+
+    if (!special_token_encoder_.try_emplace(token, id).second) {
+      LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
     }
-    if (!special_token_decoder_.try_emplace(next_id, token).second) {
-      LOG(WARNING) << "Duplicate special token id: " << next_id;
+
+    if (!special_token_decoder_.try_emplace(id, token).second) {
+      LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
     }
-    ++next_id;
   }
 
   // build special token regex
   std::vector<std::string> escaped_tokens;
   escaped_tokens.reserve(special_tokens.size());
-  for (const auto& token : special_tokens) {
+  for (const auto& [token, id] : special_tokens) {
     if (token.empty()) {
       continue;
     }
@@ -149,7 +148,7 @@ bool SentencePieceTokenizer::encode(const std::string_view& text,
   return encode_internal(input, ids);
 }
 
-void SentencePieceTokenizer::decode_internal(const std::vector<int32_t>& ids,
+void SentencePieceTokenizer::decode_internal(const Slice<int32_t>& ids,
                                              size_t start,
                                              size_t end,
                                              std::stringstream* ss) const {
@@ -174,19 +173,23 @@ void SentencePieceTokenizer::decode_internal(const std::vector<int32_t>& ids,
   (*ss) << spt.text();
 }
 
-std::string SentencePieceTokenizer::decode(
-    const std::vector<int32_t>& ids) const {
+std::string SentencePieceTokenizer::decode(const Slice<int32_t>& ids,
+                                           bool skip_special_tokens) const {
   std::stringstream ss;
   size_t start = 0;
   for (size_t i = 0; i < ids.size(); ++i) {
+    // identify special token
     const auto sit = special_token_decoder_.find(ids[i]);
     if (sit == special_token_decoder_.end()) {
       continue;
     }
     // decode text before special token if exists
     decode_internal(ids, start, i, &ss);
-    // output special token
-    ss << sit->second;
+
+    if (!skip_special_tokens) {
+      // output special token
+      ss << sit->second;
+    }
     start = i + 1;
   }
 

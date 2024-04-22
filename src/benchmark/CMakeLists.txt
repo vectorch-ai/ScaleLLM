@@ -7,6 +7,7 @@ cc_binary(
     # kv_cache_benchmark.cpp
     # attention_benchmark.cpp
     activation_benchmark.cpp
+    layernorm_benchmark.cpp
   DEPS
     :layers
     benchmark::benchmark

@@ -1,5 +1,3 @@
-#include <absl/strings/str_split.h>
-#include <c10/core/Device.h>
 #include <folly/init/Init.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -9,17 +7,15 @@
 #include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
-#include <thread>
 
 #include "common/metrics.h"
-#include "engine/engine.h"
+#include "engine/engine_factory.h"
 #include "grpc_server.h"
 #include "handlers/chat_handler.h"
 #include "handlers/completion_handler.h"
 #include "handlers/models_handler.h"
 #include "http_server.h"
-#include "scheduler/continuous_batching_scheduler.h"
-
+#include "scheduler/continuous_scheduler.h"
 using namespace llm;
 
 DEFINE_string(model_id, "", "hf model name.");
@@ -31,57 +27,31 @@ DEFINE_string(device,
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
               "auto to use all available gpus.");
 
+DEFINE_string(draft_model_path, "", "draft hf model path to the model file.");
+
+DEFINE_string(
+    draft_device,
+    "cuda:0",
+    "Device to run the draft model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
+    "auto to use all available gpus.");
+
 DEFINE_int32(http_port, 9999, "Port for http server.");
 DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 
+DEFINE_int32(max_tokens_per_batch, 512, "max number of tokens per batch");
+DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
+
+DECLARE_int32(num_speculative_tokens);
+
 // NOLINTNEXTLINE
-static std::atomic<bool> running{true};
+static std::atomic<uint32_t> signal_received{0};
 void shutdown_handler(int signal) {
+  // force exit after receiving third signal
+  if (signal_received.fetch_add(1, std::memory_order_relaxed) >= 2) {
+    LOG(ERROR) << "Received too many signals, force aborting...";
+    exit(1);
+  }
   LOG(WARNING) << "Received signal " << signal << ", stopping server...";
-  running.store(false, std::memory_order_relaxed);
-}
-
-std::vector<torch::Device> parse_devices(const std::string& device_str) {
-  std::vector<torch::Device> devices;
-  if (device_str == "auto") {
-    // use all available gpus if any
-    const auto num_gpus = torch::cuda::device_count();
-    if (num_gpus == 0) {
-      LOG(INFO) << "no gpus found, using cpu.";
-      return {torch::kCPU};
-    }
-    devices.reserve(num_gpus);
-    for (int i = 0; i < num_gpus; ++i) {
-      devices.emplace_back(torch::kCUDA, i);
-    }
-    return devices;
-  }
-
-  // parse device string
-  const std::vector<std::string> device_strs = absl::StrSplit(device_str, ',');
-  std::set<torch::DeviceType> device_types;
-  devices.reserve(device_strs.size());
-  for (const auto& device_str : device_strs) {
-    devices.emplace_back(device_str);
-    device_types.insert(devices.back().type());
-  }
-  CHECK(!devices.empty()) << "No devices specified.";
-  CHECK(device_types.size() == 1)
-      << "All devices must be of the same type. Got: " << FLAGS_device;
-  return devices;
-}
-
-std::string to_string(const std::vector<torch::Device>& devices) {
-  std::stringstream ss;
-  for (size_t i = 0; i < devices.size(); ++i) {
-    const auto& device = devices[i];
-    if (i == 0) {
-      ss << device;
-    } else {
-      ss << "," << device;
-    }
-  }
-  return ss.str();
 }
 
 int main(int argc, char** argv) {
@@ -121,25 +91,28 @@ int main(int argc, char** argv) {
       "/metrics", [](HttpServer::Transport& transport) -> bool {
         return transport.send_string(Metrics::Instance().GetString());
       });
-  http_server.register_uri("/health",
-                           [](HttpServer::Transport& transport) -> bool {
-                             if (running.load(std::memory_order_relaxed)) {
-                               return transport.send_string("Ok\n");
-                             }
-                             // 503 Service Unavailable
-                             return transport.send_status(503);
-                           });
-
-  // parse devices
-  const auto devices = parse_devices(FLAGS_device);
-  LOG(INFO) << "Using devices: " << to_string(devices);
+  http_server.register_uri(
+      "/health", [](HttpServer::Transport& transport) -> bool {
+        if (signal_received.load(std::memory_order_relaxed) == 0) {
+          return transport.send_string("Ok\n");
+        }
+        // 503 Service Unavailable
+        return transport.send_status(503);
+      });
 
   // create engine
-  auto engine = std::make_unique<Engine>(devices);
-  CHECK(engine->init(FLAGS_model_path));
+  auto engine = EngineFactory::create(FLAGS_model_path,
+                                      FLAGS_device,
+                                      FLAGS_draft_model_path,
+                                      FLAGS_draft_device);
 
   // create scheduler and grpc handlers
-  auto scheduler = std::make_unique<ContinuousBatchingScheduler>(engine.get());
+  ContinuousScheduler::Options scheduler_options;
+  scheduler_options.max_tokens_per_batch(FLAGS_max_tokens_per_batch)
+      .max_seqs_per_batch(FLAGS_max_seqs_per_batch)
+      .num_speculative_tokens(FLAGS_num_speculative_tokens);
+  auto scheduler =
+      std::make_unique<ContinuousScheduler>(engine.get(), scheduler_options);
   auto completion_handler =
       std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
   auto chat_handler =
@@ -169,7 +142,7 @@ int main(int argc, char** argv) {
   (void)signal(SIGTERM, shutdown_handler);
 
   const auto timeout = absl::Milliseconds(500);
-  while (running.load(std::memory_order_relaxed)) {
+  while (signal_received.load(std::memory_order_relaxed) == 0) {
     // move scheduler forward
     scheduler->step(timeout);
   }

@@ -25,7 +25,7 @@ __global__ void rms_norm_kernel(T* __restrict__ out,
   float variance = 0.0f;
 
   for (int i = tidx; i < n; i += blockDim.x) {
-    const float x = __ldg(&input[bidx * n + i]);
+    const float x = input[bidx * n + i];
     variance += x * x;
   }
   variance = block_reduce_sum<float>(variance);
@@ -36,8 +36,8 @@ __global__ void rms_norm_kernel(T* __restrict__ out,
 
   for (int i = tidx; i < n; i += blockDim.x) {
     const int idx = bidx * n + i;
-    const float x = __ldg(&input[idx]);
-    out[idx] = (T)(x * s_variance * weight[i]);
+    const float x = input[idx];
+    out[idx] = (T)(x * s_variance) * weight[i];
   }
 }
 
@@ -56,6 +56,69 @@ void rms_norm(torch::Tensor& out,
     rms_norm_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
             out.data_ptr<scalar_t>(),
+            input.data_ptr<scalar_t>(),
+            weight.data_ptr<scalar_t>(),
+            epsilon,
+            n);
+  });
+}
+
+// calculate the root mean square norm.
+// equation: x -> w * x / sqrt(E[x^2] + eps)
+// The mean is calculated over the last dimension
+// equilvalent to layernorm module in the T5 style No bias and no subtraction of
+// mean.
+template <typename T>
+__global__ void rms_norm_residual_kernel(T* __restrict__ out,
+                                         T* __restrict__ residual,
+                                         const T* __restrict__ input,
+                                         const T* __restrict__ weight,
+                                         const float epsilon,
+                                         int n) {
+  const int tidx = threadIdx.x;
+  const int bidx = blockIdx.x;
+
+  __shared__ float s_variance;
+  float variance = 0.0f;
+
+  for (int i = tidx; i < n; i += blockDim.x) {
+    const int idx = bidx * n + i;
+    const float r = residual[idx];
+    const float x = r + input[idx];
+    residual[idx] = x;
+    variance += x * x;
+  }
+  variance = block_reduce_sum<float>(variance);
+  if (tidx == 0) {
+    s_variance = rsqrtf(variance / n + epsilon);
+  }
+  __syncthreads();
+
+  for (int i = tidx; i < n; i += blockDim.x) {
+    const int idx = bidx * n + i;
+    const float x = residual[idx];
+    out[idx] = (T)(x * s_variance) * weight[i];
+  }
+}
+
+void rms_norm_residual(torch::Tensor& out,
+                       torch::Tensor& residual,
+                       torch::Tensor input,
+                       torch::Tensor weight,
+                       float epsilon) {
+  DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
+  DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
+  DCHECK(residual.is_contiguous()) << "residual tensor must be contiguous";
+
+  const int n = input.size(1);
+
+  dim3 grid(input.size(0));
+  dim3 block(std::min(n, 1024));
+  DISPATCH_FLOATING_TYPES(input.scalar_type(), "rms_norm_residual_kernel", [&] {
+    rms_norm_residual_kernel<scalar_t>
+        <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
+            out.data_ptr<scalar_t>(),
+            residual.data_ptr<scalar_t>(),
             input.data_ptr<scalar_t>(),
             weight.data_ptr<scalar_t>(),
             epsilon,
@@ -82,8 +145,7 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
 
   // calculate mean of the input.
   for (int i = tidx; i < n; i += blockDim.x) {
-    const int idx = bidx * n + i;
-    mean += __ldg(&input[idx]);
+    mean += input[bidx * n + i];
   }
   mean = block_reduce_sum<float>(mean);
   if (tidx == 0) {
@@ -104,10 +166,9 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
 
   for (int i = tidx; i < n; i += blockDim.x) {
     const int idx = bidx * n + i;
-    float local_out =
-        (__ldg(&input[idx]) - s_mean) * s_variance * __ldg(&weight[i]);
+    float local_out = (input[idx] - s_mean) * s_variance * weight[i];
     if (bias != nullptr) {
-      local_out += __ldg(&bias[i]);
+      local_out += bias[i];
     }
     out[idx] = (T)(local_out);
   }

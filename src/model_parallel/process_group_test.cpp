@@ -1,6 +1,7 @@
 #include "process_group.h"
 
 #include <c10/core/Device.h>
+#include <c10/cuda/CUDAStream.h>
 #include <gtest/gtest.h>
 #include <torch/cuda.h>
 
@@ -56,9 +57,12 @@ TEST(ProcessGroupTest, NCCLAllReduce) {
           const int rank = pg->rank();
           const int world_size = pg->world_size();
           const auto& device = pg->device();
+          torch::DeviceGuard device_guard(device);
+          at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
           for (int i = 0; i <= tensors.size() - world_size; ++i) {
             auto tensor = tensors[i + rank].to(device);
             pg->allreduce(tensor);
+            stream.synchronize();
             auto expected = torch::zeros_like(tensors[i]);
             for (int j = 0; j < world_size; ++j) {
               expected += tensors[i + j];
@@ -81,6 +85,8 @@ TEST(ProcessGroupTest, NCCLAllGather) {
           const int rank = pg->rank();
           const int world_size = pg->world_size();
           const auto& device = pg->device();
+          torch::DeviceGuard device_guard(device);
+          at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
           for (int i = 0; i <= tensors.size() - world_size; ++i) {
             auto tensor = tensors[i + rank].to(device);
             std::vector<torch::Tensor> outputs(world_size);
@@ -88,6 +94,7 @@ TEST(ProcessGroupTest, NCCLAllGather) {
               outputs[j] = torch::empty_like(tensor);
             }
             pg->allgather(tensor, outputs);
+            stream.synchronize();
             for (int j = 0; j < world_size; ++j) {
               EXPECT_TRUE(torch::equal(tensors[i + j], outputs[j].cpu()));
             }

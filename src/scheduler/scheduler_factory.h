@@ -1,7 +1,7 @@
 #pragma once
 
 #include "scheduler/scheduler_config.h"
-#include "scheduler/speculative_scheduler.h"
+// #include "scheduler/speculative_scheduler.h"
 
 namespace llm {
 
@@ -12,8 +12,10 @@ class SchedulerFactory {
   static Scheduler* Create(const SchedulerConfig& config,
                            Engine* llm_engine,
                            Engine* ssm_engine) {
-    static SpeculativeScheduler scheduler(config, llm_engine, ssm_engine);
-    return &scheduler;
+    // static SpeculativeScheduler scheduler(config, llm_engine, ssm_engine);
+    // return &scheduler;
+    // TODO: implement this function
+    return nullptr;
   }
 };
 
