@@ -403,34 +403,6 @@ int init_thread_kv_page_slice_offset(const int tidx, const int n_block_max, cons
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// advances base address of a slice of a paged copy from gmem
-template <typename Kernel_traits>
-__forceinline__ __device__
-int advance_thread_kv_page_slice_offset(const int tidx, const int n_block, const int page_block_size, 
-                            const int* block_table, const int page_stride, const int row_stride) {
-    constexpr int kGmemThreadsPerRow = Kernel_traits::kGmemThreadsPerRow;
-    constexpr int kGmemRowsPerThread = Kernel_traits::kGmemRowsPerThread;
-    constexpr int kBlockN = Kernel_traits::kBlockN;
-
-    const int block_row_offset = tidx / kGmemThreadsPerRow * kGmemRowsPerThread;
-
-    const int global_row_offset_cur = block_row_offset + n_block * kBlockN;
-    const int global_row_offset_next = block_row_offset + (n_block - 1) * kBlockN;
-
-    const int page_offset_cur = global_row_offset_cur % page_block_size;
-    const int page_offset_next = global_row_offset_next % page_block_size;
-
-    const int virtual_page_idx_cur = global_row_offset_cur / page_block_size;
-    const int virtual_page_idx_next = global_row_offset_next / page_block_size;
-
-    const int table_diff = block_table[virtual_page_idx_next] - block_table[virtual_page_idx_cur];
-    const int offset_diff = page_offset_next - page_offset_cur;
-
-    return table_diff * page_stride + offset_diff * row_stride;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 // Layout reshape function. Given a layout with modes ((v1, v2), m, k), returns (v1, v2, k),         
 // where v2 may be a tuple itself, in the case of swizzled smem-backed thread tiles. This ensures
 // that paged and non-paged copies result in equivalently shaped, if not necessarily strided, tensors.

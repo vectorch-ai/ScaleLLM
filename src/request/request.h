@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "sampling_parameter.h"
+#include "sampling/parameters.h"
 #include "sequence.h"
 #include "status.h"
 #include "stopping_criteria.h"
@@ -61,8 +61,16 @@ using OnFinish =
                        const Status& status,
                        const Statistics& stats)>;
 
+using OnStreamDelta = std::function<bool(size_t index,
+                                         bool first_message,
+                                         const std::string& delta,
+                                         FinishReason reason)>;
+
 // Function to call when a stream request is finished.
 using OnStreamFinish = std::function<bool(const Status& status)>;
+
+// Function to check rpc health.
+using IsRpcOK = std::function<bool()>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
@@ -71,13 +79,25 @@ using OnStreamFinish = std::function<bool(const Status& status)>;
 // request's handling.
 struct Request final {
  public:
+  // caller needs to gurantee prompt's lifecycle
+  Request(const std::string& id,
+          const std::string_view& prompt,
+          size_t n,
+          const std::vector<int32_t>& prompt_tokens);
+
   Request(const std::string& id, const std::vector<int32_t>& prompt_tokens);
 
-  void add_sequence(OnStream on_stream = nullptr);
+  void add_sequence();
 
   bool is_finished() const;
 
+  bool is_cancelled() const;
+
   size_t num_prompt_tokens() const { return prompt_tokens.size(); }
+
+  bool should_expand_sequences() const;
+
+  void expand_sequences();
 
   // The unique id of the request.
   // NOLINTNEXTLINE
@@ -86,6 +106,14 @@ struct Request final {
   // Scheduled time of the request.
   // NOLINTNEXTLINE
   const int64_t created_time;
+
+  // prompt text string
+  // NOLINTNEXTLINE
+  const std::string_view prompt;
+
+  // the number of sequences to generate completions for the prompt.
+  // NOLINTNEXTLINE
+  const size_t num_seqs;
 
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
@@ -113,8 +141,14 @@ struct Request final {
   // function to call when the request is finished.
   OnFinish on_finish;
 
+  // function to call when a delta is generated.
+  OnStreamDelta on_stream_delta;
+
   // function to call when a stream request is finished.
   OnStreamFinish on_stream_finish;
+
+  // function to check rpc health.
+  IsRpcOK is_rpc_ok;
 };
 
 // Compare two request contexts based on priority then scheduled time.

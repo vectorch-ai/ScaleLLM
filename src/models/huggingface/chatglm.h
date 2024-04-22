@@ -3,6 +3,7 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
+#include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
@@ -10,9 +11,10 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
+#include "tokenizer/tokenizer_args.h"
 
 // ChatGLM model compatible with huggingface weights
 
@@ -88,7 +90,7 @@ class ChatGLMAttentionImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
-    const int64_t head_dim = hidden_size / n_heads;
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
     const int64_t n_local_kv_heads = n_kv_heads / world_size;
 
@@ -278,7 +280,9 @@ class ChatGLMModelImpl : public torch::nn::Module {
   ChatGLMModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
                    const ParallelArgs& parallel_args,
-                   const torch::TensorOptions& options) {
+                   const torch::TensorOptions& options)
+      : post_layernorm_(args.post_layernorm()),
+        use_rms_norm_(args.use_rms_norm()) {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/true, options);
 
@@ -291,11 +295,19 @@ class ChatGLMModelImpl : public torch::nn::Module {
       layers_.push_back(block);
       blocks_->push_back(block);
     }
-    final_layernorm_ = register_module("final_layernorm",
-                                       LayerNorm(args.hidden_size(),
-                                                 args.layer_norm_eps(),
-                                                 /*bias=*/false,
-                                                 options));
+    if (post_layernorm_) {
+      if (use_rms_norm_) {
+        final_rmsnorm_ = register_module(
+            "final_layernorm",
+            RMSNorm(args.hidden_size(), args.layer_norm_eps(), options));
+      } else {
+        final_layernorm_ = register_module("final_layernorm",
+                                           LayerNorm(args.hidden_size(),
+                                                     args.layer_norm_eps(),
+                                                     /*bias=*/false,
+                                                     options));
+      }
+    }
   }
 
   // tokens: [num_tokens]
@@ -308,7 +320,15 @@ class ChatGLMModelImpl : public torch::nn::Module {
       auto& layer = layers_[i];
       h = layer(h, positions, kv_caches[i], input_params);
     }
-    return final_layernorm_(h);
+    // apply final layernorm if needed
+    if (post_layernorm_) {
+      if (use_rms_norm_) {
+        h = final_rmsnorm_(h);
+      } else {
+        h = final_layernorm_(h);
+      }
+    }
+    return h;
   }
 
   // load the weight from the checkpoint
@@ -318,7 +338,14 @@ class ChatGLMModelImpl : public torch::nn::Module {
       layers_[i]->load_state_dict(
           state_dict.select("layers." + std::to_string(i) + "."));
     }
-    final_layernorm_->load_state_dict(state_dict.select("final_layernorm."));
+    if (post_layernorm_) {
+      if (use_rms_norm_) {
+        final_rmsnorm_->load_state_dict(state_dict.select("final_layernorm."));
+      } else {
+        final_layernorm_->load_state_dict(
+            state_dict.select("final_layernorm."));
+      }
+    }
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -326,7 +353,13 @@ class ChatGLMModelImpl : public torch::nn::Module {
       layers_[i]->verify_loaded_weights(prefix + "layers." + std::to_string(i) +
                                         ".");
     }
-    final_layernorm_->verify_loaded_weights(prefix + "final_layernorm.");
+    if (post_layernorm_) {
+      if (use_rms_norm_) {
+        final_rmsnorm_->verify_loaded_weights(prefix + "final_layernorm.");
+      } else {
+        final_layernorm_->verify_loaded_weights(prefix + "final_layernorm.");
+      }
+    }
   }
 
  private:
@@ -339,7 +372,11 @@ class ChatGLMModelImpl : public torch::nn::Module {
   std::vector<ChatGLMBlock> layers_;
 
   // final layer norm
+  RMSNorm final_rmsnorm_{nullptr};
   LayerNorm final_layernorm_{nullptr};
+
+  bool post_layernorm_ = false;
+  bool use_rms_norm_ = false;
 };
 TORCH_MODULE(ChatGLMModel);
 
@@ -368,14 +405,24 @@ class ChatGLMForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor positions,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h =
-        model_(word_embeddings_(tokens), positions, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return model_(word_embeddings_(tokens), positions, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return output_layer_(h);
   }
 
@@ -438,29 +485,33 @@ REGISTER_CAUSAL_MODEL(chatglm, ChatGLMForCausalLM);
 REGISTER_DEFAULT_CHAT_TEMPLATE(chatglm, ChatGLMChatTemplate);
 REGISTER_MODEL_ARGS(chatglm, [&] {
   // example config:
-  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/config.json
+  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/configuration_chatglm.py
   LOAD_ARG_OR(model_type, "model_type", "chatglm");
-  LOAD_ARG_OR(dtype, "torch_dtype", "");
+  LOAD_ARG_OR(dtype, "torch_dtype", "float16");
   LOAD_ARG_OR(vocab_size, "padded_vocab_size", 65024);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   LOAD_ARG_OR(intermediate_size, "ffn_hidden_size", 13696);
   LOAD_ARG_OR(n_layers, "num_layers", 28);
   LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
-  LOAD_ARG_OR(use_rms_norm, "rmsnorm", false);
+  LOAD_ARG_OR(use_rms_norm, "rmsnorm", true);
   LOAD_ARG_OR(layer_norm_eps, "layernorm_epsilon", 1e-5);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(residual_post_layernorm,
               "apply_residual_connection_post_layernorm",
-              false);
+              true);
   LOAD_ARG_OR(max_position_embeddings, "seq_length", 8192);
+  LOAD_ARG_OR(linear_bias, "add_bias_linear", false);
+  LOAD_ARG_OR(qkv_bias, "add_qkv_bias", false);
+  LOAD_ARG_OR(post_layernorm, "post_layer_norm", true);
 
-  // assign kv heads from multi_query_group_num if multi_query_attention is used
+  // assign kv heads from multi_query_group_num if multi_query_attention is
+  // used
   LOAD_ARG_OR_FUNC(n_kv_heads, "num_kv_attention_heads", [&] {
     std::optional<int64_t> n_kv_heads;
     // read kv heads from multi_query_group_num
     const bool use_mqa = json.value_or<bool>("multi_query_attention", false);
     if (use_mqa) {
-      n_kv_heads = json.value<int64_t>("multi_query_group_num");
+      n_kv_heads = json.value_or<int64_t>("multi_query_group_num", 1);
     }
     return n_kv_heads;
   });
@@ -468,8 +519,24 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
   // rotary position embedding related args
   LOAD_ARG_OR(rotary_pct, "rotary_pct", 0.5f);
   LOAD_ARG_OR_FUNC(rope_theta, "rope_theta", [&] {
+    // 10000 * rope_ratio
     const float rope_ratio = json.value_or<float>("rope_ratio", 1.0f);
     return rope_ratio * 10000.0f;
+  });
+  LOAD_ARG_OR_FUNC(rotary_dim, "rotary_dim", [&] {
+    // set rotary dim by following the original implementation
+    // https://huggingface.co/THUDM/chatglm3-6b/blob/main/modeling_chatglm.py#L751
+    const auto kv_channels = json.value<int64_t>("kv_channels");
+    if (kv_channels.has_value()) {
+      return kv_channels.value();
+    }
+    const int64_t hidden_size = json.value_or<int64_t>("hidden_size", 4096);
+    const int64_t n_heads = json.value_or<int64_t>("num_attention_heads", 32);
+    return hidden_size / n_heads;
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 
   // stop token ids: "</s>", "<|user|>", "<|assistant|>", "<|observation|>"
@@ -480,17 +547,20 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
 // Register tokenizer args since chatglm is using sentencepiece tokenizer.
 REGISTER_TOKENIZER_ARGS(chatglm, [&] {
   SET_ARG(tokenizer_type, "sentencepiece");
-  // adapted from
-  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/tokenization_chatglm.py
   SET_ARG(vocab_file, "tokenizer.model");
 
   // set special tokens
-  // clang-format off
-  const std::vector<std::string> special_tokens({
-    "[MASK]", "[gMASK]", "[sMASK]", "sop", "eop",
-    "<|system|>", "<|user|>", "<|assistant|>", "<|observation|>"
-  });
-  // clang-format on
+  // ref to:
+  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/tokenizer_config.json
+  const std::vector<SpecialToken> special_tokens({{"[MASK]", 64789},
+                                                  {"[gMASK]", 64790},
+                                                  {"[sMASK]", 64791},
+                                                  {"sop", 64792},
+                                                  {"eop", 64793},
+                                                  {"<|system|>", 64794},
+                                                  {"<|user|>", 64795},
+                                                  {"<|assistant|>", 64796},
+                                                  {"<|observation|>", 64797}});
   SET_ARG(special_tokens, special_tokens);
   SET_ARG(prefix_tokens, std::vector<std::string>({"[gMASK]", "sop"}));
 });

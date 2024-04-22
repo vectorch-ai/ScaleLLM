@@ -5,7 +5,7 @@
 
 #include "layers/attention/handler.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 
 DECLARE_bool(disable_custom_kernels);
 

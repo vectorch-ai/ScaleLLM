@@ -102,7 +102,7 @@ void GrpcServer::handle_rpcs() {
   // Block waiting to read the next event from the completion queue.
   // returns if there is any kind of event or cq_ is shutting down.
   while (cq_->Next(&tag, &rpc_ok)) {
-    ICallData* call_data = static_cast<ICallData*>(tag);
+    CallData* call_data = static_cast<CallData*>(tag);
     if (!call_data->proceed(rpc_ok)) {
       // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
       delete call_data;

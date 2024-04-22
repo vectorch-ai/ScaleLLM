@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include "tokenizer/tokenizer_args.h"
+
 namespace llm {
 
 TEST(TiktokenTokenizerTest, EncodeDecodeTest) {
@@ -16,8 +18,14 @@ TEST(TiktokenTokenizerTest, EncodeDecodeTest) {
       39, 68, 75, 75, 78, 11, 289, 269, 75, 67, 0};
   EXPECT_EQ(ids, desired_ids);
 
-  const auto text = tokenizer.decode(ids);
-  EXPECT_EQ(text, test_text);
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(text, test_text);
+  }
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/true);
+    EXPECT_EQ(text, test_text);
+  }
 }
 
 TEST(TiktokenTokenizerTest, CJKTest) {
@@ -34,18 +42,24 @@ TEST(TiktokenTokenizerTest, CJKTest) {
   // clang-format on
   EXPECT_EQ(ids, desired_ids);
 
-  const auto decoded_text = tokenizer.decode(ids);
-  EXPECT_EQ(decoded_text, test_text);
+  {
+    const auto decoded_text =
+        tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(decoded_text, test_text);
+  }
+  {
+    const auto decoded_text =
+        tokenizer.decode(ids, /*skip_special_tokens=*/true);
+    EXPECT_EQ(decoded_text, test_text);
+  }
 }
 
 TEST(TiktokenTokenizerTest, PatternTest) {
-  const std::vector<std::string> special_tokens;
   const std::string pattern =
       R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+[^\S]|\s+)";
   TokenizerArgs args;
   args.vocab_file() = "test.tiktoken";
   args.pattern() = pattern;
-  args.special_tokens() = special_tokens;
   TiktokenTokenizer tokenizer("data", args);
   EXPECT_EQ(tokenizer.vocab_size(), 300);
   const std::string test_text = "Hello, world!";
@@ -55,29 +69,46 @@ TEST(TiktokenTokenizerTest, PatternTest) {
       39, 68, 75, 75, 78, 11, 289, 269, 75, 67, 0};
   EXPECT_EQ(ids, desired_ids);
 
-  const auto text = tokenizer.decode(ids);
-  EXPECT_EQ(text, test_text);
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(text, test_text);
+  }
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/true);
+    EXPECT_EQ(text, test_text);
+  }
 }
 
 TEST(TiktokenTokenizerTest, SpecialTokenTest) {
-  // clang-format off
-  std::vector<std::string> special_tokens = {
-    "[gMASK]", "[sMASK]", "sop", "eop",
-    "<|system|>", "<|user|>", "<|assistant|>", "<|observation|>"
-  };
-  // clang-format on
+  std::vector<SpecialToken> special_tokens = {{"[gMASK]", 300},
+                                              {"[sMASK]", 301},
+                                              {"sop", 302},
+                                              {"eop", 303},
+                                              {"<|system|>", 304},
+                                              {"<|user|>", 305},
+                                              {"<|assistant|>", 306},
+                                              {"<|observation|>", 307}};
   TokenizerArgs args;
   args.vocab_file() = "test.tiktoken";
   args.special_tokens() = special_tokens;
   TiktokenTokenizer tokenizer("data", args);
   EXPECT_EQ(tokenizer.vocab_size(), 300 + special_tokens.size());
   // test encode each special token
-  for (const auto& token : special_tokens) {
+  for (const auto& [token, id] : special_tokens) {
     std::vector<int> ids;
     ASSERT_TRUE(tokenizer.encode(token, &ids));
     EXPECT_EQ(ids.size(), 1);
-    const auto decoded_token = tokenizer.decode(ids);
-    EXPECT_EQ(decoded_token, token);
+    EXPECT_EQ(ids[0], id);
+    {
+      const auto decoded_token =
+          tokenizer.decode(ids, /*skip_special_tokens=*/false);
+      EXPECT_EQ(decoded_token, token);
+    }
+    {
+      const auto decoded_token =
+          tokenizer.decode(ids, /*skip_special_tokens=*/true);
+      EXPECT_EQ(decoded_token, "");
+    }
   }
 
   // test encode text with special tokens
@@ -93,9 +124,14 @@ TEST(TiktokenTokenizerTest, SpecialTokenTest) {
   };
   // clang-format on
   EXPECT_EQ(ids, desired_ids);
-
-  const auto text = tokenizer.decode(ids);
-  EXPECT_EQ(text, test_text);
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(text, test_text);
+  }
+  {
+    const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/true);
+    EXPECT_EQ(text, " Hello world  Hello ");
+  }
 }
 
 }  // namespace llm

@@ -26,8 +26,7 @@ TiktokenTokenizer::TiktokenTokenizer(const std::string_view& dir_path,
   // add special tokens and construct special token regex
   if (!args.special_tokens().empty()) {
     const auto vocab_size = encoder_.size();
-    const int32_t start_id = args.special_start_id().value_or(vocab_size);
-    load_special_tokens(args.special_tokens(), start_id);
+    load_special_tokens(args.special_tokens());
   }
 
   // construct regex
@@ -54,26 +53,26 @@ TiktokenTokenizer::TiktokenTokenizer(const std::string_view& dir_path,
 }
 
 void TiktokenTokenizer::load_special_tokens(
-    const std::vector<std::string>& special_tokens,
-    int32_t start_id) {
-  int32_t next_id = start_id;
-  for (const auto& token : special_tokens) {
+    const std::vector<SpecialToken>& special_tokens) {
+  // for each special token, add to encoder and decoder
+  for (const auto& [token, id] : special_tokens) {
     if (token.empty()) {
       continue;
     }
-    if (!special_token_encoder_.try_emplace(token, next_id).second) {
-      LOG(WARNING) << "Duplicate special token: " << token;
+
+    if (!special_token_encoder_.try_emplace(token, id).second) {
+      LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
     }
-    if (!special_token_decoder_.try_emplace(next_id, token).second) {
-      LOG(WARNING) << "Duplicate special token id: " << next_id;
+
+    if (!special_token_decoder_.try_emplace(id, token).second) {
+      LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
     }
-    ++next_id;
   }
 
   // build special token regex
   std::vector<std::string> escaped_tokens;
   escaped_tokens.reserve(special_tokens.size());
-  for (const auto& token : special_tokens) {
+  for (const auto& [token, id] : special_tokens) {
     if (token.empty()) {
       continue;
     }
@@ -269,13 +268,16 @@ bool TiktokenTokenizer::encode(const std::string_view& text,
   return true;
 }
 
-std::string TiktokenTokenizer::decode(const std::vector<int32_t>& ids) const {
+std::string TiktokenTokenizer::decode(const Slice<int32_t>& ids,
+                                      bool skip_special_tokens) const {
   std::stringstream ss;
   for (const auto& id : ids) {
     // encode special token
     const auto sit = special_token_decoder_.find(id);
     if (sit != special_token_decoder_.end()) {
-      ss << sit->second;
+      if (!skip_special_tokens) {
+        ss << sit->second;
+      }
       continue;
     }
 

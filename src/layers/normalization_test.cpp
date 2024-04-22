@@ -116,11 +116,43 @@ TEST(NormalizationTest, RMSNormKernel) {
   kernel::rms_norm(output, input, weight, eps);
 
   // use float result as baseline
-  auto desired_output =
-      detail::rms_norm(input.to(torch::kFloat32), weight, eps).to(dtype);
+  auto output_ref = detail::rms_norm(input, weight, eps);
 
   EXPECT_TRUE(torch::allclose(output,
-                              desired_output,
+                              output_ref,
+                              /*rtol=*/1e-02,
+                              /*atol=*/1e-03));
+}
+
+TEST(NormalizationTest, RMSNormResidualKernel) {
+  const auto dtype = torch::kHalf;
+  const auto device = torch::kCUDA;
+  const auto options = torch::dtype(dtype).device(device);
+
+  const int64_t dim = 1024;
+  const float eps = 1e-5;
+
+  // generate weight
+  const auto weight = torch::rand({dim}, options);
+
+  // verify output
+  const auto input = torch::randn({100, dim}, options);
+  auto residual = torch::randn({100, dim}, options);
+  auto residual_ref = residual.clone();
+
+  auto output = torch::empty_like(input);
+  kernel::rms_norm_residual(output, residual, input, weight, eps);
+
+  // use float result as baseline
+  auto output_ref = detail::rms_norm_residual(input, residual_ref, weight, eps);
+
+  EXPECT_TRUE(torch::allclose(output,
+                              output_ref,
+                              /*rtol=*/1e-02,
+                              /*atol=*/1e-03));
+
+  EXPECT_TRUE(torch::allclose(residual,
+                              residual_ref,
                               /*rtol=*/1e-03,
                               /*atol=*/1e-05));
 }

@@ -5,18 +5,20 @@ cc_library(
   NAME 
     request
   HDRS 
-    sampling_parameter.h 
     stopping_criteria.h
     sequence.h
     status.h
     request.h
   SRCS 
+    stopping_criteria.cpp
     sequence.cpp
     request.cpp
   DEPS
+    :memory
     glog::glog
     absl::strings
     absl::time
+    torch
 )
 
 

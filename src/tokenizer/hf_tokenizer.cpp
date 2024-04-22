@@ -40,11 +40,12 @@ bool HFTokenizer::encode(const std::string_view& text,
   return true;
 }
 
-std::string HFTokenizer::decode(const std::vector<int32_t>& ids) const {
+std::string HFTokenizer::decode(const Slice<int32_t>& ids,
+                                bool skip_special_tokens) const {
   tokenizer_decode(handle_,
                    reinterpret_cast<const uint32_t*>(ids.data()),
                    ids.size(),
-                   /*skip_special_tokens=*/true);
+                   skip_special_tokens);
   const char* data = nullptr;
   size_t len = 0;
   tokenizer_get_decode_str(handle_, &data, &len);

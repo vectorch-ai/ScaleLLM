@@ -10,9 +10,9 @@
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
-#include "models/input_parameters.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
+#include "models/parameters.h"
 
 // bloom model compatible with huggingface weights
 
@@ -87,7 +87,7 @@ class BloomAttentionImpl : public torch::nn::Module {
     const int64_t n_heads = args.n_heads();
     const int64_t n_local_heads = n_heads / world_size;
     hidden_size_ = args.hidden_size();
-    head_dim_ = hidden_size_ / n_heads;
+    head_dim_ = args.head_dim();
 
     // register submodules
     query_key_value_ =
@@ -389,13 +389,24 @@ class BloomForCausalLMImpl : public torch::nn::Module {
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
-  torch::Tensor forward(torch::Tensor tokens,
-                        torch::Tensor /*positions*/,
+  // returns: [num_tokens, hidden_size]
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& /*positions*/,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    auto h = model_(tokens, kv_caches, input_params);
-    // select last token for each sequence
-    h = h.index_select(/*dim=*/0, input_params.last_token_idxes);
+    return model_(tokens, kv_caches, input_params);
+  }
+
+  // hidden_states: [num_tokens, hidden_size]
+  // seleted_idxes: [num_tokens]
+  // returns: [num_tokens, vocab_size]
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& seleted_idxes) {
+    // select tokens if provided
+    auto h = hidden_states;
+    if (seleted_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, seleted_idxes);
+    }
     return lm_head_(h);
   }
 
@@ -439,6 +450,10 @@ REGISTER_MODEL_ARGS(bloom, [&] {
 
   LOAD_ARG_OR_FUNC(intermediate_size, "intermediate_size", [&] {
     return args->hidden_size() * 4;
+  });
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
   });
 });
 

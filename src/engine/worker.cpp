@@ -1,5 +1,6 @@
 #include "worker.h"
 
+#include <ATen/cuda/CUDAGraph.h>
 #include <c10/core/Device.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <folly/Unit.h>
@@ -14,18 +15,24 @@
 #include "memory/kv_cache.h"
 #include "memory/memory.h"
 #include "model_loader/state_dict.h"
-#include "models/input_parameters.h"
+#include "models/parameters.h"
 #include "sampling/logits_processor.h"
 #include "sampling/sampler.h"
 
 namespace llm {
 
-Worker::Worker(const ParallelArgs& parallel_args, const torch::Device& device)
-    : parallel_args_(parallel_args), device_(device) {}
+Worker::Worker(const ParallelArgs& parallel_args,
+               const torch::Device& device,
+               const ModelRunner::Options& runner_options)
+    : parallel_args_(parallel_args),
+      device_(device),
+      runner_options_(runner_options) {}
 
 bool Worker::init_model(torch::ScalarType dtype,
                         const ModelArgs& args,
                         const QuantArgs& quant_args) {
+  CHECK(model_ == nullptr) << "Model is already initialized.";
+
   // initialize model
   args_ = args;
   dtype_ = dtype;
@@ -37,6 +44,8 @@ bool Worker::init_model(torch::ScalarType dtype,
 
 bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
   CHECK(model_ != nullptr) << "Model is not initialized.";
+  CHECK(kv_caches_.empty()) << "KV caches are already initialized.";
+
   // create a KVCache for each layer
   const int64_t num_layers = args_.n_layers();
   kv_caches_.reserve(num_layers);
@@ -50,6 +59,17 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
   return true;
 }
 
+bool Worker::capture_cuda_graphs() {
+  CHECK(model_ != nullptr) << "Model is not initialized.";
+  CHECK(!kv_caches_.empty()) << "KV caches are not initialized.";
+
+  model_runner_ =
+      std::make_unique<ModelRunner>(model_.get(), device_, runner_options_);
+  // capture graphs if needed
+  model_runner_->capture_cuda_graphs(kv_caches_);
+  return true;
+}
+
 void Worker::load_state_dict(const StateDict& state_dict) {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   model_->load_state_dict(state_dict);
@@ -60,30 +80,9 @@ void Worker::verify_loaded_weights() const {
   model_->verify_loaded_weights();
 }
 
-std::tuple<int64_t, int64_t> Worker::profile_device_memory(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params) {
+std::tuple<int64_t, int64_t> Worker::profile_device_memory() {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   CHECK(device_.is_cuda()) << "Memory profiling is only supported on GPU.";
-
-  torch::DeviceGuard device_guard(device_);
-
-  // initialize dummy kv caches for profiling
-  std::vector<KVCache> dummy_kv_caches(args_.n_layers());
-
-  // release all unocupied cached memory
-  // torch::cuda::empty_cache();
-  c10::cuda::CUDACachingAllocator::emptyCache();
-
-  // call model forward and discard the result
-  model_->forward(flatten_tokens.to(device_),
-                  flatten_positions.to(device_),
-                  dummy_kv_caches,
-                  params.to(device_));
-
-  // waits for all kernels in all streams to complete.
-  torch::cuda::synchronize();
 
   const auto available_memory = memory::available_memory(device_);
   const auto total_memory = memory::total_memory(device_);
@@ -91,135 +90,75 @@ std::tuple<int64_t, int64_t> Worker::profile_device_memory(
   return {available_memory, total_memory};
 }
 
-OutputParameters Worker::execute_model(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params,
-    const SamplingParameters& sampling_params) {
+ModelOutput Worker::execute_model(const ModelInput& inputs) {
   torch::DeviceGuard device_guard(device_);
-
-  torch::Device input_device = flatten_tokens.device();
 
   // all tensors should be on the same device as model
-  flatten_tokens = flatten_tokens.to(device_);
-  flatten_positions = flatten_positions.to(device_);
-  InputParameters d_params = params.to(device_);
+  auto flatten_tokens = inputs.token_ids.to(device_);
+  auto flatten_positions = inputs.positions.to(device_);
+  InputParameters params = inputs.input_params.to(device_);
 
-  // call model forward and return the result
-  auto logits =
-      model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
+  // call model runner forward to get hidden states
+  auto hidden_states = model_runner_->forward(
+      flatten_tokens, flatten_positions, kv_caches_, params);
 
-  // waits for all kernels in all streams to complete.
-  torch::cuda::synchronize();
+  // waits for all kernels in current streams to complete.
+  at::cuda::getCurrentCUDAStream().synchronize();
 
-  // create and call logits processors
-  const auto options = torch::dtype(dtype_).device(device_);
-  auto logits_processor = LogitsProcessor::create(sampling_params, options);
-  // apply logits processors to logits in-place
-  logits_processor->forward(logits,
-                            d_params.token_ids,
-                            d_params.token_counts,
-                            d_params.token_ids_lens);
+  // prepare model output
+  ModelOutput output;
+  if (inputs.sampling_params.selected_token_idxes.defined()) {
+    SamplingParameters sampling_params =
+        inputs.sampling_params.to(device_, dtype_);
+    // call model to get logits
+    torch::Tensor logits =
+        model_->logits(hidden_states, sampling_params.selected_token_idxes);
 
-  // create and call sampler
-  auto sampler = std::make_unique<Sampler>(sampling_params, options);
-  auto next_tokens = sampler->forward(logits);
+    // create and call logits processors
+    auto logits_processor = LogitsProcessor::create(sampling_params);
+    // apply logits processors to logits (in place)
+    logits = logits_processor->forward(logits,
+                                       sampling_params.unique_token_ids,
+                                       sampling_params.unique_token_counts,
+                                       sampling_params.unique_token_ids_lens);
+    // set logits to output
+    output.logits = logits;
 
-  // prepare output parameters
-  OutputParameters output_params;
-  output_params.next_tokens = next_tokens.to(input_device);
-  return output_params;
-}
+    auto sampler = std::make_unique<Sampler>(sampling_params.do_sample);
+    // select sample logits
+    auto sample_logits =
+        logits.index_select(/*dim=*/0, sampling_params.sample_idxes);
+    auto sample_output = sampler->forward(sample_logits);
+    // set sample output to output
+    output.sample_output = sample_output;
 
-OutputParameters Worker::validate(torch::Tensor flatten_tokens,
-                                  torch::Tensor flatten_positions,
-                                  const InputParameters& params,
-                                  const SamplingParameters& sampling_params) {
-  torch::DeviceGuard device_guard(device_);
-
-  torch::Device input_device = flatten_tokens.device();
-
-  flatten_tokens = flatten_tokens.to(device_);
-  flatten_positions = flatten_positions.to(device_);
-  InputParameters d_params = params.to(device_);
-
-  auto logits =
-      model_->forward(flatten_tokens, flatten_positions, kv_caches_, d_params);
-
-  const auto options = torch::dtype(dtype_).device(device_);
-  auto logits_processor = LogitsProcessor::create(sampling_params, options);
-
-  // TODO: need to support validate multiple speculative steps
-  logits_processor->forward(logits,
-                            d_params.token_ids,
-                            d_params.token_counts,
-                            d_params.token_ids_lens);
-
-  auto sampler = std::make_unique<Sampler>(sampling_params, options);
-  auto next_tokens = sampler->forward(logits);
-
-  OutputParameters output_params;
-  output_params.next_tokens = next_tokens.to(input_device);
-  return output_params;
+    // carry over the sampling params
+    output.do_sample = sampling_params.do_sample;
+  }
+  return output;
 }
 
 folly::SemiFuture<std::tuple<int64_t, int64_t>>
-Worker::profile_device_memory_async(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params) {
+Worker::profile_device_memory_async() {
   folly::Promise<std::tuple<int64_t, int64_t>> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule([this,
-                        tokens = flatten_tokens,
-                        positions = flatten_positions,
-                        parameters = params,
-                        promise = std::move(promise)]() mutable {
-    const auto output =
-        this->profile_device_memory(tokens, positions, parameters);
+  threadpool_.schedule([this, promise = std::move(promise)]() mutable {
+    const auto output = this->profile_device_memory();
     promise.setValue(output);
   });
   return future;
 }
 
-folly::SemiFuture<OutputParameters> Worker::execute_model_async(
-    torch::Tensor flatten_tokens,     // [num_tokens]
-    torch::Tensor flatten_positions,  // [num_tokens]
-    const InputParameters& params,
-    const SamplingParameters& sampling_params) {
-  folly::Promise<OutputParameters> promise;
+folly::SemiFuture<ModelOutput> Worker::execute_model_async(
+    const ModelInput& inputs) {
+  folly::Promise<ModelOutput> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule([this,
-                        tokens = flatten_tokens,
-                        positions = flatten_positions,
-                        parameters = params,
-                        sampling_params = sampling_params,
-                        promise = std::move(promise)]() mutable {
-    // run the model on the given input in working thread
-    const auto output =
-        this->execute_model(tokens, positions, parameters, sampling_params);
-    promise.setValue(output);
-  });
-  return future;
-}
-
-folly::SemiFuture<OutputParameters> Worker::validate_async(
-    torch::Tensor flatten_tokens,
-    torch::Tensor flatten_positions,
-    const InputParameters& params,
-    const SamplingParameters& sampling_params) {
-  folly::Promise<OutputParameters> promise;
-  auto future = promise.getSemiFuture();
-  threadpool_.schedule([this,
-                        tokens = flatten_tokens,
-                        positions = flatten_positions,
-                        parameters = params,
-                        sampling_params = sampling_params,
-                        promise = std::move(promise)]() mutable {
-    const auto output =
-        this->validate(tokens, positions, parameters, sampling_params);
-    promise.setValue(output);
-  });
+  threadpool_.schedule(
+      [this, inputs = inputs, promise = std::move(promise)]() mutable {
+        // run the model on the given input in working thread
+        const auto output = this->execute_model(inputs);
+        promise.setValue(output);
+      });
   return future;
 }
 
@@ -249,6 +188,16 @@ folly::SemiFuture<bool> Worker::init_kv_cache_async(
         const bool success = this->init_kv_cache(kv_cache_shape);
         promise.setValue(success);
       });
+  return future;
+}
+
+folly::SemiFuture<bool> Worker::capture_cuda_graphs_async() {
+  folly::Promise<bool> promise;
+  auto future = promise.getSemiFuture();
+  threadpool_.schedule([this, promise = std::move(promise)]() mutable {
+    const bool success = this->capture_cuda_graphs();
+    promise.setValue(success);
+  });
   return future;
 }
 

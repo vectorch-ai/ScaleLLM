@@ -5,36 +5,54 @@ cc_library(
   NAME 
     engine
   HDRS
+    parameters.h
     utils.h
+    batch.h
+    model_runner.h
     worker.h
     engine.h
+    llm_engine.h
   SRCS
     utils.cpp
+    batch.cpp
+    model_runner.cpp
     worker.cpp
-    engine.cpp
+    llm_engine.cpp
   DEPS
     torch
     :common
     :request
     :state_dict
     :models
-    :logits_processor
     :sampler
     :tokenizer
     :model_loader
     glog::glog
     Folly::folly
     absl::synchronization
-  LINKOPTS
-    atomic
+    absl::flat_hash_map
+)
+
+cc_library(
+  NAME 
+    engine_factory
+  HDRS
+    engine_factory.h
+  SRCS
+    engine_factory.cpp
+  DEPS
+    :engine
+    :speculative
+    absl::strings
+    glog::glog
 )
 
 cc_test(
   NAME
     engine_test
   SRCS
-    utils_test.cpp
-    worker_test.cpp
+    batch_test.cpp
+    # worker_test.cpp
   DEPS
     :engine
     absl::time

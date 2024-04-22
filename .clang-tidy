@@ -35,6 +35,7 @@ Checks: >
   -cppcoreguidelines-non-private-member-variables-in-classes,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-owning-memory,
 
 
 HeaderFilterRegex: '.*'

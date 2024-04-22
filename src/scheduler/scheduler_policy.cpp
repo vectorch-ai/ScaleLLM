@@ -56,7 +56,8 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
   std::vector<Request*> ready_queue;
   for (Request* request : running_queue_) {
     if (request->is_finished()) {
-      response_handler_->on_request_finish(request);
+      response_handler_->on_request_finish(std::unique_ptr<Request>(request));
+      continue;
     }
     ready_queue.emplace_back(request);
   }
@@ -88,7 +89,7 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
       if (sequence.is_finished()) {
         continue;
       }
-      if (block_manager_->allocate_slots_for_sequence(&sequence)) {
+      if (block_manager_->allocate_blocks_for(&sequence)) {
         sequences.emplace_back(&sequence);
       }
     }
@@ -108,7 +109,7 @@ std::vector<Sequence*> FCFSSchedulerPolicy::build_batch() {
     blocking_queue_.pop_back();
 
     // TODO: optimize the logic to only release blocks for sequences one by one
-    response_handler_->on_request_finish(request);
+    response_handler_->on_request_finish(std::unique_ptr<Request>(request));
   }
   return running_batch;
 }

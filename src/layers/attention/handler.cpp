@@ -26,6 +26,11 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_alibi(
   const int64_t head_dim = args.hidden_size() / args.n_heads();
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
+  if (alibi_slopes.has_value()) {
+    // move alibi slopes to the same device as the model
+    alibi_slopes = alibi_slopes.value().to(options.device());
+  }
+
   // check if the user specified the attention handler
   if (boost::iequals(FLAGS_attention_handler, "pytorch")) {
     return std::make_unique<RefHandler>(scale, alibi_slopes);
@@ -56,7 +61,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
     const ModelArgs& args,
     bool interleaved,
     const torch::TensorOptions& options) {
-  const int64_t head_dim = args.hidden_size() / args.n_heads();
+  const int64_t head_dim = args.head_dim();
   // default to use head_dim if rotary_dim is not specified
   int64_t rotary_dim = args.rotary_dim() > 0 ? args.rotary_dim() : head_dim;
   // apply rotary_dim percentage
