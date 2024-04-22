@@ -41,7 +41,8 @@ TEST(BatchTest, Basic) {
 
   // prepare sequences
   // sequence in prefill phase
-  Sequence seq1(/*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
+  Sequence seq1(/*prompt=*/"",
+                /*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
                 sampling_param,
                 stopping_criteria,
                 /*echo=*/false,
@@ -49,7 +50,8 @@ TEST(BatchTest, Basic) {
   seq1.append_blocks(allocator.allocate(3));  // [1, 2, 3]
 
   // seq in decode phase
-  Sequence seq2(/*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
+  Sequence seq2(/*prompt=*/"",
+                /*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
                 sampling_param,
                 stopping_criteria,
                 /*echo=*/false,
@@ -60,6 +62,7 @@ TEST(BatchTest, Basic) {
 
   // seq in decode phase
   Sequence seq3(
+      /*prompt=*/"",
       /*token_ids=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19},
       sampling_param,
       stopping_criteria,

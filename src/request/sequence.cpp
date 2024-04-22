@@ -17,28 +17,19 @@ namespace llm {
 // NOLINTNEXTLINE
 std::atomic<int64_t> Sequence::next_id_{1};
 
-Sequence::Sequence(const std::vector<int32_t>& token_ids,
-                   const SamplingParameter& sampling_param,
-                   const StoppingCriteria& stopping_criteria,
-                   bool echo,
-                   OnDelta on_delta)
-    : Sequence("",
-               token_ids,
-               sampling_param,
-               stopping_criteria,
-               echo,
-               on_delta) {}
-
 Sequence::Sequence(const std::string_view& prompt,
                    const std::vector<int32_t>& prompt_token_ids,
                    const SamplingParameter& sampling_param,
                    const StoppingCriteria& stopping_criteria,
                    bool echo,
                    OnDelta on_delta)
-    : prompt_(prompt),
-      id_(next_id_.fetch_add(1)),
+    : id_(next_id_.fetch_add(1)),
       sampling_param_(sampling_param),
       stopping_criteria_(stopping_criteria),
+      decoder_(prompt,
+               prompt_token_ids.size(),
+               echo,
+               sampling_param.skip_special_tokens),
       num_kv_cache_tokens_(static_cast<size_t>(EngineType::COUNT), 0),
       on_delta_(on_delta) {
   CHECK(!prompt_token_ids.empty()) << "empty prompt token ids";
@@ -53,11 +44,6 @@ Sequence::Sequence(const std::string_view& prompt,
     token_to_count_map_[token_id]++;
   }
   num_prompt_tokens_ = num_tokens_;
-  // if echo is true, set prefix_offset_ and output_offset_ to 0 to print the
-  // whole sequence, otherwise set them to the length of the prompt to skip the
-  // prompt.
-  prefix_offset_ = echo ? 0 : num_prompt_tokens_;
-  output_offset_ = echo ? 0 : num_prompt_tokens_;
 }
 
 void Sequence::append_new_token_id(int32_t next_token_id) {
@@ -132,33 +118,9 @@ size_t Sequence::validate_token_ids(const Slice<int64_t>& accpeted_token_ids) {
 }
 
 // decode the sequence to get delta text using the tokenizer
-std::string Sequence::decode_delta_text(size_t end,
+std::string Sequence::decode_delta_text(const Slice<int32_t>& token_ids,
                                         const Tokenizer& tokenizer) {
-  std::string delta_text;
-  // return prompt directly if prompt string is not empty
-  if (output_offset_ < num_prompt_tokens_ && !prompt_.empty()) {
-    // leave 6 tokens for the prefix to defeat cleanup algorithms in decode
-    // which decide to add a space or not depending on the surrouding ids.
-    prefix_offset_ = num_prompt_tokens_ <= 6 ? 0 : num_prompt_tokens_ - 6;
-    output_offset_ = num_prompt_tokens_;
-    delta_text = prompt_;
-  }
-
-  const auto tokens = token_ids();
-  const auto prefix_text =
-      tokenizer.decode(tokens.slice(prefix_offset_, output_offset_),
-                       sampling_param_.skip_special_tokens);
-  const auto new_text = tokenizer.decode(tokens.slice(prefix_offset_, end),
-                                         sampling_param_.skip_special_tokens);
-  // utf-8 char � at the end means it is a potential unfinished byte sequence
-  // from byte fallback tokenization.
-  if (new_text.size() > prefix_text.size() && !absl::EndsWith(new_text, "�")) {
-    prefix_offset_ = output_offset_;
-    output_offset_ = end;
-    // only print the delta text
-    return delta_text + new_text.substr(prefix_text.size());
-  }
-  return delta_text;
+  return decoder_.decode(token_ids, tokenizer);
 }
 
 void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
@@ -225,9 +187,9 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
   return slots;
 }
 
-void Sequence::stream_delta(const std::string& delta, FinishReason reason) {
+void Sequence::stream_delta(const SequenceDeltaOutput& output) {
   if (on_delta_) {
-    if (!on_delta_(delta, reason)) {
+    if (!on_delta_(output)) {
       // cancel the sequence if the callback returns false
       is_cancelled_.store(true, std::memory_order_relaxed);
     }

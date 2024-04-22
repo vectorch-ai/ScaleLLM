@@ -87,10 +87,9 @@ bool send_delta_to_client(ChatCallData* call_data,
                           Request* request,
                           uint32_t index,
                           bool first_message,
-                          const std::string& delta,
-                          FinishReason reason) {
+                          const SequenceDeltaOutput& output) {
   // send delta to client
-  if (!delta.empty()) {
+  if (!output.delta.empty()) {
     ChatResponse response;
     response.set_object("chat.completion.chunk");
     response.set_id(request->id);
@@ -104,14 +103,14 @@ bool send_delta_to_client(ChatCallData* call_data,
     if (first_message) {
       message->set_role("assistant");
     }
-    message->set_content(delta);
+    message->set_content(output.delta);
     if (!call_data->write(std::move(response))) {
       return false;
     }
   }
 
   // send finish reason as a separate message
-  if (reason != FinishReason::NONE) {
+  if (output.finish_reason != FinishReason::NONE) {
     ChatResponse response;
     response.set_object("chat.completion");
     response.set_id(request->id);
@@ -119,7 +118,7 @@ bool send_delta_to_client(ChatCallData* call_data,
     // response.set_model(request->model);
     auto* choice = response.add_choices();
     choice->set_index(index);
-    choice->set_finish_reason(finish_reason_to_string(reason));
+    choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -129,7 +128,7 @@ bool send_delta_to_client(ChatCallData* call_data,
 
 bool send_result_to_client(ChatCallData* call_data,
                            Request* request,
-                           const std::vector<SequenceResult>& seq_results,
+                           const std::vector<SequenceOutput>& seq_results,
                            const Status& /*status*/,
                            const Statistics& stats) {
   ChatResponse response;
@@ -145,7 +144,7 @@ bool send_result_to_client(ChatCallData* call_data,
     choice->set_index(i);
     auto* message = choice->mutable_message();
     message->set_role("assistant");
-    message->set_content(seq_result.output_text);
+    message->set_content(seq_result.text);
     if (seq_result.finish_reason != FinishReason::NONE) {
       choice->set_finish_reason(
           finish_reason_to_string(seq_result.finish_reason));
@@ -280,14 +279,14 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   // set callbacks
   if (request->stream) {
     // set callback for stream delta
-    request->on_stream_delta = [call_data, request = request.get()](
-                                   size_t index,
-                                   bool first_message,
-                                   const std::string& delta,
-                                   FinishReason reason) -> bool {
-      return send_delta_to_client(
-          call_data, request, index, first_message, delta, reason);
-    };
+    request->on_stream_delta =
+        [call_data, request = request.get(), first_message = true](
+            size_t index, const SequenceDeltaOutput& output) mutable {
+          const auto ret = send_delta_to_client(
+              call_data, request, index, first_message, output);
+          first_message = false;
+          return ret;
+        };
 
     // set callback for stream request
     request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
@@ -296,7 +295,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   } else {
     // set callback for non-stream request
     request->on_finish = [call_data, request = request.get()](
-                             const std::vector<SequenceResult>& seq_results,
+                             const std::vector<SequenceOutput>& seq_results,
                              const Status& status,
                              const Statistics& stats) -> bool {
       return send_result_to_client(

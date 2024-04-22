@@ -32,11 +32,9 @@ void Request::add_sequence() {
 
   if (stream) {
     CHECK(on_stream_delta);
-    on_delta = [this, index = sequences.size(), first_message = true](
-                   const std::string& delta, FinishReason reason) mutable {
-      bool ret = this->on_stream_delta(index, first_message, delta, reason);
-      first_message = false;
-      return ret;
+    on_delta = [this,
+                index = sequences.size()](const SequenceDeltaOutput& output) {
+      return this->on_stream_delta(index, output);
     };
   }
   sequences.emplace_back(this->prompt,

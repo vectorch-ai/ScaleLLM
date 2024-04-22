@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "common/slice.h"
+#include "incremental_decoder.h"
 #include "memory/block.h"
 #include "sampling/parameters.h"
 #include "stopping_criteria.h"
@@ -14,8 +15,13 @@
 
 namespace llm {
 
-using OnDelta =
-    std::function<bool(const std::string& delta, FinishReason reason)>;
+struct SequenceDeltaOutput {
+  std::string delta;
+
+  FinishReason finish_reason;
+};
+
+using OnDelta = std::function<bool(const SequenceDeltaOutput& output)>;
 
 // The sequence is shared between LLM and SSM for speculative decoding, and
 // it's possible that the numbers of tokens in kv cache are out of sync.
@@ -35,12 +41,6 @@ enum class EngineType : int8_t {
 // current position in generating tokens, etc.
 class Sequence final {
  public:
-  Sequence(const std::vector<int32_t>& token_ids,
-           const SamplingParameter& sampling_param,
-           const StoppingCriteria& stopping_criteria,
-           bool echo,
-           OnDelta on_delta);
-
   Sequence(const std::string_view& prompt,
            const std::vector<int32_t>& prompt_token_ids,
            const SamplingParameter& sampling_param,
@@ -141,23 +141,21 @@ class Sequence final {
 
   // decode the tokens till end to get delta text using the tokenizer
   // not thread safe
-  std::string decode_delta_text(size_t end, const Tokenizer& tokenizer);
+  std::string decode_delta_text(const Slice<int32_t>& token_ids,
+                                const Tokenizer& tokenizer);
+
+  // get the offset of output tokens
+  size_t output_offset() const { return decoder_.output_offset(); }
 
   // check if streaming is enabled
   bool is_streaming() const { return on_delta_ != nullptr; }
 
-  // stream the delta text to the client
+  // stream the delta output to the client
   // cancel the sequence if the callback returns false
-  void stream_delta(const std::string& delta, FinishReason reason);
+  void stream_delta(const SequenceDeltaOutput& output);
 
   // check if the sequence is cancelled
   bool is_cancelled() const;
-
-  // get the offset of output tokens
-  size_t output_offset() const { return output_offset_; }
-
-  // get the prompt string
-  std::string_view prompt() const { return prompt_; }
 
   // check finish status, use cached value if not invalidated
   bool is_finished() const;
@@ -193,8 +191,8 @@ class Sequence final {
   // the stopping criteria
   const StoppingCriteria& stopping_criteria_;
 
-  // the original prompt string
-  const std::string_view prompt_;
+  // incremental decoder to decode the tokens
+  IncrementalDecoder decoder_;
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
@@ -228,17 +226,8 @@ class Sequence final {
   // the reason why the sequence is finished
   mutable FinishReason finish_reason_ = FinishReason::NONE;
 
-  // variables to keep track of output text, should be accessed by single thread
-  // prefix offset is used to defeat cleanup algorithms in the decode which
-  // decide to add a space or not based on surrounding tokens.
-  size_t prefix_offset_ = 0;
-  // all tokens before output_offset_ have been streamed to the client
-  size_t output_offset_ = 0;
-
   // function to call when new tokens are generated. (only for streaming)
   OnDelta on_delta_;
-
-  // TODO: Add logits results.
 
   // id allocator for sequences
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
