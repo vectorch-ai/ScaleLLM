@@ -92,8 +92,15 @@ void run_speculative_decoding(Sequence& sequence,
     EXPECT_EQ(sequence.num_kv_cache_tokens(), desired_tokens.size() - 1);
 
     // varify with accepted tokens
-    EXPECT_EQ(sequence.validate_tokens(accepted_token_ids),
-              num_accepted_tokens + 1);
+    const auto num_new_tokens = sequence.validate_tokens(accepted_token_ids);
+    EXPECT_GT(num_new_tokens, 0);
+
+    if (sequence.is_finished()) {
+      // sequence is finished, just return to let caller to verify
+      return;
+    }
+
+    EXPECT_EQ(num_new_tokens, num_accepted_tokens + /*resampled token*/ 1);
 
     EXPECT_EQ(sequence.token_ids(), validated_tokens);
   }
@@ -325,6 +332,74 @@ TEST(SequenceTest, SpeculativePartiallyMatch) {
             validated_tokens.size() - 2);
   EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM),
             validated_tokens.size() - 1);
+}
+
+TEST(SequenceTest, SpeculativeStopMaxTokens) {
+  // test scenarios speculative decoding
+  std::vector<int32_t> prompt_tokens = {1, 2, 4};
+  Sequence::Options options;
+  options.stopping_criteria.max_tokens = 2;
+  Sequence sequence(/*prompt=*/"",
+                    prompt_tokens,
+                    /*capacity=*/200,
+                    options);
+
+  // allocate block
+  sequence.append_block({/*id=*/0, /*size=*/200});
+
+  // run speculative decoding with draft tokens: {1058, 338, 4473, 29973}
+  // expect to accept only 2 tokens: {1058, 338}
+  run_speculative_decoding(sequence,
+                           /*draft_token_ids=*/{1058, 338, 4473, 29973},
+                           /*bonus_token_id=*/4343,
+                           /*resample_token_id=*/1058,
+                           /*num_accepted_tokens=*/4);
+  EXPECT_EQ(sequence.finish_reason(), FinishReason::LENGTH);
+
+  const std::vector<int32_t> desired_tokens = {1, 2, 4, 1058, 338};
+  EXPECT_EQ(sequence.token_ids(), desired_tokens);
+
+  // check kv caches
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM),
+            desired_tokens.size() - 1);
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM),
+            desired_tokens.size() - 1);
+}
+
+TEST(SequenceTest, SpeculativeStopEosTokenId) {
+  const int32_t eos_token_id = 30;
+  std::vector<int32_t> prompt_tokens = {1, 2, 4};
+  Sequence::Options options;
+  options.stopping_criteria.max_tokens = 100;
+  options.stopping_criteria.ignore_eos_token = false;
+  options.stopping_criteria.eos_token_id = eos_token_id;
+
+  Sequence sequence(/*prompt=*/"",
+                    prompt_tokens,
+                    /*capacity=*/200,
+                    options);
+
+  // allocate block
+  sequence.append_block({/*id=*/0, /*size=*/200});
+
+  // run speculative decoding with draft tokens: {1058, 338, 4473, 29973}
+  // expect to accept only 2 tokens: {1058, 338, /*resampled*/30}
+  run_speculative_decoding(sequence,
+                           /*draft_token_ids=*/{1058, 338, 4473, 29973},
+                           /*bonus_token_id=*/4343,
+                           /*resample_token_id=*/eos_token_id,
+                           /*num_accepted_tokens=*/2);
+  EXPECT_EQ(sequence.finish_reason(), FinishReason::STOP);
+
+  const std::vector<int32_t> desired_tokens = {
+      1, 2, 4, 1058, 338, eos_token_id};
+  EXPECT_EQ(sequence.token_ids(), desired_tokens);
+
+  // check kv caches
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM),
+            desired_tokens.size() - 1);
+  EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM),
+            desired_tokens.size() - 1);
 }
 
 }  // namespace llm
