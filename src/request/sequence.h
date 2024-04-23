@@ -133,7 +133,7 @@ class Sequence final {
 
   // validate draft tokens with accepted tokens for speculative decoding
   // N.B. take int64_t as input to be compatible with torch::Tensor
-  // returns the number of accepted tokens
+  // returns the number of accepted tokens, including the resampled token
   size_t validate_tokens(const Slice<int64_t>& accpeted_token_ids);
 
   // add new cache blocks

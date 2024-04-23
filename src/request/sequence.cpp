@@ -54,24 +54,29 @@ void Sequence::append_token(int32_t token_id) {
 
 size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
   const size_t len = accpeted_token_ids.size();
+  CHECK_GT(len, 0) << "empty accepted token ids";
   CHECK_GT(num_tokens_, len) << "accepted tokens exceed the sequence length";
+  const auto bonus_token_id = accpeted_token_ids.back();
+  CHECK(bonus_token_id == -1 || bonus_token_id == token_ids().back())
+      << "bonus token mismatch with the last token";
 
   // validate the accepted tokens with draft tokens, stop at the first mismatch
   const size_t start_idx = num_tokens_ - len;
-  size_t accpeted_len = 0;
+  bool mismatch = false;
+  size_t num_accpeted = 0;
   for (size_t i = 0; i < len; ++i) {
     const size_t cur_idx = start_idx + i;
     const int32_t draft_token_id = token_ids_[cur_idx];
     const int32_t target_token_id = static_cast<int32_t>(accpeted_token_ids[i]);
 
-    // stop at first rejected token id
-    if (target_token_id == -1) {
+    // stop at first mismatch or rejected token
+    if (mismatch || target_token_id == -1) {
       num_tokens_ = cur_idx;
       break;
     }
-
-    ++accpeted_len;
-    if (target_token_id != draft_token_id) {
+    ++num_accpeted;
+    mismatch = target_token_id != draft_token_id;
+    if (mismatch) {
       // overwrite the token id with the accepted token id
       token_ids_[cur_idx] = target_token_id;
       // update the token count
@@ -93,9 +98,8 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
   }
 
   // adjust the token count for remaining discarded tokens
-  for (size_t i = accpeted_len; i < len; ++i) {
-    const auto token_id = token_ids_[start_idx + i];
-    --token_to_count_map_[token_id];
+  for (size_t i = num_accpeted; i < len; ++i) {
+    --token_to_count_map_[token_ids_[start_idx + i]];
   }
 
   // adjust kv cache position
@@ -104,9 +108,11 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
     num_kv_cache_tokens = std::min(num_kv_cache_tokens, num_tokens_ - 1);
   }
 
+  CHECK_GT(num_accpeted, 0) << "no token accepted";
+
   // the finish status is valid after the validation
   finish_status_invalidated_ = false;
-  return accpeted_len;
+  return num_accpeted;
 }
 
 // decode the sequence to get delta text using the tokenizer
