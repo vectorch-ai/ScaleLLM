@@ -4,8 +4,6 @@
 #include <gtest/gtest.h>
 
 #include "memory/block.h"
-#include "request/stopping_criteria.h"
-#include "sampling/parameters.h"
 
 namespace llm {
 namespace {
