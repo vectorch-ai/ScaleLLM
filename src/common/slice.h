@@ -64,13 +64,22 @@ class Slice final {
 template <typename T>
 inline bool operator==(const Slice<T>& lhs, const std::vector<T>& rhs) {
   return lhs.size() == rhs.size() &&
-         std::equal(lhs.begin(), lhs.end(), rhs.begin());
+         (lhs.data() == rhs.data() ||
+          std::equal(lhs.begin(), lhs.end(), rhs.begin()));
 }
 
 template <typename T>
 inline bool operator==(const std::vector<T>& lhs, const Slice<T>& rhs) {
   return lhs.size() == rhs.size() &&
-         std::equal(lhs.begin(), lhs.end(), rhs.begin());
+         (lhs.data() == rhs.data() ||
+          std::equal(lhs.begin(), lhs.end(), rhs.begin()));
+}
+
+template <typename T>
+inline bool operator==(const Slice<T>& lhs, const Slice<T>& rhs) {
+  return lhs.size() == rhs.size() &&
+         (lhs.data() == rhs.data() ||
+          std::equal(lhs.begin(), lhs.end(), rhs.begin()));
 }
 
 }  // namespace llm

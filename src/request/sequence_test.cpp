@@ -29,29 +29,15 @@ void run_speculative_decoding(Sequence& sequence,
 
   // remember the initial tokens
   const auto initial_tokens = sequence.token_ids();
+
+  size_t draft_processed_tokens = 0;
+  size_t target_processed_tokens = 0;
+  // add draft tokens
   // build desired tokens
   std::vector<int32_t> desired_tokens = initial_tokens;
   // add draft_token_ids into desired_tokens
   desired_tokens.insert(
       desired_tokens.end(), draft_token_ids.begin(), draft_token_ids.end());
-
-  // build accepted tokens
-  std::vector<int64_t> accepted_token_ids = {draft_token_ids.begin(),
-                                             draft_token_ids.end()};
-  accepted_token_ids.push_back(bonus_token_id);
-  // add resample token if needed
-  if (num_accepted_tokens < draft_token_ids.size()) {
-    // replace the last token with resample token
-    accepted_token_ids[num_accepted_tokens] = resample_token_id;
-  }
-  // mask out remaining tokens
-  for (size_t i = num_accepted_tokens + 1; i < accepted_token_ids.size(); i++) {
-    accepted_token_ids[i] = -1;
-  }
-
-  size_t draft_processed_tokens = 0;
-  size_t target_processed_tokens = 0;
-  // add draft tokens
   {
     sequence.set_engine_type(EngineType::SSM);
     for (size_t i = 0; i < num_spec_tokens; i++) {
@@ -69,6 +55,25 @@ void run_speculative_decoding(Sequence& sequence,
   }
 
   // validated with accepted tokens
+  // build accepted tokens
+  std::vector<int64_t> accepted_token_ids = {draft_token_ids.begin(),
+                                             draft_token_ids.end()};
+  accepted_token_ids.push_back(bonus_token_id);
+  // add resample token if needed
+  if (num_accepted_tokens < draft_token_ids.size()) {
+    // replace the last token with resample token
+    accepted_token_ids[num_accepted_tokens] = resample_token_id;
+  }
+  // mask out remaining tokens
+  for (size_t i = num_accepted_tokens + 1; i < accepted_token_ids.size(); i++) {
+    accepted_token_ids[i] = -1;
+  }
+
+  std::vector<int32_t> validated_tokens = initial_tokens;
+  for (size_t i = 0; i < num_accepted_tokens + 1; ++i) {
+    EXPECT_NE(accepted_token_ids[i], -1);
+    validated_tokens.push_back(accepted_token_ids[i]);
+  }
   {
     sequence.set_engine_type(EngineType::LLM);
 
@@ -90,20 +95,14 @@ void run_speculative_decoding(Sequence& sequence,
     EXPECT_EQ(sequence.validate_tokens(accepted_token_ids),
               num_accepted_tokens + 1);
 
-    std::vector<int32_t> validated_tokens = initial_tokens;
-    for (size_t i = 0; i < num_accepted_tokens + 1; ++i) {
-      EXPECT_NE(accepted_token_ids[i], -1);
-      validated_tokens.push_back(accepted_token_ids[i]);
-    }
-
     EXPECT_EQ(sequence.token_ids(), validated_tokens);
   }
 
   // check processed tokens
   EXPECT_EQ(draft_processed_tokens + 1, target_processed_tokens + kv_diff);
 
-  const auto n_tokens = sequence.num_tokens();
   // check kv caches pos
+  const auto n_tokens = sequence.num_tokens();
   if (num_accepted_tokens == num_spec_tokens) {
     // All match: LLM should have one more token in kv cache
     EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), n_tokens - 2);
@@ -113,6 +112,23 @@ void run_speculative_decoding(Sequence& sequence,
     EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::SSM), n_tokens - 1);
     EXPECT_EQ(sequence.num_kv_cache_tokens(EngineType::LLM), n_tokens - 1);
   }
+
+  // check token count map
+  const auto token_ids = sequence.token_ids();
+  std::unordered_map<int32_t, int32_t> token_to_count_map;
+  for (const auto& token_id : token_ids) {
+    ++token_to_count_map[token_id];
+  }
+  // erase all zero count tokens
+  auto count_map = sequence.token_to_count_map();
+  for (auto it = count_map.begin(); it != count_map.end();) {
+    if (it->second == 0) {
+      it = count_map.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  EXPECT_EQ(token_to_count_map, count_map);
 }
 }  // namespace
 
@@ -196,24 +212,27 @@ TEST(SequenceTest, SpeculativeFullMatch) {
   // allocate block
   sequence.append_block({/*id=*/0, /*size=*/200});
 
-  for (size_t i = 0; i < 4; ++i) {
-    // run speculative decoding with draft tokens: {1058, 338, 4473, 29973}
-    // expect to accept all tokens: {1058, 338, 4473, 29973}
-    run_speculative_decoding(sequence,
-                             /*draft_token_ids=*/{1058, 338, 4473, 29973},
-                             /*bonus_token_id=*/4343,
-                             /*resample_token_id=*/1058,
-                             /*num_accepted_tokens=*/4);
-  }
-
   // clang-format off
   const std::vector<int32_t> validated_tokens = {
       /*prompt*/ 1, 2, 4, 
       /*first*/  1058, 338, 4473, 29973, 4343, 
       /*second*/ 1058, 338, 4473, 29973, 4343, 
       /*third*/  1058, 338, 4473, 29973, 4343, 
-      /*forth*/  1058, 338, 4473, 29973, 4343};
+      /*fourth*/ 1058, 338, 4473, 29973, 4343};
   // clang-format on
+  for (size_t i = 0; i < 4; ++i) {
+    // run speculative decoding with draft tokens: {1058, 338, 4473, 29973}
+    // expect to accept all tokens: {1058, 338, 4473, 29973, 4343}
+    run_speculative_decoding(sequence,
+                             /*draft_token_ids=*/{1058, 338, 4473, 29973},
+                             /*bonus_token_id=*/4343,
+                             /*resample_token_id=*/1058,
+                             /*num_accepted_tokens=*/4);
+
+    // check tokens for each iteration
+    const Slice<int32_t> slice = {validated_tokens, sequence.num_tokens()};
+    EXPECT_EQ(sequence.token_ids(), slice);
+  }
   EXPECT_EQ(sequence.token_ids(), validated_tokens);
 
   // check kv caches, LLM should have one more token in kv cache
@@ -236,6 +255,14 @@ TEST(SequenceTest, SpeculativeNoMatch) {
   // allocate block
   sequence.append_block({/*id=*/0, /*size=*/200});
 
+  // clang-format off
+  const std::vector<int32_t> validated_tokens = {
+      /*prompt*/ 1, 2, 4, 
+      /*first*/  1314, 
+      /*second*/ 1314, 
+      /*third*/  1314, 
+      /*fourth*/ 1314};
+  // clang-format on
   for (size_t i = 0; i < 4; ++i) {
     // run speculative decoding with draft tokens: {1058, 338, 4473, 29973}
     // expect to accept no tokens: {1314}
@@ -244,16 +271,11 @@ TEST(SequenceTest, SpeculativeNoMatch) {
                              /*bonus_token_id=*/4343,
                              /*resample_token_id=*/1314,
                              /*num_accepted_tokens=*/0);
-  }
 
-  // clang-format off
-  const std::vector<int32_t> validated_tokens = {
-      /*prompt*/ 1, 2, 4, 
-      /*first*/  1314, 
-      /*second*/ 1314, 
-      /*third*/  1314, 
-      /*forth*/  1314};
-  // clang-format on
+    // check tokens for each iteration
+    const Slice<int32_t> slice = {validated_tokens, sequence.num_tokens()};
+    EXPECT_EQ(sequence.token_ids(), slice);
+  }
   EXPECT_EQ(sequence.token_ids(), validated_tokens);
 
   // check kv caches, LLM should have one more token in kv cache
@@ -276,24 +298,26 @@ TEST(SequenceTest, SpeculativePartiallyMatch) {
   // allocate block
   sequence.append_block({/*id=*/0, /*size=*/200});
 
+  // clang-format off
+  const std::vector<int32_t> validated_tokens = {
+      /*prompt*/      1, 2, 4, 
+      /*accepted=0*/  1314, 
+      /*accepted=1*/  1058, 1314, 
+      /*accepted=2*/  1058, 338, 1314, 
+      /*accepted=3*/  1058, 338, 4473, 1314,
+      /*accepted=4*/  1058, 338, 4473, 29973, 4343
+  };
+  // clang-format on
   for (size_t i = 0; i <= 4; ++i) {
     run_speculative_decoding(sequence,
                              /*draft_token_ids=*/{1058, 338, 4473, 29973},
                              /*bonus_token_id=*/4343,
                              /*resample_token_id=*/1314,
                              /*num_accepted_tokens=*/i);
+    // check tokens for each iteration
+    const Slice<int32_t> slice = {validated_tokens, sequence.num_tokens()};
+    EXPECT_EQ(sequence.token_ids(), slice);
   }
-
-  // clang-format off
-  const std::vector<int32_t> validated_tokens = {
-      /*prompt*/ 1, 2, 4, 
-      /*first*/  1314, 
-      /*second*/ 1058, 1314, 
-      /*third*/  1058, 338, 1314, 
-      /*forth*/  1058, 338, 4473, 1314,
-      /*fifth*/  1058, 338, 4473, 29973, 4343
-  };
-  // clang-format on
   EXPECT_EQ(sequence.token_ids(), validated_tokens);
 
   // check kv caches, LLM should have one more token in kv cache
