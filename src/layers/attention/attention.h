@@ -7,8 +7,6 @@
 #include "memory/kv_cache.h"
 #include "models/parameters.h"
 
-DECLARE_bool(disable_custom_kernels);
-
 namespace llm {
 
 class AttentionImpl : public torch::nn::Module {

@@ -9,6 +9,11 @@
 #include "engine/parameters.h"
 #include "rejection_sampler.h"
 
+// disable rejected tokens masking for better performance by default
+DEFINE_bool(mask_out_rejected_tokens,
+            false,
+            "Mask out rejected tokens with -1 in the output.");
+
 namespace llm {
 
 SpeculativeEngine::SpeculativeEngine(const Options& options)
@@ -173,8 +178,12 @@ void SpeculativeEngine::validate(Batch& batch,
       std::make_unique<RejectionSampler>(target_output.do_sample);
 
   // get the accepted tokens
-  auto accepted_tokens = rejection_sampler->forward(
-      draft_token_ids, draft_probs, target_probs, bonus_token_ids);
+  auto accepted_tokens =
+      rejection_sampler->forward(draft_token_ids,
+                                 draft_probs,
+                                 target_probs,
+                                 bonus_token_ids,
+                                 FLAGS_mask_out_rejected_tokens);
 
   // update the batch with the accpeted tokens
   batch.process_validate_output(accepted_tokens);

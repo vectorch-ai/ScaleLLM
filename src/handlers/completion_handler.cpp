@@ -126,6 +126,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
     response.set_created(request->created_time);
     // response.set_model(request->model);
     auto* choice = response.add_choices();
+    choice->set_index(index);
     choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
