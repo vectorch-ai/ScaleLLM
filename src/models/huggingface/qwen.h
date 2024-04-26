@@ -417,10 +417,14 @@ REGISTER_TOKENIZER_ARGS(qwen, [&] {
   SET_ARG(vocab_file, "qwen.tiktoken");
 
   // set special tokens
-  std::vector<std::string> special_tokens(
-      {"<|endoftext|>", "<|im_start|>", "<|im_end|>"});
+  std::vector<SpecialToken> special_tokens;
+  int32_t next_id = 151643;
+  special_tokens.emplace_back("<|endoftext|>", next_id++);
+  special_tokens.emplace_back("<|im_start|>", next_id++);
+  special_tokens.emplace_back("<|im_end|>", next_id++);
   for (int32_t i = 0; i < 205; ++i) {
-    special_tokens.push_back("<|extra_" + std::to_string(i) + "|>");
+    special_tokens.emplace_back("<|extra_" + std::to_string(i) + "|>",
+                                next_id++);
   }
   SET_ARG(special_tokens, special_tokens);
 
@@ -428,7 +432,6 @@ REGISTER_TOKENIZER_ARGS(qwen, [&] {
   const std::string pattern =
       R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+[^\S]|\s+)";
   SET_ARG(pattern, pattern);
-  SET_ARG(special_start_id, 151643);
 });
 
 }  // namespace llm::hf

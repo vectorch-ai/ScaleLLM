@@ -1,6 +1,9 @@
 #pragma once
+#include <absl/strings/match.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
+
+#include <string>
 
 #include "chat_template/coded_chat_template.h"
 #include "layers/activation.h"
@@ -9,6 +12,7 @@
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
+#include "layers/qkv_linear.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -87,10 +91,11 @@ class GemmaAttentionImpl : public torch::nn::Module {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
-    const int64_t head_dim = args.head_dim();
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
+    const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
-    const int64_t n_local_kv_heads = n_kv_heads / world_size;
+    const int64_t n_local_kv_heads =
+        std::max<int64_t>(1, n_kv_heads / world_size);
 
     // size for q, k, v
     qkv_sizes_ = {n_local_heads * head_dim,
@@ -98,15 +103,16 @@ class GemmaAttentionImpl : public torch::nn::Module {
                   n_local_kv_heads * head_dim};
 
     // register submodules
-    qkv_proj_ = register_module(
-        "qkv_proj",
-        ColumnParallelLinear(hidden_size,
-                             (n_heads + 2 * n_kv_heads) * head_dim,
-                             /*bias=*/false,
-                             /*gather_output=*/false,
-                             quant_args,
-                             parallel_args,
-                             options));
+    qkv_proj_ = register_module("qkv_proj",
+                                QKVColumnParallelLinear(hidden_size,
+                                                        n_heads,
+                                                        n_kv_heads,
+                                                        head_dim,
+                                                        /*bias=*/false,
+                                                        /*gather_output=*/false,
+                                                        quant_args,
+                                                        parallel_args,
+                                                        options));
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(n_heads * head_dim,
@@ -141,7 +147,8 @@ class GemmaAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
+    qkv_proj_->load_state_dict(
+        state_dict, {"q_proj.", "k_proj.", "v_proj."}, {"k_proj.", "v_proj."});
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
@@ -152,7 +159,7 @@ class GemmaAttentionImpl : public torch::nn::Module {
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear qkv_proj_{nullptr};
+  QKVColumnParallelLinear qkv_proj_{nullptr};
 
   RowParallelLinear o_proj_{nullptr};
 
@@ -207,12 +214,16 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
   void load_state_dict(const StateDict& state_dict) {
     input_layernorm_->load_state_dict((state_dict.select_with_transform(
         "input_layernorm.",
-        [](torch::Tensor tensor) { return tensor + 1.0f; })));
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor + 1.0f;
+        })));
     mlp_->load_state_dict(state_dict.select("mlp."));
     post_attention_layernorm_->load_state_dict(
         (state_dict.select_with_transform(
             "post_attention_layernorm.",
-            [](torch::Tensor tensor) { return tensor + 1.0f; })));
+            [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+              return tensor + 1.0f;
+            })));
     self_attn_->load_state_dict(state_dict.select("self_attn."));
   }
   void verify_loaded_weights(const std::string& prefix) const {
@@ -301,7 +312,10 @@ class GemmaModelImpl : public torch::nn::Module {
     // GemmaRMSNorm is different from Llama's in that it multiplies
     // (1 + weight) to the output, instead of just weight.
     norm_->load_state_dict((state_dict.select_with_transform(
-        "norm.", [](torch::Tensor tensor) { return tensor + 1.0f; })));
+        "norm.",
+        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
+          return tensor + 1.0f;
+        })));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {

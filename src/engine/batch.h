@@ -45,7 +45,8 @@ class Batch {
   Sequence* operator[](size_t i) { return sequences_[i]; }
 
   // prepare inputs for the batch, a stateful operation
-  ModelInput prepare_model_input();
+  ModelInput prepare_model_input(uint32_t num_decoding_tokens,
+                                 uint32_t min_decoding_bach_size);
 
   // process the sample output for each sequence
   void process_sample_output(const SampleOutput& sample_output);

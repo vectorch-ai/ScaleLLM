@@ -49,22 +49,20 @@ struct Statistics {
 // The higher the priority, the sooner the request is processed.
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
-struct SequenceResult {
-  std::string output_text;
+struct SequenceOutput {
+  std::string text;
 
   FinishReason finish_reason;
 };
 
 // Function to call when a request is finished.
 using OnFinish =
-    std::function<bool(const std::vector<SequenceResult>& seq_results,
+    std::function<bool(const std::vector<SequenceOutput>& seq_results,
                        const Status& status,
                        const Statistics& stats)>;
 
-using OnStreamDelta = std::function<bool(size_t index,
-                                         bool first_message,
-                                         const std::string& delta,
-                                         FinishReason reason)>;
+using OnStreamDelta =
+    std::function<bool(size_t index, const SequenceDeltaOutput& output)>;
 
 // Function to call when a stream request is finished.
 using OnStreamFinish = std::function<bool(const Status& status)>;
@@ -82,10 +80,9 @@ struct Request final {
   // caller needs to gurantee prompt's lifecycle
   Request(const std::string& id,
           const std::string_view& prompt,
-          size_t n,
-          const std::vector<int32_t>& prompt_tokens);
-
-  Request(const std::string& id, const std::vector<int32_t>& prompt_tokens);
+          const std::vector<int32_t>& prompt_tokens,
+          size_t seq_capacity,
+          size_t num_seqs);
 
   void add_sequence();
 
@@ -118,6 +115,10 @@ struct Request final {
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
   const std::vector<int32_t> prompt_tokens;
+
+  // max number of tokens per sequence.
+  // NOLINTNEXTLINE
+  const size_t seq_capacity;
 
   // sampling parameters
   SamplingParameter sampling_param;

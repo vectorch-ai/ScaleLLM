@@ -49,7 +49,7 @@ DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
 DEFINE_double(frequency_penalty, 0.0, "Frequency penalty for sampling.");
 DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
 
-DECLARE_int32(num_speculative_tokens);
+DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 
 std::string download_model(const std::string& model_name) {
   namespace py = pybind11;
@@ -109,7 +109,9 @@ int main(int argc, char* argv[]) {
   stopping_criteria.ignore_eos_token = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
-  stopping_criteria.max_context_length = model_args.max_position_embeddings();
+  stopping_criteria.max_context_len =
+      model_args.max_position_embeddings() - FLAGS_num_speculative_tokens;
+
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
   std::string input;
@@ -123,18 +125,18 @@ int main(int argc, char* argv[]) {
     std::vector<int> prompt_tokens;
     tokenizer->encode(input, &prompt_tokens);
     const int64_t prompt_token_len = static_cast<int64_t>(prompt_tokens.size());
+    const size_t capacity = prompt_tokens.size() + FLAGS_max_seq_len +
+                            FLAGS_num_speculative_tokens + 1;
 
-    Sequence sequence(input,
-                      prompt_tokens,
-                      sampling_param,
-                      stopping_criteria,
-                      /*echo=*/true,
-                      /*on_stream=*/nullptr);
+    Sequence::Options options;
+    options.sampling_param = sampling_param;
+    options.stopping_criteria = stopping_criteria;
+    options.echo = true;
+
+    Sequence sequence(input, prompt_tokens, capacity, options);
 
     // allocate all slots for the sequence
-    const size_t num_tokens = prompt_tokens.size() + FLAGS_max_seq_len +
-                              FLAGS_num_speculative_tokens + 1;
-    CHECK(block_manager->allocate_blocks_for(&sequence, num_tokens));
+    CHECK(block_manager->allocate_blocks_for(&sequence, capacity));
 
     // generate tokens until the end of sentence token is generated
     while (sequence.num_generated_tokens() < FLAGS_max_seq_len) {
@@ -148,7 +150,7 @@ int main(int argc, char* argv[]) {
       }
 
       // decode the output and print delta
-      std::cout << sequence.decode_delta_text(sequence.num_tokens(), *tokenizer)
+      std::cout << sequence.decode_delta_text(sequence.token_ids(), *tokenizer)
                 << std::flush;
     }
 

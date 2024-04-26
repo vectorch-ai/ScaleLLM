@@ -41,11 +41,18 @@ class LLMEngine : public Engine {
     // maximum memory utilization allowed, default 0.9
     DEFINE_ARG(double, max_memory_utilization) = 0.9;
 
-    // enable CUDAGraph to optimize model execution
-    DEFINE_ARG(bool, enable_cuda_graph) = false;
-
     // enable prefix cache
     DEFINE_ARG(bool, enable_prefix_cache) = true;
+
+    // number of decoding tokens per sequence
+    // in speculative decoding, it is the number of speculative tokens + 1
+    DEFINE_ARG(int64_t, num_decoding_tokens) = 1;
+
+    // max sequence length used to capture cuda graphs
+    DEFINE_ARG(int64_t, cuda_graph_max_seq_len) = 1024;
+
+    // batch sizes to capture cuda graphs
+    DEFINE_ARG(std::vector<uint32_t>, cuda_graph_batch_sizes);
   };
 
   // create an engine with the given devices
@@ -79,6 +86,8 @@ class LLMEngine : public Engine {
 
   bool init_kv_cache(int64_t n_blocks);
 
+  bool capture_cuda_graphs();
+
   // returns the memory size for the kv cache
   int64_t profile_memory_for_kv_cache();
 
@@ -89,10 +98,8 @@ class LLMEngine : public Engine {
   int64_t calculate_kv_cache_blocks(int64_t cache_size_in_bytes) const;
 
  private:
-  bool warmup_model();
-
   // options
-  const Options options_;
+  Options options_;
 
   // dtype
   torch::ScalarType dtype_;

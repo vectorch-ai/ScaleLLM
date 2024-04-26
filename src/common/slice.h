@@ -52,12 +52,34 @@ class Slice final {
     return {data_ + start, end - start};
   }
 
-  // convert to vector
-  std::vector<T> to_vector() const { return {data_, data_ + size_}; }
+  // it is safe to allow implicit conversion to vector
+  operator std::vector<T>() const { return {data_, data_ + size_}; }
 
  private:
   const T* data_ = nullptr;
   size_t size_ = 0;
 };
+
+// help comparison operators between slices and std::vector
+template <typename T>
+inline bool operator==(const Slice<T>& lhs, const std::vector<T>& rhs) {
+  return lhs.size() == rhs.size() &&
+         (lhs.data() == rhs.data() ||
+          std::equal(lhs.begin(), lhs.end(), rhs.begin()));
+}
+
+template <typename T>
+inline bool operator==(const std::vector<T>& lhs, const Slice<T>& rhs) {
+  return lhs.size() == rhs.size() &&
+         (lhs.data() == rhs.data() ||
+          std::equal(lhs.begin(), lhs.end(), rhs.begin()));
+}
+
+template <typename T>
+inline bool operator==(const Slice<T>& lhs, const Slice<T>& rhs) {
+  return lhs.size() == rhs.size() &&
+         (lhs.data() == rhs.data() ||
+          std::equal(lhs.begin(), lhs.end(), rhs.begin()));
+}
 
 }  // namespace llm

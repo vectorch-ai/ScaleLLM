@@ -1,5 +1,6 @@
 #include "engine_factory.h"
 
+#include <absl/strings/numbers.h>
 #include <absl/strings/str_split.h>
 
 #include "engine/llm_engine.h"
@@ -19,13 +20,75 @@ DEFINE_bool(enable_prefix_cache,
             "enable the prefix cache for the block manager");
 
 DEFINE_bool(enable_cuda_graph,
-            false,
-            "Enable CUDAGraph to optimize model execution.");
+            true,
+            "Enable CUDA Graph to optimize model execution.");
+
+DEFINE_int64(cuda_graph_max_seq_len,
+             4096,
+             "max sequence length used to capture cuda graphs");
+DEFINE_string(cuda_graph_batch_sizes,
+              "auto",
+              "batch sizes to capture cuda graphs, comma separated list");
+DEFINE_string(
+    draft_cuda_graph_batch_sizes,
+    "auto",
+    "batch sizes to capture cuda graphs for draft model, comma separated list");
 
 DECLARE_int32(num_speculative_tokens);
 
 namespace llm {
 namespace {
+
+const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph = {1,
+                                                              2,
+                                                              4,
+                                                              8,
+                                                              16,
+                                                              24,
+                                                              32,
+                                                              40,
+                                                              48,
+                                                              56,
+                                                              64,
+                                                              72,
+                                                              80,
+                                                              88,
+                                                              96,
+                                                              104,
+                                                              112,
+                                                              120,
+                                                              128};
+
+std::vector<uint32_t> parse_cuda_graph_batch_sizes(
+    const std::string& batch_sizes_str,
+    const std::vector<torch::Device>& devices) {
+  if (batch_sizes_str == "auto") {
+    if (devices.size() == 1 && devices[0].is_cuda()) {
+      // use default batch sizes for cuda graph
+      return kDefaultBatchSizesForCudaGraph;
+    }
+
+    // It is a known issue (https://github.com/vectorch-ai/ScaleLLM/issues/131)
+    // that CUDA graph capture may occasionally become stuck with multiple gpus.
+    // disable cuda graph for multi-gpus by default
+    return {};
+  }
+
+  // parse device string
+  const std::vector<std::string> size_strs =
+      absl::StrSplit(batch_sizes_str, ',');
+  // remove duplicates
+  std::unordered_set<uint32_t> sizes_set;
+  for (const auto& size_str : size_strs) {
+    uint32_t batch_size = 0;
+    if (!absl::SimpleAtoi(size_str, &batch_size)) {
+      LOG(ERROR) << "Failed to parse batch size: " << size_str;
+      continue;
+    }
+    sizes_set.insert(batch_size);
+  }
+  return {sizes_set.begin(), sizes_set.end()};
+}
 
 std::vector<torch::Device> parse_devices(const std::string& device_str) {
   std::vector<torch::Device> devices;
@@ -90,8 +153,18 @@ std::unique_ptr<Engine> EngineFactory::create(
         .max_cache_size(FLAGS_max_cache_size)
         .max_memory_utilization(FLAGS_max_memory_utilization)
         .enable_prefix_cache(FLAGS_enable_prefix_cache)
-        .enable_cuda_graph(FLAGS_enable_cuda_graph)
         .num_speculative_tokens(FLAGS_num_speculative_tokens);
+    if (FLAGS_enable_cuda_graph) {
+      LOG(INFO) << "Using cuda graph optimization, batch sizes: "
+                << FLAGS_cuda_graph_batch_sizes;
+      const auto batch_sizes =
+          parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes, devices);
+      const auto draft_batch_sizes = parse_cuda_graph_batch_sizes(
+          FLAGS_draft_cuda_graph_batch_sizes, draft_devices);
+      options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
+          .cuda_graph_batch_sizes(batch_sizes)
+          .draft_cuda_graph_batch_sizes(draft_batch_sizes);
+    }
     auto engine = std::make_unique<SpeculativeEngine>(options);
     CHECK(engine->init(model_path, draft_model_path));
     return engine;
@@ -102,8 +175,15 @@ std::unique_ptr<Engine> EngineFactory::create(
       .block_size(FLAGS_block_size)
       .max_cache_size(FLAGS_max_cache_size)
       .max_memory_utilization(FLAGS_max_memory_utilization)
-      .enable_prefix_cache(FLAGS_enable_prefix_cache)
-      .enable_cuda_graph(FLAGS_enable_cuda_graph);
+      .enable_prefix_cache(FLAGS_enable_prefix_cache);
+  if (FLAGS_enable_cuda_graph) {
+    LOG(INFO) << "Using cuda graph optimization, batch sizes: "
+              << FLAGS_cuda_graph_batch_sizes;
+    const auto batch_sizes =
+        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes, devices);
+    options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
+        .cuda_graph_batch_sizes(batch_sizes);
+  }
 
   auto engine = std::make_unique<LLMEngine>(options);
   CHECK(engine->init(model_path));
@@ -120,8 +200,15 @@ std::unique_ptr<Engine> EngineFactory::create(const std::string& model_path,
       .block_size(FLAGS_block_size)
       .max_cache_size(FLAGS_max_cache_size)
       .max_memory_utilization(FLAGS_max_memory_utilization)
-      .enable_prefix_cache(FLAGS_enable_prefix_cache)
-      .enable_cuda_graph(FLAGS_enable_cuda_graph);
+      .enable_prefix_cache(FLAGS_enable_prefix_cache);
+  if (FLAGS_enable_cuda_graph) {
+    LOG(INFO) << "Using cuda graph optimization, batch sizes: "
+              << FLAGS_cuda_graph_batch_sizes;
+    const auto batch_sizes =
+        parse_cuda_graph_batch_sizes(FLAGS_cuda_graph_batch_sizes, devices);
+    options.cuda_graph_max_seq_len(FLAGS_cuda_graph_max_seq_len)
+        .cuda_graph_batch_sizes(batch_sizes);
+  }
   auto engine = std::make_unique<LLMEngine>(options);
   CHECK(engine->init(model_path));
   return engine;

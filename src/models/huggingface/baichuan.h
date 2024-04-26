@@ -20,7 +20,7 @@
 
 namespace llm::hf {
 
-enum BaichuanType {
+enum class BaichuanType : uint8_t {
   Baichuan_7B,
   Baichuan2_7B,
   Baichuan_13B,
@@ -437,7 +437,8 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
       // Baichuan2 normalizes the head weights:
       // https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat/blob/main/modeling_baichuan.py#L508
       lm_head_->load_state_dict(state_dict.select_with_transform(
-          "lm_head.", [](torch::Tensor tensor) {
+          "lm_head.",
+          [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
             return torch::nn::functional::normalize(tensor);
           }));
     } else {

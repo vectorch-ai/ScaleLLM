@@ -10,40 +10,6 @@
 
 namespace llm {
 
-// Only support all decode sequences
-void Utils::prepare_capture_inputs(int64_t max_seq_len,
-                                   int64_t batch_size,
-                                   torch::Tensor* flatten_token_ids,
-                                   torch::Tensor* flatten_positions,
-                                   InputParameters* input_params) {
-  // create position
-  std::vector<int32_t> positions;
-  std::vector<int32_t> cu_lens = {0};
-  std::vector<int32_t> last_token_idxes;
-  for (int64_t i = 0; i < batch_size; ++i) {
-    cu_lens.push_back(cu_lens.back() + 1);
-    positions.push_back(0);
-    last_token_idxes.push_back(positions.size() - 1);
-  }
-
-  // create flatten tensor with shape [batch_size], only support decode.
-  *flatten_token_ids = torch::ones({batch_size}, torch::kInt32);
-  *flatten_positions = torch::tensor(positions, torch::kInt32);
-  torch::Tensor cu_seq_lens = torch::tensor(cu_lens, torch::kInt32);
-
-  InputParameters params;
-  input_params->empty_kv_cache = false;
-  input_params->num_sequences = batch_size;
-  input_params->q_max_seq_len = 1;
-  input_params->kv_max_seq_len = max_seq_len;
-  input_params->q_cu_seq_lens = cu_seq_lens;
-  input_params->kv_cu_seq_lens = cu_seq_lens;
-
-  input_params->new_cache_slots = torch::ones({batch_size}, torch::kInt);
-  input_params->block_tables =
-      torch::empty({batch_size, max_seq_len}, torch::kInt);
-}
-
 void Utils::prepare_profile_inputs(int64_t max_num_tokens,
                                    int64_t max_num_seqs,
                                    torch::Tensor* flatten_token_ids,

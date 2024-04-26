@@ -10,6 +10,7 @@
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
+#include "layers/qkv_linear.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -90,7 +91,8 @@ class LlamaAttentionImpl : public torch::nn::Module {
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
     const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
-    const int64_t n_local_kv_heads = n_kv_heads / world_size;
+    const int64_t n_local_kv_heads =
+        std::max<int64_t>(1, n_kv_heads / world_size);
 
     // size for q, k, v
     qkv_sizes_ = {n_local_heads * head_dim,
@@ -98,15 +100,16 @@ class LlamaAttentionImpl : public torch::nn::Module {
                   n_local_kv_heads * head_dim};
 
     // register submodules
-    qkv_proj_ = register_module(
-        "qkv_proj",
-        ColumnParallelLinear(hidden_size,
-                             (n_heads + 2 * n_kv_heads) * head_dim,
-                             /*bias=*/false,
-                             /*gather_output=*/false,
-                             quant_args,
-                             parallel_args,
-                             options));
+    qkv_proj_ = register_module("qkv_proj",
+                                QKVColumnParallelLinear(hidden_size,
+                                                        n_heads,
+                                                        n_kv_heads,
+                                                        head_dim,
+                                                        /*bias=*/false,
+                                                        /*gather_output=*/false,
+                                                        quant_args,
+                                                        parallel_args,
+                                                        options));
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(hidden_size,
@@ -141,7 +144,8 @@ class LlamaAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
+    qkv_proj_->load_state_dict(
+        state_dict, {"q_proj.", "k_proj.", "v_proj."}, {"k_proj.", "v_proj."});
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
@@ -152,7 +156,7 @@ class LlamaAttentionImpl : public torch::nn::Module {
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear qkv_proj_{nullptr};
+  QKVColumnParallelLinear qkv_proj_{nullptr};
 
   RowParallelLinear o_proj_{nullptr};
 
@@ -363,34 +367,99 @@ class LlamaForCausalLMImpl : public torch::nn::Module {
 };
 TORCH_MODULE(LlamaForCausalLM);
 
+class YiChatTemplate final : public CodedChatTemplate {
+ public:
+  // generate prompt from dialogs
+  // https://huggingface.co/01-ai/Yi-34B-Chat/blob/main/tokenizer_config.json#L60
+  // Prompt template:
+  // <|im_start|>user\n {message} <|im_end|>\n
+  // <|im_start|>assistant\n
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
+    // at least one user message
+    if (messages.size() % 2 == 0) {
+      return std::nullopt;
+    }
+
+    std::stringstream ss;
+    if (!system_message.empty()) {
+      ss << "<|im_start|>system\n" << system_message << "<|im_end|>\n";
+    }
+
+    // then user and assistant message pairs (u/a/u/a/u...)
+    for (size_t i = 0; i < messages.size(); ++i) {
+      const char* role = (i % 2) == 0 ? "user" : "assistant";
+      ss << "<|im_start|>" << role << "\n" << messages[i] << "<|im_end|>\n";
+    }
+    // end with assistant message
+    ss << "<|im_start|>assistant\n";
+    return ss.str();
+  }
+};
+
 // register the causal model
 REGISTER_CAUSAL_MODEL(llama, LlamaForCausalLM);
+REGISTER_CAUSAL_MODEL(llama3, LlamaForCausalLM);
+REGISTER_CAUSAL_MODEL(Yi, LlamaForCausalLM);
+
 REGISTER_DEFAULT_CHAT_TEMPLATE(llama, Llama2ChatTemplate);
+REGISTER_DEFAULT_CHAT_TEMPLATE(llama3, Llama3ChatTemplate);
+REGISTER_DEFAULT_CHAT_TEMPLATE(Yi, YiChatTemplate);
 // register the model args
 // example config:
-// https://huggingface.co/meta-llama/Llama-2-7b-hf/blob/main/config.json set
-// default values for args explicitly with values from:
-// https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/configuration_llama.py#L112
+// https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct/blob/main/config.json
 REGISTER_MODEL_ARGS(llama, [&] {
   LOAD_ARG_OR(model_type, "model_type", "llama");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
-  LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
-  LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
-  LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
-  LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
+  LOAD_ARG_OR(vocab_size, "vocab_size", 128256);
+  LOAD_ARG_OR(hidden_size, "hidden_size", 8192);
+  LOAD_ARG_OR(n_layers, "num_hidden_layers", 80);
+  LOAD_ARG_OR(n_heads, "num_attention_heads", 64);
   LOAD_ARG(n_kv_heads, "num_key_value_heads");
-  LOAD_ARG_OR(intermediate_size, "intermediate_size", 11008);
+  LOAD_ARG_OR(intermediate_size, "intermediate_size", 28672);
   LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
-  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 2048);
+  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
   LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
-  LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
-  LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
-  LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
+  LOAD_ARG_OR(bos_token_id, "bos_token_id", 128000);
+  LOAD_ARG_OR(eos_token_id, "eos_token_id", 128001);
+  LOAD_ARG_OR(rope_theta, "rope_theta", 500000.0f);
   LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
   LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
     return args->hidden_size() / args->n_heads();
   });
+
+  // decide model type based on vocab size
+  if (args->vocab_size() == 128256) {
+    // choose the right chat template
+    SET_ARG(model_type, "llama3");
+    // stop token ids: "<|end_of_text|>", "<|eot_id|>"
+    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({128001, 128009}));
+  } else if (args->vocab_size() == 64000) {
+    // choose the right chat template
+    SET_ARG(model_type, "Yi");
+    // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>",
+    // "<|im_sep|>"
+    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({2, 6, 7, 8}));
+  }
+});
+
+// Register tokenizer args since Yi is using sentencepiece tokenizer.
+REGISTER_TOKENIZER_ARGS(Yi, [&] {
+  SET_ARG(tokenizer_type, "sentencepiece");
+  SET_ARG(vocab_file, "tokenizer.model");
+
+  // set special tokens
+  // ref to:
+  // https://huggingface.co/01-ai/Yi-34B-Chat-4bits/blob/main/tokenizer_config.json
+  const std::vector<SpecialToken> special_tokens({{"<unk>", 0},
+                                                  {"<|startoftext|>", 1},
+                                                  {"<|endoftext|>", 2},
+                                                  {"<|im_start|>", 6},
+                                                  {"<|im_end|>", 7},
+                                                  {"<|im_sep|>", 8}});
+  SET_ARG(special_tokens, special_tokens);
 });
 
 }  // namespace llm::hf

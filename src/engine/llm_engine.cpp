@@ -4,6 +4,7 @@
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <memory>
 
@@ -78,12 +79,22 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
     process_groups_ = ProcessGroup::create_process_groups(devices);
   }
 
+  // sort cuda graph batch sizes
+  auto& batch_sizes = options_.cuda_graph_batch_sizes();
+  std::sort(batch_sizes.begin(), batch_sizes.end());
+
   // create a worker for each device
+  ModelRunner::Options runner_options;
+  runner_options.block_size(options_.block_size())
+      .num_decoding_tokens(options_.num_decoding_tokens())
+      .cuda_graph_max_seq_len(options_.cuda_graph_max_seq_len())
+      .cuda_graph_batch_sizes(options_.cuda_graph_batch_sizes());
   for (size_t i = 0; i < devices.size(); ++i) {
     const int32_t rank = static_cast<int32_t>(i);
     ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
     ParallelArgs parallel_args(rank, world_size, pg);
-    workers_.emplace_back(std::make_unique<Worker>(parallel_args, devices[i]));
+    workers_.emplace_back(
+        std::make_unique<Worker>(parallel_args, devices[i], runner_options));
   }
 
   if (FLAGS_disable_custom_kernels) {
@@ -108,7 +119,7 @@ bool LLMEngine::init(const std::string& model_weights_path) {
     LOG(ERROR) << "Failed to initialize kv cache";
     return false;
   }
-  if (!warmup_model()) {
+  if (!capture_cuda_graphs()) {
     LOG(ERROR) << "Failed to warmup model.";
     return false;
   }
@@ -130,7 +141,7 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   const int world_size = static_cast<int>(workers_.size());
   const int64_t n_heads = args_.n_heads();
   const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
-  n_local_kv_heads_ = n_kv_heads / world_size;
+  n_local_kv_heads_ = std::max<int64_t>(1, n_kv_heads / world_size);
   head_dim_ = args_.head_dim();
   dtype_ = parse_dtype(args_.dtype(), options_.devices()[0]);
 
@@ -210,18 +221,26 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   return true;
 }
 
-bool LLMEngine::warmup_model() {
+bool LLMEngine::capture_cuda_graphs() {
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
-    return workers_[0]->warmup_model(options_.enable_cuda_graph());
+    return workers_[0]->capture_cuda_graphs();
+  }
+
+  if (!options_.cuda_graph_batch_sizes().empty()) {
+    LOG(WARNING)
+        << "It is a known issue "
+           "(https://github.com/vectorch-ai/ScaleLLM/issues/131) that CUDA "
+           "graph capture may occasionally become stuck when multiple workers "
+           "are in use. If you encounter this problem, please set "
+           "'cuda_graph_batch_sizes' to empty to workaround it.";
   }
 
   // multiple workers, call async forward
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.emplace_back(
-        worker->warmup_model_async(options_.enable_cuda_graph()));
+    futures.emplace_back(worker->capture_cuda_graphs_async());
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
@@ -237,7 +256,6 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
   const int64_t max_cache_size = options_.max_cache_size();
   const double max_memory_utilization = options_.max_memory_utilization();
 
-  // use first device to profile memory usage
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
     // use max memory cache size for CPU
@@ -248,24 +266,11 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
   }
   CHECK(device.is_cuda()) << "Only support CPU and CUDA device for now.";
 
-  // Prepare dummy inputs for memory profiling
-  torch::Tensor flatten_token_ids;
-  torch::Tensor flatten_positions;
-  InputParameters input_params;
-  Utils::prepare_profile_inputs(FLAGS_max_num_tokens_per_batch,
-                                FLAGS_max_num_seqs_per_batch,
-                                &flatten_token_ids,
-                                &flatten_positions,
-                                &input_params);
-  LOG(INFO) << "Warming up the engine with input shape: "
-            << flatten_token_ids.sizes();
-
   // call worker to profile memory usage
   std::vector<folly::SemiFuture<std::tuple<int64_t, int64_t>>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->profile_device_memory_async(
-        flatten_token_ids, flatten_positions, input_params));
+    futures.push_back(worker->profile_device_memory_async());
   }
 
   // pick smallest available memory from all devices
@@ -339,7 +344,15 @@ bool LLMEngine::init_kv_cache(int64_t n_blocks) {
 
 ModelOutput LLMEngine::execute_model(Batch& batch) {
   // prepare inputs for workers
-  auto model_inputs = batch.prepare_model_input();
+  const auto& batch_sizes = options_.cuda_graph_batch_sizes();
+  const auto batch_size = batch.size();
+  // find the closest batch size in the captured graph
+  auto it =
+      std::lower_bound(batch_sizes.begin(), batch_sizes.end(), batch_size);
+  uint32_t adjusted_batch_size = it == batch_sizes.end() ? 0 : *it;
+
+  auto model_inputs = batch.prepare_model_input(options_.num_decoding_tokens(),
+                                                adjusted_batch_size);
   if (!model_inputs.token_ids.defined()) {
     // empty input, just return
     return {};

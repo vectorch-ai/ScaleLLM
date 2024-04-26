@@ -37,8 +37,7 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string_view& dir_path,
   // add special tokens and construct special token regex
   if (!args.special_tokens().empty()) {
     const auto vocab_size = sp_processor_.GetPieceSize();
-    const int32_t start_id = args.special_start_id().value_or(vocab_size);
-    load_special_tokens(args.special_tokens(), start_id);
+    load_special_tokens(args.special_tokens());
   }
 
   // construct prefix tokens
@@ -59,26 +58,26 @@ SentencePieceTokenizer::SentencePieceTokenizer(const std::string_view& dir_path,
 }
 
 void SentencePieceTokenizer::load_special_tokens(
-    const std::vector<std::string>& special_tokens,
-    int32_t start_id) {
-  int32_t next_id = start_id;
-  for (const auto& token : special_tokens) {
+    const std::vector<SpecialToken>& special_tokens) {
+  // for each special token, add to encoder and decoder
+  for (const auto& [token, id] : special_tokens) {
     if (token.empty()) {
       continue;
     }
-    if (!special_token_encoder_.try_emplace(token, next_id).second) {
-      LOG(WARNING) << "Duplicate special token: " << token;
+
+    if (!special_token_encoder_.try_emplace(token, id).second) {
+      LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
     }
-    if (!special_token_decoder_.try_emplace(next_id, token).second) {
-      LOG(WARNING) << "Duplicate special token id: " << next_id;
+
+    if (!special_token_decoder_.try_emplace(id, token).second) {
+      LOG(WARNING) << "Duplicate special token: " << token << ", id: " << id;
     }
-    ++next_id;
   }
 
   // build special token regex
   std::vector<std::string> escaped_tokens;
   escaped_tokens.reserve(special_tokens.size());
-  for (const auto& token : special_tokens) {
+  for (const auto& [token, id] : special_tokens) {
     if (token.empty()) {
       continue;
     }

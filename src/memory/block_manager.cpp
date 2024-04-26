@@ -14,7 +14,11 @@ namespace llm {
 BlockManager::BlockManager(const Options& options)
     : options_(options),
       block_allocator_(options.num_blocks(), options.block_size()),
-      prefix_cache_(options.block_size()) {}
+      prefix_cache_(options.block_size()) {
+  // reserve block 0 for padding
+  padding_block_ = block_allocator_.allocate();
+  CHECK_EQ(padding_block_.id(), 0) << "Padding block id should be 0";
+}
 
 bool BlockManager::allocate_blocks_for(Sequence* sequence) {
   DCHECK(sequence != nullptr);

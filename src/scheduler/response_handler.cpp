@@ -38,11 +38,11 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
       stats.num_total_tokens =
           stats.num_prompt_tokens + stats.num_generated_tokens;
 
-      std::vector<SequenceResult> seq_results;
+      std::vector<SequenceOutput> seq_results;
       seq_results.reserve(request->sequences.size());
       for (Sequence& seq : request->sequences) {
         // generate the final output
-        const auto output = seq.decode_delta_text(seq.num_tokens(), *tokenizer);
+        const auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
         seq_results.push_back({output, seq.finish_reason()});
       }
       request->on_finish(seq_results, Status(), stats);
@@ -52,18 +52,18 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
 
 void ResponseHandler::on_sequence_stream(Sequence* seq) {
   // check if the sequence has enough tokens to output
-  const size_t num_tokens = seq->num_tokens();
+  const auto token_ids = seq->token_ids();
   const size_t output_offset = seq->output_offset();
-  const size_t num_tokens_to_output = num_tokens - output_offset;
+  const size_t num_tokens_to_output = token_ids.size() - output_offset;
   if (seq->is_finished() ||
       num_tokens_to_output >= FLAGS_streaming_token_buffer_size) {
     const auto finish_reason = seq->finish_reason();
     // output the delta text til the end of the sequence to the client
     response_threadpool_.schedule(
-        [seq, tokenizer = tokenizer_, end = num_tokens, finish_reason]() {
-          const auto detla = seq->decode_delta_text(end, *tokenizer);
-          if (!detla.empty() || finish_reason != FinishReason::NONE) {
-            seq->stream_delta(detla, finish_reason);
+        [seq, tokenizer = tokenizer_, token_ids = token_ids, finish_reason]() {
+          auto delta = seq->decode_delta_text(token_ids, *tokenizer);
+          if (!delta.empty() || finish_reason != FinishReason::NONE) {
+            seq->stream_delta({std::move(delta), finish_reason});
           };
         });
   }

@@ -287,6 +287,8 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
       response_handler_->on_sequence_stream(seq);
     }
   }
+
+  // TODO: return a task to support waiting for the completion of the batch
 }
 
 bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,

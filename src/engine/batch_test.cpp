@@ -34,44 +34,42 @@ TEST(BatchTest, Basic) {
   auto block_0 = allocator.allocate();
   EXPECT_EQ(block_0.id(), 0);
 
-  SamplingParameter sampling_param;
-  sampling_param.frequency_penalty = 0.1;
-  StoppingCriteria stopping_criteria;
-  stopping_criteria.max_tokens = 20;
+  Sequence::Options options;
+  options.sampling_param.frequency_penalty = 0.1;
+  options.stopping_criteria.max_tokens = 20;
+  const size_t capacity = 100;
 
   // prepare sequences
   // sequence in prefill phase
-  Sequence seq1(/*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
-                sampling_param,
-                stopping_criteria,
-                /*echo=*/false,
-                /*on_stream=*/nullptr);
+  Sequence seq1(/*prompt=*/"",
+                /*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
+                capacity,
+                options);
   seq1.append_blocks(allocator.allocate(3));  // [1, 2, 3]
 
   // seq in decode phase
-  Sequence seq2(/*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
-                sampling_param,
-                stopping_criteria,
-                /*echo=*/false,
-                /*on_stream=*/nullptr);
+  Sequence seq2(/*prompt=*/"",
+                /*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
+                capacity,
+                options);
   seq2.append_blocks(allocator.allocate(4));  // [4, 5, 6, 7]
   seq2.commit_kv_cache(/*size=*/7);
-  seq2.append_new_token_id(100);
+  seq2.append_token(100);
 
   // seq in decode phase
   Sequence seq3(
+      /*prompt=*/"",
       /*token_ids=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19},
-      sampling_param,
-      stopping_criteria,
-      /*echo=*/false,
-      /*on_stream=*/nullptr);
+      capacity,
+      options);
   seq3.append_blocks(allocator.allocate(5));  // [8, 9, 10, 11, 12]
   seq3.commit_kv_cache(/*size=*/15);
-  seq3.append_new_token_id(200);
+  seq3.append_token(200);
 
   // define outputs
   Batch batch({&seq1, &seq2, &seq3});
-  ModelInput model_input = batch.prepare_model_input();
+  ModelInput model_input = batch.prepare_model_input(
+      /*num_decoding_tokens=*/1, /*min_decoding_bach_size=*/0);
 
   // check num tokens in kv cache
   EXPECT_EQ(seq1.num_kv_cache_tokens(), 9);

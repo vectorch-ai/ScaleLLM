@@ -26,14 +26,20 @@ class SpeculativeEngine : public Engine {
     // maximum memory utilization allowed, default 0.9
     DEFINE_ARG(double, max_memory_utilization) = 0;
 
-    // enable CUDAGraph to optimize model execution
-    DEFINE_ARG(bool, enable_cuda_graph) = false;
-
     // enable prefix cache
     DEFINE_ARG(bool, enable_prefix_cache) = true;
 
     // the number of speculative tokens per step
     DEFINE_ARG(int32_t, num_speculative_tokens) = 0;
+
+    // max sequence length used to capture cuda graphs
+    DEFINE_ARG(int64_t, cuda_graph_max_seq_len) = 1024;
+
+    // batch sizes to capture cuda graphs
+    DEFINE_ARG(std::vector<uint32_t>, cuda_graph_batch_sizes);
+
+    // batch sizes to capture cuda graphs for draft model
+    DEFINE_ARG(std::vector<uint32_t>, draft_cuda_graph_batch_sizes);
   };
 
   // create an engine with the given devices

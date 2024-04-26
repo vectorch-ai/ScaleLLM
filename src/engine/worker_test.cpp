@@ -3,10 +3,10 @@
 #include <gtest/gtest.h>
 
 #include "engine/batch.h"
+#include "engine/utils.h"
 #include "memory/block_manager.h"
 #include "models/simple_model.h"
 #include "quantization/quant_args.h"
-
 namespace llm {
 
 class TestableWorker {
@@ -158,17 +158,10 @@ TEST(WorkerTest, InitSimpleModelWithCudaGraph) {
 
 // TODO: fix coredump
 TEST(WorkerTest, ExecuteSimpleModelWithCudaGraph) {
-  /*
   torch::Device device(torch::kCUDA);
   TestableWorker worker(device);
   // enable cudagraph
   EXPECT_TRUE(worker.init(true));
-  torch::Tensor flatten_tokens;
-  torch::Tensor flatten_positions;
-  InputParameters params;
-  SamplingParameters sampling_params;
-  worker.execute_model(flatten_tokens, flatten_positions, params,
-      sampling_params);*/
 }
 
 }  // namespace llm

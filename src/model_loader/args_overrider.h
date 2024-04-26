@@ -43,9 +43,8 @@ DECLARE_string(true_sequential);
 // tokenizer flags
 DECLARE_string(tokenizer_type);
 DECLARE_string(vocab_file);
-DECLARE_string(special_tokens);
+// DECLARE_string(special_tokens);
 DECLARE_string(pattern);
-DECLARE_string(special_start_id);
 DECLARE_string(prefix_tokens);
 DECLARE_string(chat_template);
 

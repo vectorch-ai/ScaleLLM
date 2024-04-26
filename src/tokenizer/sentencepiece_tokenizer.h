@@ -27,8 +27,7 @@ class SentencePieceTokenizer : public Tokenizer {
   std::unique_ptr<Tokenizer> clone() const override;
 
  private:
-  void load_special_tokens(const std::vector<std::string>& special_tokens,
-                           int32_t start_id);
+  void load_special_tokens(const std::vector<SpecialToken>& special_tokens);
 
   bool encode_internal(const std::string_view& text,
                        std::vector<int32_t>* ids) const;

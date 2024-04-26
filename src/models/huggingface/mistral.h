@@ -8,6 +8,7 @@
 #include "layers/embedding.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
+#include "layers/qkv_linear.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -87,7 +88,8 @@ class MistralAttentionImpl : public torch::nn::Module {
     const int64_t n_kv_heads = args.n_kv_heads().value_or(n_heads);
     const int64_t head_dim = args.head_dim();
     const int64_t n_local_heads = n_heads / world_size;
-    const int64_t n_local_kv_heads = n_kv_heads / world_size;
+    const int64_t n_local_kv_heads =
+        std::max<int64_t>(1, n_kv_heads / world_size);
 
     // size for q, k, v
     qkv_sizes_ = {n_local_heads * head_dim,
@@ -95,15 +97,16 @@ class MistralAttentionImpl : public torch::nn::Module {
                   n_local_kv_heads * head_dim};
 
     // register submodules
-    qkv_proj_ = register_module(
-        "qkv_proj",
-        ColumnParallelLinear(hidden_size,
-                             (n_heads + 2 * n_kv_heads) * head_dim,
-                             /*bias=*/false,
-                             /*gather_output=*/false,
-                             quant_args,
-                             parallel_args,
-                             options));
+    qkv_proj_ = register_module("qkv_proj",
+                                QKVColumnParallelLinear(hidden_size,
+                                                        n_heads,
+                                                        n_kv_heads,
+                                                        head_dim,
+                                                        /*bias=*/false,
+                                                        /*gather_output=*/false,
+                                                        quant_args,
+                                                        parallel_args,
+                                                        options));
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(hidden_size,
@@ -137,7 +140,8 @@ class MistralAttentionImpl : public torch::nn::Module {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
     // call each submodule's load_state_dict function
-    qkv_proj_->load_state_dict(state_dict, {"q_proj.", "k_proj.", "v_proj."});
+    qkv_proj_->load_state_dict(
+        state_dict, {"q_proj.", "k_proj.", "v_proj."}, {"k_proj.", "v_proj."});
     o_proj_->load_state_dict(state_dict.select("o_proj."));
   }
 
@@ -148,7 +152,7 @@ class MistralAttentionImpl : public torch::nn::Module {
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear qkv_proj_{nullptr};
+  QKVColumnParallelLinear qkv_proj_{nullptr};
 
   RowParallelLinear o_proj_{nullptr};
 

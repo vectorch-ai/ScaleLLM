@@ -68,7 +68,9 @@ void Batch::clear() {
 }
 
 // prepare inputs for the batch
-ModelInput Batch::prepare_model_input() {
+// NOLINTNEXTLINE
+ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
+                                      uint32_t min_decoding_bach_size) {
   // flatten the token ids and positions
   std::vector<int32_t> flatten_tokens_vec;
   std::vector<int32_t> flatten_positions_vec;
@@ -212,6 +214,30 @@ ModelInput Batch::prepare_model_input() {
     return {};
   }
 
+  // padding the batch to the minimum decoding batch size for cuda graph
+  // TODO: move the logic to a better place
+  if (num_sequences < min_decoding_bach_size) {
+    const uint32_t n_tokens = flatten_tokens_vec.size();
+    // kv_cache is not empty in decoding phase
+    const bool in_decoding_phase = !empty_kv_cache;
+    const bool same_num_decoding_tokens =
+        q_max_seq_len == num_decoding_tokens &&
+        n_tokens == num_sequences * num_decoding_tokens;
+    if (in_decoding_phase && same_num_decoding_tokens) {
+      // add padding tokens to the batch
+      for (int32_t i = num_sequences; i < min_decoding_bach_size; ++i) {
+        for (int32_t k = 0; k < num_decoding_tokens; ++k) {
+          flatten_tokens_vec.push_back(0);
+          flatten_positions_vec.push_back(0);
+          new_token_slot_ids.push_back(0);
+        }
+        cu_seq_lens.push_back(cu_seq_lens.back() + num_decoding_tokens);
+        q_cu_seq_lens.push_back(q_cu_seq_lens.back() + num_decoding_tokens);
+        block_tables_vec.emplace_back();
+      }
+    }
+  }
+
   ModelInput model_inputs;
   model_inputs.token_ids = torch::tensor(flatten_tokens_vec, torch::kInt);
   model_inputs.positions = torch::tensor(flatten_positions_vec, torch::kInt);
@@ -259,7 +285,7 @@ void Batch::process_sample_output(const SampleOutput& sample_output) {
       // add the next token to sequence
       const int32_t next_token_id =
           static_cast<int32_t>(next_tokens[output_idx++].item<int64_t>());
-      seq->append_new_token_id(next_token_id);
+      seq->append_token(next_token_id);
     }
     CHECK_EQ(output_idx, num_seqs);
   }
@@ -281,7 +307,7 @@ void Batch::process_validate_output(const torch::Tensor& accepted_ids) {
         ids.data_ptr<int64_t>(), static_cast<size_t>(ids.numel())};
 
     // validate the draft tokens with accepted tokens
-    seq->validate_token_ids(accepted_token_ids);
+    seq->validate_tokens(accepted_token_ids);
   }
   CHECK_EQ(output_idx, num_seqs);
 }
