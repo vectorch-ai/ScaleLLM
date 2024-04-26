@@ -102,13 +102,13 @@ class MixtralMoEImpl : public torch::nn::Module {
     // gating_output:[num_tokens,n_experts]
     auto router_weight = torch::softmax(gating_output, -1, torch::kFloat32);
     // top_weights,topk_indices: [num_tokens,topk]
-    auto [topk_weights, topk_indices]  = torch::topk(router_weight, topk, -1);
-   
-    if (renormalize){
-      topk_weights = topk_weights / topk_weights.sum(-1,true);
-    } 
+    auto [topk_weights, topk_indices] = torch::topk(router_weight, topk, -1);
+
+    if (renormalize) {
+      topk_weights = topk_weights / topk_weights.sum(-1, true);
+    }
     // TODO aggregation layer
-  
+
     return torch::Tensor();
   }
 
