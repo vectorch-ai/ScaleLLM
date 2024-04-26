@@ -57,11 +57,10 @@ TEST(KVCacheTest, Basic) {
 }
 
 TEST(KVCacheTest, Random) {
-  const int num_kv_heads = 12;
-  const int head_dim = 128;
-  const int block_size = 4;
-  const int x = 8;
-  const int num_blocks = 2;
+  const int64_t num_kv_heads = 12;
+  const int64_t head_dim = 128;
+  const int64_t block_size = 4;
+  const int64_t num_blocks = 2;
 
   // auto dtype = torch::kFloat16;
   torch::set_default_dtype(
@@ -82,17 +81,21 @@ TEST(KVCacheTest, Random) {
   for (int32_t i = 0; i < 10000; ++i) {
     using ISlice = torch::indexing::Slice;
 
-    const int sample_size = std::min(num_blocks * block_size, 10);
-    const int num_slots = i % sample_size + 1;
+    const int64_t sample_size = std::min<int64_t>(num_blocks * block_size, 10);
+    const int64_t num_slots = i % sample_size + 1;
     torch::Tensor slot_ids =
         torch::randperm(num_blocks * block_size,
                         torch::dtype(torch::kInt).device(device))
             .index({ISlice(0, num_slots)});
 
+    // construct keys and values with different strides
     torch::Tensor keys =
-        torch::rand({num_slots, num_kv_heads, head_dim}, torch::device(device));
+        torch::rand({num_slots, num_kv_heads * 2, head_dim},
+                    torch::device(device))
+            .slice(/*dim=*/1, /*start=*/0, /*end=*/num_kv_heads);
     torch::Tensor values =
         torch::rand({num_slots, num_kv_heads, head_dim}, torch::device(device));
+    EXPECT_NE(keys.stride(0), values.stride(0));
 
     kv_cache.set_kv_cache_cuda(slot_ids, keys, values);
 

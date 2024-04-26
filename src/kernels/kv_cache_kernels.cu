@@ -12,10 +12,11 @@ __global__ void set_kv_cache_kernel(
     const T* __restrict__ values,      // [n_tokens, n_heads, head_dim]
     T* __restrict__ key_cache,
     T* __restrict__ value_cache,
-    int kv_stride,
-    int n_kv_heads,
-    int head_dim,
-    int block_size) {
+    int64_t k_stride,
+    int64_t v_stride,
+    int64_t n_kv_heads,
+    int64_t head_dim,
+    int64_t block_size) {
   // block/token index
   const int64_t bid = blockIdx.x;
   // which slot to write to
@@ -29,8 +30,9 @@ __global__ void set_kv_cache_kernel(
   const int64_t block_base_idx = block_idx * block_size * n_kv_heads * head_dim;
 
   // copy value one by one for the token
-  for (int i = threadIdx.x; i < n_kv_heads * head_dim; i += blockDim.x) {
-    const int64_t src_idx = bid * kv_stride + i;
+  for (int64_t i = threadIdx.x; i < n_kv_heads * head_dim; i += blockDim.x) {
+    const int64_t k_src_idx = bid * k_stride + i;
+    const int64_t v_src_idx = bid * v_stride + i;
 
     // cache: [n_blocks, block_size, n_heads, head_dim]
     const int64_t head_base_idx =
@@ -42,8 +44,8 @@ __global__ void set_kv_cache_kernel(
     const int head_offset = i % head_dim;
     const int64_t dst_idx = head_base_idx + head_idx * head_dim + head_offset;
 
-    key_cache[dst_idx] = keys[src_idx];
-    value_cache[dst_idx] = values[src_idx];
+    key_cache[dst_idx] = keys[k_src_idx];
+    value_cache[dst_idx] = values[v_src_idx];
   }
 }
 
@@ -53,15 +55,21 @@ void set_kv_cache(
     const torch::Tensor& values,    // [n_tokens, n_kv_heads, head_dim]
     torch::Tensor& key_cache,       // [n_blocks, block_size, n_heads, head_dim]
     torch::Tensor& value_cache) {
-  const int n_tokens = keys.size(0);
-  const int n_kv_heads = keys.size(-2);
-  const int head_dim = keys.size(-1);
-  const int block_size = key_cache.size(-3);
-  const int kv_stride = keys.stride(0);
-  const int n = n_kv_heads * head_dim;
+  // keys and values should be continuous at n_kv_heads and head_dim dims
+  CHECK(keys.stride(-1) == 1 && keys.stride(-2) == keys.size(-1));
+  CHECK(values.stride(-1) == 1 && values.stride(-2) == values.size(-1));
+
+  const int64_t n_tokens = keys.size(-3);
+  const int64_t n_kv_heads = keys.size(-2);
+  const int64_t head_dim = keys.size(-1);
+  const int64_t block_size = key_cache.size(-3);
+  // it is possible that keys and values have different strides
+  const int64_t k_stride = keys.stride(-3);
+  const int64_t v_stride = values.stride(-3);
+  const int64_t n = n_kv_heads * head_dim;
 
   dim3 grid(n_tokens);
-  dim3 block(std::min(n, 1024));
+  dim3 block(std::min<int>(n, 1024));
   DISPATCH_FLOATING_TYPES(keys.scalar_type(), "set_kv_cache_kernel", [&] {
     set_kv_cache_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -70,7 +78,8 @@ void set_kv_cache(
             values.data_ptr<scalar_t>(),
             key_cache.data_ptr<scalar_t>(),
             value_cache.data_ptr<scalar_t>(),
-            kv_stride,
+            k_stride,
+            v_stride,
             n_kv_heads,
             head_dim,
             block_size);
