@@ -16,14 +16,14 @@ __global__ void rms_norm_kernel(T* __restrict__ out,
                                 const T* __restrict__ input,
                                 const T* __restrict__ weight,
                                 const float epsilon,
-                                int n) {
-  const int tidx = threadIdx.x;
-  const int bidx = blockIdx.x;
+                                int64_t n) {
+  const auto tidx = threadIdx.x;
+  const auto bidx = blockIdx.x;
 
   __shared__ float s_variance;
   float variance = 0.0f;
 
-  for (int i = tidx; i < n; i += blockDim.x) {
+  for (int64_t i = tidx; i < n; i += blockDim.x) {
     const float x = input[bidx * n + i];
     variance += x * x;
   }
@@ -33,8 +33,8 @@ __global__ void rms_norm_kernel(T* __restrict__ out,
   }
   __syncthreads();
 
-  for (int i = tidx; i < n; i += blockDim.x) {
-    const int idx = bidx * n + i;
+  for (int64_t i = tidx; i < n; i += blockDim.x) {
+    const int64_t idx = bidx * n + i;
     const float x = input[idx];
     out[idx] = (T)(x * s_variance) * weight[i];
   }
@@ -47,10 +47,10 @@ void rms_norm(torch::Tensor& out,
   DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
   DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
 
-  const int n = input.size(1);
+  const int64_t n = input.size(1);
 
   dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  dim3 block(std::min<int>(n, 1024));
   DISPATCH_FLOATING_TYPES(input.scalar_type(), "rms_norm_kernel", [&] {
     rms_norm_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -73,15 +73,15 @@ __global__ void rms_norm_residual_kernel(T* __restrict__ out,
                                          const T* __restrict__ input,
                                          const T* __restrict__ weight,
                                          const float epsilon,
-                                         int n) {
-  const int tidx = threadIdx.x;
-  const int bidx = blockIdx.x;
+                                         int64_t n) {
+  const auto tidx = threadIdx.x;
+  const auto bidx = blockIdx.x;
 
   __shared__ float s_variance;
   float variance = 0.0f;
 
-  for (int i = tidx; i < n; i += blockDim.x) {
-    const int idx = bidx * n + i;
+  for (int64_t i = tidx; i < n; i += blockDim.x) {
+    const int64_t idx = bidx * n + i;
     const float r = residual[idx];
     const float x = r + input[idx];
     residual[idx] = x;
@@ -93,8 +93,8 @@ __global__ void rms_norm_residual_kernel(T* __restrict__ out,
   }
   __syncthreads();
 
-  for (int i = tidx; i < n; i += blockDim.x) {
-    const int idx = bidx * n + i;
+  for (int64_t i = tidx; i < n; i += blockDim.x) {
+    const int64_t idx = bidx * n + i;
     const float x = residual[idx];
     out[idx] = (T)(x * s_variance) * weight[i];
   }
@@ -109,10 +109,10 @@ void rms_norm_residual(torch::Tensor& out,
   DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
   DCHECK(residual.is_contiguous()) << "residual tensor must be contiguous";
 
-  const int n = input.size(1);
+  const int64_t n = input.size(1);
 
   dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  dim3 block(std::min<int>(n, 1024));
   DISPATCH_FLOATING_TYPES(input.scalar_type(), "rms_norm_residual_kernel", [&] {
     rms_norm_residual_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
@@ -133,9 +133,9 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
                                   const T* __restrict__ weight,
                                   const T* __restrict__ bias,
                                   const float epsilon,
-                                  int n) {
-  const int tidx = threadIdx.x;
-  const int bidx = blockIdx.x;
+                                  int64_t n) {
+  const auto tidx = threadIdx.x;
+  const auto bidx = blockIdx.x;
 
   __shared__ float s_mean;
   __shared__ float s_variance;
@@ -143,7 +143,7 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
   float variance = 0.0f;
 
   // calculate mean of the input.
-  for (int i = tidx; i < n; i += blockDim.x) {
+  for (int64_t i = tidx; i < n; i += blockDim.x) {
     mean += input[bidx * n + i];
   }
   mean = block_reduce_sum<float>(mean);
@@ -153,7 +153,7 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
   __syncthreads();
 
   // calculate variance of the input.
-  for (int i = tidx; i < n; i += blockDim.x) {
+  for (int64_t i = tidx; i < n; i += blockDim.x) {
     const float x = input[bidx * n + i] - s_mean;
     variance += x * x;
   }
@@ -163,8 +163,8 @@ __global__ void layer_norm_kernel(T* __restrict__ out,
   }
   __syncthreads();
 
-  for (int i = tidx; i < n; i += blockDim.x) {
-    const int idx = bidx * n + i;
+  for (int64_t i = tidx; i < n; i += blockDim.x) {
+    const int64_t idx = bidx * n + i;
     float local_out = (input[idx] - s_mean) * s_variance * weight[i];
     if (bias != nullptr) {
       local_out += bias[i];
@@ -181,10 +181,10 @@ void layer_norm(torch::Tensor& out,
   DCHECK(input.is_contiguous()) << "input tensor must be contiguous";
   DCHECK(out.is_contiguous()) << "output tensor must be contiguous";
 
-  const int n = input.size(1);
+  const int64_t n = input.size(1);
 
   dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  dim3 block(std::min<int>(n, 1024));
   DISPATCH_FLOATING_TYPES(input.scalar_type(), "layer_norm_kernel", [&] {
     layer_norm_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(

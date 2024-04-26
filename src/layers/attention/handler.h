@@ -53,6 +53,7 @@ class AttentionHandler {
       const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
       const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
       const InputParameters& input_params) = 0;
+
   // create an attention handler
   static std::unique_ptr<AttentionHandler> create_handler(
       const ModelArgs& args,
