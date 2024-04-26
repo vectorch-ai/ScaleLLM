@@ -257,4 +257,44 @@ void RowParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
   }
 }
 
+ReplicatedLinearImpl::ReplicatedLinearImpl(int64_t in_features,
+                                           int64_t out_features,
+                                           bool bias,
+                                           bool skip_bias_add,
+                                           const QuantArgs& quant_args,
+                                           const torch::TensorOptions& options)
+    : skip_bias_add(skip_bias_add) {
+  weight_ = register_parameter(
+      "weight", torch::empty({out_features, in_features}, options));
+  if (bias) {
+    bias_ = register_parameter("bias", torch::empty({out_features}, options));
+  }
+}
+
+torch::Tensor ReplicatedLinearImpl::forward(torch::Tensor input,
+                                            torch::Tensor& output_bias) {
+  torch::Tensor bias = (!skip_bias_add) ? bias_ : torch::Tensor();
+  namespace F = torch::nn::functional;
+  auto output = F::linear(input, weight_, bias);
+  output_bias = (skip_bias_add) ? bias_ : torch::Tensor();
+}
+
+// load the weight from the checkpoint
+void ReplicatedLinearImpl::load_state_dict(const StateDict& state_dict) {
+  if (weight_.defined()) {
+    const auto weight = state_dict.get_tensor("weight");
+    CHECK_EQ(weight_.sizes(), weight.sizes())
+        << "weight size mismatch for" << name();
+    weight_.copy_(weight);
+    weight_is_loaded_ = true;
+  }
+  if (bias_.defined()) {
+    const auto bias = state_dict.get_tensor("bias");
+    CHECK_EQ(bias.sizes(), bias_.sizes())
+        << "weight size mismatch for" << name();
+    bias_.copy_(bias);
+    bias_is_loaded_ = true;
+  }
+}
+
 }  // namespace llm

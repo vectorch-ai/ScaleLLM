@@ -104,11 +104,11 @@ struct ModelArgs {
   // Stop token ids for decoding.
   DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
 
-  // The number of experts per tok in MoE
+  // The number of experts per tok in MoE used in topk
   DEFINE_ARG(int, n_experts_per_tok);
 
   // The number of experts in MoE
-  DEFINE_ARG(int, n_local_experts);
+  DEFINE_ARG(int64_t, n_local_experts);
 
   DEFINE_ARG(bool, out_router_logits);
 

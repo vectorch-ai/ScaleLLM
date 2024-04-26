@@ -135,4 +135,37 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   // parallel args
   ParallelArgs parallel_args_;
 };
+
+// Replicated linear layer for moe model
+class ReplicatedLinearImpl : public torch::nn::Module {
+ public:
+  ReplicatedLinearImpl(int64_t in_features,
+                       int64_t out_features,
+                       bool bias,
+                       bool skip_bias_add,
+                       const QuantArgs& quant_args,
+                       const torch::TensorOptions& options);
+  torch::Tensor forward(torch::Tensor input, torch::Tensor& output_bias);
+  void load_state_dict(const StateDict& state_dict);
+
+  void verify_loaded_weights(const std::string& prefix = "") {
+    CHECK(weight_is_loaded_)
+        << "weight is not loaded for " << prefix + "weight";
+    CHECK(!bias_.defined() || bias_is_loaded_)
+        << "bias is not loaded for " << prefix + "bias";
+  };
+
+ private:
+  // parameter members, must be registered
+  // we allocate the transpose since linear performs XA^T.
+  // A^T: [out_features, in_features_per_partition]
+  torch::Tensor weight_{nullptr};
+  torch::Tensor bias_{nullptr};
+
+  bool skip_bias_add = false;
+  // whether the weight is loaded
+  bool weight_is_loaded_ = false;
+  bool bias_is_loaded_ = false;
+};
+TORCH_MODULE(ReplicatedLinear);
 }  // namespace llm
