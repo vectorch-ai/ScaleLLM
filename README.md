@@ -10,7 +10,7 @@ ScaleLLM is currently undergoing active development. We are fully committed to c
 
 
 ## News:
-* [03/2024] - [Advanced feature](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.7) support for CUDA graph, [dynamic prefix cache](), [dynamic chunked prefill]() and [speculative decoding]().
+* [03/2024] - [Advanced features](#advanced-features) support for [CUDA graph](#cuda-graph), [prefix cache](#prefix-cache), [chunked prefill](#chunked-prefill) and [speculative decoding](#speculative-decoding).
 * [11/2023] - [First release](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1) with support for popular [open-source models](#supported-models).
 
 ## Key Features
@@ -31,6 +31,11 @@ ScaleLLM is currently undergoing active development. We are fully committed to c
   - [Chatbot UI](#chatbot-ui)
   - [Docker Compose](#docker-compose)
 - [Usage Examples](#usage-examples)
+- [Advanced Features](#advanced-features)
+  - [CUDA Graph](#cuda-graph)
+  - [Prefix Cache](#prefix-cache)
+  - [Chunked Prefill](#chunked-prefill)
+  - [Speculative Decoding](#speculative-decoding)
 - [Quantization](#quantization)
 - [Limitations](#limitations)
 - [Contributing](#Contributing)
@@ -252,6 +257,43 @@ for chunk in completion:
     content = chunk["choices"][0].get("text")
     if content:
         print(content, end="")
+```
+
+## Advanced Features
+### CUDA Graph
+CUDA Graph can improve performance by reducing the overhead of launching kernels. ScaleLLM supports CUDA Graph for decoding by default. In addition, It also allows user to specify which batch size to capture by setting the `--cuda_graph_batch_sizes` flag.
+
+for example:
+```bash
+docker run -it --gpus=all --net=host --shm-size=1g \
+  -v $HOME/.cache/huggingface/hub:/models \
+  -e HF_MODEL_ID=meta-llama/Meta-Llama-3-8B-Instruct \
+  docker.io/vectorchai/scalellm:latest --logtostderr --enable_cuda_graph --cuda_graph_batch_sizes=1,2,4,8
+```
+
+The limitations of CUDA Graph could cause problems during development and debugging. If you encounter any issues related to it, you can disable CUDA Graph by setting the `--enable_cuda_graph=false` flag.
+
+### Prefix Cache
+The KV cache is a technique that caches the intermediate kv states to avoid redundant computation during LLM inference. Prefix cache extends this idea by allowing kv caches with the same prefix to be shared among different requests.
+
+ScaleLLM supports Prefix Cache and enables it by default. You can disable it by setting the `--enable_prefix_cache=false` flag.
+
+### Chunked Prefill
+Chunked Prefill splits a long user prompt into multiple chunks and populates the remaining slots with decodes. This technique can improve decoding throughput and enhance the user experience caused by long stalls. However it may slightly increase Time to First Token (TTFT). ScaleLLM supports Chunked Prefill, and its behavior can be controlled by setting the following flags:
+- `--max_tokens_per_batch`: The maximum tokens for each batch, default is 512.
+- `--max_seqs_per_batch`: The maximum sequences for each batch, default is 128.
+
+### Speculative Decoding
+Speculative Decoding is a common used technique to speed up LLM inference without 
+changing distribution. During inference, it employs an economical approximation to generate speculative tokens, subsequently validated by the target model. For now, ScaleLLM supports Speculative Decoding with a draft model to generate draft tokens, which can be enabled by configuring a draft model and setting the speculative steps.
+
+for example:
+```bash
+docker run -it --gpus=all --net=host --shm-size=1g \
+  -v $HOME/.cache/huggingface/hub:/models \
+  -e HF_DRAFT_MODEL_ID=google/gemma-2b-it \
+  -e HF_MODEL_ID=google/gemma-7b-it \
+  docker.io/vectorchai/scalellm:latest --logtostderr --num_speculative_tokens=5 --device=cuda:0 --draft_device=cuda:0
 ```
 
 ## Quantization
