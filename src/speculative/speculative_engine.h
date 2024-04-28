@@ -5,6 +5,7 @@
 #include "engine/engine.h"
 #include "engine/llm_engine.h"
 #include "memory/block_manager.h"
+#include "models/model_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 
@@ -62,7 +63,7 @@ class SpeculativeEngine : public Engine {
     return engine_->block_manager();
   }
 
-  const ModelArgs& model_args() const override { return engine_->model_args(); }
+  const ModelArgs& model_args() const override { return model_args_; }
 
   const TokenizerArgs& tokenizer_args() const override {
     return engine_->tokenizer_args();
@@ -91,6 +92,8 @@ class SpeculativeEngine : public Engine {
 
   // whether target and draft engine are sharing the same device
   bool share_device_ = false;
+
+  ModelArgs model_args_;
 };
 
 }  // namespace llm
