@@ -39,7 +39,7 @@ jobs:
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
     
-    runs-on: [self-hosted, linux, x64, 1gpu, 32g]
+    runs-on: [self-hosted, linux, x64, build]
     
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
