@@ -182,7 +182,7 @@ __global__ void layer_norm_kernel<half2>(half2* __restrict__ out,
                                          const half2* __restrict__ weight,
                                          const half2* __restrict__ bias,
                                          const float epsilon,
-                                         int n) {
+                                         int64_t n) {
   const int tidx = threadIdx.x;
   const int bidx = blockIdx.x;
 
