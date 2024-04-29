@@ -14,6 +14,8 @@
 #include "request/stopping_criteria.h"
 #include "sampling/parameters.h"
 using namespace llm;
+namespace py = pybind11;
+
 DEFINE_string(model_name_or_path,
               "THUDM/chatglm3-6b",
               "hf model name or path to the model file.");
@@ -52,20 +54,18 @@ DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
 DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 
 std::string download_model(const std::string& model_name) {
-  namespace py = pybind11;
-  py::scoped_interpreter guard{};  // Start the interpreter
-
-  py::dict globals = py::globals();
-  globals["repo_id"] = model_name;
-  globals["allow_patterns"] = FLAGS_model_allow_patterns;
+  py::dict locals;
+  locals["repo_id"] = model_name;
+  locals["allow_patterns"] = FLAGS_model_allow_patterns;
   py::exec(R"(
     from huggingface_hub import snapshot_download
     model_path = snapshot_download(repo_id, allow_patterns=allow_patterns.split(','))
   )",
-           globals,
-           globals);
-  return globals["model_path"].cast<std::string>();
+           py::globals(),
+           locals);
+  return locals["model_path"].cast<std::string>();
 }
+
 int main(int argc, char* argv[]) {
   // initialize glog and gflags
   google::InitGoogleLogging(argv[0]);
@@ -73,19 +73,18 @@ int main(int argc, char* argv[]) {
 
   // check if model path exists
   std::string model_path = FLAGS_model_name_or_path;
-  CHECK(!model_path.empty()) << "model_name_or_path is empty.";
-  if (!std::filesystem::exists(model_path)) {
-    // not a model path, try to download the model from huggingface hub
-    model_path = download_model(FLAGS_model_name_or_path);
-  }
-
   std::string draft_model_path = FLAGS_draft_model_name_or_path;
-  if (!draft_model_path.empty() && !std::filesystem::exists(draft_model_path)) {
-    if (FLAGS_draft_model_name_or_path == FLAGS_model_name_or_path) {
-      draft_model_path = model_path;
-    } else {
+  {
+    py::scoped_interpreter guard{};  // Start the interpreter
+    CHECK(!model_path.empty()) << "model_name_or_path is empty.";
+    if (!std::filesystem::exists(model_path)) {
       // not a model path, try to download the model from huggingface hub
-      draft_model_path = download_model(FLAGS_draft_model_name_or_path);
+      model_path = download_model(model_path);
+    }
+    if (!draft_model_path.empty() &&
+        !std::filesystem::exists(draft_model_path)) {
+      // not a model path, try to download the model from huggingface hub
+      draft_model_path = download_model(draft_model_path);
     }
   }
 

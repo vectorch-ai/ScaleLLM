@@ -40,6 +40,7 @@ cc_library(
     absl::strings
     gflags::gflags
     glog::glog
+    Python::Python
 )
 
 cc_binary(
