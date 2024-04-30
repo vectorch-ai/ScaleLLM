@@ -44,11 +44,11 @@ jobs:
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../../.vcpkg/bincache
+        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../_vcpkg/bincache
         # Tells ccache where to store its cache.
-        CCACHE_DIR: ${{ github.workspace }}/../../../.ccache
-        # LIBTORCH_ROOT
-        # LIBTORCH_ROOT: ${{ github.workspace }}/../../../libtorch
+        CCACHE_DIR: ${{ github.workspace }}/../../_ccache
+        # Tells where to store the dependencies.
+        DEPENDENCES_ROOT: ${{ github.workspace }}/../../_deps
 
     steps:
     - name: Install toolkits
