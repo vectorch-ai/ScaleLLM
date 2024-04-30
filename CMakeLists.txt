@@ -65,21 +65,29 @@ if (DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   message(STATUS "VCPKG_ROOT found, using vcpkg at $ENV{VCPKG_ROOT}")
 else()
   include(FetchContent)
+  if (DEFINED ENV{DEPENDENCES_ROOT})
+    set(VCPKG_SOURCE_DIR $ENV{DEPENDENCES_ROOT}/vcpkg-src)
+  else()
+    set(VCPKG_SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/vcpkg-src)
+  endif()
+
   if (ENABLE_CXX11_ABI)
     FetchContent_Declare(vcpkg
       GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
       GIT_TAG "2024.02.14"
+      SOURCE_DIR ${VCPKG_SOURCE_DIR}
     )
   else()
     FetchContent_Declare(vcpkg
       GIT_REPOSITORY "https://github.com/vectorch-ai/vcpkg.git"
       GIT_TAG "ffc42e97c866ce9692f5c441394832b86548422c" # disable cxx11_abi
+      SOURCE_DIR ${VCPKG_SOURCE_DIR}
     )
     message(STATUS "Using custom vcpkg with cxx11_abi disabled")
   endif()
   FetchContent_MakeAvailable(vcpkg)
 
-  message(STATUS "VCPKG_ROOT not found, downloading and using vcpkg at ${vcpkg_SOURCE_DIR}")
+  message(STATUS "Downloading and using vcpkg at ${vcpkg_SOURCE_DIR}")
   set(CMAKE_TOOLCHAIN_FILE ${vcpkg_SOURCE_DIR}/scripts/buildsystems/vcpkg.cmake
       CACHE STRING "Vcpkg toolchain file")
 endif()
@@ -139,35 +147,43 @@ find_package(Python REQUIRED COMPONENTS Interpreter Development)
 # before including libtorch, as doing so afterwards may lead to
 # unexpected linker errors.
 if (DEFINED ENV{LIBTORCH_ROOT})
-  message(STATUS "LIBTORCH_ROOT found, using libtorch at $ENV{LIBTORCH_ROOT}")
   find_package(Torch REQUIRED HINTS "$ENV{LIBTORCH_ROOT}")
+  message(STATUS "Using libtorch at $ENV{LIBTORCH_ROOT}")
 else()
   include(FetchContent)
   if (CUDA_VERSION VERSION_GREATER_EQUAL 12.1)
-    # download libtorch 2.2.1 with cuda 12.1 from pytorch.org
+    # download libtorch 2.3 with cuda 12.1 from pytorch.org
     if (ENABLE_CXX11_ABI)
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu121.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.3.0%2Bcu121.zip")
     else()
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.2.1%2Bcu121.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.3.0%2Bcu121.zip")
     endif()
-    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.2.1 for cuda ${CUDA_VERSION}")
   elseif(CUDA_VERSION VERSION_GREATER_EQUAL 11.8)
-    # download libtorch 2.2.1 with cuda 11.8 from pytorch.org
+    # download libtorch 2.3 with cuda 11.8 from pytorch.org
     if (ENABLE_CXX11_ABI)
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.2.1%2Bcu118.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.3.0%2Bcu118.zip")
     else()
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-shared-with-deps-2.2.1%2Bcu118.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-shared-with-deps-2.3.0%2Bcu118.zip")
     endif()
-    message(STATUS "LIBTORCH_ROOT not found, downloading and using libtorch 2.2.1 for cuda ${CUDA_VERSION}")
   else()
     # error out if cuda version is not supported
     message(FATAL_ERROR "Unsupported CUDA version: ${CUDA_VERSION}")
   endif()
 
-  FetchContent_Declare(libtorch URL ${LIBTORCH_URL})
+  if (DEFINED ENV{DEPENDENCES_ROOT})
+    set(LIBTORCH_SOURCE_DIR $ENV{DEPENDENCES_ROOT}/libtorch-src)
+  else()
+    set(LIBTORCH_SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/libtorch-src)
+  endif()
+
+  FetchContent_Declare(libtorch 
+    URL ${LIBTORCH_URL} 
+    SOURCE_DIR ${LIBTORCH_SOURCE_DIR}
+  )
   FetchContent_MakeAvailable(libtorch)
   
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
+  message(STATUS "Downloading and using libtorch 2.3 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
 
 # carry over torch flags to the rest of the project
