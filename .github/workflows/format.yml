@@ -5,7 +5,7 @@ on:
       - main
 
 jobs:
-  cpp-format:
+  cpp-format-check:
     runs-on: ubuntu-latest
     steps:
       - name: Install clang-format
@@ -35,7 +35,7 @@ jobs:
           echo "$diff" | colordiff
           exit 1
 
-  python-format:
+  python-format-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
