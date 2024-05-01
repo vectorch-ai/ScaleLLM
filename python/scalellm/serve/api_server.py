@@ -12,7 +12,6 @@ import argparse
 import fastapi
 import uvicorn
 from fastapi.responses import JSONResponse, Response
-
 from scalellm.serve.api_protocol import (ChatCompletionRequest,
                                          ChatCompletionResponse,
                                          CompletionRequest, CompletionResponse,
