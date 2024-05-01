@@ -9,18 +9,14 @@ python3 -m scalellm.serve.api_server
 
 import argparse
 
-import uvicorn
 import fastapi
+import uvicorn
 from fastapi.responses import JSONResponse, Response
 
-from scalellm.serve.api_protocol import (
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    CompletionRequest,
-    CompletionResponse,
-    ModelList,
-    UsageInfo,
-)
+from scalellm.serve.api_protocol import (ChatCompletionRequest,
+                                         ChatCompletionResponse,
+                                         CompletionRequest, CompletionResponse,
+                                         ModelList, UsageInfo)
 
 app = fastapi.FastAPI()
 
@@ -52,6 +48,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
 
 @app.post("/v1/completions")
 async def create_completion(request: CompletionRequest):
+    """Creates a completion for the prompt"""
     choices = []
     usage = UsageInfo()
     return CompletionResponse(
@@ -59,7 +56,7 @@ async def create_completion(request: CompletionRequest):
     )
 
 
-def create_openai_api_server():
+def parse_args():
     parser = argparse.ArgumentParser(
         description="OpenAI-Compatible RESTful API server."
     )
@@ -71,5 +68,5 @@ def create_openai_api_server():
 
 
 if __name__ == "__main__":
-    args = create_openai_api_server()
+    args = parse_args()
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
