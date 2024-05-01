@@ -33,10 +33,9 @@ void Request::add_sequence() {
 
   if (stream) {
     CHECK(on_stream_delta);
-    options.on_delta =
-        [this, index = sequences.size()](const SequenceDeltaOutput& output) {
-          return this->on_stream_delta(index, output);
-        };
+    options.on_delta = [this](const SequenceOutput& output) {
+      return this->on_stream_delta(output);
+    };
   }
   sequences.emplace_back(
       this->prompt, this->prompt_tokens, this->seq_capacity, options);

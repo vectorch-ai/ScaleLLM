@@ -10,6 +10,7 @@
 
 #include "engine/engine.h"
 #include "models/model_args.h"
+#include "request/output.h"
 #include "request/request.h"
 #include "scheduler/scheduler.h"
 #include "utils.h"
@@ -103,31 +104,30 @@ bool verify_request_arguments(CompletionCallData* call_data) {
 
 bool send_delta_to_client(CompletionCallData* call_data,
                           Request* request,
-                          uint32_t index,
-                          const SequenceDeltaOutput& output) {
-  if (!output.delta.empty()) {
+                          const SequenceOutput& seq_output) {
+  if (!seq_output.text.empty()) {
     CompletionResponse response;
     response.set_object("text_completion");
     response.set_id(request->id);
     response.set_created(request->created_time);
     // response.set_model(request->model);
     auto* choice = response.add_choices();
-    choice->set_index(index);
-    choice->set_text(output.delta);
+    choice->set_index(seq_output.index);
+    choice->set_text(seq_output.text);
     if (!call_data->write(std::move(response))) {
       return false;
     }
   }
 
-  if (output.finish_reason != FinishReason::NONE) {
+  if (seq_output.finish_reason != FinishReason::NONE) {
     CompletionResponse response;
     response.set_object("text_completion");
     response.set_id(request->id);
     response.set_created(request->created_time);
     // response.set_model(request->model);
     auto* choice = response.add_choices();
-    choice->set_index(index);
-    choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
+    choice->set_index(seq_output.index);
+    choice->set_finish_reason(finish_reason_to_string(seq_output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -137,9 +137,8 @@ bool send_delta_to_client(CompletionCallData* call_data,
 
 bool send_result_to_client(CompletionCallData* call_data,
                            Request* request,
-                           const std::vector<SequenceOutput>& outputs,
                            const Status& /*status*/,
-                           const Statistics& stats) {
+                           const RequestOutput& req_output) {
   CompletionResponse response;
   response.set_object("text_completion");
   response.set_id(request->id);
@@ -147,6 +146,7 @@ bool send_result_to_client(CompletionCallData* call_data,
   // response.set_model(request->model);
 
   // add choices into response
+  const auto outputs = req_output.seq_outputs;
   for (uint32_t i = 0; i < outputs.size(); ++i) {
     const auto& output = outputs[i];
     auto* choice = response.add_choices();
@@ -160,10 +160,12 @@ bool send_result_to_client(CompletionCallData* call_data,
 
   // add usage statistics
   auto* usage = response.mutable_usage();
-  usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
+  usage->set_prompt_tokens(
+      static_cast<int32_t>(req_output.stats.num_prompt_tokens));
   usage->set_completion_tokens(
-      static_cast<int32_t>(stats.num_generated_tokens));
-  usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
+      static_cast<int32_t>(req_output.stats.num_generated_tokens));
+  usage->set_total_tokens(
+      static_cast<int32_t>(req_output.stats.num_total_tokens));
   // TODO: combine write and finish
   call_data->write(response);
   // TODO: mapping status to grpc status
@@ -271,9 +273,8 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   // set callbacks
   if (request->stream) {
     request->on_stream_delta = [call_data, request = request.get()](
-                                   size_t index,
-                                   const SequenceDeltaOutput& output) -> bool {
-      return send_delta_to_client(call_data, request, index, output);
+                                   const SequenceOutput& output) -> bool {
+      return send_delta_to_client(call_data, request, output);
     };
 
     // add on_stream_finish callback
@@ -283,11 +284,9 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   } else {
     // add on_finish callback
     request->on_finish = [call_data, request = request.get()](
-                             const std::vector<SequenceOutput>& seq_results,
                              const Status& status,
-                             const Statistics& stats) -> bool {
-      return send_result_to_client(
-          call_data, request, seq_results, status, stats);
+                             const RequestOutput& req_output) -> bool {
+      return send_result_to_client(call_data, request, status, req_output);
     };
   }
 

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "output.h"
 #include "sampling/parameters.h"
 #include "sequence.h"
 #include "status.h"
@@ -36,33 +37,15 @@ enum class ScheduleStatus {
   CANCELLED,
 };
 
-struct Statistics {
-  // the number of tokens in the prompt.
-  size_t num_prompt_tokens = 0;
-  // the number of tokens in the generated completion.
-  size_t num_generated_tokens = 0;
-  // the total number of tokens used in the request (prompt + completion).
-  size_t num_total_tokens = 0;
-};
-
 // Priority of the request.
 // The higher the priority, the sooner the request is processed.
 enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 
-struct SequenceOutput {
-  std::string text;
-
-  FinishReason finish_reason;
-};
-
 // Function to call when a request is finished.
 using OnFinish =
-    std::function<bool(const std::vector<SequenceOutput>& seq_results,
-                       const Status& status,
-                       const Statistics& stats)>;
+    std::function<bool(const Status& status, const RequestOutput& output)>;
 
-using OnStreamDelta =
-    std::function<bool(size_t index, const SequenceDeltaOutput& output)>;
+using OnStreamDelta = std::function<bool(const SequenceOutput& output)>;
 
 // Function to call when a stream request is finished.
 using OnStreamFinish = std::function<bool(const Status& status)>;

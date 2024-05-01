@@ -185,7 +185,7 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
   return slots;
 }
 
-void Sequence::stream_delta(const SequenceDeltaOutput& output) {
+void Sequence::stream_delta(const SequenceOutput& output) {
   if (options_.on_delta) {
     if (!options_.on_delta(output)) {
       // cancel the sequence if the callback returns false

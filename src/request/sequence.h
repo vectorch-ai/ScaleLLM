@@ -9,19 +9,14 @@
 #include "common/slice.h"
 #include "incremental_decoder.h"
 #include "memory/block.h"
+#include "output.h"
 #include "sampling/parameters.h"
 #include "stopping_criteria.h"
 #include "tokenizer/tokenizer.h"
 
 namespace llm {
 
-struct SequenceDeltaOutput {
-  std::string delta;
-
-  FinishReason finish_reason;
-};
-
-using OnDelta = std::function<bool(const SequenceDeltaOutput& output)>;
+using OnDelta = std::function<bool(const SequenceOutput& output)>;
 
 // The sequence is shared between LLM and SSM for speculative decoding, and
 // it's possible that the numbers of tokens in kv cache are out of sync.
@@ -65,6 +60,9 @@ class Sequence final {
 
   // get the id of the sequence
   int64_t id() const { return id_; }
+
+  // get the index of the sequence in the request
+  size_t index() const { return index_; }
 
   // get token ids
   Slice<int32_t> token_ids() const { return {token_ids_, num_tokens_}; }
@@ -170,7 +168,7 @@ class Sequence final {
 
   // stream the delta output to the client
   // cancel the sequence if the callback returns false
-  void stream_delta(const SequenceDeltaOutput& output);
+  void stream_delta(const SequenceOutput& output);
 
   // check if the sequence is cancelled
   bool is_cancelled() const;
@@ -204,6 +202,9 @@ class Sequence final {
  private:
   // global unique id for the sequence
   const int64_t id_;
+
+  // the index of the sequence in the request
+  size_t index_ = 0;
 
   // options for the sequence
   Options options_;

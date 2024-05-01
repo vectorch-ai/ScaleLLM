@@ -5,18 +5,9 @@
 #include <vector>
 
 #include "common/slice.h"
+#include "output.h"
 
 namespace llm {
-
-// "stop" - the model hit a natural stop point or a provided stop sequence.
-// "length" - the maximum number of tokens specified in the request was reached.
-// "function_call" - the model called a function.
-enum class FinishReason {
-  NONE = 0,
-  STOP = 1,
-  LENGTH,
-  FUNCTION_CALL,
-};
 
 // StoppingCriteria is used to specify stopping criterias for a
 // request/sequence.
