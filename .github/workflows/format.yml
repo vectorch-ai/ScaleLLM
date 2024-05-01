@@ -1,11 +1,11 @@
-name: clang-format
+name: format
 on: 
   pull_request:
     branches:
       - main
 
 jobs:
-  clang-format:
+  cpp-format:
     runs-on: ubuntu-latest
     steps:
       - name: Install clang-format
@@ -13,7 +13,7 @@ jobs:
           sudo apt-get install -y clang-format colordiff
     
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Set up Python 3.9

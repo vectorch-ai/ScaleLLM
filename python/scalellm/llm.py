@@ -1,5 +1,6 @@
 from scalellm import wrapper
 
+
 class SamplingParameter:
   """
   Used to wrapper c++ SamplingParameter
