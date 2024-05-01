@@ -2,7 +2,7 @@ include(pybind11_module)
 
 pybind11_module(
   NAME
-    wrapper
+    _C
   HDRS
     llm.h
   SRCS

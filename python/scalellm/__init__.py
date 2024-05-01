@@ -1,5 +1,5 @@
 __version__ = "0.0.9"
 
-from scalellm.llm import LLM, SamplingParameter, StoppingCriteria
+from scalellm._C import SamplingParameter, StoppingCriteria, LLM
 
-__all__ = ["LLM", "SamplingParameter", "StoppingCriteria"]
+__all__ = ["SamplingParameter", "StoppingCriteria", "LLM"]

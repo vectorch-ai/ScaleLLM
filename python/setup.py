@@ -156,7 +156,7 @@ setup(
     packages=[
         "scalellm", 
     ],
-    ext_modules=[CMakeExtension("wrapper", "scalellm/")],
+    ext_modules=[CMakeExtension("_C", "scalellm/")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     package_data={
