@@ -31,7 +31,7 @@ class ModelCard(BaseModel):
     id: str
     object: str = "model"
     created: int = Field(default_factory=lambda: int(time.time()))
-    owned_by: str = "fastchat"
+    owned_by: str = "scalellm"
     root: Optional[str] = None
     parent: Optional[str] = None
     permission: List[ModelPermission] = []
@@ -57,11 +57,7 @@ class LogProbs(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     model: str
-    messages: Union[
-        str,
-        List[Dict[str, str]],
-        List[Dict[str, Union[str, List[Dict[str, Union[str, Dict[str, str]]]]]]],
-    ]
+    messages: List[Dict[str, str]]
     temperature: Optional[float] = 0.7
     top_p: Optional[float] = 1.0
     top_k: Optional[int] = -1
@@ -91,7 +87,7 @@ class ChatCompletionResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[ChatCompletionResponseChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
 
 
 class DeltaMessage(BaseModel):
@@ -111,41 +107,7 @@ class ChatCompletionStreamResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[ChatCompletionResponseStreamChoice]
-
-
-class TokenCheckRequestItem(BaseModel):
-    model: str
-    prompt: str
-    max_tokens: int
-
-
-class TokenCheckRequest(BaseModel):
-    prompts: List[TokenCheckRequestItem]
-
-
-class TokenCheckResponseItem(BaseModel):
-    fits: bool
-    tokenCount: int
-    contextLength: int
-
-
-class TokenCheckResponse(BaseModel):
-    prompts: List[TokenCheckResponseItem]
-
-
-class EmbeddingsRequest(BaseModel):
-    model: Optional[str] = None
-    engine: Optional[str] = None
-    input: Union[str, List[Any]]
-    user: Optional[str] = None
-    encoding_format: Optional[str] = None
-
-
-class EmbeddingsResponse(BaseModel):
-    object: str = "list"
-    data: List[Dict[str, Any]]
-    model: str
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
 
 
 class CompletionRequest(BaseModel):
@@ -181,7 +143,7 @@ class CompletionResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[CompletionResponseChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
 
 
 class CompletionResponseStreamChoice(BaseModel):
@@ -197,3 +159,4 @@ class CompletionStreamResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[CompletionResponseStreamChoice]
+    usage: Optional[UsageInfo] = None
