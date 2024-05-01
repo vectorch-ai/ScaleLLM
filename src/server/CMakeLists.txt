@@ -27,22 +27,6 @@ cc_library(
     glog::glog
 )
 
-cc_library(
-  NAME
-    llm
-  HDRS
-    llm.h
-  SRCS
-    llm.cpp
-  DEPS
-    :engine
-    torch
-    absl::strings
-    gflags::gflags
-    glog::glog
-    Python::Python
-)
-
 cc_binary(
   NAME 
     simple

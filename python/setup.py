@@ -6,11 +6,12 @@ import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 import sysconfig
+from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+
 
 def use_cxx11_abi():
     try:
@@ -103,12 +104,12 @@ class CMakeBuild(build_ext):
             "-G", "Ninja", # Ninja is much faster than make
             "-DUSE_CCACHE=ON", # use ccache if available
             f"-DCMAKE_MAKE_PROGRAM={ninja_dir}",     # pass in the ninja build path
-            f"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
-            f"-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
+            "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
             f"-DPython_EXECUTABLE:FILEPATH={sys.executable}",
             f"-DPYTHON_INCLUDE_DIRS={python_include_dir}",
-            f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
+            "-DCMAKE_BUILD_TYPE=Debug",  # not used on MSVC, but no harm
         ]
 
         # Adding CMake arguments set as environment variable
@@ -161,7 +162,7 @@ setup(
     package_data={
         "scalellm": scalellm_package_data,
     },
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     install_requires=[
         "torch",
     ],

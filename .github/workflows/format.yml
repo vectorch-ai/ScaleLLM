@@ -34,3 +34,25 @@ jobs:
           printf "\n\033[1mSuggested changes:\n\n"
           echo "$diff" | colordiff
           exit 1
+
+  python-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - name: Install ruff and isort
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff==0.4.2 isort==5.13.2
+      - name: Run ruff check
+        run: |
+          ruff check python/
+      - name: Run isort check
+        run: |
+          isort --check-only python/
