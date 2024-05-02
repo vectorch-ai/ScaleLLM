@@ -33,13 +33,13 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
         stats.num_prompt_tokens + stats.num_generated_tokens;
 
     if (!request->is_streaming()) {
-      auto& seq_outputs = req_output.seq_outputs;
-      seq_outputs.reserve(request->sequences.size());
+      auto& outputs = req_output.outputs;
+      outputs.reserve(request->sequences.size());
       for (size_t i = 0; i < request->sequences.size(); ++i) {
         Sequence& seq = request->sequences[i];
         // generate the final output
         const auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
-        seq_outputs.push_back({i, output, seq.finish_reason()});
+        outputs.push_back({i, output, seq.finish_reason()});
       }
     }
     request->on_finish(Status(), req_output);
@@ -80,8 +80,7 @@ void ResponseHandler::on_request_stream(Request* request) {
       const auto finish_reason = seq.finish_reason();
       auto delta = seq.decode_delta_text(token_ids[i], *tokenizer);
       if (!delta.empty() || finish_reason != FinishReason::NONE) {
-        req_output.seq_outputs.push_back(
-            {index, std::move(delta), finish_reason});
+        req_output.outputs.push_back({index, std::move(delta), finish_reason});
       }
     }
 

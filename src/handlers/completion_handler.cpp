@@ -140,7 +140,7 @@ bool send_result_to_client(CompletionCallData* call_data,
                            Request* request,
                            const Status& /*status*/,
                            const RequestOutput& req_output) {
-  if (req_output.seq_outputs.empty()) {
+  if (req_output.outputs.empty()) {
     // TODO: mapping status to grpc status
     return call_data->finish();
   }
@@ -152,11 +152,9 @@ bool send_result_to_client(CompletionCallData* call_data,
   // response.set_model(request->model);
 
   // add choices into response
-  const auto outputs = req_output.seq_outputs;
-  for (uint32_t i = 0; i < outputs.size(); ++i) {
-    const auto& output = outputs[i];
+  for (const auto& output : req_output.outputs) {
     auto* choice = response.add_choices();
-    choice->set_index(i);
+    choice->set_index(output.index);
     choice->set_text(output.text);
     // choice->set_logprobs(0);
     if (output.finish_reason != FinishReason::NONE) {
@@ -279,8 +277,8 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
   if (request->stream) {
     request->on_stream = [call_data, request = request.get()](
                              const RequestOutput& output) -> bool {
-      for (const auto& seq_output : output.seq_outputs) {
-        if (!send_delta_to_client(call_data, request, seq_output)) {
+      for (const auto& output : output.outputs) {
+        if (!send_delta_to_client(call_data, request, output)) {
           return false;
         }
       }

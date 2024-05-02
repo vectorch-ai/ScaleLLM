@@ -131,7 +131,7 @@ bool send_result_to_client(ChatCallData* call_data,
                            Request* request,
                            const Status& /*status*/,
                            const RequestOutput& req_output) {
-  if (req_output.seq_outputs.empty()) {
+  if (req_output.outputs.empty()) {
     // TODO: mapping status to grpc status
     return call_data->finish();
   }
@@ -142,7 +142,7 @@ bool send_result_to_client(ChatCallData* call_data,
   response.set_created(request->created_time);
   // response.set_model(request->model);
 
-  for (const auto& output : req_output.seq_outputs) {
+  for (const auto& output : req_output.outputs) {
     // add choices into response
     auto* choice = response.add_choices();
     choice->set_index(output.index);
@@ -292,7 +292,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
                           request = request.get(),
                           first_message = std::vector<bool>(num_seqs, true)](
                              const RequestOutput& output) mutable {
-      for (const auto& seq_output : output.seq_outputs) {
+      for (const auto& seq_output : output.outputs) {
         const auto index = seq_output.index;
         if (!send_delta_to_client(
                 call_data, request, first_message[index], seq_output)) {
