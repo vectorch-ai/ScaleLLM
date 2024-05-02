@@ -8,11 +8,10 @@
 namespace llm {
 
 LLM::LLM(const std::string& model_path,
-         const llm::SamplingParameter& sp,
-         const llm::StoppingCriteria& sc,
+         const SamplingParameter_& sp,
          int64_t max_seq_len,
          const std::string& device_str)
-    : sampling_param_(sp), stopping_criteria_(sc), max_seq_len_(max_seq_len) {
+    : max_seq_len_(max_seq_len) {
   auto devices = parse_devices(device_str);
   LLMEngine::Options options;
   options.devices(devices);

@@ -16,5 +16,6 @@ class RequestOutput:
         self.sequence_outpus = []
         self.status = None
         self.usage = None
+        self.finished = False
 
 
