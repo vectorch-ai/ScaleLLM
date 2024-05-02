@@ -7,7 +7,7 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_C, m) {
+PYBIND11_MODULE(PY_MODULE_NAME, m) {
   // class SamplingParameter
   py::class_<llm::SamplingParameter, std::shared_ptr<llm::SamplingParameter>>(
       m, "SamplingParameter")

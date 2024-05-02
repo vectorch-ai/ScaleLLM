@@ -1,6 +1,6 @@
 include(CMakeParseArguments)
 
-# pybind11_module()
+# pybind_extension()
 #
 # Parameters:
 # NAME: name of module
@@ -11,7 +11,7 @@ include(CMakeParseArguments)
 # DEFINES: List of public defines
 # LINKOPTS: List of link options
 #
-# pybind11_module(
+# pybind_extension(
 #   NAME
 #     awesome
 #   HDRS
@@ -53,42 +53,43 @@ if(NOT DEFINED PYTHON_MODULE_EXTENSION OR NOT DEFINED PYTHON_MODULE_DEBUG_POSTFI
   endif()
 endif()
 
-function(pybind11_module)
+function(pybind_extension)
   cmake_parse_arguments(
-    PYBIND11 # prefix
+    PY # prefix
     "TESTONLY" # options
     "NAME" # one value args
     "HDRS;SRCS;COPTS;DEFINES;LINKOPTS;DEPS" # multi value args
     ${ARGN}
   )
 
-  if(PYBIND11_TESTONLY AND (NOT BUILD_TESTING))
+  if(PY_TESTONLY AND (NOT BUILD_TESTING))
     return()
   endif()
 
-  add_library(${PYBIND11_NAME} SHARED)
-  target_sources(${PYBIND11_NAME} 
-    PRIVATE ${PYBIND11_SRCS} ${PYBIND11_HDRS})
-  target_link_libraries(${PYBIND11_NAME}
-    PUBLIC ${PYBIND11_DEPS}
-    PRIVATE ${PYBIND11_LINKOPTS}
+  add_library(${PY_NAME} SHARED)
+  target_sources(${PY_NAME} 
+    PRIVATE ${PY_SRCS} ${PY_HDRS}
   )
-  target_compile_options(${PYBIND11_NAME} PRIVATE ${PYBIND11_COPTS})
-  target_compile_definitions(${PYBIND11_NAME} PUBLIC ${PYBIND11_DEFINES})
+  target_link_libraries(${PY_NAME}
+    PUBLIC ${PY_DEPS}
+    PRIVATE ${PY_LINKOPTS}
+  )
+  target_compile_options(${PY_NAME} PRIVATE ${PY_COPTS})
+  target_compile_definitions(${PY_NAME} PUBLIC ${PY_DEFINES})
 
   # -fvisibility=hidden is required to allow multiple modules compiled against
   # different pybind versions to work properly, and for some features (e.g.
   # py::module_local). 
   if(NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET)
-    set_target_properties(${PYBIND11_NAME} PROPERTIES CXX_VISIBILITY_PRESET "hidden")
+    set_target_properties(${PY_NAME} PROPERTIES CXX_VISIBILITY_PRESET "hidden")
   endif()
 
   if(NOT DEFINED CMAKE_CUDA_VISIBILITY_PRESET)
-    set_target_properties(${PYBIND11_NAME} PROPERTIES CUDA_VISIBILITY_PRESET "hidden")
+    set_target_properties(${PY_NAME} PROPERTIES CUDA_VISIBILITY_PRESET "hidden")
   endif()
 
   set_target_properties(
-    ${PYBIND11_NAME}
+    ${PY_NAME}
     PROPERTIES PREFIX ""
                DEBUG_POSTFIX "${PYTHON_MODULE_DEBUG_POSTFIX}"
                SUFFIX "${PYTHON_MODULE_EXTENSION}")
