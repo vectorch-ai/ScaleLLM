@@ -37,6 +37,4 @@ struct RequestOutput {
   Statistics stats;
 };
 
-
-
 }  // namespace llm

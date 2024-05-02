@@ -84,7 +84,7 @@ void ResponseHandler::on_request_stream(Request* request) {
             {index, std::move(delta), finish_reason});
       }
     }
-    
+
     if (!request->on_stream(req_output)) {
       // cancel the request if on_stream returns false
       request->cancel();

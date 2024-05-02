@@ -46,7 +46,6 @@ class Sequence final {
 
     // whether to echo the prompt tokens back
     bool echo = false;
-
   };
 
   Sequence(const std::string_view& prompt,
@@ -158,7 +157,6 @@ class Sequence final {
 
   // get the offset of output tokens
   size_t output_offset() const { return decoder_.output_offset(); }
-
 
   // check finish status, use cached value if not invalidated
   bool is_finished() const;

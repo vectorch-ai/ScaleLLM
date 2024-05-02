@@ -185,8 +185,6 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
   return slots;
 }
 
-
-
 bool Sequence::is_finished() const {
   // return the cached finish status
   if (!finish_status_invalidated_) {

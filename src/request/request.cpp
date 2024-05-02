@@ -46,7 +46,6 @@ bool Request::is_finished() const {
                      [](const Sequence& seq) { return seq.is_finished(); });
 }
 
-
 bool Request::should_expand_sequences() const {
   if (sequences.size() < num_seqs) {
     CHECK(!sequences.empty());

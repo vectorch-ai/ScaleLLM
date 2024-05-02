@@ -24,8 +24,7 @@ ContinuousScheduler::ContinuousScheduler(Engine* engine, const Options& options)
 
   enable_prefix_cache_ = block_manager_->options().enable_prefix_cache();
 
-  response_handler_ =
-      std::make_unique<ResponseHandler>(engine_->tokenizer());
+  response_handler_ = std::make_unique<ResponseHandler>(engine_->tokenizer());
 }
 
 ContinuousScheduler::~ContinuousScheduler() {
@@ -292,7 +291,7 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
       response_handler_->on_request_stream(request);
     }
   }
-  
+
   // TODO: return a task to support waiting for the completion of the batch
 }
 
