@@ -118,7 +118,8 @@ bool send_delta_to_client(ChatCallData* call_data,
     // response.set_model(request->model);
     auto* choice = response.add_choices();
     choice->set_index(seq_output.index);
-    choice->set_finish_reason(finish_reason_to_string(seq_output.finish_reason));
+    choice->set_finish_reason(
+        finish_reason_to_string(seq_output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -130,15 +131,19 @@ bool send_result_to_client(ChatCallData* call_data,
                            Request* request,
                            const Status& /*status*/,
                            const RequestOutput& req_output) {
+  if (req_output.seq_outputs.empty()) {
+    // TODO: mapping status to grpc status
+    return call_data->finish();
+  }
+
   ChatResponse response;
   response.set_object("chat.completion");
   response.set_id(request->id);
   response.set_created(request->created_time);
   // response.set_model(request->model);
 
-  // add choices into response
-
   for (const auto& output : req_output.seq_outputs) {
+    // add choices into response
     auto* choice = response.add_choices();
     choice->set_index(output.index);
     auto* message = choice->mutable_message();
@@ -160,7 +165,6 @@ bool send_result_to_client(ChatCallData* call_data,
 
   // TODO: combine write and finish
   call_data->write(response);
-  // TODO: mapping status to grpc status
   return call_data->finish();
 }
 
@@ -284,30 +288,28 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   // set callbacks
   if (request->stream) {
     // set callback for stream delta
-    request->on_stream_delta =
-        [call_data, request = request.get(), first_message = true](
-            const SequenceOutput& output) mutable {
-          const auto ret =
-              send_delta_to_client(call_data, request, first_message, output);
-          first_message = false;
-          return ret;
-        };
-
-    // set callback for stream request
-    request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
-      return call_data->finish();
-    };
-  } else {
-    // set callback for non-stream request
-    request->on_finish = [call_data, request = request.get()](
-                             const Status& status,
-                             const RequestOutput& output) -> bool {
-      return send_result_to_client(call_data, request, status, output);
+    request->on_stream = [call_data,
+                          request = request.get(),
+                          first_message = std::vector<bool>(num_seqs, true)](
+                             const RequestOutput& output) mutable {
+      for (const auto& seq_output : output.seq_outputs) {
+        const auto index = seq_output.index;
+        if (!send_delta_to_client(
+                call_data, request, first_message[index], seq_output)) {
+          return false;
+        }
+        first_message[index] = false;
+      }
+      return true;
     };
   }
 
-  // set callback for checking rpc status
-  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
+  // set callback for non-stream request
+  request->on_finish = [call_data, request = request.get()](
+                           const Status& status,
+                           const RequestOutput& output) -> bool {
+    return send_result_to_client(call_data, request, status, output);
+  };
 
   // add one sequence, the rest will be expanded by scheduler
   request->add_sequence();

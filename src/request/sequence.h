@@ -16,8 +16,6 @@
 
 namespace llm {
 
-using OnDelta = std::function<bool(const SequenceOutput& output)>;
-
 // The sequence is shared between LLM and SSM for speculative decoding, and
 // it's possible that the numbers of tokens in kv cache are out of sync.
 // Specifying the engine type to ensure accurate updating of the the number
@@ -49,8 +47,6 @@ class Sequence final {
     // whether to echo the prompt tokens back
     bool echo = false;
 
-    // the callback function to call when new tokens are generated
-    OnDelta on_delta = nullptr;
   };
 
   Sequence(const std::string_view& prompt,
@@ -163,15 +159,6 @@ class Sequence final {
   // get the offset of output tokens
   size_t output_offset() const { return decoder_.output_offset(); }
 
-  // check if streaming is enabled
-  bool is_streaming() const { return options_.on_delta != nullptr; }
-
-  // stream the delta output to the client
-  // cancel the sequence if the callback returns false
-  void stream_delta(const SequenceOutput& output);
-
-  // check if the sequence is cancelled
-  bool is_cancelled() const;
 
   // check finish status, use cached value if not invalidated
   bool is_finished() const;
@@ -231,9 +218,6 @@ class Sequence final {
 
   // physical blocks that hold the kv cache.
   std::vector<Block> blocks_;
-
-  // is the sequence cancelled
-  std::atomic_bool is_cancelled_{false};
 
   // is the sequence finished
   mutable bool is_finished_ = false;

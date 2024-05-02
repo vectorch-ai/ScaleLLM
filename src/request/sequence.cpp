@@ -185,18 +185,7 @@ std::vector<int32_t> Sequence::kv_cache_slots(int32_t pos_start,
   return slots;
 }
 
-void Sequence::stream_delta(const SequenceOutput& output) {
-  if (options_.on_delta) {
-    if (!options_.on_delta(output)) {
-      // cancel the sequence if the callback returns false
-      is_cancelled_.store(true, std::memory_order_relaxed);
-    }
-  }
-}
 
-bool Sequence::is_cancelled() const {
-  return is_cancelled_.load(std::memory_order_relaxed);
-}
 
 bool Sequence::is_finished() const {
   // return the cached finish status

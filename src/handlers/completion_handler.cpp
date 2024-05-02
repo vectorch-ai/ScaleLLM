@@ -127,7 +127,8 @@ bool send_delta_to_client(CompletionCallData* call_data,
     // response.set_model(request->model);
     auto* choice = response.add_choices();
     choice->set_index(seq_output.index);
-    choice->set_finish_reason(finish_reason_to_string(seq_output.finish_reason));
+    choice->set_finish_reason(
+        finish_reason_to_string(seq_output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -139,6 +140,11 @@ bool send_result_to_client(CompletionCallData* call_data,
                            Request* request,
                            const Status& /*status*/,
                            const RequestOutput& req_output) {
+  if (req_output.seq_outputs.empty()) {
+    // TODO: mapping status to grpc status
+    return call_data->finish();
+  }
+
   CompletionResponse response;
   response.set_object("text_completion");
   response.set_id(request->id);
@@ -168,7 +174,6 @@ bool send_result_to_client(CompletionCallData* call_data,
       static_cast<int32_t>(req_output.stats.num_total_tokens));
   // TODO: combine write and finish
   call_data->write(response);
-  // TODO: mapping status to grpc status
   return call_data->finish();
 }
 
@@ -272,26 +277,23 @@ std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
 
   // set callbacks
   if (request->stream) {
-    request->on_stream_delta = [call_data, request = request.get()](
-                                   const SequenceOutput& output) -> bool {
-      return send_delta_to_client(call_data, request, output);
-    };
-
-    // add on_stream_finish callback
-    request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
-      return call_data->finish();
-    };
-  } else {
-    // add on_finish callback
-    request->on_finish = [call_data, request = request.get()](
-                             const Status& status,
-                             const RequestOutput& req_output) -> bool {
-      return send_result_to_client(call_data, request, status, req_output);
+    request->on_stream = [call_data, request = request.get()](
+                             const RequestOutput& output) -> bool {
+      for (const auto& seq_output : output.seq_outputs) {
+        if (!send_delta_to_client(call_data, request, seq_output)) {
+          return false;
+        }
+      }
+      return true;
     };
   }
 
-  // set callback for checking rpc status
-  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
+  // add on_finish callback
+  request->on_finish = [call_data, request = request.get()](
+                           const Status& status,
+                           const RequestOutput& req_output) -> bool {
+    return send_result_to_client(call_data, request, status, req_output);
+  };
 
   // add one sequence, rest will be added by scheduler
   request->add_sequence();

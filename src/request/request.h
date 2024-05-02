@@ -45,13 +45,8 @@ enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
 using OnFinish =
     std::function<bool(const Status& status, const RequestOutput& output)>;
 
-using OnStreamDelta = std::function<bool(const SequenceOutput& output)>;
-
-// Function to call when a stream request is finished.
-using OnStreamFinish = std::function<bool(const Status& status)>;
-
-// Function to check rpc health.
-using IsRpcOK = std::function<bool()>;
+// Function to call when a delta is generated.
+using OnStream = std::function<bool(const RequestOutput& output)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
@@ -71,13 +66,19 @@ struct Request final {
 
   bool is_finished() const;
 
-  bool is_cancelled() const;
+  bool is_streaming() const { return stream; }
 
   size_t num_prompt_tokens() const { return prompt_tokens.size(); }
 
   bool should_expand_sequences() const;
 
   void expand_sequences();
+
+  void cancel() { is_cancelled_.store(true, std::memory_order_relaxed); }
+
+  bool is_cancelled() const {
+    return is_cancelled_.load(std::memory_order_relaxed);
+  }
 
   // The unique id of the request.
   // NOLINTNEXTLINE
@@ -126,13 +127,11 @@ struct Request final {
   OnFinish on_finish;
 
   // function to call when a delta is generated.
-  OnStreamDelta on_stream_delta;
+  OnStream on_stream;
 
-  // function to call when a stream request is finished.
-  OnStreamFinish on_stream_finish;
-
-  // function to check rpc health.
-  IsRpcOK is_rpc_ok;
+ private:
+  // is the sequence cancelled
+  std::atomic_bool is_cancelled_{false};
 };
 
 // Compare two request contexts based on priority then scheduled time.
