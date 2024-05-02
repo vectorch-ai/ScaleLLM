@@ -86,40 +86,40 @@ bool verify_request_arguments(ChatCallData* call_data) {
 
 bool send_delta_to_client(ChatCallData* call_data,
                           Request* request,
-                          uint32_t index,
                           bool first_message,
-                          const SequenceDeltaOutput& output) {
+                          const SequenceOutput& seq_output) {
   // send delta to client
-  if (!output.delta.empty()) {
+  if (!seq_output.text.empty()) {
     ChatResponse response;
     response.set_object("chat.completion.chunk");
     response.set_id(request->id);
     response.set_created(request->created_time);
     // response.set_model(request->model);
     auto* choice = response.add_choices();
-    choice->set_index(index);
+    choice->set_index(seq_output.index);
     // add message
     auto* message = choice->mutable_delta();
     // only set role for first message
     if (first_message) {
       message->set_role("assistant");
     }
-    message->set_content(output.delta);
+    message->set_content(seq_output.text);
     if (!call_data->write(std::move(response))) {
       return false;
     }
   }
 
   // send finish reason as a separate message
-  if (output.finish_reason != FinishReason::NONE) {
+  if (seq_output.finish_reason != FinishReason::NONE) {
     ChatResponse response;
     response.set_object("chat.completion");
     response.set_id(request->id);
     response.set_created(request->created_time);
     // response.set_model(request->model);
     auto* choice = response.add_choices();
-    choice->set_index(index);
-    choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
+    choice->set_index(seq_output.index);
+    choice->set_finish_reason(
+        finish_reason_to_string(seq_output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -129,39 +129,42 @@ bool send_delta_to_client(ChatCallData* call_data,
 
 bool send_result_to_client(ChatCallData* call_data,
                            Request* request,
-                           const std::vector<SequenceOutput>& seq_results,
                            const Status& /*status*/,
-                           const Statistics& stats) {
+                           const RequestOutput& req_output) {
+  if (req_output.outputs.empty()) {
+    // TODO: mapping status to grpc status
+    return call_data->finish();
+  }
+
   ChatResponse response;
   response.set_object("chat.completion");
   response.set_id(request->id);
   response.set_created(request->created_time);
   // response.set_model(request->model);
 
-  // add choices into response
-  for (uint32_t i = 0; i < seq_results.size(); ++i) {
-    const auto& seq_result = seq_results[i];
+  for (const auto& output : req_output.outputs) {
+    // add choices into response
     auto* choice = response.add_choices();
-    choice->set_index(i);
+    choice->set_index(output.index);
     auto* message = choice->mutable_message();
     message->set_role("assistant");
-    message->set_content(seq_result.text);
-    if (seq_result.finish_reason != FinishReason::NONE) {
-      choice->set_finish_reason(
-          finish_reason_to_string(seq_result.finish_reason));
+    message->set_content(output.text);
+    if (output.finish_reason != FinishReason::NONE) {
+      choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
     }
   }
 
   // add usage statistics
   auto* usage = response.mutable_usage();
-  usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
+  usage->set_prompt_tokens(
+      static_cast<int32_t>(req_output.stats.num_prompt_tokens));
   usage->set_completion_tokens(
-      static_cast<int32_t>(stats.num_generated_tokens));
-  usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
+      static_cast<int32_t>(req_output.stats.num_generated_tokens));
+  usage->set_total_tokens(
+      static_cast<int32_t>(req_output.stats.num_total_tokens));
 
   // TODO: combine write and finish
   call_data->write(response);
-  // TODO: mapping status to grpc status
   return call_data->finish();
 }
 
@@ -285,32 +288,28 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   // set callbacks
   if (request->stream) {
     // set callback for stream delta
-    request->on_stream_delta =
-        [call_data, request = request.get(), first_message = true](
-            size_t index, const SequenceDeltaOutput& output) mutable {
-          const auto ret = send_delta_to_client(
-              call_data, request, index, first_message, output);
-          first_message = false;
-          return ret;
-        };
-
-    // set callback for stream request
-    request->on_stream_finish = [call_data](const Status& /*status*/) -> bool {
-      return call_data->finish();
-    };
-  } else {
-    // set callback for non-stream request
-    request->on_finish = [call_data, request = request.get()](
-                             const std::vector<SequenceOutput>& seq_results,
-                             const Status& status,
-                             const Statistics& stats) -> bool {
-      return send_result_to_client(
-          call_data, request, seq_results, status, stats);
+    request->on_stream = [call_data,
+                          request = request.get(),
+                          first_message = std::vector<bool>(num_seqs, true)](
+                             const RequestOutput& output) mutable {
+      for (const auto& seq_output : output.outputs) {
+        const auto index = seq_output.index;
+        if (!send_delta_to_client(
+                call_data, request, first_message[index], seq_output)) {
+          return false;
+        }
+        first_message[index] = false;
+      }
+      return true;
     };
   }
 
-  // set callback for checking rpc status
-  request->is_rpc_ok = [call_data]() -> bool { return call_data->is_rpc_ok(); };
+  // set callback for non-stream request
+  request->on_finish = [call_data, request = request.get()](
+                           const Status& status,
+                           const RequestOutput& output) -> bool {
+    return send_result_to_client(call_data, request, status, output);
+  };
 
   // add one sequence, the rest will be expanded by scheduler
   request->add_sequence();

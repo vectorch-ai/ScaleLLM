@@ -15,58 +15,80 @@ DEFINE_int32(streaming_token_buffer_size,
              1,
              "number of tokens to buffer before streaming to client");
 
-ResponseHandler::ResponseHandler(BlockManager* block_manager,
-                                 Tokenizer* tokenizer)
-    : block_manager_(block_manager), tokenizer_(tokenizer) {}
+ResponseHandler::ResponseHandler(std::unique_ptr<Tokenizer> tokenizer)
+    : tokenizer_(std::move(tokenizer)) {}
 
 void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
-  // release all blocks for the finished request
-  block_manager_->release_blocks_for(request.get());
   // schedule the response handling
-  response_threadpool_.schedule([tokenizer = tokenizer_,
+  response_threadpool_.schedule([tokenizer = tokenizer_.get(),
                                  request = std::move(request)]() {
-    if (request->stream) {
-      // just finish the request
-      request->on_stream_finish(Status());
-    } else {
-      // summarize statistics for all sequences
-      Statistics stats;
-      stats.num_prompt_tokens = request->num_prompt_tokens();
-      for (const Sequence& seq : request->sequences) {
-        stats.num_generated_tokens += seq.num_generated_tokens();
-      }
-      stats.num_total_tokens =
-          stats.num_prompt_tokens + stats.num_generated_tokens;
+    RequestOutput req_output;
+    // summarize statistics for all sequences
+    Statistics& stats = req_output.stats;
+    stats.num_prompt_tokens = request->num_prompt_tokens();
+    for (const Sequence& seq : request->sequences) {
+      stats.num_generated_tokens += seq.num_generated_tokens();
+    }
+    stats.num_total_tokens =
+        stats.num_prompt_tokens + stats.num_generated_tokens;
 
-      std::vector<SequenceOutput> seq_results;
-      seq_results.reserve(request->sequences.size());
-      for (Sequence& seq : request->sequences) {
+    if (!request->is_streaming()) {
+      auto& outputs = req_output.outputs;
+      outputs.reserve(request->sequences.size());
+      for (size_t i = 0; i < request->sequences.size(); ++i) {
+        Sequence& seq = request->sequences[i];
         // generate the final output
         const auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
-        seq_results.push_back({output, seq.finish_reason()});
+        outputs.push_back({i, output, seq.finish_reason()});
       }
-      request->on_finish(seq_results, Status(), stats);
     }
+    request->on_finish(Status(), req_output);
   });
 }
 
-void ResponseHandler::on_sequence_stream(Sequence* seq) {
-  // check if the sequence has enough tokens to output
-  const auto token_ids = seq->token_ids();
-  const size_t output_offset = seq->output_offset();
-  const size_t num_tokens_to_output = token_ids.size() - output_offset;
-  if (seq->is_finished() ||
-      num_tokens_to_output >= FLAGS_streaming_token_buffer_size) {
-    const auto finish_reason = seq->finish_reason();
-    // output the delta text til the end of the sequence to the client
-    response_threadpool_.schedule(
-        [seq, tokenizer = tokenizer_, token_ids = token_ids, finish_reason]() {
-          auto delta = seq->decode_delta_text(token_ids, *tokenizer);
-          if (!delta.empty() || finish_reason != FinishReason::NONE) {
-            seq->stream_delta({std::move(delta), finish_reason});
-          };
-        });
+void ResponseHandler::on_request_stream(Request* request) {
+  CHECK(request->is_streaming()) << "request is not a streaming request";
+
+  std::vector<size_t> indexes;
+  std::vector<Slice<int32_t>> token_ids;
+  for (size_t i = 0; i < request->sequences.size(); ++i) {
+    Sequence& seq = request->sequences[i];
+    if (seq.num_blocks() == 0) {
+      CHECK(seq.is_finished());
+      // skip already finished sequences
+      continue;
+    }
+
+    // check if the sequence has enough tokens to output
+    const auto ids = seq.token_ids();
+    if (seq.is_finished() ||
+        ids.size() - seq.output_offset() >= FLAGS_streaming_token_buffer_size) {
+      indexes.push_back(i);
+      token_ids.push_back(ids);
+    }
   }
+
+  // output the delta text til the end of the sequence to the client
+  response_threadpool_.schedule([request,
+                                 indexes = std::move(indexes),
+                                 token_ids = std::move(token_ids),
+                                 tokenizer = tokenizer_.get()]() {
+    RequestOutput req_output;
+    for (size_t i = 0; i < indexes.size(); ++i) {
+      const size_t index = indexes[i];
+      Sequence& seq = request->sequences[index];
+      const auto finish_reason = seq.finish_reason();
+      auto delta = seq.decode_delta_text(token_ids[i], *tokenizer);
+      if (!delta.empty() || finish_reason != FinishReason::NONE) {
+        req_output.outputs.push_back({index, std::move(delta), finish_reason});
+      }
+    }
+
+    if (!request->on_stream(req_output)) {
+      // cancel the request if on_stream returns false
+      request->cancel();
+    }
+  });
 }
 
 }  // namespace llm

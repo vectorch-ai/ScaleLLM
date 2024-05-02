@@ -31,13 +31,6 @@ void Request::add_sequence() {
   options.sampling_param = this->sampling_param;
   options.stopping_criteria = this->stopping_criteria;
 
-  if (stream) {
-    CHECK(on_stream_delta);
-    options.on_delta =
-        [this, index = sequences.size()](const SequenceDeltaOutput& output) {
-          return this->on_stream_delta(index, output);
-        };
-  }
   sequences.emplace_back(
       this->prompt, this->prompt_tokens, this->seq_capacity, options);
 }
@@ -51,18 +44,6 @@ bool Request::is_finished() const {
   return std::all_of(sequences.begin(),
                      sequences.end(),
                      [](const Sequence& seq) { return seq.is_finished(); });
-}
-
-bool Request::is_cancelled() const {
-  if (is_rpc_ok != nullptr && !is_rpc_ok()) {
-    // if rpc is not ok, cancel the request
-    return true;
-  }
-
-  // if any sequence is cancelled, then the request is cancelled
-  return std::any_of(sequences.begin(),
-                     sequences.end(),
-                     [](const Sequence& seq) { return seq.is_cancelled(); });
 }
 
 bool Request::should_expand_sequences() const {

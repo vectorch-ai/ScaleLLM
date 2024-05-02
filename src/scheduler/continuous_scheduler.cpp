@@ -20,14 +20,11 @@ ContinuousScheduler::ContinuousScheduler(Engine* engine, const Options& options)
     : options_(options), engine_(engine), request_queue_(kRequestQueueSize) {
   CHECK(engine_ != nullptr);
   block_manager_ = engine_->block_manager();
-  tokenizer_ = engine_->tokenizer();
   CHECK(block_manager_ != nullptr);
-  CHECK(tokenizer_ != nullptr);
 
   enable_prefix_cache_ = block_manager_->options().enable_prefix_cache();
 
-  response_handler_ =
-      std::make_unique<ResponseHandler>(block_manager_, tokenizer_.get());
+  response_handler_ = std::make_unique<ResponseHandler>(engine_->tokenizer());
 }
 
 ContinuousScheduler::~ContinuousScheduler() {
@@ -88,6 +85,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
        ++it) {
     Request* request = *it;
     if (request->is_finished() || request->is_cancelled()) {
+      block_manager_->release_blocks_for(request);
       // release the ownership of the request
       response_handler_->on_request_finish(std::unique_ptr<Request>(request));
       continue;
@@ -99,6 +97,13 @@ Batch ContinuousScheduler::build_sequence_batch() {
       block_manager_->cache_blocks_for(&request->sequences[0]);
       // expand sequences to the target number
       request->expand_sequences();
+    }
+
+    // release blocks for finished sequences here
+    for (Sequence& sequence : request->sequences) {
+      if (sequence.is_finished()) {
+        block_manager_->release_blocks_for(&sequence);
+      }
     }
 
     // put it to the front of the preemptable queue as it has higher priority
@@ -241,6 +246,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
     // no enough memory to schedule single sequence, just finish the request
     Request* request = priority_queue_.top();
     priority_queue_.pop();
+    block_manager_->release_blocks_for(request);
     // release the ownership of the request
     response_handler_->on_request_finish(std::unique_ptr<Request>(request));
   }
@@ -279,12 +285,10 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
 
   engine_->execute_model(batch);
 
-  // process sequence in batch
-  for (int64_t i = 0; i < batch.size(); ++i) {
-    Sequence* seq = batch[i];
-    // stream delta to client if streaming is enabled
-    if (seq->is_streaming()) {
-      response_handler_->on_sequence_stream(seq);
+  // process request output in batch
+  for (Request* request : running_requests_) {
+    if (request->is_streaming()) {
+      response_handler_->on_request_stream(request);
     }
   }
 

@@ -1,8 +1,10 @@
-include(pybind11_module)
+include(pybind_extension)
 
-pybind11_module(
+pybind_extension(
   NAME
-    wrapper
+    _C
+  COPTS
+    -DPY_MODULE_NAME=_C
   HDRS
     llm.h
   SRCS
