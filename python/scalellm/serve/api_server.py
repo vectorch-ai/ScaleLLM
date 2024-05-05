@@ -8,24 +8,20 @@ python3 -m scalellm.serve.api_server
 """
 
 import argparse
+import time
 
 import fastapi
-import uvicorn
-import time
 import shortuuid
+import uvicorn
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from scalellm import LLMEngine, SamplingParams
-from scalellm.serve.api_protocol import (
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    CompletionRequest,
-    CompletionResponseStreamChoice,
-    CompletionStreamResponse,
-    ErrorResponse,
-    ModelList,
-    UsageInfo,
-)
+from scalellm.serve.api_protocol import (ChatCompletionRequest,
+                                         ChatCompletionResponse,
+                                         CompletionRequest,
+                                         CompletionResponseStreamChoice,
+                                         CompletionStreamResponse,
+                                         ErrorResponse, ModelList, UsageInfo)
 
 app = fastapi.FastAPI()
 llm_engine: LLMEngine = None
