@@ -1,6 +1,6 @@
 #pragma once
 
-#include "_sampling_parameter.h"
+#include "sampling_params.h"
 #include "engine/llm_engine.h"
 #include "request/stopping_criteria.h"
 
@@ -9,7 +9,7 @@ namespace llm {
 class LLM {
  public:
   LLM(const std::string& model_path,
-      const SamplingParameter_& sp,
+      const SamplingParams& sp,
       int64_t max_seq_len,
       const std::string& device_str);
 

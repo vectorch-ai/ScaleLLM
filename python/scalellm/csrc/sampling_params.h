@@ -2,9 +2,9 @@
 #include <cstdint>
 namespace llm {
 
-// SamplingParameter is used to specify sampling parameters for a
+// SamplingParams is used to specify sampling parameters for a
 // request.
-struct SamplingParameter_ {
+struct SamplingParams {
   float frequency_penalty = 0.0;
   float presence_penalty = 0.0;
   float repetition_penalty = 1.0;

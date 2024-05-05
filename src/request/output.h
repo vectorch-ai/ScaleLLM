@@ -44,6 +44,9 @@ struct RequestOutput {
 
   // the statistics for the request.
   Statistics stats;
+
+  // whether the request is finished.
+  bool finished = false;
 };
 
 }  // namespace llm

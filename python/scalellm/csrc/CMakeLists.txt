@@ -7,7 +7,7 @@ pybind_extension(
     -DPY_MODULE_NAME=_C
   HDRS
     llm.h
-    _sampling_parameter.h
+    sampling_params.h
     _llm_engine.h
   SRCS
     llm.cpp

@@ -1,8 +1,47 @@
 import asyncio
-from scalellm.output import RequestOutput
+import queue
+
+from scalellm._C import RequestOutput, SamplingParams, _LLMEngine
 
 
-class RequestOutputStream:
+class OutputStream:
+    def __init__(self) -> None:
+        self._queue = queue.Queue()
+        self._cancelled = False
+
+    def put(self, item: RequestOutput) -> bool:
+        if self._cancelled:
+            return False
+        self._queue.put_nowait(item)
+        # put a sentinel value to indicate the end of the stream
+        if item.finished:
+            self._queue.put_nowait(None)
+        return True
+
+    # report an error to the stream, rerais as an exception
+    def error(self, error: str) -> None:
+        self._queue.append(Exception(error))
+
+    # cancel the stream
+    def cancel(self) -> None:
+        self._cancelled = True
+        self._queue.put_nowait(None)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> RequestOutput:
+        item = self._queue.get(block=True)
+        # None indicates the end of the stream
+        if item is None:
+            raise StopIteration
+        # reraise the exception
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+class OutputAsyncStream:
     """A stream of RequestOutput objects, which can be used to
     send responses to the client asynchronously."""
 
@@ -19,14 +58,19 @@ class RequestOutputStream:
             return False
         # put the item into the queue
         self._queue.put_nowait(item)
+        # put a sentinel value to indicate the end of the stream
+        if item.finished:
+            self._queue.put_nowait(None)
+        return True
 
-    # report an error to the stream
+    # report an error to the stream, rerais as an exception
     def error(self, error: str) -> None:
         self._queue.put_nowait(Exception(error))
-        
+
     # cancel the stream
     def cancel(self) -> None:
-      self._cancelled = True
+        self._cancelled = True
+        self._queue.put_nowait(None)
 
     def __aiter__(self):
         return self
@@ -34,6 +78,7 @@ class RequestOutputStream:
     # async generator to iterate over the stream
     async def __anext__(self) -> RequestOutput:
         item = await self._queue.get()
+        # None indicates the end of the stream
         if item is None:
             raise StopAsyncIteration
         # reraise the exception
@@ -43,21 +88,42 @@ class RequestOutputStream:
 
 
 class LLMEngine:
-    def __init__(self):
-        pass
+    def __init__(self, model_path: str, devices: str):
+        self._engine = _LLMEngine(model_path, devices)
 
-    # schedule a request to be processed, and return a RequestOutputStream
-    def schedule_request(request) -> RequestOutputStream:
-        stream = RequestOutputStream()
-        # callback = lambda output: stream.put(output)
-        #  _engine.schedule_request(request, callback)
+    # schedule a request to the engine, and return a stream to receive output
+    async def schedule_async(
+        self, prompt: str, sampling_params: SamplingParams
+    ) -> OutputAsyncStream:
+        # creat a async stream to receive output
+        stream = OutputAsyncStream()
+
+        # define callback to add output to the stream
+        def callback(output: RequestOutput) -> bool:
+            return stream.put(output)
+
+        # schedule the request
+        self._engine.schedule_async(prompt, sampling_params, callback)
         return stream
 
-    # start the engine
-    def start(self) -> None:
-        # _engine.start()
-        pass
+    def schedule(self, prompt: str, sampling_params: SamplingParams) -> OutputStream:
+        # create a stream to reeive output
+        stream = OutputStream()
 
+        def callback(output: RequestOutput):
+            return stream.put(output)
+
+        self._engine.schedule_async(prompt, sampling_params, callback)
+        return stream
+
+    # run the engine forever, non-blocking call
+    def run_forever(self) -> bool:
+        return self._engine.run_forever()
+
+    # stop the engine
     def stop(self) -> None:
-        # _engine.stop()
-        pass
+        return self._engine.stop()
+
+    # run the engine until all scheduled requests are processed, non-blocking call
+    def run_until_complete(self) -> bool:
+        return self._engine.run_until_complete()

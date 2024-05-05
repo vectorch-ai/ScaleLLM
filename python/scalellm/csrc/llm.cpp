@@ -8,7 +8,7 @@
 namespace llm {
 
 LLM::LLM(const std::string& model_path,
-         const SamplingParameter_& sp,
+         const SamplingParams& sp,
          int64_t max_seq_len,
          const std::string& device_str)
     : max_seq_len_(max_seq_len) {
