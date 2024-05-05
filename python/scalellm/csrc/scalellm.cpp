@@ -36,7 +36,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def(py::init())
       .def_readwrite("index", &SequenceOutput::index)
       .def_readwrite("text", &SequenceOutput::text);
-    //   .def_readwrite("finish_reason", &SequenceOutput::finish_reason);
+  //   .def_readwrite("finish_reason", &SequenceOutput::finish_reason);
 
   py::class_<RequestOutput>(m, "RequestOutput")
       .def(py::init())
