@@ -11,13 +11,22 @@ import argparse
 
 import fastapi
 import uvicorn
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from pydantic import BaseModel
+from scalellm import LLMEngine, SamplingParams
 from scalellm.serve.api_protocol import (ChatCompletionRequest,
                                          ChatCompletionResponse,
-                                         CompletionRequest, CompletionResponse,
-                                         ModelList, UsageInfo)
+                                         CompletionRequest,
+                                         CompletionResponseStreamChoice,
+                                         CompletionStreamResponse,
+                                         ErrorResponse, ModelList, UsageInfo)
 
 app = fastapi.FastAPI()
+llm_engine: LLMEngine = None
+
+
+def jsonify_model(obj: BaseModel):
+    return obj.model_dump_json(exclude_none=True)
 
 
 @app.get("/metrics")
@@ -48,11 +57,41 @@ async def create_chat_completion(request: ChatCompletionRequest):
 @app.post("/v1/completions")
 async def create_completion(request: CompletionRequest):
     """Creates a completion for the prompt"""
-    choices = []
-    usage = UsageInfo()
-    return CompletionResponse(
-        model=request.model, choices=choices, usage=UsageInfo.parse_obj(usage)
-    )
+    sampling_params = SamplingParams()
+    ouput_stream = await llm_engine.schedule_async(request.prompt, sampling_params)
+
+    async def generate_stream_response():
+        async for output in ouput_stream:
+            usage = None
+            if output.finished:
+                usage = UsageInfo(
+                    prompt_tokens=output.stats.num_prompt_tokens,
+                    total_tokens=output.stats.num_total_tokens,
+                    completion_tokens=output.stats.num_generated_tokens,
+                )
+            for seq_output in output.outputs:
+                choice = CompletionResponseStreamChoice(
+                    index=seq_output.index,
+                    text=seq_output.text,
+                    finish_reason=None,
+                )
+
+                response = CompletionStreamResponse(
+                    id=request.id,
+                    created=request.created,
+                    model=request.model,
+                    choices=[choice],
+                    usage=usage,
+                )
+                yield f"data: {jsonify_model(response)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    try:
+        return StreamingResponse(
+            content=generate_stream_response(), media_type="text/event-stream"
+        )
+    except Exception as e:
+        return ErrorResponse(object="error", message=str(e), code=500)
 
 
 def parse_args():
@@ -62,10 +101,33 @@ def parse_args():
     parser.add_argument("--host", type=str, default="localhost", help="host name")
     parser.add_argument("--port", type=int, default=8080, help="port number")
 
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="gpt2",
+        help="Name or path of the huggingface model.",
+    )
+
+    parser.add_argument(
+        "--revision", type=str, default=None, help="Revision of the model."
+    )
+
+    parser.add_argument("--devices", type=str, default="auto", help="devices to use.")
+
     args = parser.parse_args()
     return args
 
 
 if __name__ == "__main__":
     args = parse_args()
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    # initialize the LLM engine
+    llm_engine = LLMEngine(args.model, args.devices)
+    llm_engine.run_forever()
+
+    try:
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # stop the LLM engine
+        llm_engine.stop()

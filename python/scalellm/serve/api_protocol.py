@@ -1,6 +1,6 @@
 # Adapted from https://github.com/lm-sys/FastChat
 import time
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import shortuuid
 from pydantic import BaseModel, Field
@@ -54,10 +54,13 @@ class LogProbs(BaseModel):
     tokens: List[str] = Field(default_factory=list)
     top_logprobs: List[Optional[Dict[str, float]]] = Field(default_factory=list)
 
+class ChatCompletionMessage(BaseModel):
+    role: Literal["user", "system", "assistant"]
+    content: str
 
 class ChatCompletionRequest(BaseModel):
     model: str
-    messages: List[Dict[str, str]]
+    messages: List[ChatCompletionMessage]
     temperature: Optional[float] = 0.7
     top_p: Optional[float] = 1.0
     top_k: Optional[int] = -1
@@ -112,7 +115,7 @@ class ChatCompletionStreamResponse(BaseModel):
 
 class CompletionRequest(BaseModel):
     model: str
-    prompt: Union[str, List[Any]]
+    prompt: str
     suffix: Optional[str] = None
     temperature: Optional[float] = 0.7
     n: Optional[int] = 1
