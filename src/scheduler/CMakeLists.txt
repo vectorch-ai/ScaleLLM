@@ -23,6 +23,7 @@ cc_library(
     glog::glog
     Folly::folly
     absl::time
+    absl::synchronization
 )
 
 # cc_test(

@@ -35,8 +35,8 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
   py::class_<SequenceOutput>(m, "SequenceOutput")
       .def(py::init())
       .def_readwrite("index", &SequenceOutput::index)
-      .def_readwrite("text", &SequenceOutput::text);
-  //   .def_readwrite("finish_reason", &SequenceOutput::finish_reason);
+      .def_readwrite("text", &SequenceOutput::text)
+      .def_readwrite("finish_reason", &SequenceOutput::finish_reason);
 
   py::class_<RequestOutput>(m, "RequestOutput")
       .def(py::init())
@@ -50,8 +50,8 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
            &_LLMEngine::schedule_async,
            py::call_guard<py::gil_scoped_release>())
       .def("run_forever", &_LLMEngine::run_forever)
-      .def("stop", &_LLMEngine::stop)
-      .def("run_until_complete", &_LLMEngine::run_until_complete);
+      .def("run_until_complete", &_LLMEngine::run_until_complete)
+      .def("stop", &_LLMEngine::stop);
 
   // class LLM
   py::class_<LLM, std::shared_ptr<LLM>>(m, "LLM")

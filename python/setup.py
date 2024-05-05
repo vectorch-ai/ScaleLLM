@@ -124,7 +124,7 @@ class CMakeBuild(build_ext):
             cmake_args += ["-DENABLE_CXX11_ABI=OFF"]
 
         build_args = ["--config", build_type]
-        max_jobs = os.getenv("MAX_JOBS", str(2 * os.cpu_count()))
+        max_jobs = os.getenv("MAX_JOBS", str(os.cpu_count()))
         build_args += ['-j' + max_jobs]
         
         env = os.environ.copy()
@@ -147,7 +147,7 @@ scalellm_package_data = [
 
 setup(
     name="scalellm",
-    version="0.0.5",
+    version="0.0.9",
     license="Apache 2.0",
     author="ScaleLLM Team",
     description="A high-performance inference system for large language models.",

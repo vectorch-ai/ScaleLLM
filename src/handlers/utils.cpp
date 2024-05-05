@@ -25,20 +25,4 @@ RequestPriority grpc_priority_to_priority(Priority priority) {
   return RequestPriority::MEDIUM;
 }
 
-std::string finish_reason_to_string(FinishReason reason) {
-  switch (reason) {
-    case FinishReason::NONE:
-      return "";
-    case FinishReason::STOP:
-      return "stop";
-    case FinishReason::LENGTH:
-      return "length";
-    case FinishReason::FUNCTION_CALL:
-      return "function_call";
-    default:
-      LOG(WARNING) << "Unknown finish reason: " << static_cast<int>(reason);
-  }
-  return "";
-}
-
 }  // namespace llm

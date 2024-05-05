@@ -43,7 +43,12 @@ class ContinuousScheduler final : public Scheduler {
   // may get blocked if there are no requests to process
   void step(const absl::Duration& timeout) override;
 
+  // run the scheduler until all scheduled requests are completed
+  void run_until_complete();
+
  private:
+  Batch wait_for_batch(const absl::Duration& timeout);
+
   // get a batch of requests from the priority queue
   Batch build_sequence_batch();
 

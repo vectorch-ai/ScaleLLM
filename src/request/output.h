@@ -1,5 +1,8 @@
 #pragma once
 
+#include <glog/logging.h>
+
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -35,7 +38,7 @@ struct SequenceOutput {
   std::string text;
 
   // the reason the sequence finished.
-  FinishReason finish_reason;
+  std::optional<std::string> finish_reason;
 };
 
 struct RequestOutput {
@@ -43,10 +46,24 @@ struct RequestOutput {
   std::vector<SequenceOutput> outputs;
 
   // the statistics for the request.
-  Statistics stats;
+  std::optional<Statistics> stats;
 
   // whether the request is finished.
   bool finished = false;
 };
+
+inline std::optional<std::string> to_string(FinishReason reason) {
+  switch (reason) {
+    case FinishReason::STOP:
+      return "stop";
+    case FinishReason::LENGTH:
+      return "length";
+    case FinishReason::FUNCTION_CALL:
+      return "function_call";
+    default:
+      LOG(WARNING) << "Unknown finish reason: " << static_cast<int>(reason);
+  }
+  return std::nullopt;
+}
 
 }  // namespace llm

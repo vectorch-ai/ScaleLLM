@@ -119,7 +119,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
     }
   }
 
-  if (seq_output.finish_reason != FinishReason::NONE) {
+  if (seq_output.finish_reason.has_value()) {
     CompletionResponse response;
     response.set_object("text_completion");
     response.set_id(request->id);
@@ -127,8 +127,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
     // response.set_model(request->model);
     auto* choice = response.add_choices();
     choice->set_index(seq_output.index);
-    choice->set_finish_reason(
-        finish_reason_to_string(seq_output.finish_reason));
+    choice->set_finish_reason(seq_output.finish_reason.value());
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -157,19 +156,20 @@ bool send_result_to_client(CompletionCallData* call_data,
     choice->set_index(output.index);
     choice->set_text(output.text);
     // choice->set_logprobs(0);
-    if (output.finish_reason != FinishReason::NONE) {
-      choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
+    if (output.finish_reason.has_value()) {
+      choice->set_finish_reason(output.finish_reason.value());
     }
   }
 
   // add usage statistics
-  auto* usage = response.mutable_usage();
-  usage->set_prompt_tokens(
-      static_cast<int32_t>(req_output.stats.num_prompt_tokens));
-  usage->set_completion_tokens(
-      static_cast<int32_t>(req_output.stats.num_generated_tokens));
-  usage->set_total_tokens(
-      static_cast<int32_t>(req_output.stats.num_total_tokens));
+  if (req_output.stats.has_value()) {
+    const auto& stats = req_output.stats.value();
+    auto* usage = response.mutable_usage();
+    usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
+    usage->set_completion_tokens(
+        static_cast<int32_t>(stats.num_generated_tokens));
+    usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
+  }
   // TODO: combine write and finish
   call_data->write(response);
   return call_data->finish();

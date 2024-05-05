@@ -11,15 +11,21 @@ import argparse
 
 import fastapi
 import uvicorn
+import time
+import shortuuid
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from scalellm import LLMEngine, SamplingParams
-from scalellm.serve.api_protocol import (ChatCompletionRequest,
-                                         ChatCompletionResponse,
-                                         CompletionRequest,
-                                         CompletionResponseStreamChoice,
-                                         CompletionStreamResponse,
-                                         ErrorResponse, ModelList, UsageInfo)
+from scalellm.serve.api_protocol import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    CompletionRequest,
+    CompletionResponseStreamChoice,
+    CompletionStreamResponse,
+    ErrorResponse,
+    ModelList,
+    UsageInfo,
+)
 
 app = fastapi.FastAPI()
 llm_engine: LLMEngine = None
@@ -57,6 +63,9 @@ async def create_chat_completion(request: ChatCompletionRequest):
 @app.post("/v1/completions")
 async def create_completion(request: CompletionRequest):
     """Creates a completion for the prompt"""
+    request_id = f"cmpl-{shortuuid.random()}"
+    created_time = int(time.time())
+
     sampling_params = SamplingParams()
     ouput_stream = await llm_engine.schedule_async(request.prompt, sampling_params)
 
@@ -77,8 +86,8 @@ async def create_completion(request: CompletionRequest):
                 )
 
                 response = CompletionStreamResponse(
-                    id=request.id,
-                    created=request.created,
+                    id=request_id,
+                    created=created_time,
                     model=request.model,
                     choices=[choice],
                     usage=usage,

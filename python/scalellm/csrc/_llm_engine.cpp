@@ -2,6 +2,7 @@
 
 #include <thread>
 
+#include "request/output.h"
 #include "request/request.h"
 
 namespace llm {
@@ -18,9 +19,11 @@ bool _LLMEngine::schedule_async(const std::string& prompt,
       RequestOutput output;
       output.finished = (i == 9);
       if (output.finished) {
-        output.stats.num_prompt_tokens = 10;
-        output.stats.num_generated_tokens = 20;
-        output.stats.num_total_tokens = 30;
+        Statistics stats;
+        stats.num_prompt_tokens = 10;
+        stats.num_generated_tokens = 20;
+        stats.num_total_tokens = 30;
+        output.stats = stats;
       }
 
       output.outputs.emplace_back();
