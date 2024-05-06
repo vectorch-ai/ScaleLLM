@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -38,7 +39,7 @@ struct SamplingParams {
   // higher value will make the ouput more random.
   float temperature = 1.0;
 
-  // top_p sampling cutoff, between [0, 1.0]. default = 1.0
+  // top_p sampling cutoff, between [0.0, 1.0]. default = 1.0
   float top_p = 1.0;
 
   // top_k sampling cutoff. default = 0 to disable.
@@ -49,10 +50,10 @@ struct SamplingParams {
 
   // the list of strings to stop generating further tokens.
   // the output will contain the stop string.
-  std::vector<std::string> stop;
+  std::optional<std::vector<std::string>> stop;
 
   // the list of token ids to stop generating further tokens.
-  std::vector<int32_t> stop_token_ids;
+  std::optional<std::vector<int32_t>> stop_token_ids;
 };
 
 }  // namespace llm::csrc

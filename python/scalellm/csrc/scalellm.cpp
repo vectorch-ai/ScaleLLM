@@ -20,12 +20,18 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
   // class SamplingParameter
   py::class_<SamplingParams>(m, "SamplingParams")
       .def(py::init())
+      .def_readwrite("max_tokens", &SamplingParams::max_tokens)
+      .def_readwrite("n", &SamplingParams::n)
+      .def_readwrite("echo", &SamplingParams::echo)
       .def_readwrite("frequency_penalty", &SamplingParams::frequency_penalty)
       .def_readwrite("presence_penalty", &SamplingParams::presence_penalty)
       .def_readwrite("repetition_penalty", &SamplingParams::repetition_penalty)
       .def_readwrite("temperature", &SamplingParams::temperature)
       .def_readwrite("top_p", &SamplingParams::top_p)
-      .def_readwrite("top_k", &SamplingParams::top_k);
+      .def_readwrite("top_k", &SamplingParams::top_k)
+      .def_readwrite("skip_special_tokens", &SamplingParams::skip_special_tokens)
+      .def_readwrite("stop", &SamplingParams::stop)
+      .def_readwrite("stop_token_ids", &SamplingParams::stop_token_ids);
 
   py::class_<ChatMessage>(m, "ChatMessage")
       .def(py::init())
