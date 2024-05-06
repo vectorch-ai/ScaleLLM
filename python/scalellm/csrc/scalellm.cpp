@@ -29,7 +29,8 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("temperature", &SamplingParams::temperature)
       .def_readwrite("top_p", &SamplingParams::top_p)
       .def_readwrite("top_k", &SamplingParams::top_k)
-      .def_readwrite("skip_special_tokens", &SamplingParams::skip_special_tokens)
+      .def_readwrite("skip_special_tokens",
+                     &SamplingParams::skip_special_tokens)
       .def_readwrite("stop", &SamplingParams::stop)
       .def_readwrite("stop_token_ids", &SamplingParams::stop_token_ids);
 
