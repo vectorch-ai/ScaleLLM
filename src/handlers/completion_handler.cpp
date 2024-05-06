@@ -165,7 +165,8 @@ bool send_result_to_client(CompletionCallData* call_data,
   if (req_output.usage.has_value()) {
     const auto& usage = req_output.usage.value();
     auto* proto_usage = response.mutable_usage();
-    proto_usage->set_prompt_tokens(static_cast<int32_t>(usage.num_prompt_tokens));
+    proto_usage->set_prompt_tokens(
+        static_cast<int32_t>(usage.num_prompt_tokens));
     proto_usage->set_completion_tokens(
         static_cast<int32_t>(usage.num_generated_tokens));
     proto_usage->set_total_tokens(static_cast<int32_t>(usage.num_total_tokens));
