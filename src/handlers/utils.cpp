@@ -9,20 +9,20 @@
 
 namespace llm {
 
-RequestPriority grpc_priority_to_priority(proto::Priority priority) {
+Priority grpc_priority_to_priority(proto::Priority priority) {
   switch (priority) {
     case proto::Priority::DEFAULT:
-      return RequestPriority::MEDIUM;
+      return Priority::NORMAL;
     case proto::Priority::LOW:
-      return RequestPriority::LOW;
-    case proto::Priority::MEDIUM:
-      return RequestPriority::MEDIUM;
+      return Priority::LOW;
+    case proto::Priority::NORMAL:
+      return Priority::NORMAL;
     case proto::Priority::HIGH:
-      return RequestPriority::HIGH;
+      return Priority::HIGH;
     default:
       LOG(WARNING) << "Unknown priority: " << static_cast<int>(priority);
   }
-  return RequestPriority::MEDIUM;
+  return Priority::NORMAL;
 }
 
 }  // namespace llm

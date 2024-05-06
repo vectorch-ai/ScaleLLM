@@ -89,7 +89,7 @@ struct Request final {
   bool echo = true;
 
   // the priority of the request.
-  RequestPriority priority = RequestPriority::MEDIUM;
+  Priority priority = Priority::NORMAL;
 
   // list of sequences to generate completions for the prompt
   // use deque instead of vector to avoid no-copy move for Sequence

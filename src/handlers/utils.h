@@ -6,7 +6,7 @@
 
 namespace llm {
 
-RequestPriority grpc_priority_to_priority(proto::Priority priority);
+Priority grpc_priority_to_priority(proto::Priority priority);
 
 std::string finish_reason_to_string(FinishReason reason);
 

@@ -156,13 +156,13 @@ bool send_result_to_client(ChatCallData* call_data,
   }
 
   // add usage statistics
-  if (req_output.stats.has_value()) {
-    const auto& stats = req_output.stats.value();
-    auto* usage = response.mutable_usage();
-    usage->set_prompt_tokens(static_cast<int32_t>(stats.num_prompt_tokens));
-    usage->set_completion_tokens(
-        static_cast<int32_t>(stats.num_generated_tokens));
-    usage->set_total_tokens(static_cast<int32_t>(stats.num_total_tokens));
+  if (req_output.usage.has_value()) {
+    const auto& usage = req_output.usage.value();
+    auto* proto_usage = response.mutable_usage();
+    proto_usage->set_prompt_tokens(static_cast<int32_t>(usage.num_prompt_tokens));
+    proto_usage->set_completion_tokens(
+        static_cast<int32_t>(usage.num_generated_tokens));
+    proto_usage->set_total_tokens(static_cast<int32_t>(usage.num_total_tokens));
   }
 
   // TODO: combine write and finish

@@ -24,14 +24,14 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
       [tokenizer = tokenizer_.get(), request = std::move(request)]() {
         RequestOutput req_output;
         // summarize statistics for all sequences
-        Statistics stats;
-        stats.num_prompt_tokens = request->num_prompt_tokens();
+        Usage usage;
+        usage.num_prompt_tokens = request->num_prompt_tokens();
         for (const Sequence& seq : request->sequences) {
-          stats.num_generated_tokens += seq.num_generated_tokens();
+          usage.num_generated_tokens += seq.num_generated_tokens();
         }
-        stats.num_total_tokens =
-            stats.num_prompt_tokens + stats.num_generated_tokens;
-        req_output.stats = stats;
+        usage.num_total_tokens =
+            usage.num_prompt_tokens + usage.num_generated_tokens;
+        req_output.usage = usage;
 
         if (!request->is_streaming()) {
           auto& outputs = req_output.outputs;

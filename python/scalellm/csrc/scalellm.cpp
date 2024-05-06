@@ -32,18 +32,18 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("role", &ChatMessage::role)
       .def_readwrite("content", &ChatMessage::content);
 
-  py::enum_<RequestPriority>(m, "Priority")
-      .value("DEFAULT", RequestPriority::MEDIUM)
-      .value("LOW", RequestPriority::LOW)
-      .value("MEDIUM", RequestPriority::MEDIUM)
-      .value("HIGH", RequestPriority::HIGH)
+  py::enum_<Priority>(m, "Priority")
+      .value("DEFAULT", Priority::NORMAL)
+      .value("LOW", Priority::LOW)
+      .value("NORMAL", Priority::NORMAL)
+      .value("HIGH", Priority::HIGH)
       .export_values();
 
-  py::class_<Statistics>(m, "Statistics")
+  py::class_<Usage>(m, "Usage")
       .def(py::init())
-      .def_readwrite("num_prompt_tokens", &Statistics::num_prompt_tokens)
-      .def_readwrite("num_generated_tokens", &Statistics::num_generated_tokens)
-      .def_readwrite("num_total_tokens", &Statistics::num_total_tokens);
+      .def_readwrite("num_prompt_tokens", &Usage::num_prompt_tokens)
+      .def_readwrite("num_generated_tokens", &Usage::num_generated_tokens)
+      .def_readwrite("num_total_tokens", &Usage::num_total_tokens);
 
   py::enum_<StatusCode>(m, "StatusCode")
       .value("OK", StatusCode::OK)
@@ -73,7 +73,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def(py::init())
       .def_readwrite("status", &RequestOutput::status)
       .def_readwrite("outputs", &RequestOutput::outputs)
-      .def_readwrite("stats", &RequestOutput::stats)
+      .def_readwrite("usage", &RequestOutput::usage)
       .def_readwrite("finished", &RequestOutput::finished);
 
   py::class_<LLMHandler>(m, "LLMHandler")
