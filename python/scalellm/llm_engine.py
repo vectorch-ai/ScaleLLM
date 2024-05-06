@@ -1,7 +1,7 @@
 import asyncio
 import queue
 
-from scalellm._C import RequestOutput, SamplingParams, _LLMEngine
+from scalellm._C import RequestOutput, SamplingParams, LLMHandler
 
 
 class OutputStream:
@@ -89,7 +89,7 @@ class OutputAsyncStream:
 
 class LLMEngine:
     def __init__(self, model_path: str, devices: str):
-        self._engine = _LLMEngine(model_path, devices)
+        self._handler = LLMHandler(model_path, devices)
 
     # schedule a request to the engine, and return a stream to receive output
     async def schedule_async(
@@ -103,7 +103,7 @@ class LLMEngine:
             return stream.put(output)
 
         # schedule the request
-        self._engine.schedule_async(prompt, sampling_params, callback)
+        self._handler.schedule(prompt, sampling_params, callback)
         return stream
 
     def schedule(self, prompt: str, sampling_params: SamplingParams) -> OutputStream:
@@ -113,17 +113,9 @@ class LLMEngine:
         def callback(output: RequestOutput):
             return stream.put(output)
 
-        self._engine.schedule_async(prompt, sampling_params, callback)
+        self._handler.schedule(prompt, sampling_params, callback)
         return stream
-
-    # run the engine forever, non-blocking call
-    def run_forever(self) -> bool:
-        return self._engine.run_forever()
 
     # stop the engine
     def stop(self) -> None:
-        return self._engine.stop()
-
-    # run the engine until all scheduled requests are processed, non-blocking call
-    def run_until_complete(self) -> bool:
-        return self._engine.run_until_complete()
+        return self._handler.stop()

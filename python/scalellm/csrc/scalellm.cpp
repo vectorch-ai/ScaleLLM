@@ -3,8 +3,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "_llm_engine.h"
 #include "llm.h"
+#include "llm_handler.h"
 #include "request/status.h"
 #include "sampling_params.h"
 
@@ -69,14 +69,12 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("stats", &RequestOutput::stats)
       .def_readwrite("finished", &RequestOutput::finished);
 
-  py::class_<_LLMEngine>(m, "_LLMEngine")
+  py::class_<LLMHandler>(m, "LLMHandler")
       .def(py::init<const std::string&, const std::string&>())
-      .def("schedule_async",
-           &_LLMEngine::schedule_async,
+      .def("schedule",
+           &LLMHandler::schedule,
            py::call_guard<py::gil_scoped_release>())
-      .def("run_forever", &_LLMEngine::run_forever)
-      .def("run_until_complete", &_LLMEngine::run_until_complete)
-      .def("stop", &_LLMEngine::stop);
+      .def("stop", &LLMHandler::stop, py::call_guard<py::gil_scoped_release>());
 
   // class LLM
   py::class_<LLM, std::shared_ptr<LLM>>(m, "LLM")

@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import Callable, List, Optional
 from enum import Enum
 
 # Defined in scalellm/csrc/scalellm.cpp
@@ -10,7 +10,7 @@ class SamplingParams:
     temperature: float
     top_p: float
     top_k: int
-    
+
 class ChatMessage:
     def __init__(self) -> None: ...
     role: str
@@ -26,13 +26,13 @@ class SequenceOutput:
     def __init__(self) -> None: ...
     index: int
     text: str
-    finish_reason: str
+    finish_reason: Optional[str]
 
 class RequestOutput:
     def __init__(self) -> None: ...
-    status: Status
+    status: Optional[Status]
     outputs: List[SequenceOutput]
-    stats: Statistics
+    stats: Optional[Statistics]
     finished: bool
 
 class StatusCode(Enum):
@@ -55,16 +55,14 @@ class Status:
     @property
     def ok(self) -> bool: ...
 
-class _LLMEngine:
+class LLMHandler:
     def __init__(self, model_path: str, devices: str) -> None: ...
-    def schedule_async(
+    def schedule(
         self,
         prompt: str,
         sp: SamplingParams,
         callback: Callable[[RequestOutput], bool],
     ) -> bool: ...
-    def run_forever(self) -> bool: ...
-    def run_until_complete(self) -> bool: ...
     def stop(self) -> None: ...
 
 # Defined in scalellm/csrc/llm.h

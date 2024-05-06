@@ -8,10 +8,10 @@ pybind_extension(
   HDRS
     llm.h
     sampling_params.h
-    _llm_engine.h
+    llm_handler.h
   SRCS
     llm.cpp
-    _llm_engine.cpp
+    llm_handler.cpp
     scalellm.cpp
   DEPS
     :engine

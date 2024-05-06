@@ -1,4 +1,4 @@
-#include "_llm_engine.h"
+#include "llm_handler.h"
 
 #include <memory>
 #include <thread>
@@ -25,7 +25,7 @@ std::unique_ptr<Request> create_chat_request(const std::string& prompt,
 }
 }  // namespace
 
-_LLMEngine::_LLMEngine(const std::string& model_path,
+LLMHandler::LLMHandler(const std::string& model_path,
                        const std::string& device_str) {
   engine_ = EngineFactory::create(model_path, device_str);
 
@@ -45,14 +45,14 @@ _LLMEngine::_LLMEngine(const std::string& model_path,
   });
 }
 
-_LLMEngine::~_LLMEngine() {
+LLMHandler::~LLMHandler() {
   stop();
   loop_thread_.join();
 }
 
-bool _LLMEngine::schedule_async(const std::string& prompt,
-                                const SamplingParams& sp,
-                                RequestCallback callback) {
+bool LLMHandler::schedule(const std::string& prompt,
+                          const SamplingParams& sp,
+                          RequestCallback callback) {
   thread_pool_.schedule([this, prompt, sp, callback]() {
     // verify the prompt
     auto request = create_completion_request(prompt, sp, callback);
@@ -72,13 +72,7 @@ bool _LLMEngine::schedule_async(const std::string& prompt,
 //   return true;
 // }
 
-// run the engine until stop() is called
-bool _LLMEngine::run_forever() { return true; }
-
-// run the engine until no requests to process
-bool _LLMEngine::run_until_complete() { return true; }
-
 // stop the engine
-void _LLMEngine::stop() { stoped_.store(true, std::memory_order_relaxed); }
+void LLMHandler::stop() { stoped_.store(true, std::memory_order_relaxed); }
 
 }  // namespace llm
