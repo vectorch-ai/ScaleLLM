@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "status.h"
+
 namespace llm {
 
 // "stop" - the model hit a natural stop point or a provided stop sequence.
@@ -42,6 +44,9 @@ struct SequenceOutput {
 };
 
 struct RequestOutput {
+  // the status of the request.
+  std::optional<Status> status;
+
   // the output for each sequence in the request.
   std::vector<SequenceOutput> outputs;
 

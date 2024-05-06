@@ -5,6 +5,7 @@
 
 #include "_llm_engine.h"
 #include "llm.h"
+#include "request/status.h"
 #include "sampling_params.h"
 
 namespace llm {
@@ -26,11 +27,34 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("top_p", &SamplingParams::top_p)
       .def_readwrite("top_k", &SamplingParams::top_k);
 
+  py::class_<ChatMessage>(m, "ChatMessage")
+      .def(py::init())
+      .def_readwrite("role", &ChatMessage::role)
+      .def_readwrite("content", &ChatMessage::content);
+
   py::class_<Statistics>(m, "Statistics")
       .def(py::init())
       .def_readwrite("num_prompt_tokens", &Statistics::num_prompt_tokens)
       .def_readwrite("num_generated_tokens", &Statistics::num_generated_tokens)
       .def_readwrite("num_total_tokens", &Statistics::num_total_tokens);
+
+  py::enum_<StatusCode>(m, "StatusCode")
+      .value("OK", StatusCode::OK)
+      .value("CANCELLED", StatusCode::CANCELLED)
+      .value("UNKNOWN", StatusCode::UNKNOWN)
+      .value("INVALID_ARGUMENT", StatusCode::INVALID_ARGUMENT)
+      .value("DEADLINE_EXCEEDED", StatusCode::DEADLINE_EXCEEDED)
+      .value("RESOURCE_EXHAUSTED", StatusCode::RESOURCE_EXHAUSTED)
+      .value("UNAUTHENTICATED", StatusCode::UNAUTHENTICATED)
+      .value("UNAVAILABLE", StatusCode::UNAVAILABLE)
+      .value("UNIMPLEMENTED", StatusCode::UNIMPLEMENTED)
+      .export_values();
+
+  py::class_<Status>(m, "Status")
+      .def(py::init<StatusCode, const std::string&>())
+      .def_property_readonly("code", &Status::code)
+      .def_property_readonly("message", &Status::message)
+      .def_property_readonly("ok", &Status::ok);
 
   py::class_<SequenceOutput>(m, "SequenceOutput")
       .def(py::init())
@@ -40,6 +64,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
 
   py::class_<RequestOutput>(m, "RequestOutput")
       .def(py::init())
+      .def_readwrite("status", &RequestOutput::status)
       .def_readwrite("outputs", &RequestOutput::outputs)
       .def_readwrite("stats", &RequestOutput::stats)
       .def_readwrite("finished", &RequestOutput::finished);

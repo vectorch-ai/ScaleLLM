@@ -34,8 +34,9 @@ class Status final {
   Status(StatusCode code, std::string msg)
       : code_(code), msg_(std::move(msg)) {}
 
-  StatusCode error_code() const { return code_; }
-  const std::string& error_msg() const { return msg_; }
+  StatusCode code() const { return code_; }
+
+  const std::string& message() const { return msg_; }
 
   bool ok() const { return code_ == StatusCode::OK; }
 
@@ -45,8 +46,8 @@ class Status final {
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Status& status) {
-  os << "Status, code: " << static_cast<uint8_t>(status.error_code())
-     << ", message: " << status.error_msg();
+  os << "Status, code: " << static_cast<uint8_t>(status.code())
+     << ", message: " << status.message();
   return os;
 }
 
