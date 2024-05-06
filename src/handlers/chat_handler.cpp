@@ -90,7 +90,7 @@ bool send_delta_to_client(ChatCallData* call_data,
                           const SequenceOutput& seq_output) {
   // send delta to client
   if (!seq_output.text.empty()) {
-    ChatResponse response;
+    proto::ChatResponse response;
     response.set_object("chat.completion.chunk");
     response.set_id(request->id);
     response.set_created(request->created_time);
@@ -111,7 +111,7 @@ bool send_delta_to_client(ChatCallData* call_data,
 
   // send finish reason as a separate message
   if (seq_output.finish_reason != FinishReason::NONE) {
-    ChatResponse response;
+    proto::ChatResponse response;
     response.set_object("chat.completion");
     response.set_id(request->id);
     response.set_created(request->created_time);
@@ -136,7 +136,7 @@ bool send_result_to_client(ChatCallData* call_data,
     return call_data->finish();
   }
 
-  ChatResponse response;
+  proto::ChatResponse response;
   response.set_object("chat.completion");
   response.set_id(request->id);
   response.set_created(request->created_time);
@@ -173,7 +173,7 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
                                                  ChatTemplate* chat_template,
                                                  const Tokenizer& tokenizer,
                                                  const ModelArgs& model_args) {
-  const ChatRequest& grpc_request = call_data->request();
+  const auto& grpc_request = call_data->request();
   const int64_t max_context_len = model_args.max_position_embeddings();
 
   // construct prompt from dialog messages

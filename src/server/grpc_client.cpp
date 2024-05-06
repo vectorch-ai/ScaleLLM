@@ -14,15 +14,6 @@
 #include "completion.grpc.pb.h"
 #include "completion.pb.h"
 
-using grpc::Channel;
-using grpc::ClientContext;
-using grpc::ClientReader;
-using grpc::Status;
-
-using llm::Completion;
-using llm::CompletionRequest;
-using llm::CompletionResponse;
-
 DEFINE_string(priority,
               "DEFAULT",
               "priority of the request, DEFAULT, LOW, MEDIUM, HIGH");
@@ -37,14 +28,19 @@ DEFINE_int32(max_tokens, 256, "Maximum number of tokens to generate.");
 DEFINE_double(frequency_penalty, 0.0, "Frequency penalty for sampling.");
 DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
 
+namespace llm {
+using grpc::Channel;
+using grpc::ClientContext;
+using grpc::ClientReader;
+using grpc::Status;
 class ChatClient final {
  public:
   ChatClient(std::shared_ptr<Channel> channel)
-      : stub_(Completion::NewStub(channel)) {}
+      : stub_(proto::Completion::NewStub(channel)) {}
 
   void send_and_receive(const std::string& prompt) {
     // Create a message to send to the server
-    CompletionRequest request;
+    proto::CompletionRequest request;
     request.set_prompt(prompt);
     request.set_temperature(FLAGS_temperature);
     request.set_top_p(FLAGS_top_p);
@@ -53,16 +49,16 @@ class ChatClient final {
     request.set_max_tokens(FLAGS_max_tokens);
     request.set_stream(true);
 
-    llm::Priority priority{};
-    CHECK(llm::Priority_Parse(FLAGS_priority, &priority));
+    proto::Priority priority{};
+    CHECK(proto::Priority_Parse(FLAGS_priority, &priority));
     request.set_priority(priority);
 
     // Create a stream for receiving messages
     ClientContext context;
-    std::unique_ptr<grpc::ClientReader<CompletionResponse>> reader(
+    std::unique_ptr<grpc::ClientReader<proto::CompletionResponse>> reader(
         stub_->Complete(&context, request));
 
-    CompletionResponse message;
+    proto::CompletionResponse message;
     while (reader->Read(&message)) {
       // LOG(ERROR) << "got response: " << message.DebugString();
       // pretty print the response
@@ -81,8 +77,10 @@ class ChatClient final {
   }
 
  private:
-  std::unique_ptr<Completion::Stub> stub_;
+  std::unique_ptr<proto::Completion::Stub> stub_;
 };
+
+}  // namespace llm
 
 int main(int argc, char* argv[]) {
   // initialize glog and gflags
@@ -97,7 +95,7 @@ int main(int argc, char* argv[]) {
       grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
 
   // Create a chat client
-  ChatClient client(channel);
+  llm::ChatClient client(channel);
 
   std::string prompt = "Enter a prompt: ";
   std::cout << prompt;
@@ -108,7 +106,7 @@ int main(int argc, char* argv[]) {
       continue;
     }
     client.send_and_receive(input);
-    std::cout << std::endl << prompt;
+    std::cout << '\n' << prompt;
   }
   return 0;
 }
