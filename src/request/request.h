@@ -13,34 +13,6 @@
 
 namespace llm {
 
-// Status of the request.
-enum class ScheduleStatus {
-  // The request is waiting to be processed.
-  // still waiting in the queue.
-  WAITING,
-
-  // The request is currently being processed.
-  // a worker has been assigned to the request.
-  PROCESSING,
-
-  // The request has been preempted.
-  // preempted usually due to a higher priority request or limit on resources.
-  PREEMPTED,
-
-  // The request has been completed.
-  // usually due to reaching the maximum number of tokens or
-  // reaching a stopping condition.
-  COMPLETED,
-
-  // The request has been cancelled.
-  // usually due to a user request.
-  CANCELLED,
-};
-
-// Priority of the request.
-// The higher the priority, the sooner the request is processed.
-enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
-
 // Function to call when a request is finished.
 using OnFinish =
     std::function<bool(const Status& status, const RequestOutput& output)>;

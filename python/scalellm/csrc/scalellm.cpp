@@ -32,6 +32,13 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("role", &ChatMessage::role)
       .def_readwrite("content", &ChatMessage::content);
 
+  py::enum_<RequestPriority>(m, "Priority")
+      .value("DEFAULT", RequestPriority::MEDIUM)
+      .value("LOW", RequestPriority::LOW)
+      .value("MEDIUM", RequestPriority::MEDIUM)
+      .value("HIGH", RequestPriority::HIGH)
+      .export_values();
+
   py::class_<Statistics>(m, "Statistics")
       .def(py::init())
       .def_readwrite("num_prompt_tokens", &Statistics::num_prompt_tokens)

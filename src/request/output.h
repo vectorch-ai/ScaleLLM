@@ -10,6 +10,10 @@
 
 namespace llm {
 
+// Priority of the request.
+// The higher the priority, the sooner the request is processed.
+enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
+
 // "stop" - the model hit a natural stop point or a provided stop sequence.
 // "length" - the maximum number of tokens specified in the request was reached.
 // "function_call" - the model called a function.
