@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Completion_Complete_FullMethodName = "/llm.Completion/Complete"
+	Completion_Complete_FullMethodName = "/llm.proto.Completion/Complete"
 )
 
 // CompletionClient is the client API for Completion service.
@@ -124,7 +124,7 @@ func (x *completionCompleteServer) Send(m *CompletionResponse) error {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Completion_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "llm.Completion",
+	ServiceName: "llm.proto.Completion",
 	HandlerType: (*CompletionServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{

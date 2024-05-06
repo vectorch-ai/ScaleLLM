@@ -9,7 +9,7 @@
 namespace llm {
 
 using CompletionCallData =
-    StreamCallData<CompletionRequest, CompletionResponse>;
+    StreamCallData<proto::CompletionRequest, proto::CompletionResponse>;
 
 class Scheduler;
 class Engine;

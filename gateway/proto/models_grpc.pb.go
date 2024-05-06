@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Models_List_FullMethodName = "/llm.Models/List"
+	Models_List_FullMethodName = "/llm.proto.Models/List"
 )
 
 // ModelsClient is the client API for Models service.
@@ -100,7 +100,7 @@ func _Models_List_Handler(srv interface{}, ctx context.Context, dec func(interfa
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Models_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "llm.Models",
+	ServiceName: "llm.proto.Models",
 	HandlerType: (*ModelsServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

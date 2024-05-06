@@ -37,8 +37,8 @@ bool GrpcServer::start(const Options& options) {
   {
     auto on_register =
         [this](grpc::ServerContext* context,
-               CompletionRequest* request,
-               grpc::ServerAsyncWriter<CompletionResponse>* responder,
+               proto::CompletionRequest* request,
+               grpc::ServerAsyncWriter<proto::CompletionResponse>* responder,
                grpc::ServerCompletionQueue* new_call_cq,
                grpc::ServerCompletionQueue* notification_cq,
                void* tag) {
@@ -55,8 +55,8 @@ bool GrpcServer::start(const Options& options) {
   // Spawn a new CallData instance for chat request
   {
     auto on_register = [this](grpc::ServerContext* context,
-                              ChatRequest* request,
-                              grpc::ServerAsyncWriter<ChatResponse>* responder,
+                              proto::ChatRequest* request,
+                              grpc::ServerAsyncWriter<proto::ChatResponse>* responder,
                               grpc::ServerCompletionQueue* new_call_cq,
                               grpc::ServerCompletionQueue* notification_cq,
                               void* tag) {

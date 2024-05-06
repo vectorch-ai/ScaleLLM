@@ -6,13 +6,13 @@
 
 namespace llm {
 
-class ModelsHandler : public Models::Service {
+class ModelsHandler : public proto::Models::Service {
  public:
   ModelsHandler(const std::string& model_id);
 
   grpc::Status List(grpc::ServerContext* context,
-                    const ListRequest* request,
-                    ListResponse* response) override;
+                    const proto::ListRequest* request,
+                    proto::ListResponse* response) override;
 
  private:
   std::string model_id_;
