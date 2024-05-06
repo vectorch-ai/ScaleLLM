@@ -9,7 +9,7 @@ namespace llm {
 // It is not ideal to use protobuf as the interface between the server and the
 // model. However, it is the easiest way to do it. We can change it later if
 // needed.
-using ChatMessages = google::protobuf::RepeatedPtrField<ChatMessage>;
+using ChatMessages = google::protobuf::RepeatedPtrField<proto::ChatMessage>;
 
 // ChatTemplate only supports 'system', 'user' and 'assistant' roles.
 // start with system message, then user and assistant message. (u/a/u/a/u...)

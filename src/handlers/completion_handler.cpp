@@ -106,7 +106,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
                           Request* request,
                           const SequenceOutput& seq_output) {
   if (!seq_output.text.empty()) {
-    CompletionResponse response;
+    proto::CompletionResponse response;
     response.set_object("text_completion");
     response.set_id(request->id);
     response.set_created(request->created_time);
@@ -120,7 +120,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
   }
 
   if (seq_output.finish_reason.has_value()) {
-    CompletionResponse response;
+    proto::CompletionResponse response;
     response.set_object("text_completion");
     response.set_id(request->id);
     response.set_created(request->created_time);
@@ -144,7 +144,7 @@ bool send_result_to_client(CompletionCallData* call_data,
     return call_data->finish();
   }
 
-  CompletionResponse response;
+  proto::CompletionResponse response;
   response.set_object("text_completion");
   response.set_id(request->id);
   response.set_created(request->created_time);
@@ -178,7 +178,7 @@ bool send_result_to_client(CompletionCallData* call_data,
 std::unique_ptr<Request> grpc_request_to_request(CompletionCallData* call_data,
                                                  const Tokenizer& tokenizer,
                                                  const ModelArgs& model_args) {
-  const CompletionRequest& grpc_request = call_data->request();
+  const auto& grpc_request = call_data->request();
   CHECK(!grpc_request.prompt().empty()) << "Prompt is empty";
 
   const int64_t max_context_len = model_args.max_position_embeddings();
