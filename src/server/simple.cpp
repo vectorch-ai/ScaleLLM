@@ -51,7 +51,7 @@ DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
 DEFINE_double(frequency_penalty, 0.0, "Frequency penalty for sampling.");
 DEFINE_double(presence_penalty, 0.0, "Presence penalty for sampling.");
 
-DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
+DECLARE_int32(num_speculative_tokens);
 
 std::string download_model(const std::string& model_name) {
   py::dict locals;

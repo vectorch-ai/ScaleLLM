@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-namespace llm {
+namespace llm::csrc {
 
 // SamplingParams is used to specify sampling parameters for a
 // request.
@@ -13,4 +13,4 @@ struct SamplingParams {
   int64_t top_k = 0;
 };
 
-}  // namespace llm
+}  // namespace llm::csrc

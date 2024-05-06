@@ -127,7 +127,6 @@ if __name__ == "__main__":
     args = parse_args()
     # initialize the LLM engine
     llm_engine = LLMEngine(args.model, args.devices)
-    llm_engine.run_forever()
 
     try:
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")

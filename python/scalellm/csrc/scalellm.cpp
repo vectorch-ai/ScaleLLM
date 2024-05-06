@@ -8,7 +8,7 @@
 #include "request/status.h"
 #include "sampling_params.h"
 
-namespace llm {
+namespace llm::csrc {
 namespace py = pybind11;
 
 PYBIND11_MODULE(PY_MODULE_NAME, m) {
@@ -85,4 +85,4 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def("generate", &LLM::generate);
 }
 
-}  // namespace llm
+}  // namespace llm::csrc

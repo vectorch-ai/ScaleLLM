@@ -34,7 +34,7 @@ DEFINE_string(
     "auto",
     "batch sizes to capture cuda graphs for draft model, comma separated list");
 
-DECLARE_int32(num_speculative_tokens);
+DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 
 namespace llm {
 namespace {

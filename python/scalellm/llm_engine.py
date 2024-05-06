@@ -1,7 +1,9 @@
 import asyncio
+import os
 import queue
 
-from scalellm._C import RequestOutput, SamplingParams, LLMHandler
+from scalellm._C import LLMHandler, RequestOutput, SamplingParams
+from scalellm.downloader import download_hf_model
 
 
 class OutputStream:
@@ -89,6 +91,8 @@ class OutputAsyncStream:
 
 class LLMEngine:
     def __init__(self, model_path: str, devices: str):
+        if not os.path.exists(model_path):
+            model_path = download_hf_model(model_path)
         self._handler = LLMHandler(model_path, devices)
 
     # schedule a request to the engine, and return a stream to receive output

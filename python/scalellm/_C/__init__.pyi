@@ -1,5 +1,5 @@
-from typing import Callable, List, Optional
 from enum import Enum
+from typing import Callable, List, Optional
 
 # Defined in scalellm/csrc/scalellm.cpp
 class SamplingParams:

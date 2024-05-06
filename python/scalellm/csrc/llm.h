@@ -4,7 +4,7 @@
 #include "request/stopping_criteria.h"
 #include "sampling_params.h"
 
-namespace llm {
+namespace llm::csrc {
 
 class LLM {
  public:
@@ -27,4 +27,4 @@ class LLM {
   int64_t max_seq_len_;
 };
 
-}  // namespace llm
+}  // namespace llm::csrc

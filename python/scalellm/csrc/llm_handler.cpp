@@ -7,7 +7,7 @@
 #include "request/output.h"
 #include "request/request.h"
 
-namespace llm {
+namespace llm::csrc {
 namespace {
 std::unique_ptr<Request> create_completion_request(const std::string& prompt,
                                                    const SamplingParams& sp,
@@ -45,10 +45,7 @@ LLMHandler::LLMHandler(const std::string& model_path,
   });
 }
 
-LLMHandler::~LLMHandler() {
-  stop();
-  loop_thread_.join();
-}
+LLMHandler::~LLMHandler() { stop(); }
 
 bool LLMHandler::schedule(const std::string& prompt,
                           const SamplingParams& sp,
@@ -73,6 +70,13 @@ bool LLMHandler::schedule(const std::string& prompt,
 // }
 
 // stop the engine
-void LLMHandler::stop() { stoped_.store(true, std::memory_order_relaxed); }
+void LLMHandler::stop() {
+  // set stop flag
+  stoped_.store(true, std::memory_order_relaxed);
+  // wait for the loop thread to finish
+  if (loop_thread_.joinable()) {
+    loop_thread_.join();
+  }
+}
 
-}  // namespace llm
+}  // namespace llm::csrc

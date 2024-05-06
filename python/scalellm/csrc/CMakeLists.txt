@@ -14,7 +14,8 @@ pybind_extension(
     llm_handler.cpp
     scalellm.cpp
   DEPS
-    :engine
+    :engine_factory
+    :scheduler
     torch
     absl::strings
     gflags::gflags
