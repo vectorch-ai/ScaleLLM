@@ -173,7 +173,7 @@ void ChatHandler::chat_async(ChatCallData* call_data) {
       std::move(sp),
       priority,
       stream,
-      [call_data, first_message_sent = std::unordered_set<size_t>()] (
+      [call_data, first_message_sent = std::unordered_set<size_t>()](
           const RequestOutput& req_output) mutable -> bool {
         if (req_output.finished) {
           return send_result_to_client(call_data, req_output);
