@@ -48,6 +48,10 @@ struct SequenceOutput {
 };
 
 struct RequestOutput {
+  RequestOutput() = default;
+  
+  RequestOutput(Status&& _status) : status(std::move(_status)) {}
+
   // the status of the request.
   std::optional<Status> status;
 
@@ -63,6 +67,8 @@ struct RequestOutput {
 
 inline std::optional<std::string> to_string(FinishReason reason) {
   switch (reason) {
+    case FinishReason::NONE:
+      return std::nullopt;
     case FinishReason::STOP:
       return "stop";
     case FinishReason::LENGTH:

@@ -1,9 +1,24 @@
 import asyncio
 import os
 import queue
+from typing import List
 
-from scalellm._C import LLMHandler, RequestOutput, SamplingParams
+from scalellm._C import (
+    LLMHandler,
+    Message,
+    Priority,
+    RequestOutput,
+    SamplingParams,
+    Status,
+)
 from scalellm.downloader import download_hf_model
+
+
+class OutputError(Exception):
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__()
+        self.code = code
+        self.message = message
 
 
 class OutputStream:
@@ -14,15 +29,20 @@ class OutputStream:
     def put(self, item: RequestOutput) -> bool:
         if self._cancelled:
             return False
+
+        if item.status is not None and not item.status.ok:
+            self._queue.put_nowait(OutputError(item.status.code, item.status.message))
+            return False
+
         self._queue.put_nowait(item)
-        # put a sentinel value to indicate the end of the stream
         if item.finished:
-            self._queue.put_nowait(None)
+            self._queue.put_nowait(StopIteration())
         return True
 
-    # report an error to the stream, rerais as an exception
-    def error(self, error: str) -> None:
+    # report an error to the stream, reraise as an exception
+    def error(self, error: str) -> bool:
         self._queue.append(Exception(error))
+        return True
 
     # cancel the stream
     def cancel(self) -> None:
@@ -34,9 +54,6 @@ class OutputStream:
 
     def __next__(self) -> RequestOutput:
         item = self._queue.get(block=True)
-        # None indicates the end of the stream
-        if item is None:
-            raise StopIteration
         # reraise the exception
         if isinstance(item, Exception):
             raise item
@@ -58,16 +75,21 @@ class OutputAsyncStream:
         # if the stream is cancelled, return False
         if self._cancelled:
             return False
+
+        if item.status is not None and not item.status.ok:
+            self._queue.put_nowait(OutputError(item.status.code, item.status.message))
+            return False
+
         # put the item into the queue
         self._queue.put_nowait(item)
-        # put a sentinel value to indicate the end of the stream
         if item.finished:
-            self._queue.put_nowait(None)
+            self._queue.put_nowait(StopAsyncIteration())
         return True
 
     # report an error to the stream, rerais as an exception
-    def error(self, error: str) -> None:
+    def error(self, error: str) -> bool:
         self._queue.put_nowait(Exception(error))
+        return True
 
     # cancel the stream
     def cancel(self) -> None:
@@ -80,16 +102,13 @@ class OutputAsyncStream:
     # async generator to iterate over the stream
     async def __anext__(self) -> RequestOutput:
         item = await self._queue.get()
-        # None indicates the end of the stream
-        if item is None:
-            raise StopAsyncIteration
         # reraise the exception
         if isinstance(item, Exception):
             raise item
         return item
 
 
-class LLMEngine:
+class AsyncLLMEngine:
     def __init__(self, model_path: str, devices: str):
         if not os.path.exists(model_path):
             model_path = download_hf_model(model_path)
@@ -97,29 +116,77 @@ class LLMEngine:
 
     # schedule a request to the engine, and return a stream to receive output
     async def schedule_async(
-        self, prompt: str, sampling_params: SamplingParams
+        self,
+        prompt: str,
+        sampling_params: SamplingParams,
+        priority: Priority,
+        stream: bool,
     ) -> OutputAsyncStream:
-        # creat a async stream to receive output
-        stream = OutputAsyncStream()
+        output_stream = OutputAsyncStream()
 
-        # define callback to add output to the stream
         def callback(output: RequestOutput) -> bool:
-            return stream.put(output)
+            return output_stream.put(output)
 
-        # schedule the request
-        self._handler.schedule(prompt, sampling_params, callback)
-        return stream
+        self._handler.schedule_async(
+            prompt, sampling_params, priority, stream, callback
+        )
+        return output_stream
 
-    def schedule(self, prompt: str, sampling_params: SamplingParams) -> OutputStream:
-        # create a stream to reeive output
-        stream = OutputStream()
+    async def schedule_chat_async(
+        self,
+        messages: List[Message],
+        sampling_params: SamplingParams,
+        priority: Priority,
+        stream: bool,
+    ) -> OutputAsyncStream:
+        output_stream = OutputAsyncStream()
 
-        def callback(output: RequestOutput):
-            return stream.put(output)
+        def callback(output: RequestOutput) -> bool:
+            return output_stream.put(output)
 
-        self._handler.schedule(prompt, sampling_params, callback)
-        return stream
+        self._handler.schedule_chat_async(
+            messages, sampling_params, priority, stream, callback
+        )
+        return output_stream
 
-    # stop the engine
+    def schedule(
+        self,
+        prompt: str,
+        sampling_params: SamplingParams,
+        priority: Priority,
+        stream: bool,
+    ) -> OutputStream:
+        output_stream = OutputStream()
+
+        def callback(output: RequestOutput) -> bool:
+            return output_stream.put(output)
+
+        self._handler.schedule_async(
+            prompt, sampling_params, priority, stream, callback
+        )
+        return output_stream
+
+    def schedule_chat(
+        self,
+        messages: List[Message],
+        sampling_params: SamplingParams,
+        priority: Priority,
+        stream: bool,
+    ) -> OutputStream:
+        output_stream = OutputStream()
+
+        def callback(output: RequestOutput) -> bool:
+            return output_stream.put(output)
+
+        self._handler.schedule_chat_async(
+            messages, sampling_params, priority, stream, callback
+        )
+        return output_stream
+
+    # start the engine, non-blocking
+    def start(self) -> None:
+        return self._handler.start()
+
+    # stop the engine, non-blocking
     def stop(self) -> None:
         return self._handler.stop()

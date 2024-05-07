@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
   http_server.register_uri(
       "/health", [](HttpServer::Transport& transport) -> bool {
         if (signal_received.load(std::memory_order_relaxed) == 0) {
-          return transport.send_string("Ok\n");
+          return transport.send_string("OK\n");
         }
         // 503 Service Unavailable
         return transport.send_status(503);

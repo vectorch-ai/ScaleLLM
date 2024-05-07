@@ -15,9 +15,9 @@ struct SamplingParameter {
   float frequency_penalty = 0.0;
   float presence_penalty = 0.0;
   float repetition_penalty = 1.0;
-  float temperature = 1.0;
+  float temperature = 0.7;
   float top_p = 1.0;
-  int64_t top_k = 0;
+  int64_t top_k = -1;
 
   // ############### following parameters are used for sampling ###############
   bool do_sample = false;

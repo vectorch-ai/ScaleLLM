@@ -1,22 +1,18 @@
 __version__ = "0.0.9"
 
-from scalellm._C import (
-    LLM,
-    ChatMessage,
-    Priority,
-    RequestOutput,
-    SamplingParams,
-    SequenceOutput,
-    Status,
-    StatusCode,
-    Usage,
-)
-from scalellm.llm_engine import LLMEngine
+from scalellm._C import (LLM, Message, Priority, RequestOutput, SamplingParams,
+                         SequenceOutput, Status, StatusCode, Usage,
+                         get_metrics)
+from scalellm.llm_engine import (AsyncLLMEngine, OutputAsyncStream,
+                                 OutputError, OutputStream)
 
 __all__ = [
-    "ChatMessage",
+    "Message",
     "LLM",
-    "LLMEngine",
+    "AsyncLLMEngine",
+    "OutputAsyncStream",
+    "OutputStream",
+    "OutputError",
     "Priority",
     "RequestOutput",
     "SamplingParams",
@@ -24,4 +20,5 @@ __all__ = [
     "Status",
     "StatusCode",
     "Usage",
+    "get_metrics",
 ]

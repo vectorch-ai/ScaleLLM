@@ -13,12 +13,8 @@
 
 namespace llm {
 
-// Function to call when a request is finished.
-using OnFinish =
-    std::function<bool(const Status& status, const RequestOutput& output)>;
-
-// Function to call when a delta is generated.
-using OnStream = std::function<bool(const RequestOutput& output)>;
+// Function to call when an output is generated.
+using OnOutput = std::function<bool(const RequestOutput& output)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
@@ -29,8 +25,8 @@ struct Request final {
  public:
   // caller needs to gurantee prompt's lifecycle
   Request(const std::string& id,
-          const std::string_view& prompt,
-          const std::vector<int32_t>& prompt_tokens,
+          std::string prompt,
+          std::vector<int32_t> prompt_tokens,
           size_t seq_capacity,
           size_t num_seqs);
 
@@ -62,15 +58,15 @@ struct Request final {
 
   // prompt text string
   // NOLINTNEXTLINE
-  const std::string_view prompt;
-
-  // the number of sequences to generate completions for the prompt.
-  // NOLINTNEXTLINE
-  const size_t num_seqs;
+  const std::string prompt;
 
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
   const std::vector<int32_t> prompt_tokens;
+  
+  // the number of sequences to generate completions for the prompt.
+  // NOLINTNEXTLINE
+  const size_t num_seqs;
 
   // max number of tokens per sequence.
   // NOLINTNEXTLINE
@@ -86,7 +82,7 @@ struct Request final {
   bool stream = false;
 
   // Whether to echo back the prompt in the output.
-  bool echo = true;
+  bool echo = false;
 
   // the priority of the request.
   Priority priority = Priority::NORMAL;
@@ -95,11 +91,8 @@ struct Request final {
   // use deque instead of vector to avoid no-copy move for Sequence
   std::deque<Sequence> sequences;
 
-  // function to call when the request is finished.
-  OnFinish on_finish;
-
-  // function to call when a delta is generated.
-  OnStream on_stream;
+  // function to call when an output is generated.
+  OnOutput on_output;
 
  private:
   // is the sequence cancelled

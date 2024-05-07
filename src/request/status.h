@@ -31,6 +31,8 @@ class Status final {
  public:
   Status() = default;
 
+  Status(StatusCode code): code_(code) {}
+
   Status(StatusCode code, std::string msg)
       : code_(code), msg_(std::move(msg)) {}
 

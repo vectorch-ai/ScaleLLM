@@ -9,7 +9,7 @@ TEST(StoppingCriteriaTest, MaxTokens) {
 
   StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = max_tokens;
-  stopping_criteria.ignore_eos_token = true;
+  stopping_criteria.ignore_eos = true;
 
   std::vector<int32_t> token_ids = {1, 2, 4};
   const size_t num_prompt_tokens = token_ids.size();
@@ -31,7 +31,7 @@ TEST(StoppingCriteriaTest, EosTokenId) {
 
   StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = 100;
-  stopping_criteria.ignore_eos_token = false;
+  stopping_criteria.ignore_eos = false;
   stopping_criteria.eos_token_id = eos_token_id;
 
   for (int32_t id = 1; id < 3; ++id) {

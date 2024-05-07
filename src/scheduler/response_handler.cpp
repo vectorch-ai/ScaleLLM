@@ -44,7 +44,8 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
             outputs.push_back({i, std::move(output), to_string(finish_reason)});
           }
         }
-        request->on_finish(Status(), req_output);
+        req_output.finished = true;
+        request->on_output(req_output);
       });
 }
 
@@ -87,7 +88,7 @@ void ResponseHandler::on_request_stream(Request* request) {
       }
     }
 
-    if (!request->on_stream(req_output)) {
+    if (!request->on_output(req_output)) {
       // cancel the request if on_stream returns false
       request->cancel();
     }

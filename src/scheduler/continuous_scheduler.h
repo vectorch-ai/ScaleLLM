@@ -44,7 +44,7 @@ class ContinuousScheduler final : public Scheduler {
   void step(const absl::Duration& timeout) override;
 
   // run the scheduler until all scheduled requests are completed
-  void run_until_complete();
+  void run_until_complete() override;
 
  private:
   Batch wait_for_batch(const absl::Duration& timeout);

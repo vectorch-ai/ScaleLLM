@@ -238,7 +238,7 @@ class RequestWrapper {
     sampling_param_.presence_penalty = 0.0;
 
     stopping_criteria_.max_tokens = 100;
-    stopping_criteria_.ignore_eos_token = false;
+    stopping_criteria_.ignore_eos = false;
     stopping_criteria_.eos_token_id = 2;
   }
 

@@ -14,16 +14,16 @@
 namespace llm {
 
 Request::Request(const std::string& id,
-                 const std::string_view& prompt,
-                 const std::vector<int32_t>& prompt_tokens,
+                 std::string prompt,
+                 std::vector<int32_t> prompt_tokens,
                  size_t seq_capacity,
                  size_t num_seqs)
     : id(id),
-      prompt(prompt),
+      prompt(std::move(prompt)),
+      prompt_tokens(std::move(prompt_tokens)),
       seq_capacity(seq_capacity),
       num_seqs(num_seqs),
-      created_time(absl::ToUnixSeconds(absl::Now())),
-      prompt_tokens(prompt_tokens) {}
+      created_time(absl::ToUnixSeconds(absl::Now())) {}
 
 void Request::add_sequence() {
   Sequence::Options options;

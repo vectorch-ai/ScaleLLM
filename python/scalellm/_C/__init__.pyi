@@ -2,6 +2,8 @@ from enum import Enum
 from typing import Callable, List, Optional
 
 # Defined in scalellm/csrc/scalellm.cpp
+def get_metrics() -> str: ...
+
 class SamplingParams:
     def __init__(self) -> None: ...
     # number of tokens to generate. truncted to model's max context length.
@@ -22,15 +24,18 @@ class SamplingParams:
     top_p: float
     # top_k sampling cutoff. default = 0 to disable.
     top_k: int
+    #  ############ stopping criterias. ############
     # whether to skip special tokens in the output text. default = true.
     skip_special_tokens: bool
+    # whether to ignore eos token when checking stopping criterias. default = false.
+    ignore_eos: bool
     # the list of strings to stop generating further tokens.
     stop: Optional[List[str]]
     # the list of token ids to stop generating further tokens.
     stop_token_ids: Optional[List[int]]
 
-class ChatMessage:
-    def __init__(self) -> None: ...
+class Message:
+    def __init__(self, role: str, content: str) -> None: ...
     role: str
     content: str
 
@@ -79,15 +84,31 @@ class Status:
     @property
     def ok(self) -> bool: ...
 
+class ScheduleTask:
+    def wait(self) -> None: ...
+    def get(self) -> bool: ...
+
 class LLMHandler:
     def __init__(self, model_path: str, devices: str) -> None: ...
-    def schedule(
+    def schedule_async(
         self,
         prompt: str,
         sp: SamplingParams,
+        priority: Priority,
+        stream: bool,
         callback: Callable[[RequestOutput], bool],
-    ) -> bool: ...
+    ) -> ScheduleTask: ...
+    def schedule_chat_async(
+        self,
+        messages: List[Message],
+        sp: SamplingParams,
+        priority: Priority,
+        stream: bool,
+        callback: Callable[[RequestOutput], bool],
+    ) -> ScheduleTask: ...
+    def start(self) -> None: ...
     def stop(self) -> None: ...
+    def run_until_complete(self) -> None: ...
 
 # Defined in scalellm/csrc/llm.h
 class LLM:

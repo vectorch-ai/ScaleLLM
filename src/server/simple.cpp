@@ -44,7 +44,7 @@ DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
 DEFINE_double(temperature, 0, "Temperature for sampling.");
 
 DEFINE_double(top_p, 1.0, "Top p for sampling.");
-DEFINE_int64(top_k, 0, "Top k for sampling.");
+DEFINE_int64(top_k, -1, "Top k for sampling.");
 
 DEFINE_double(repetition_penalty, 1.0, "Repetition penalty for sampling.");
 
@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
 
   StoppingCriteria stopping_criteria;
   stopping_criteria.max_tokens = FLAGS_max_seq_len;
-  stopping_criteria.ignore_eos_token = false;
+  stopping_criteria.ignore_eos = false;
   stopping_criteria.eos_token_id = model_args.eos_token_id();
   stopping_criteria.stop_token_ids = model_args.stop_token_ids();
   stopping_criteria.max_context_len =

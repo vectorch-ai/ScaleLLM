@@ -1,4 +1,3 @@
-
 def download_hf_model(repo_id, revision=None, allow_patterns=None, cache_dir=None):
     import os
 
@@ -37,23 +36,3 @@ def download_hf_model(repo_id, revision=None, allow_patterns=None, cache_dir=Non
     )
     # print download path
     return path
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repo_id", type=str, default=None)
-    parser.add_argument("--revision", type=str, default=None)
-    parser.add_argument("--allow_patterns", type=str, default=None)
-    parser.add_argument("--cache_dir", type=str, default=None)
-    args = parser.parse_args()
-
-    path = download_hf_model(
-        args.repo_id,
-        revision=args.revision,
-        allow_patterns=args.allow_patterns,
-        cache_dir=args.cache_dir,
-    )
-    # print download path
-    print(path)

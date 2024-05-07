@@ -2,10 +2,7 @@
 
 #include <glog/logging.h>
 
-#include <string>
-
 #include "common.pb.h"
-#include "request/request.h"
 
 namespace llm {
 

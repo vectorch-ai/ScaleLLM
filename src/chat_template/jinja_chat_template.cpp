@@ -23,8 +23,8 @@ std::optional<std::string> JinjaChatTemplate::apply(
   nlohmann::json messages_json = nlohmann::json::array();
   for (const auto& message : messages) {
     nlohmann::json message_json;
-    message_json["role"] = message.role();
-    message_json["content"] = message.content();
+    message_json["role"] = message.role;
+    message_json["content"] = message.content;
     messages_json.push_back(message_json);
   }
   // apply the template

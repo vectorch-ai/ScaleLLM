@@ -42,11 +42,14 @@ struct SamplingParams {
   // top_p sampling cutoff, between [0.0, 1.0]. default = 1.0
   float top_p = 1.0;
 
-  // top_k sampling cutoff. default = 0 to disable.
-  int64_t top_k = 0;
+  // top_k sampling cutoff. default = -1 to disable.
+  int64_t top_k = -1;
 
   // whether to skip special tokens in the output text. default = true.
   bool skip_special_tokens = true;
+
+  // whether to ignore the end of sequence token. default = false.
+  bool ignore_eos = false;
 
   // the list of strings to stop generating further tokens.
   // the output will contain the stop string.

@@ -3,6 +3,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "common/metrics.h"
 #include "llm.h"
 #include "llm_handler.h"
 #include "request/status.h"
@@ -11,11 +12,15 @@
 namespace llm::csrc {
 namespace py = pybind11;
 
+// NOLINTNEXTLINE
+static std::string get_metrics() { return Metrics::Instance().GetString(); }
+
 PYBIND11_MODULE(PY_MODULE_NAME, m) {
   // glog and glfag will be initialized in folly::init
   //   int argc = 0;
   //   char** argv = nullptr;
   //   folly::Init init(&argc, &argv);
+  m.def("get_metrics", &get_metrics);
 
   // class SamplingParameter
   py::class_<SamplingParams>(m, "SamplingParams")
@@ -31,13 +36,14 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("top_k", &SamplingParams::top_k)
       .def_readwrite("skip_special_tokens",
                      &SamplingParams::skip_special_tokens)
+      .def_readwrite("ignore_eos", &SamplingParams::ignore_eos)
       .def_readwrite("stop", &SamplingParams::stop)
       .def_readwrite("stop_token_ids", &SamplingParams::stop_token_ids);
 
-  py::class_<ChatMessage>(m, "ChatMessage")
-      .def(py::init())
-      .def_readwrite("role", &ChatMessage::role)
-      .def_readwrite("content", &ChatMessage::content);
+  py::class_<Message>(m, "Message")
+      .def(py::init<const std::string&, const std::string&>())
+      .def_readwrite("role", &Message::role)
+      .def_readwrite("content", &Message::content);
 
   py::enum_<Priority>(m, "Priority")
       .value("DEFAULT", Priority::NORMAL)
@@ -83,12 +89,25 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("usage", &RequestOutput::usage)
       .def_readwrite("finished", &RequestOutput::finished);
 
+  py::class_<ScheduleTask>(m, "ScheduleTask")
+      .def(
+          "wait", &ScheduleTask::wait, py::call_guard<py::gil_scoped_release>())
+      .def("get", &ScheduleTask::get, py::call_guard<py::gil_scoped_release>());
+
   py::class_<LLMHandler>(m, "LLMHandler")
       .def(py::init<const std::string&, const std::string&>())
-      .def("schedule",
-           &LLMHandler::schedule,
+      .def("schedule_async",
+           &LLMHandler::schedule_async,
            py::call_guard<py::gil_scoped_release>())
-      .def("stop", &LLMHandler::stop, py::call_guard<py::gil_scoped_release>());
+      .def("schedule_chat_async",
+           &LLMHandler::schedule_chat_async,
+           py::call_guard<py::gil_scoped_release>())
+      .def(
+          "start", &LLMHandler::start, py::call_guard<py::gil_scoped_release>())
+      .def("stop", &LLMHandler::stop, py::call_guard<py::gil_scoped_release>())
+      .def("run_until_complete",
+           &LLMHandler::run_until_complete,
+           py::call_guard<py::gil_scoped_release>());
 
   // class LLM
   py::class_<LLM, std::shared_ptr<LLM>>(m, "LLM")
