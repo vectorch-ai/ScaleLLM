@@ -63,7 +63,7 @@ struct Request final {
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
   const std::vector<int32_t> prompt_tokens;
-  
+
   // the number of sequences to generate completions for the prompt.
   // NOLINTNEXTLINE
   const size_t num_seqs;

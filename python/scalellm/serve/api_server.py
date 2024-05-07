@@ -16,33 +16,21 @@ import shortuuid
 import uvicorn
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
-from scalellm import (
-    AsyncLLMEngine,
-    Message,
-    OutputAsyncStream,
-    OutputError,
-    Priority,
-    SamplingParams,
-    get_metrics,
-)
-from scalellm.serve.api_protocol import (
-    ChatCompletionMessage,
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    ChatCompletionResponseChoice,
-    ChatCompletionResponseStreamChoice,
-    ChatCompletionStreamResponse,
-    ChatMessage,
-    CompletionRequest,
-    CompletionResponse,
-    CompletionResponseChoice,
-    CompletionResponseStreamChoice,
-    CompletionStreamResponse,
-    DeltaMessage,
-    ErrorResponse,
-    ModelList,
-    UsageInfo,
-)
+from scalellm import (AsyncLLMEngine, Message, OutputAsyncStream, OutputError,
+                      Priority, SamplingParams, get_metrics)
+from scalellm.serve.api_protocol import (ChatCompletionMessage,
+                                         ChatCompletionRequest,
+                                         ChatCompletionResponse,
+                                         ChatCompletionResponseChoice,
+                                         ChatCompletionResponseStreamChoice,
+                                         ChatCompletionStreamResponse,
+                                         ChatMessage, CompletionRequest,
+                                         CompletionResponse,
+                                         CompletionResponseChoice,
+                                         CompletionResponseStreamChoice,
+                                         CompletionStreamResponse,
+                                         DeltaMessage, ErrorResponse,
+                                         ModelList, UsageInfo)
 
 app = fastapi.FastAPI()
 llm_engine: AsyncLLMEngine = None

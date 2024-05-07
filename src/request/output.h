@@ -49,7 +49,7 @@ struct SequenceOutput {
 
 struct RequestOutput {
   RequestOutput() = default;
-  
+
   RequestOutput(Status&& _status) : status(std::move(_status)) {}
 
   // the status of the request.

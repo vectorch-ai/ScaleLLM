@@ -3,14 +3,8 @@ import os
 import queue
 from typing import List
 
-from scalellm._C import (
-    LLMHandler,
-    Message,
-    Priority,
-    RequestOutput,
-    SamplingParams,
-    Status,
-)
+from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
+                         SamplingParams)
 from scalellm.downloader import download_hf_model
 
 
