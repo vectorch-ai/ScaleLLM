@@ -9,7 +9,7 @@ cc_library(
   SRCS 
     grpc_server.cpp
   DEPS
-    :handlers
+    :grpc_handlers
     :request
     absl::strings
     glog::glog

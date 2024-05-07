@@ -12,7 +12,7 @@
 #include "sampling_params.h"
 #include "scheduler/continuous_scheduler.h"
 
-namespace llm::csrc {
+namespace llm {
 
 using OutputCallback = std::function<bool(RequestOutput output)>;
 
@@ -84,4 +84,4 @@ class LLMHandler {
   std::atomic_bool stoped_{false};
 };
 
-}  // namespace llm::csrc
+}  // namespace llm

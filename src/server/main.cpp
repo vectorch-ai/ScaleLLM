@@ -101,55 +101,55 @@ int main(int argc, char** argv) {
       });
 
   // create engine
-  auto engine = EngineFactory::create(FLAGS_model_path,
-                                      FLAGS_device,
-                                      FLAGS_draft_model_path,
-                                      FLAGS_draft_device);
+  // auto engine = EngineFactory::create(FLAGS_model_path,
+  //                                     FLAGS_device,
+  //                                     FLAGS_draft_model_path,
+  //                                     FLAGS_draft_device);
 
-  // create scheduler and grpc handlers
-  ContinuousScheduler::Options scheduler_options;
-  scheduler_options.max_tokens_per_batch(FLAGS_max_tokens_per_batch)
-      .max_seqs_per_batch(FLAGS_max_seqs_per_batch)
-      .num_speculative_tokens(FLAGS_num_speculative_tokens);
-  auto scheduler =
-      std::make_unique<ContinuousScheduler>(engine.get(), scheduler_options);
-  auto completion_handler =
-      std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
-  auto chat_handler =
-      std::make_unique<ChatHandler>(scheduler.get(), engine.get());
-  auto models_handler = std::make_unique<ModelsHandler>(FLAGS_model_id);
+  // // create scheduler and grpc handlers
+  // ContinuousScheduler::Options scheduler_options;
+  // scheduler_options.max_tokens_per_batch(FLAGS_max_tokens_per_batch)
+  //     .max_seqs_per_batch(FLAGS_max_seqs_per_batch)
+  //     .num_speculative_tokens(FLAGS_num_speculative_tokens);
+  // auto scheduler =
+  //     std::make_unique<ContinuousScheduler>(engine.get(), scheduler_options);
+  // auto completion_handler =
+  //     std::make_unique<CompletionHandler>(scheduler.get(), engine.get());
+  // auto chat_handler =
+  //     std::make_unique<ChatHandler>(scheduler.get(), engine.get());
+  // auto models_handler = std::make_unique<ModelsHandler>(FLAGS_model_id);
 
-  // start grpc server
-  GrpcServer grpc_server(std::move(completion_handler),
-                         std::move(chat_handler),
-                         std::move(models_handler));
-  GrpcServer::Options options;
-  options.address = "0.0.0.0";
-  options.port = FLAGS_grpc_port;
+  // // start grpc server
+  // GrpcServer grpc_server(std::move(completion_handler),
+  //                        std::move(chat_handler),
+  //                        std::move(models_handler));
+  // GrpcServer::Options options;
+  // options.address = "0.0.0.0";
+  // options.port = FLAGS_grpc_port;
 
-  if (!grpc_server.start(options)) {
-    LOG(ERROR) << "failed to start grpc server on port " << FLAGS_grpc_port;
-    return -1;
-  }
+  // if (!grpc_server.start(options)) {
+  //   LOG(ERROR) << "failed to start grpc server on port " << FLAGS_grpc_port;
+  //   return -1;
+  // }
 
-  if (!http_server.start(FLAGS_http_port, /*num_threads=*/2)) {
-    LOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
-    return -1;
-  }
+  // if (!http_server.start(FLAGS_http_port, /*num_threads=*/2)) {
+  //   LOG(ERROR) << "Failed to start http server on port " << FLAGS_http_port;
+  //   return -1;
+  // }
 
-  // install graceful shutdown handler
-  (void)signal(SIGINT, shutdown_handler);
-  (void)signal(SIGTERM, shutdown_handler);
+  // // install graceful shutdown handler
+  // (void)signal(SIGINT, shutdown_handler);
+  // (void)signal(SIGTERM, shutdown_handler);
 
-  const auto timeout = absl::Milliseconds(500);
-  while (signal_received.load(std::memory_order_relaxed) == 0) {
-    // move scheduler forward
-    scheduler->step(timeout);
-  }
+  // const auto timeout = absl::Milliseconds(500);
+  // while (signal_received.load(std::memory_order_relaxed) == 0) {
+  //   // move scheduler forward
+  //   scheduler->step(timeout);
+  // }
 
-  // stop grpc server and http server
-  grpc_server.stop();
-  http_server.stop();
+  // // stop grpc server and http server
+  // grpc_server.stop();
+  // http_server.stop();
 
   return 0;
 }

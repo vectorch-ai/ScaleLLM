@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace llm::csrc {
+namespace llm {
 
 // SamplingParams is used to specify sampling parameters for a
 // request.
@@ -59,4 +59,4 @@ struct SamplingParams {
   std::optional<std::vector<int32_t>> stop_token_ids;
 };
 
-}  // namespace llm::csrc
+}  // namespace llm

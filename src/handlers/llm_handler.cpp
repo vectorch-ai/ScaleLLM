@@ -11,7 +11,7 @@
 
 DECLARE_int32(num_speculative_tokens);
 
-namespace llm::csrc {
+namespace llm {
 namespace {
 
 #define CALLBACK_WITH_ERROR(CODE, MSG) callback(Status{CODE, MSG});
@@ -338,4 +338,4 @@ void LLMHandler::stop() {
 
 void LLMHandler::run_until_complete() { scheduler_->run_until_complete(); }
 
-}  // namespace llm::csrc
+}  // namespace llm
