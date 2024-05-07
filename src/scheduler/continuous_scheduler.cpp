@@ -259,28 +259,34 @@ Batch ContinuousScheduler::build_sequence_batch() {
   return batch;
 }
 
-// step the scheduler forward by one step
-// may get blocked if there are no requests to process
-void ContinuousScheduler::step(const absl::Duration& timeout) {
-  // get a new batch of requests
+Batch ContinuousScheduler::wait_for_batch(const absl::Duration& timeout) {
   const auto deadline = absl::Now() + timeout;
-  Batch batch;
   while (true) {
-    batch = build_sequence_batch();
+    Batch batch = std::move(build_sequence_batch());
     if (!batch.empty()) {
-      // find one batch of requests to process
-      break;
+      return batch;
     }
     const auto now = absl::Now();
     if (now > deadline) {
-      // no requests to process
-      return;
+      break;
     }
     // wait for new requests to arrive
     constexpr uint64_t kStepSleepTimeMs = 10;
     const auto time_to_sleep =
         std::min(absl::Milliseconds(kStepSleepTimeMs), deadline - now);
     absl::SleepFor(time_to_sleep);
+  }
+  // return an empty batch
+  return {};
+}
+
+// step the scheduler forward by one step
+// may get blocked if there are no requests to process
+void ContinuousScheduler::step(const absl::Duration& timeout) {
+  // get a new batch of requests
+  Batch batch = wait_for_batch(timeout);
+  if (batch.empty()) {
+    return;
   }
 
   engine_->execute_model(batch);
@@ -291,8 +297,30 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
       response_handler_->on_request_stream(request);
     }
   }
+}
 
-  // TODO: return a task to support waiting for the completion of the batch
+void ContinuousScheduler::run_until_complete() {
+  while (true) {
+    // build a batch of requests/sequences
+    auto batch = build_sequence_batch();
+    if (batch.empty()) {
+      // no more requests to process
+      break;
+    }
+
+    // run inference for the batch
+    engine_->execute_model(batch);
+
+    // process request output in batch
+    for (Request* request : running_requests_) {
+      if (request->is_streaming()) {
+        response_handler_->on_request_stream(request);
+      }
+    }
+  }
+
+  // wait for all responses to be processed
+  response_handler_->wait_for_complete();
 }
 
 bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,

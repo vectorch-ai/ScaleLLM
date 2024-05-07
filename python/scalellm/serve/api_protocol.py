@@ -54,23 +54,30 @@ class LogProbs(BaseModel):
     tokens: List[str] = Field(default_factory=list)
     top_logprobs: List[Optional[Dict[str, float]]] = Field(default_factory=list)
 
+
 class ChatCompletionMessage(BaseModel):
     role: Literal["user", "system", "assistant"]
     content: str
 
+
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[ChatCompletionMessage]
-    temperature: Optional[float] = 0.7
-    top_p: Optional[float] = 1.0
-    top_k: Optional[int] = -1
+    priority: Optional[Literal["default", "low", "normal", "high"]] = None
     n: Optional[int] = 1
-    max_tokens: Optional[int] = None
-    stop: Optional[Union[str, List[str]]] = None
+    max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
+    temperature: Optional[float] = 0.7
     presence_penalty: Optional[float] = 0.0
     frequency_penalty: Optional[float] = 0.0
-    user: Optional[str] = None
+    repetition_penalty: Optional[float] = 1.0
+    top_p: Optional[float] = 1.0
+    top_k: Optional[int] = -1
+    # user: Optional[str] = None
+    skip_special_tokens: Optional[bool] = True
+    ignore_eos: Optional[bool] = False
+    stop: Optional[Union[str, List[str]]] = None
+    stop_token_ids: Optional[List[int]] = None
 
 
 class ChatMessage(BaseModel):
@@ -116,21 +123,26 @@ class ChatCompletionStreamResponse(BaseModel):
 class CompletionRequest(BaseModel):
     model: str
     prompt: str
-    suffix: Optional[str] = None
-    temperature: Optional[float] = 0.7
+    priority: Optional[Literal["default", "low", "normal", "high"]] = None
+    # suffix: Optional[str] = None
     n: Optional[int] = 1
     max_tokens: Optional[int] = 16
-    stop: Optional[Union[str, List[str]]] = None
     stream: Optional[bool] = False
-    top_p: Optional[float] = 1.0
-    top_k: Optional[int] = -1
-    logprobs: Optional[int] = None
+    # logprobs: Optional[int] = None
     echo: Optional[bool] = False
+    temperature: Optional[float] = 0.7
     presence_penalty: Optional[float] = 0.0
     frequency_penalty: Optional[float] = 0.0
-    user: Optional[str] = None
-    use_beam_search: Optional[bool] = False
-    best_of: Optional[int] = None
+    repetition_penalty: Optional[float] = 1.0
+    top_p: Optional[float] = 1.0
+    top_k: Optional[int] = -1
+    # user: Optional[str] = None
+    skip_special_tokens: Optional[bool] = True
+    ignore_eos: Optional[bool] = False
+    stop: Optional[Union[str, List[str]]] = None
+    stop_token_ids: Optional[List[int]] = None
+    # use_beam_search: Optional[bool] = False
+    # best_of: Optional[int] = None
 
 
 class CompletionResponseChoice(BaseModel):

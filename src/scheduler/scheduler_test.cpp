@@ -84,12 +84,11 @@ class FakeSSMEngine : public Engine {
     // std::vector<int64_t> val;
     // val.emplace_back(spec_token_ids_[spec_tokens_idx_++]);
 
-    // output.next_tokens = torch::unsqueeze(torch::tensor(val, torch::kInt64), 0);
+    // output.next_tokens = torch::unsqueeze(torch::tensor(val, torch::kInt64),
+    // 0);
   }
 
-  void validate(Batch&) override {
-    ++validate_calls_;
-  }
+  void validate(Batch&) override { ++validate_calls_; }
 
   void set_spec_token_ids(const std::vector<int64_t>& spec_token_ids) {
     spec_token_ids_ = spec_token_ids;
@@ -128,9 +127,7 @@ class FakeLLMEngine : public Engine {
     return fake_block_manager_.get();
   }
 
-  void execute_model(Batch&) override {
-    ++execute_model_calls_;
-  }
+  void execute_model(Batch&) override { ++execute_model_calls_; }
 
   void validate(Batch&) override {
     if (valid_tokens_idx_ >= valid_token_ids_.size()) {
@@ -241,7 +238,7 @@ class RequestWrapper {
     sampling_param_.presence_penalty = 0.0;
 
     stopping_criteria_.max_tokens = 100;
-    stopping_criteria_.ignore_eos_token = false;
+    stopping_criteria_.ignore_eos = false;
     stopping_criteria_.eos_token_id = 2;
   }
 
@@ -269,7 +266,7 @@ class RequestWrapper {
     request->on_finish = [this, &request_id](
                              const std::vector<SequenceResult>& seq_results,
                              const Status& status,
-                             const Statistics& stats) -> bool {
+                             const Usage& stats) -> bool {
       this->outputs_.emplace(request_id, seq_results[0]);
       return true;
     };

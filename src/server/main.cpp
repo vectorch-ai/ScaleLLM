@@ -41,7 +41,7 @@ DEFINE_int32(grpc_port, 8888, "Port for grpc server.");
 DEFINE_int32(max_tokens_per_batch, 512, "max number of tokens per batch");
 DEFINE_int32(max_seqs_per_batch, 128, "max number of sequences per batch");
 
-DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
+DECLARE_int32(num_speculative_tokens);
 
 // NOLINTNEXTLINE
 static std::atomic<uint32_t> signal_received{0};
@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
   http_server.register_uri(
       "/health", [](HttpServer::Transport& transport) -> bool {
         if (signal_received.load(std::memory_order_relaxed) == 0) {
-          return transport.send_string("Ok\n");
+          return transport.send_string("OK\n");
         }
         // 503 Service Unavailable
         return transport.send_status(503);

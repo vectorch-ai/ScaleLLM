@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 
+#include "chat_template/chat_template.h"
 #include "chat_template/jinja_chat_template.h"
 #include "engine/engine.h"
 #include "models/model_args.h"
@@ -86,40 +87,29 @@ bool verify_request_arguments(ChatCallData* call_data) {
 
 bool send_delta_to_client(ChatCallData* call_data,
                           Request* request,
-                          bool first_message,
-                          const SequenceOutput& seq_output) {
+                          std::vector<bool>* first_message,
+                          const RequestOutput& output) {
   // send delta to client
-  if (!seq_output.text.empty()) {
+  for (const auto& seq_output : output.outputs) {
     proto::ChatResponse response;
     response.set_object("chat.completion.chunk");
     response.set_id(request->id);
     response.set_created(request->created_time);
     // response.set_model(request->model);
     auto* choice = response.add_choices();
-    choice->set_index(seq_output.index);
+    const auto& index = seq_output.index;
+    choice->set_index(index);
     // add message
     auto* message = choice->mutable_delta();
     // only set role for first message
-    if (first_message) {
+    if ((*first_message)[index]) {
       message->set_role("assistant");
+      (*first_message)[index] = false;
     }
     message->set_content(seq_output.text);
-    if (!call_data->write(std::move(response))) {
-      return false;
+    if (seq_output.finish_reason.has_value()) {
+      choice->set_finish_reason(seq_output.finish_reason.value());
     }
-  }
-
-  // send finish reason as a separate message
-  if (seq_output.finish_reason != FinishReason::NONE) {
-    proto::ChatResponse response;
-    response.set_object("chat.completion");
-    response.set_id(request->id);
-    response.set_created(request->created_time);
-    // response.set_model(request->model);
-    auto* choice = response.add_choices();
-    choice->set_index(seq_output.index);
-    choice->set_finish_reason(
-        finish_reason_to_string(seq_output.finish_reason));
     if (!call_data->write(std::move(response))) {
       return false;
     }
@@ -129,7 +119,6 @@ bool send_delta_to_client(ChatCallData* call_data,
 
 bool send_result_to_client(ChatCallData* call_data,
                            Request* request,
-                           const Status& /*status*/,
                            const RequestOutput& req_output) {
   if (req_output.outputs.empty()) {
     // TODO: mapping status to grpc status
@@ -149,19 +138,21 @@ bool send_result_to_client(ChatCallData* call_data,
     auto* message = choice->mutable_message();
     message->set_role("assistant");
     message->set_content(output.text);
-    if (output.finish_reason != FinishReason::NONE) {
-      choice->set_finish_reason(finish_reason_to_string(output.finish_reason));
+    if (output.finish_reason.has_value()) {
+      choice->set_finish_reason(output.finish_reason.value());
     }
   }
 
   // add usage statistics
-  auto* usage = response.mutable_usage();
-  usage->set_prompt_tokens(
-      static_cast<int32_t>(req_output.stats.num_prompt_tokens));
-  usage->set_completion_tokens(
-      static_cast<int32_t>(req_output.stats.num_generated_tokens));
-  usage->set_total_tokens(
-      static_cast<int32_t>(req_output.stats.num_total_tokens));
+  if (req_output.usage.has_value()) {
+    const auto& usage = req_output.usage.value();
+    auto* proto_usage = response.mutable_usage();
+    proto_usage->set_prompt_tokens(
+        static_cast<int32_t>(usage.num_prompt_tokens));
+    proto_usage->set_completion_tokens(
+        static_cast<int32_t>(usage.num_generated_tokens));
+    proto_usage->set_total_tokens(static_cast<int32_t>(usage.num_total_tokens));
+  }
 
   // TODO: combine write and finish
   call_data->write(response);
@@ -186,7 +177,11 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
     return nullptr;
   }
 
-  auto prompt = chat_template->apply(grpc_request.messages());
+  std::vector<Message> messages;
+  for (const auto& message : grpc_request.messages()) {
+    messages.push_back({message.role(), message.content()});
+  }
+  auto prompt = chat_template->apply(messages);
   if (!prompt.has_value()) {
     call_data->finish_with_error(grpc::StatusCode::INVALID_ARGUMENT,
                                  "Failed to construct prompt from messages");
@@ -285,30 +280,16 @@ std::unique_ptr<Request> grpc_request_to_request(ChatCallData* call_data,
   // disable echo for chat completion
   request->echo = false;
 
-  // set callbacks
-  if (request->stream) {
-    // set callback for stream delta
-    request->on_stream = [call_data,
-                          request = request.get(),
-                          first_message = std::vector<bool>(num_seqs, true)](
-                             const RequestOutput& output) mutable {
-      for (const auto& seq_output : output.outputs) {
-        const auto index = seq_output.index;
-        if (!send_delta_to_client(
-                call_data, request, first_message[index], seq_output)) {
-          return false;
-        }
-        first_message[index] = false;
-      }
-      return true;
-    };
-  }
-
-  // set callback for non-stream request
-  request->on_finish = [call_data, request = request.get()](
-                           const Status& status,
-                           const RequestOutput& output) -> bool {
-    return send_result_to_client(call_data, request, status, output);
+  // set callback for outputs
+  request->on_output = [call_data,
+                        request = request.get(),
+                        first_message = std::vector<bool>(num_seqs, true)](
+                           const RequestOutput& req_output) mutable -> bool {
+    if (req_output.finished) {
+      return send_result_to_client(call_data, request, req_output);
+    }
+    // send delta to client
+    return send_delta_to_client(call_data, request, &first_message, req_output);
   };
 
   // add one sequence, the rest will be expanded by scheduler

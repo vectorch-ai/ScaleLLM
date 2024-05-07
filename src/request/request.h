@@ -13,40 +13,8 @@
 
 namespace llm {
 
-// Status of the request.
-enum class ScheduleStatus {
-  // The request is waiting to be processed.
-  // still waiting in the queue.
-  WAITING,
-
-  // The request is currently being processed.
-  // a worker has been assigned to the request.
-  PROCESSING,
-
-  // The request has been preempted.
-  // preempted usually due to a higher priority request or limit on resources.
-  PREEMPTED,
-
-  // The request has been completed.
-  // usually due to reaching the maximum number of tokens or
-  // reaching a stopping condition.
-  COMPLETED,
-
-  // The request has been cancelled.
-  // usually due to a user request.
-  CANCELLED,
-};
-
-// Priority of the request.
-// The higher the priority, the sooner the request is processed.
-enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
-
-// Function to call when a request is finished.
-using OnFinish =
-    std::function<bool(const Status& status, const RequestOutput& output)>;
-
-// Function to call when a delta is generated.
-using OnStream = std::function<bool(const RequestOutput& output)>;
+// Function to call when an output is generated.
+using OnOutput = std::function<bool(const RequestOutput& output)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
@@ -57,8 +25,8 @@ struct Request final {
  public:
   // caller needs to gurantee prompt's lifecycle
   Request(const std::string& id,
-          const std::string_view& prompt,
-          const std::vector<int32_t>& prompt_tokens,
+          std::string prompt,
+          std::vector<int32_t> prompt_tokens,
           size_t seq_capacity,
           size_t num_seqs);
 
@@ -90,15 +58,15 @@ struct Request final {
 
   // prompt text string
   // NOLINTNEXTLINE
-  const std::string_view prompt;
-
-  // the number of sequences to generate completions for the prompt.
-  // NOLINTNEXTLINE
-  const size_t num_seqs;
+  const std::string prompt;
 
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
   const std::vector<int32_t> prompt_tokens;
+
+  // the number of sequences to generate completions for the prompt.
+  // NOLINTNEXTLINE
+  const size_t num_seqs;
 
   // max number of tokens per sequence.
   // NOLINTNEXTLINE
@@ -114,20 +82,17 @@ struct Request final {
   bool stream = false;
 
   // Whether to echo back the prompt in the output.
-  bool echo = true;
+  bool echo = false;
 
   // the priority of the request.
-  RequestPriority priority = RequestPriority::MEDIUM;
+  Priority priority = Priority::NORMAL;
 
   // list of sequences to generate completions for the prompt
   // use deque instead of vector to avoid no-copy move for Sequence
   std::deque<Sequence> sequences;
 
-  // function to call when the request is finished.
-  OnFinish on_finish;
-
-  // function to call when a delta is generated.
-  OnStream on_stream;
+  // function to call when an output is generated.
+  OnOutput on_output;
 
  private:
   // is the sequence cancelled

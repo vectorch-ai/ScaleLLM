@@ -5,7 +5,7 @@
 #include "engine/llm_engine.h"
 #include "request/sequence.h"
 
-namespace llm {
+namespace llm::csrc {
 
 LLM::LLM(const std::string& model_path,
          const SamplingParams& sp,
@@ -93,4 +93,4 @@ std::vector<torch::Device> LLM::parse_devices(const std::string& device_str) {
   return devices;
 }
 
-}  // namespace llm
+}  // namespace llm::csrc

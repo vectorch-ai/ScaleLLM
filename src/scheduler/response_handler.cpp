@@ -1,11 +1,11 @@
 #include "response_handler.h"
 
+#include <absl/synchronization/notification.h>
 #include <glog/logging.h>
 
 #include <cstdint>
 #include <memory>
 
-#include "memory/block_manager.h"
 #include "request/request.h"
 #include "request/sequence.h"
 
@@ -20,30 +20,33 @@ ResponseHandler::ResponseHandler(std::unique_ptr<Tokenizer> tokenizer)
 
 void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
   // schedule the response handling
-  response_threadpool_.schedule([tokenizer = tokenizer_.get(),
-                                 request = std::move(request)]() {
-    RequestOutput req_output;
-    // summarize statistics for all sequences
-    Statistics& stats = req_output.stats;
-    stats.num_prompt_tokens = request->num_prompt_tokens();
-    for (const Sequence& seq : request->sequences) {
-      stats.num_generated_tokens += seq.num_generated_tokens();
-    }
-    stats.num_total_tokens =
-        stats.num_prompt_tokens + stats.num_generated_tokens;
+  response_threadpool_.schedule(
+      [tokenizer = tokenizer_.get(), request = std::move(request)]() {
+        RequestOutput req_output;
+        // summarize statistics for all sequences
+        Usage usage;
+        usage.num_prompt_tokens = request->num_prompt_tokens();
+        for (const Sequence& seq : request->sequences) {
+          usage.num_generated_tokens += seq.num_generated_tokens();
+        }
+        usage.num_total_tokens =
+            usage.num_prompt_tokens + usage.num_generated_tokens;
+        req_output.usage = usage;
 
-    if (!request->is_streaming()) {
-      auto& outputs = req_output.outputs;
-      outputs.reserve(request->sequences.size());
-      for (size_t i = 0; i < request->sequences.size(); ++i) {
-        Sequence& seq = request->sequences[i];
-        // generate the final output
-        const auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
-        outputs.push_back({i, output, seq.finish_reason()});
-      }
-    }
-    request->on_finish(Status(), req_output);
-  });
+        if (!request->is_streaming()) {
+          auto& outputs = req_output.outputs;
+          outputs.reserve(request->sequences.size());
+          for (size_t i = 0; i < request->sequences.size(); ++i) {
+            Sequence& seq = request->sequences[i];
+            const auto finish_reason = seq.finish_reason();
+            // generate the final output
+            auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
+            outputs.push_back({i, std::move(output), to_string(finish_reason)});
+          }
+        }
+        req_output.finished = true;
+        request->on_output(req_output);
+      });
 }
 
 void ResponseHandler::on_request_stream(Request* request) {
@@ -80,15 +83,23 @@ void ResponseHandler::on_request_stream(Request* request) {
       const auto finish_reason = seq.finish_reason();
       auto delta = seq.decode_delta_text(token_ids[i], *tokenizer);
       if (!delta.empty() || finish_reason != FinishReason::NONE) {
-        req_output.outputs.push_back({index, std::move(delta), finish_reason});
+        req_output.outputs.push_back(
+            {index, std::move(delta), to_string(finish_reason)});
       }
     }
 
-    if (!request->on_stream(req_output)) {
+    if (!request->on_output(req_output)) {
       // cancel the request if on_stream returns false
       request->cancel();
     }
   });
+}
+
+void ResponseHandler::wait_for_complete() {
+  // add a task to the end of the pool to wait for it to finish
+  absl::Notification done;
+  response_threadpool_.schedule([&done]() { done.Notify(); });
+  done.WaitForNotification();
 }
 
 }  // namespace llm

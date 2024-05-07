@@ -19,13 +19,13 @@ struct StoppingCriteria {
   // private:
 
   // maximum number of generated tokens
-  size_t max_tokens = 0;
+  size_t max_tokens = 16;
 
   // end of sentence token id from tokenizer
   int32_t eos_token_id = 0;
 
   // whether to ignore eos token when checking stopping criterias
-  bool ignore_eos_token = false;
+  bool ignore_eos = false;
 
   // stop token ids
   std::unordered_set<int32_t> stop_token_ids;

@@ -1,8 +1,9 @@
 #pragma once
 
+#include <absl/time/time.h>
+
 #include <memory>
 #include <string>
-#include <absl/time/time.h>
 
 #include "request/request.h"
 
@@ -44,6 +45,9 @@ class Scheduler {
   // may get blocked if there are no requests to process
   // not thread safe
   virtual void step(const absl::Duration& timeout) = 0;
+
+  // run the scheduler until all scheduled requests are completed, blocking call
+  virtual void run_until_complete() = 0;
 };
 
 }  // namespace llm
