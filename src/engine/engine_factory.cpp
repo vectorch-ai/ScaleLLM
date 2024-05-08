@@ -3,8 +3,9 @@
 #include <absl/strings/numbers.h>
 #include <absl/strings/str_split.h>
 
-#include "engine/llm_engine.h"
+#include "llm_engine.h"
 #include "speculative/speculative_engine.h"
+#include "utils.h"
 
 static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
@@ -90,48 +91,6 @@ std::vector<uint32_t> parse_cuda_graph_batch_sizes(
   return {sizes_set.begin(), sizes_set.end()};
 }
 
-std::vector<torch::Device> parse_devices(const std::string& device_str) {
-  std::vector<torch::Device> devices;
-  if (device_str == "auto") {
-    // use all available gpus if any
-    const auto num_gpus = torch::cuda::device_count();
-    if (num_gpus == 0) {
-      LOG(INFO) << "no gpus found, using cpu.";
-      return {torch::kCPU};
-    }
-    devices.reserve(num_gpus);
-    for (int i = 0; i < num_gpus; ++i) {
-      devices.emplace_back(torch::kCUDA, i);
-    }
-    return devices;
-  }
-
-  // parse device string
-  const std::vector<std::string> device_strs = absl::StrSplit(device_str, ',');
-  std::set<torch::DeviceType> device_types;
-  devices.reserve(device_strs.size());
-  for (const auto& device_str : device_strs) {
-    devices.emplace_back(device_str);
-    device_types.insert(devices.back().type());
-  }
-  CHECK(!devices.empty()) << "No devices specified.";
-  CHECK(device_types.size() == 1)
-      << "All devices must be of the same type. Got: " << device_str;
-  return devices;
-}
-
-std::string to_string(const std::vector<torch::Device>& devices) {
-  std::stringstream ss;
-  for (size_t i = 0; i < devices.size(); ++i) {
-    const auto& device = devices[i];
-    if (i == 0) {
-      ss << device;
-    } else {
-      ss << "," << device;
-    }
-  }
-  return ss.str();
-}
 }  // namespace
 
 std::unique_ptr<Engine> EngineFactory::create(

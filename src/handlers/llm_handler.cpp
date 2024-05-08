@@ -1,18 +1,24 @@
 #include "llm_handler.h"
 
+#include <glog/logging.h>
+
 #include <memory>
 #include <thread>
 
-#include "engine/engine_factory.h"
+#include "engine/utils.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "request/output.h"
 #include "request/request.h"
-
-DECLARE_int32(num_speculative_tokens);
+#include "speculative/speculative_engine.h"
 
 namespace llm {
 namespace {
+// clang-format off
+const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph =
+    {1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 
+     64, 72, 80, 88, 96, 104, 112, 120, 128};
+// clang-format on
 
 #define CALLBACK_WITH_ERROR(CODE, MSG) callback(Status{CODE, MSG});
 
@@ -59,149 +65,63 @@ bool verify_params(const SamplingParams& sp, OutputCallback callback) {
   return true;
 }
 
-std::unique_ptr<Request> create_request(std::string prompt,
-                                        const SamplingParams& sp,
-                                        Priority priority,
-                                        bool stream,
-                                        OutputCallback callback,
-                                        const Tokenizer& tokenizer,
-                                        const ModelArgs& model_args) {
-  CHECK(!prompt.empty()) << "Prompt should not be empty";
-
-  // encode the prompt
-  std::vector<int> prompt_tokens;
-  if (!tokenizer.encode(prompt, &prompt_tokens)) {
-    LOG(ERROR) << "Failed to encode prompt: " << prompt;
-    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
-                        "Failed to encode prompt");
-    return nullptr;
-  }
-
-  const int64_t max_context_len = model_args.max_position_embeddings();
-  if (prompt_tokens.size() >= max_context_len) {
-    LOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
-    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT, "Prompt is too long");
-    return nullptr;
-  }
-
-  uint32_t max_tokens = sp.max_tokens;
-  if (max_tokens == 0) {
-    const uint32_t kDefaultMaxTokens = 16;
-    max_tokens = kDefaultMaxTokens;
-  }
-
-  const uint32_t num_seqs = std::max<uint32_t>(1, sp.n);
-  // allocate enough capacity for prompt tokens, max tokens, and speculative
-  // tokens
-  const size_t capacity = prompt_tokens.size() + max_tokens +
-                          FLAGS_num_speculative_tokens + /*bouns_token*/ 1;
-  auto request = std::make_unique<Request>("request_id",
-                                           std::move(prompt),
-                                           std::move(prompt_tokens),
-                                           capacity,
-                                           num_seqs);
-
-  // sampling parameters
-  auto& sampling_param = request->sampling_param;
-  sampling_param.frequency_penalty = sp.frequency_penalty;
-  sampling_param.presence_penalty = sp.presence_penalty;
-  sampling_param.repetition_penalty = sp.repetition_penalty;
-  sampling_param.temperature = sp.temperature;
-  sampling_param.top_p = sp.top_p;
-  sampling_param.top_k = sp.top_k;
-  // sampling_param.do_sample = sp.do_sample;
-  // sampling_param.seed = sp.seed;
-
-  // stopping criteria
-  auto& stopping_criteria = request->stopping_criteria;
-  stopping_criteria.max_tokens = max_tokens;
-  stopping_criteria.max_context_len =
-      max_context_len - FLAGS_num_speculative_tokens;
-  stopping_criteria.ignore_eos = sp.ignore_eos;
-  stopping_criteria.eos_token_id = model_args.eos_token_id();
-
-  if (sp.stop_token_ids.has_value()) {
-    const auto& stop_token_ids = sp.stop_token_ids.value();
-    stopping_criteria.stop_token_ids.insert(stop_token_ids.begin(),
-                                            stop_token_ids.end());
-  } else {
-    // otherwise use default stop token id from model args
-    stopping_criteria.stop_token_ids = model_args.stop_token_ids();
-  }
-
-  if (sp.stop.has_value()) {
-    for (const auto& s : sp.stop.value()) {
-      std::vector<int> stop_tokens;
-      if (!tokenizer.encode(s, &stop_tokens)) {
-        CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
-                            "Failed to encode stop sequence");
-        LOG(ERROR) << "Failed to encode stop sequence: " << s;
-        return nullptr;
-      }
-      stopping_criteria.stop_sequences.push_back(std::move(stop_tokens));
-    }
-  }
-  request->stream = stream;
-  request->priority = priority;
-  request->echo = sp.echo;
-
-  // set callback for outputs
-  request->on_output = callback;
-
-  // add one sequence, rest will be added by scheduler
-  request->add_sequence();
-  return request;
-}
-
-std::unique_ptr<Request> create_chat_request(
-    const std::vector<Message>& messages,
-    const SamplingParams& sp,
-    Priority priority,
-    bool stream,
-    OutputCallback callback,
-    ChatTemplate* chat_template,
-    const Tokenizer& tokenizer,
-    const ModelArgs& model_args) {
-  // construct prompt from dialog messages
-  if (chat_template == nullptr) {
-    CALLBACK_WITH_ERROR(
-        StatusCode::INVALID_ARGUMENT,
-        "Chat template has not configured, please use /completion API");
-    LOG(ERROR) << "Chat template has not configured for model type: "
-               << model_args.model_type();
-    return nullptr;
-  }
-
-  auto prompt = chat_template->apply(messages);
-  if (!prompt.has_value()) {
-    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
-                        "Failed to construct prompt from messages");
-    LOG(ERROR) << "Failed to construct prompt from messages";
-    return nullptr;
-  }
-
-  return create_request(std::move(prompt.value()),
-                        sp,
-                        priority,
-                        stream,
-                        callback,
-                        tokenizer,
-                        model_args);
-}
-
 }  // namespace
 
-LLMHandler::LLMHandler(const std::string& model_path,
-                       const std::string& device_str) {
-  engine_ = EngineFactory::create(model_path, device_str);
+LLMHandler::LLMHandler(const Options& options) : options_(options) {
+  // construct engine
+  const auto devices = parse_devices(options.devices().value_or("auto"));
+  LOG(INFO) << "Creating engine with devices: " << to_string(devices);
+
+  // create a speculative engine if draft model path is provided
+  if (options.draft_model_path().has_value()) {
+    const auto draft_devices =
+        parse_devices(options.draft_devices().value_or("auto"));
+    LOG(INFO) << "Using draft devices: " << to_string(draft_devices);
+    SpeculativeEngine::Options spec_options;
+    spec_options.devices(devices)
+        .draft_devices(draft_devices)
+        .block_size(options.block_size())
+        .max_cache_size(options.max_cache_size())
+        .max_memory_utilization(options.max_memory_utilization())
+        .enable_prefix_cache(options.enable_prefix_cache())
+        .num_speculative_tokens(options.num_speculative_tokens());
+    if (options.enable_cuda_graph()) {
+      const auto batch_sizes = options.cuda_graph_batch_sizes().value_or(
+          kDefaultBatchSizesForCudaGraph);
+      spec_options.cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+          .cuda_graph_batch_sizes(batch_sizes)
+          .draft_cuda_graph_batch_sizes(
+              options.draft_cuda_graph_batch_sizes().value_or(batch_sizes));
+    }
+    auto spec_engine = std::make_unique<SpeculativeEngine>(spec_options);
+    CHECK(spec_engine->init(options.model_path(),
+                            options.draft_model_path().value()));
+    engine_ = std::move(spec_engine);
+  } else {
+    LLMEngine::Options eng_options;
+    eng_options.devices(devices)
+        .block_size(options.block_size())
+        .max_cache_size(options.max_cache_size())
+        .max_memory_utilization(options.max_memory_utilization())
+        .enable_prefix_cache(options.enable_prefix_cache());
+    if (options.enable_cuda_graph()) {
+      eng_options.cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+          .cuda_graph_batch_sizes(options.cuda_graph_batch_sizes().value_or(
+              kDefaultBatchSizesForCudaGraph));
+    }
+
+    auto engine = std::make_unique<LLMEngine>(eng_options);
+    CHECK(engine->init(options.model_path()));
+    engine_ = std::move(engine);
+  }
 
   tokenizer_ = engine_->tokenizer();
   model_args_ = engine_->model_args();
 
   ContinuousScheduler::Options scheduler_options;
-  scheduler_options.max_tokens_per_batch(512)
-      .max_seqs_per_batch(128)
-      .num_speculative_tokens(0);
+  scheduler_options.max_tokens_per_batch(options.max_tokens_per_batch())
+      .max_seqs_per_batch(options.max_seqs_per_batch())
+      .num_speculative_tokens(options.num_speculative_tokens());
   scheduler_ =
       std::make_unique<ContinuousScheduler>(engine_.get(), scheduler_options);
 
@@ -244,13 +164,8 @@ ScheduleTask LLMHandler::schedule_async(std::string prompt,
       return;
     }
 
-    auto request = create_request(std::move(prompt),
-                                  sp,
-                                  priority,
-                                  stream,
-                                  callback,
-                                  *tokenizer_,
-                                  model_args_);
+    auto request =
+        create_request(std::move(prompt), sp, priority, stream, callback);
     if (!request) {
       promise.set_value(false);
       return;
@@ -290,14 +205,8 @@ ScheduleTask LLMHandler::schedule_chat_async(std::vector<Message> messages,
       return;
     }
 
-    auto request = create_chat_request(messages,
-                                       sp,
-                                       priority,
-                                       stream,
-                                       callback,
-                                       chat_template_.get(),
-                                       *tokenizer_,
-                                       model_args_);
+    auto request =
+        create_chat_request(messages, sp, priority, stream, callback);
     if (!request) {
       promise.set_value(false);
       return;
@@ -337,5 +246,125 @@ void LLMHandler::stop() {
 }
 
 void LLMHandler::run_until_complete() { scheduler_->run_until_complete(); }
+
+std::unique_ptr<Request> LLMHandler::create_request(std::string prompt,
+                                                    const SamplingParams& sp,
+                                                    Priority priority,
+                                                    bool stream,
+                                                    OutputCallback callback) {
+  CHECK(!prompt.empty()) << "Prompt should not be empty";
+
+  // encode the prompt
+  std::vector<int> prompt_tokens;
+  if (!tokenizer_->encode(prompt, &prompt_tokens)) {
+    LOG(ERROR) << "Failed to encode prompt: " << prompt;
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                        "Failed to encode prompt");
+    return nullptr;
+  }
+
+  const int64_t max_context_len = model_args_.max_position_embeddings();
+  if (prompt_tokens.size() >= max_context_len) {
+    LOG(ERROR) << "Prompt is too long: " << prompt_tokens.size();
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT, "Prompt is too long");
+    return nullptr;
+  }
+
+  uint32_t max_tokens = sp.max_tokens;
+  if (max_tokens == 0) {
+    const uint32_t kDefaultMaxTokens = 16;
+    max_tokens = kDefaultMaxTokens;
+  }
+
+  const uint32_t num_seqs = std::max<uint32_t>(1, sp.n);
+  // allocate enough capacity for prompt tokens, max tokens, and speculative
+  // tokens
+  const size_t capacity = prompt_tokens.size() + max_tokens +
+                          options_.num_speculative_tokens() + /*bouns_token*/ 1;
+  auto request = std::make_unique<Request>("request_id",
+                                           std::move(prompt),
+                                           std::move(prompt_tokens),
+                                           capacity,
+                                           num_seqs);
+
+  // sampling parameters
+  auto& sampling_param = request->sampling_param;
+  sampling_param.frequency_penalty = sp.frequency_penalty;
+  sampling_param.presence_penalty = sp.presence_penalty;
+  sampling_param.repetition_penalty = sp.repetition_penalty;
+  sampling_param.temperature = sp.temperature;
+  sampling_param.top_p = sp.top_p;
+  sampling_param.top_k = sp.top_k;
+  // sampling_param.do_sample = sp.do_sample;
+  // sampling_param.seed = sp.seed;
+
+  // stopping criteria
+  auto& stopping_criteria = request->stopping_criteria;
+  stopping_criteria.max_tokens = max_tokens;
+  stopping_criteria.max_context_len =
+      max_context_len - options_.num_speculative_tokens();
+  stopping_criteria.ignore_eos = sp.ignore_eos;
+  stopping_criteria.eos_token_id = model_args_.eos_token_id();
+
+  if (sp.stop_token_ids.has_value()) {
+    const auto& stop_token_ids = sp.stop_token_ids.value();
+    stopping_criteria.stop_token_ids.insert(stop_token_ids.begin(),
+                                            stop_token_ids.end());
+  } else {
+    // otherwise use default stop token id from model args
+    stopping_criteria.stop_token_ids = model_args_.stop_token_ids();
+  }
+
+  if (sp.stop.has_value()) {
+    for (const auto& s : sp.stop.value()) {
+      std::vector<int> stop_tokens;
+      if (!tokenizer_->encode(s, &stop_tokens)) {
+        CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                            "Failed to encode stop sequence");
+        LOG(ERROR) << "Failed to encode stop sequence: " << s;
+        return nullptr;
+      }
+      stopping_criteria.stop_sequences.push_back(std::move(stop_tokens));
+    }
+  }
+  request->stream = stream;
+  request->priority = priority;
+  request->echo = sp.echo;
+
+  // set callback for outputs
+  request->on_output = callback;
+
+  // add one sequence, rest will be added by scheduler
+  request->add_sequence();
+  return request;
+}
+
+std::unique_ptr<Request> LLMHandler::create_chat_request(
+    const std::vector<Message>& messages,
+    const SamplingParams& sp,
+    Priority priority,
+    bool stream,
+    OutputCallback callback) {
+  // construct prompt from dialog messages
+  if (chat_template_ == nullptr) {
+    CALLBACK_WITH_ERROR(
+        StatusCode::INVALID_ARGUMENT,
+        "Chat template has not configured, please use /completion API");
+    LOG(ERROR) << "Chat template has not configured for model type: "
+               << model_args_.model_type();
+    return nullptr;
+  }
+
+  auto prompt = chat_template_->apply(messages);
+  if (!prompt.has_value()) {
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                        "Failed to construct prompt from messages");
+    LOG(ERROR) << "Failed to construct prompt from messages";
+    return nullptr;
+  }
+
+  return create_request(
+      std::move(prompt.value()), sp, priority, stream, callback);
+}
 
 }  // namespace llm

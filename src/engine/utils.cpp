@@ -1,48 +1,43 @@
 #include "utils.h"
 
+#include <absl/strings/numbers.h>
+#include <absl/strings/str_split.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
 #include <vector>
 
-#include "models/parameters.h"
-
 namespace llm {
 
-void Utils::prepare_profile_inputs(int64_t max_num_tokens,
-                                   int64_t max_num_seqs,
-                                   torch::Tensor* flatten_token_ids,
-                                   torch::Tensor* flatten_positions,
-                                   InputParameters* input_params) {
-  const int64_t max_seq_len = max_num_tokens / max_num_seqs;
-  std::vector<int32_t> positions;
-  std::vector<int32_t> cu_lens = {0};
-  std::vector<int32_t> last_token_idxes;
-  for (int64_t i = 0; i < max_num_seqs; ++i) {
-    cu_lens.push_back(cu_lens.back() + max_seq_len);
-    for (int64_t j = 0; j < max_seq_len; ++j) {
-      positions.push_back(j);
+std::vector<torch::Device> parse_devices(const std::string& device_str) {
+  std::vector<torch::Device> devices;
+  if (device_str == "auto" || device_str.empty()) {
+    // use all available gpus if any
+    const auto num_gpus = torch::cuda::device_count();
+    if (num_gpus == 0) {
+      LOG(INFO) << "no gpus found, using cpu.";
+      return {torch::kCPU};
     }
-    last_token_idxes.push_back(positions.size() - 1);
+    devices.reserve(num_gpus);
+    for (int i = 0; i < num_gpus; ++i) {
+      devices.emplace_back(torch::kCUDA, i);
+    }
+    return devices;
   }
 
-  // dummy tensor with shape [max_batch_size * max_seq_len]
-  *flatten_token_ids = torch::ones({max_num_seqs * max_seq_len}, torch::kInt32);
-  *flatten_positions = torch::tensor(positions, torch::kInt32);
-  torch::Tensor cu_seq_lens = torch::tensor(cu_lens, torch::kInt32);
-
-  InputParameters params;
-  input_params->empty_kv_cache = true;
-  input_params->num_sequences = 1;
-  input_params->q_max_seq_len = max_seq_len;
-  input_params->kv_max_seq_len = max_seq_len;
-  input_params->q_cu_seq_lens = cu_seq_lens;
-  input_params->kv_cu_seq_lens = cu_seq_lens;
-
-  // following parameters can be empty since we don't use kv-cache
-  // input_params->new_cache_slots = torch::empty({0}, torch::kInt);
-  // input_params->block_tables = torch::empty({0, 0}, torch::kInt);
+  // parse device string
+  const std::vector<std::string> device_strs = absl::StrSplit(device_str, ',');
+  std::set<torch::DeviceType> device_types;
+  devices.reserve(device_strs.size());
+  for (const auto& device_str : device_strs) {
+    devices.emplace_back(device_str);
+    device_types.insert(devices.back().type());
+  }
+  CHECK(!devices.empty()) << "No devices specified.";
+  CHECK(device_types.size() == 1)
+      << "All devices must be of the same type. Got: " << device_str;
+  return devices;
 }
 
 }  // namespace llm

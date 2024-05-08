@@ -1,10 +1,9 @@
 import asyncio
 import os
 import queue
-from typing import List
+from typing import List, Optional
 
-from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
-                         SamplingParams)
+from scalellm._C import LLMHandler, Message, Priority, RequestOutput, SamplingParams
 from scalellm.downloader import download_hf_model
 
 
@@ -103,10 +102,47 @@ class OutputAsyncStream:
 
 
 class AsyncLLMEngine:
-    def __init__(self, model_path: str, devices: str):
+    def __init__(
+        self,
+        model_path: str,
+        devices: Optional[str] = None,
+        draft_mode_path: Optional[str] = None,
+        draft_devices: Optional[str] = None,
+        block_size: int = 16,
+        max_cache_size: int = 10 * 1024 * 1024 * 1024,
+        max_memory_utilization: float = 0.9,
+        enable_prefix_cache: bool = True,
+        enable_cuda_graph: bool = True,
+        cuda_graph_max_seq_len: int = 2048,
+        cuda_graph_batch_sizes: Optional[List[int]] = None,
+        draft_cuda_graph_batch_sizes: Optional[List[int]] = None,
+        max_tokens_per_batch: int = 512,
+        max_seqs_per_batch: int = 128,
+        num_speculative_tokens: int = 0,
+    ) -> None:
+        # download hf model if it does not exist
         if not os.path.exists(model_path):
             model_path = download_hf_model(model_path)
-        self._handler = LLMHandler(model_path, devices)
+        if draft_mode_path is not None and not os.path.exists(draft_mode_path):
+            draft_mode_path = download_hf_model(draft_mode_path)
+
+        options = LLMHandler.Options()
+        options.model_path = model_path
+        options.devices = devices
+        options.draft_mode_path = draft_mode_path
+        options.draft_devices = draft_devices
+        options.block_size = block_size
+        options.max_cache_size = max_cache_size
+        options.max_memory_utilization = max_memory_utilization
+        options.enable_prefix_cache = enable_prefix_cache
+        options.enable_cuda_graph = enable_cuda_graph
+        options.cuda_graph_max_seq_len = cuda_graph_max_seq_len
+        options.cuda_graph_batch_sizes = cuda_graph_batch_sizes
+        options.draft_cuda_graph_batch_sizes = draft_cuda_graph_batch_sizes
+        options.max_tokens_per_batch = max_tokens_per_batch
+        options.max_seqs_per_batch = max_seqs_per_batch
+        options.num_speculative_tokens = num_speculative_tokens
+        self._handler = LLMHandler(options)
 
     # schedule a request to the engine, and return a stream to receive output
     async def schedule_async(
