@@ -1,7 +1,6 @@
 #include "llm_engine.h"
 
 #include <ATen/cuda/CUDAContext.h>
-#include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 
 #include <algorithm>
@@ -12,22 +11,16 @@
 #include "model_loader/model_loader.h"
 #include "model_parallel/parallel_args.h"
 #include "models/model_args.h"
-#include "utils.h"
 #include "worker.h"
-
-// following two parameters are used for profiling and warmup the engine.
-// the profiling result would be used to determine kv cache size.
-DEFINE_int64(max_num_tokens_per_batch,
-             1024,
-             "Maximum number of tokens per batch for profiling.");
-DEFINE_int64(max_num_seqs_per_batch,
-             32,
-             "Maximum number of sequences per batch for profiling.");
-
-DECLARE_bool(disable_custom_kernels);
 
 namespace llm {
 namespace {
+// clang-format off
+const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph =
+    {1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 
+     64, 72, 80, 88, 96, 104, 112, 120, 128};
+// clang-format on
+
 torch::ScalarType parse_dtype(const std::string& dtype_str,
                               const torch::Device& device) {
   if (device.is_cpu()) {
@@ -54,7 +47,7 @@ torch::ScalarType parse_dtype(const std::string& dtype_str,
 }  // namespace
 
 LLMEngine::LLMEngine(const Options& options) : options_(options) {
-  const auto& devices = options.devices();
+  const auto& devices = options_.devices();
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   const auto device_type = devices[0].type();
@@ -80,26 +73,36 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
   }
 
   // sort cuda graph batch sizes
-  auto& batch_sizes = options_.cuda_graph_batch_sizes();
-  std::sort(batch_sizes.begin(), batch_sizes.end());
+  if (options_.enable_cuda_graph()) {
+    if (options_.cuda_graph_batch_sizes().has_value()) {
+      batch_sizes_ = options_.cuda_graph_batch_sizes().value();
+    } else {
+      // It is a known issue
+      // (https://github.com/vectorch-ai/ScaleLLM/issues/131)
+      // that CUDA graph capture may occasionally become stuck with multiple
+      // gpus.
+      if (world_size > 1) {
+        // disable cuda graph for multi-gpus by default.
+        options_.enable_cuda_graph(false);
+      } else {
+        batch_sizes_ = kDefaultBatchSizesForCudaGraph;
+      }
+    }
+    std::sort(batch_sizes_.begin(), batch_sizes_.end());
+  }
 
   // create a worker for each device
   ModelRunner::Options runner_options;
   runner_options.block_size(options_.block_size())
       .num_decoding_tokens(options_.num_decoding_tokens())
       .cuda_graph_max_seq_len(options_.cuda_graph_max_seq_len())
-      .cuda_graph_batch_sizes(options_.cuda_graph_batch_sizes());
+      .cuda_graph_batch_sizes(batch_sizes_);
   for (size_t i = 0; i < devices.size(); ++i) {
     const int32_t rank = static_cast<int32_t>(i);
     ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
     ParallelArgs parallel_args(rank, world_size, pg);
     workers_.emplace_back(
         std::make_unique<Worker>(parallel_args, devices[i], runner_options));
-  }
-
-  if (FLAGS_disable_custom_kernels) {
-    LOG(WARNING) << "Custom kernels are disabled. You may experience "
-                    "performance degradation.";
   }
 }
 
@@ -222,19 +225,21 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
 }
 
 bool LLMEngine::capture_cuda_graphs() {
+  if (!options_.enable_cuda_graph()) {
+    return true;
+  }
+
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     return workers_[0]->capture_cuda_graphs();
   }
 
-  if (!options_.cuda_graph_batch_sizes().empty()) {
-    LOG(WARNING)
-        << "It is a known issue "
-           "(https://github.com/vectorch-ai/ScaleLLM/issues/131) that CUDA "
-           "graph capture may occasionally become stuck when multiple workers "
-           "are in use. If you encounter this problem, please set "
-           "'cuda_graph_batch_sizes' to empty to workaround it.";
-  }
+  LOG(WARNING)
+      << "It is a known issue "
+         "(https://github.com/vectorch-ai/ScaleLLM/issues/131) that CUDA "
+         "graph capture may occasionally become stuck when multiple workers "
+         "are in use. If you encounter this problem, please set "
+         "'cuda_graph_batch_sizes' to empty to workaround it.";
 
   // multiple workers, call async forward
   std::vector<folly::SemiFuture<bool>> futures;
@@ -344,12 +349,15 @@ bool LLMEngine::init_kv_cache(int64_t n_blocks) {
 
 ModelOutput LLMEngine::execute_model(Batch& batch) {
   // prepare inputs for workers
-  const auto& batch_sizes = options_.cuda_graph_batch_sizes();
-  const auto batch_size = batch.size();
-  // find the closest batch size in the captured graph
-  auto it =
-      std::lower_bound(batch_sizes.begin(), batch_sizes.end(), batch_size);
-  uint32_t adjusted_batch_size = it == batch_sizes.end() ? 0 : *it;
+  uint32_t adjusted_batch_size = 0;
+  if (options_.enable_cuda_graph()) {
+    // find the closest batch size in the captured graph
+    const auto it = std::lower_bound(
+        batch_sizes_.begin(), batch_sizes_.end(), batch.size());
+    if (it != batch_sizes_.end()) {
+      adjusted_batch_size = *it;
+    }
+  }
 
   auto model_inputs = batch.prepare_model_input(options_.num_decoding_tokens(),
                                                 adjusted_batch_size);

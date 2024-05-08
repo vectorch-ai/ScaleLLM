@@ -2,14 +2,9 @@
 
 #include <c10/core/DeviceType.h>
 #include <c10/core/ScalarType.h>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
-
-#include "model_loader/state_dict.h"
-#include "model_parallel/model_parallel.h"
-#include "models/model_args.h"
 
 extern uintptr_t make_q_matrix(torch::Tensor q_weight,
                                torch::Tensor q_perm,

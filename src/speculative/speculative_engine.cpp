@@ -26,18 +26,19 @@ SpeculativeEngine::SpeculativeEngine(const Options& options)
   engine_options.block_size(options.block_size())
       .max_cache_size(options.max_cache_size())
       .max_memory_utilization(options.max_memory_utilization())
-      .enable_prefix_cache(options.enable_prefix_cache());
+      .enable_prefix_cache(options.enable_prefix_cache())
+      .enable_cuda_graph(options.enable_cuda_graph())
+      .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len());
+
   // target engine
-  engine_options.devices(options.devices());
-  engine_options.num_decoding_tokens(options.num_speculative_tokens() + 1)
-      .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+  engine_options.devices(options.devices())
+      .num_decoding_tokens(options.num_speculative_tokens() + 1)
       .cuda_graph_batch_sizes(options.cuda_graph_batch_sizes());
   engine_ = std::make_unique<LLMEngine>(engine_options);
 
   // draft engine
-  engine_options.devices(options.draft_devices());
-  engine_options.num_decoding_tokens(1)
-      .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+  engine_options.devices(options.draft_devices())
+      .num_decoding_tokens(1)
       .cuda_graph_batch_sizes(options.draft_cuda_graph_batch_sizes());
   draft_engine_ = std::make_unique<LLMEngine>(engine_options);
 

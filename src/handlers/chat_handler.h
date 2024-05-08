@@ -1,7 +1,5 @@
 #pragma once
 
-#include <gflags/gflags.h>
-
 #include "call_data.h"
 #include "chat.grpc.pb.h"  // IWYU pragma: keep
 #include "llm_handler.h"

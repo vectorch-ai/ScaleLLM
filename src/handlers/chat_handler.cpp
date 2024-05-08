@@ -12,18 +12,8 @@
 #include <unordered_set>
 
 #include "chat_template/chat_template.h"
-#include "chat_template/jinja_chat_template.h"
-#include "engine/engine.h"
 #include "handlers/sampling_params.h"
-#include "models/model_args.h"
-#include "models/model_registry.h"
-#include "request/request.h"
-#include "scheduler/scheduler.h"
 #include "utils.h"
-
-DEFINE_bool(enable_jinja_chat_template, false, "Enable Jinja chat template");
-
-DECLARE_int32(num_speculative_tokens);
 
 namespace llm {
 

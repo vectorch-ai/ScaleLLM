@@ -39,6 +39,8 @@ bool Worker::init_model(torch::ScalarType dtype,
   const auto options = torch::dtype(dtype_).device(device_);
   model_ = CausalLM::create(args, quant_args, parallel_args_, options);
   CHECK(model_ != nullptr) << "Failed to create model.";
+  model_runner_ =
+      std::make_unique<ModelRunner>(model_.get(), device_, runner_options_);
   return true;
 }
 
@@ -62,9 +64,6 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
 bool Worker::capture_cuda_graphs() {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   CHECK(!kv_caches_.empty()) << "KV caches are not initialized.";
-
-  model_runner_ =
-      std::make_unique<ModelRunner>(model_.get(), device_, runner_options_);
   // capture graphs if needed
   model_runner_->capture_cuda_graphs(kv_caches_);
   return true;

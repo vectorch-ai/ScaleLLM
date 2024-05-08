@@ -14,11 +14,6 @@
 
 namespace llm {
 namespace {
-// clang-format off
-const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph =
-    {1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 
-     64, 72, 80, 88, 96, 104, 112, 120, 128};
-// clang-format on
 
 #define CALLBACK_WITH_ERROR(CODE, MSG) callback(Status{CODE, MSG});
 
@@ -73,7 +68,8 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
   LOG(INFO) << "Creating engine with devices: " << to_string(devices);
 
   // create a speculative engine if draft model path is provided
-  if (options.draft_model_path().has_value()) {
+  const auto draft_model_path = options.draft_model_path().value_or("");
+  if (!draft_model_path.empty()) {
     const auto draft_devices =
         parse_devices(options.draft_devices().value_or("auto"));
     LOG(INFO) << "Using draft devices: " << to_string(draft_devices);
@@ -84,18 +80,14 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
         .max_cache_size(options.max_cache_size())
         .max_memory_utilization(options.max_memory_utilization())
         .enable_prefix_cache(options.enable_prefix_cache())
-        .num_speculative_tokens(options.num_speculative_tokens());
-    if (options.enable_cuda_graph()) {
-      const auto batch_sizes = options.cuda_graph_batch_sizes().value_or(
-          kDefaultBatchSizesForCudaGraph);
-      spec_options.cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
-          .cuda_graph_batch_sizes(batch_sizes)
-          .draft_cuda_graph_batch_sizes(
-              options.draft_cuda_graph_batch_sizes().value_or(batch_sizes));
-    }
+        .num_speculative_tokens(options.num_speculative_tokens())
+        .enable_cuda_graph(options.enable_cuda_graph())
+        .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+        .cuda_graph_batch_sizes(options.cuda_graph_batch_sizes())
+        .draft_cuda_graph_batch_sizes(options.draft_cuda_graph_batch_sizes());
+
     auto spec_engine = std::make_unique<SpeculativeEngine>(spec_options);
-    CHECK(spec_engine->init(options.model_path(),
-                            options.draft_model_path().value()));
+    CHECK(spec_engine->init(options.model_path(), draft_model_path));
     engine_ = std::move(spec_engine);
   } else {
     LLMEngine::Options eng_options;
@@ -103,12 +95,10 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
         .block_size(options.block_size())
         .max_cache_size(options.max_cache_size())
         .max_memory_utilization(options.max_memory_utilization())
-        .enable_prefix_cache(options.enable_prefix_cache());
-    if (options.enable_cuda_graph()) {
-      eng_options.cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
-          .cuda_graph_batch_sizes(options.cuda_graph_batch_sizes().value_or(
-              kDefaultBatchSizesForCudaGraph));
-    }
+        .enable_prefix_cache(options.enable_prefix_cache())
+        .enable_cuda_graph(options.enable_cuda_graph())
+        .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+        .cuda_graph_batch_sizes(options.cuda_graph_batch_sizes());
 
     auto engine = std::make_unique<LLMEngine>(eng_options);
     CHECK(engine->init(options.model_path()));

@@ -33,14 +33,17 @@ class SpeculativeEngine : public Engine {
     // the number of speculative tokens per step
     DEFINE_ARG(int32_t, num_speculative_tokens) = 0;
 
+    // enable cuda graph
+    DEFINE_ARG(bool, enable_cuda_graph) = true;
+
     // max sequence length used to capture cuda graphs
     DEFINE_ARG(int64_t, cuda_graph_max_seq_len) = 1024;
 
     // batch sizes to capture cuda graphs
-    DEFINE_ARG(std::vector<uint32_t>, cuda_graph_batch_sizes);
+    DEFINE_ARG(std::optional<std::vector<uint32_t>>, cuda_graph_batch_sizes);
 
     // batch sizes to capture cuda graphs for draft model
-    DEFINE_ARG(std::vector<uint32_t>, draft_cuda_graph_batch_sizes);
+    DEFINE_ARG(std::optional<std::vector<uint32_t>>, draft_cuda_graph_batch_sizes);
   };
 
   // create an engine with the given devices
