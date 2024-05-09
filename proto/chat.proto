@@ -19,13 +19,23 @@ message ChatMessage {
   // FunctionCall function_call = 4;
 }
 
-// Next Id: 17
+// Next Id: 21
 message ChatRequest {
+
   // ID of the model to use. You can use the ListModels endpoint to list available models.
   string model = 1;
 
   // A list of messages comprising the conversation so far.
   repeated ChatMessage messages = 2;
+  
+  // the maximum number of tokens to generate in the chat completion. default = 16
+  optional uint32 max_tokens = 10;
+
+  // number of chat completion choices to generate for each input message. default = 1
+  optional uint32 n = 7;
+
+  // whether to stream partial completions back as they are generated. default = false
+  optional bool stream = 8; 
 
   // TODO: a list of functions the model may generate JSON inputs for.
   // repeated Function function = 3;
@@ -40,24 +50,6 @@ message ChatRequest {
   // it is recommended altering this or top_p but not both.
   optional float temperature = 5;
 
-  // top_p sampling cutoff, between [0, 1.0]. default = 1.0
-  optional float top_p = 6;
-
-  // number of chat completion choices to generate for each input message. default = 1
-  optional uint32 n = 7;
-
-  // whether to stream partial completions back as they are generated. default = false
-  optional bool stream = 8;
-
-  // up to 4 sequences where the API will stop generating further tokens.
-  repeated string stop = 9;
-
-  // the list of token ids where the API will stop generating further tokens.
-  repeated int32 stop_token_ids = 16;
-  
-  // the maximum number of tokens to generate in the chat completion. default = infinity
-  optional uint32 max_tokens = 10;
-
   // values between [-2.0, 2.0]. default = 0.0
   // Positive values penalize new tokens based on their existing in the text so far, increasing 
   // the model's likelihood to talk about new topics.
@@ -68,12 +60,35 @@ message ChatRequest {
   // decreasing the model's likelihood to repeat the same line verbatim.
   optional float frequency_penalty = 12;
 
+  // repetition penalty to penalize new tokens based on their occurence in the
+  // text. values > 1.0 encourage the model to use new tokens, while values
+  // < 1.0 encourage the model to repeat tokens. default = 1.0
+  optional float repetition_penalty = 17;
+
+  // top_p sampling cutoff, between [0, 1.0]. default = 1.0
+  optional float top_p = 6;
+
+  // top_k sampling cutoff, default = -1 (no cutoff)
+  optional int64 top_k = 18;
+
   // TODO: logit_bias
   // modify the likelihood of specified tokens appearing in the completion.
   // map<int64, float> logit_bias = 13;
 
   // A unique identifier representing your end-user, which can help system to monitor and detect abuse.
   string user = 14;
+
+  // whether to skip special tokens in the output. default = true
+  optional bool skip_special_tokens = 19;
+
+  // whether to ignore the end of sequence token. default = false.
+  optional bool ignore_eos = 20;
+
+  // up to 4 sequences where the API will stop generating further tokens.
+  repeated string stop = 9;
+
+  // the list of token ids where the API will stop generating further tokens.
+  repeated int32 stop_token_ids = 16;
 
   // request priority. default = DEFAULT
   optional Priority priority = 15;

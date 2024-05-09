@@ -48,11 +48,14 @@ class LLMEngine : public Engine {
     // in speculative decoding, it is the number of speculative tokens + 1
     DEFINE_ARG(int64_t, num_decoding_tokens) = 1;
 
+    // enable cuda graph
+    DEFINE_ARG(bool, enable_cuda_graph) = true;
+
     // max sequence length used to capture cuda graphs
     DEFINE_ARG(int64_t, cuda_graph_max_seq_len) = 1024;
 
     // batch sizes to capture cuda graphs
-    DEFINE_ARG(std::vector<uint32_t>, cuda_graph_batch_sizes);
+    DEFINE_ARG(std::optional<std::vector<uint32_t>>, cuda_graph_batch_sizes);
   };
 
   // create an engine with the given devices
@@ -118,6 +121,9 @@ class LLMEngine : public Engine {
 
   // a list of process groups, with each process group handling a single device
   std::vector<std::unique_ptr<ProcessGroup>> process_groups_;
+
+  // batch sizes to capture cuda graphs
+  std::vector<uint32_t> batch_sizes_;
 
   // tokenizer
   std::unique_ptr<Tokenizer> tokenizer_;

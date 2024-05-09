@@ -4,10 +4,10 @@
 #include <pybind11/stl.h>
 
 #include "common/metrics.h"
+#include "handlers/llm_handler.h"
+#include "handlers/sampling_params.h"
 #include "llm.h"
-#include "llm_handler.h"
 #include "request/status.h"
-#include "sampling_params.h"
 
 namespace llm::csrc {
 namespace py = pybind11;
@@ -94,20 +94,52 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
           "wait", &ScheduleTask::wait, py::call_guard<py::gil_scoped_release>())
       .def("get", &ScheduleTask::get, py::call_guard<py::gil_scoped_release>());
 
-  py::class_<LLMHandler>(m, "LLMHandler")
-      .def(py::init<const std::string&, const std::string&>())
-      .def("schedule_async",
-           &LLMHandler::schedule_async,
-           py::call_guard<py::gil_scoped_release>())
-      .def("schedule_chat_async",
-           &LLMHandler::schedule_chat_async,
-           py::call_guard<py::gil_scoped_release>())
-      .def(
-          "start", &LLMHandler::start, py::call_guard<py::gil_scoped_release>())
-      .def("stop", &LLMHandler::stop, py::call_guard<py::gil_scoped_release>())
-      .def("run_until_complete",
-           &LLMHandler::run_until_complete,
-           py::call_guard<py::gil_scoped_release>());
+  auto llm_handler = py::class_<LLMHandler>(m, "LLMHandler")
+                         .def(py::init<const LLMHandler::Options&>())
+                         .def("schedule_async",
+                              &LLMHandler::schedule_async,
+                              py::call_guard<py::gil_scoped_release>())
+                         .def("schedule_chat_async",
+                              &LLMHandler::schedule_chat_async,
+                              py::call_guard<py::gil_scoped_release>())
+                         .def("start",
+                              &LLMHandler::start,
+                              py::call_guard<py::gil_scoped_release>())
+                         .def("stop",
+                              &LLMHandler::stop,
+                              py::call_guard<py::gil_scoped_release>())
+                         .def("run_until_complete",
+                              &LLMHandler::run_until_complete,
+                              py::call_guard<py::gil_scoped_release>());
+
+  // LLMHandler::Options
+  py::class_<LLMHandler::Options>(llm_handler, "Options")
+      .def(py::init())
+      .def_readwrite("model_path", &LLMHandler::Options::model_path_)
+      .def_readwrite("devices", &LLMHandler::Options::devices_)
+      .def_readwrite("draft_model_path",
+                     &LLMHandler::Options::draft_model_path_)
+      .def_readwrite("draft_devices", &LLMHandler::Options::draft_devices_)
+      .def_readwrite("block_size", &LLMHandler::Options::block_size_)
+      .def_readwrite("max_cache_size", &LLMHandler::Options::max_cache_size_)
+      .def_readwrite("max_memory_utilization",
+                     &LLMHandler::Options::max_memory_utilization_)
+      .def_readwrite("enable_prefix_cache",
+                     &LLMHandler::Options::enable_prefix_cache_)
+      .def_readwrite("enable_cuda_graph",
+                     &LLMHandler::Options::enable_cuda_graph_)
+      .def_readwrite("cuda_graph_max_seq_len",
+                     &LLMHandler::Options::cuda_graph_max_seq_len_)
+      .def_readwrite("cuda_graph_batch_sizes",
+                     &LLMHandler::Options::cuda_graph_batch_sizes_)
+      .def_readwrite("draft_cuda_graph_batch_sizes",
+                     &LLMHandler::Options::draft_cuda_graph_batch_sizes_)
+      .def_readwrite("max_tokens_per_batch",
+                     &LLMHandler::Options::max_tokens_per_batch_)
+      .def_readwrite("max_seqs_per_batch",
+                     &LLMHandler::Options::max_seqs_per_batch_)
+      .def_readwrite("num_speculative_tokens",
+                     &LLMHandler::Options::num_speculative_tokens_);
 
   // class LLM
   py::class_<LLM, std::shared_ptr<LLM>>(m, "LLM")

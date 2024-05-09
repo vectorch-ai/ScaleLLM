@@ -7,15 +7,11 @@ pybind_extension(
     -DPY_MODULE_NAME=_C
   HDRS
     llm.h
-    sampling_params.h
-    llm_handler.h
   SRCS
     llm.cpp
-    llm_handler.cpp
     scalellm.cpp
   DEPS
-    :engine_factory
-    :scheduler
+    :llm_handler
     torch
     absl::strings
     gflags::gflags

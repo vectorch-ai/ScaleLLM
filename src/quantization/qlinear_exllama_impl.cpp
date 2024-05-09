@@ -1,14 +1,9 @@
 #include "qlinear_exllama_impl.h"
 
 #include <c10/core/DeviceType.h>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
-
-#include "model_loader/state_dict.h"
-#include "model_parallel/model_parallel.h"
-#include "models/model_args.h"
 
 // Create Q4Matrix, return handle
 extern uintptr_t make_q4(torch::Tensor qweight,

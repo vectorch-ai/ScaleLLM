@@ -89,7 +89,25 @@ class ScheduleTask:
     def get(self) -> bool: ...
 
 class LLMHandler:
-    def __init__(self, model_path: str, devices: str) -> None: ...
+    class Options:
+        def __init__(self) -> None: ...
+        model_path: str
+        devices: Optional[str]
+        draft_model_path: Optional[str]
+        draft_devices: Optional[str]
+        block_size: int
+        max_cache_size: int
+        max_memory_utilization: float
+        enable_prefix_cache: bool
+        enable_cuda_graph: bool
+        cuda_graph_max_seq_len: int
+        cuda_graph_batch_sizes: Optional[List[int]]
+        draft_cuda_graph_batch_sizes: Optional[List[int]]
+        max_tokens_per_batch: int
+        max_seqs_per_batch: int
+        num_speculative_tokens: int
+
+    def __init__(self, options: Options) -> None: ...
     def schedule_async(
         self,
         prompt: str,

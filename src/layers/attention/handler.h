@@ -1,7 +1,6 @@
 #pragma once
 
 #include <c10/core/TensorOptions.h>
-#include <gflags/gflags.h>
 #include <torch/torch.h>
 
 #include <memory>

@@ -2,7 +2,26 @@ include(cc_library)
 
 cc_library(
   NAME 
-    handlers
+    llm_handler
+  HDRS 
+    sampling_params.h
+    llm_handler.h
+  SRCS 
+    llm_handler.cpp
+  DEPS
+    :common
+    :scheduler
+    :request
+    :engine
+    :models
+    :chat_template
+    :jinja_chat_template
+    glog::glog
+)
+
+cc_library(
+  NAME 
+    grpc_handlers
   HDRS 
     call_data.h
     utils.h
@@ -15,11 +34,7 @@ cc_library(
     chat_handler.cpp
     models_handler.cpp
   DEPS
-    :common
-    :scheduler
-    :request
-    :engine
-    :models
+    :llm_handler
     :chat_template
     :jinja_chat_template
     stduuid

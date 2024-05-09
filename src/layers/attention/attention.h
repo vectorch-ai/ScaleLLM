@@ -1,6 +1,5 @@
 #pragma once
 
-#include <gflags/gflags.h>
 #include <torch/torch.h>
 
 #include "layers/attention/handler.h"

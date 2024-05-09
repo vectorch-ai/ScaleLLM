@@ -1,11 +1,11 @@
 #include "activation.h"
 
+#include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <kernels/activation_kernels.h>
 #include <torch/torch.h>
 
 #include <boost/algorithm/string.hpp>
-#include <cmath>
 
 DECLARE_bool(disable_custom_kernels);
 

@@ -1,6 +1,5 @@
 #include "ref_handler.h"
 
-#include <gflags/gflags.h>
 #include <torch/torch.h>
 
 #include "memory/kv_cache.h"

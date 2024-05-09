@@ -37,7 +37,7 @@ llm_engine: AsyncLLMEngine = None
 
 
 def jsonify_model(obj: BaseModel):
-    return obj.model_dump_json(exclude_none=True)
+    return obj.model_dump_json(exclude_unset=True)
 
 
 def request_to_sampling_params(request: CompletionRequest) -> SamplingParams:
@@ -145,6 +145,7 @@ async def generate_chat_stream_response(
 ) -> StreamingResponse:
     request_id = f"chatcmpl-{shortuuid.random()}"
     created_time = int(time.time())
+    chunk_object_type = "chat.completion.chunk"
 
     async def generate_stream_content():
         try:
@@ -157,11 +158,15 @@ async def generate_chat_stream_response(
                     if index not in first_message_sent:
                         response = ChatCompletionStreamResponse(
                             id=request_id,
+                            object=chunk_object_type,
                             created=created_time,
                             model=model,
                             choices=[
                                 ChatCompletionResponseStreamChoice(
-                                    index=index, delta=DeltaMessage(role="assistant")
+                                    index=index,
+                                    delta=DeltaMessage(role="assistant", content=""),
+                                    logprobs=None,
+                                    finish_reason=None,
                                 )
                             ],
                         )
@@ -170,12 +175,15 @@ async def generate_chat_stream_response(
                     # send chunk with delta message
                     response = ChatCompletionStreamResponse(
                         id=request_id,
+                        object=chunk_object_type,
                         created=created_time,
                         model=model,
                         choices=[
                             ChatCompletionResponseStreamChoice(
                                 index=index,
                                 delta=DeltaMessage(content=seq_output.text),
+                                logprobs=None,
+                                finish_reason=None,
                             )
                         ],
                     )
@@ -184,14 +192,15 @@ async def generate_chat_stream_response(
                     if seq_output.finish_reason is not None:
                         response = ChatCompletionStreamResponse(
                             id=request_id,
+                            object=chunk_object_type,
                             created=created_time,
                             model=model,
                             choices=[
                                 ChatCompletionResponseStreamChoice(
                                     index=index,
-                                    delta=DeltaMessage(
-                                        finish_reason=seq_output.finish_reason
-                                    ),
+                                    delta=DeltaMessage(),
+                                    logprobs=None,
+                                    finish_reason=seq_output.finish_reason,
                                 )
                             ],
                         )
@@ -201,6 +210,7 @@ async def generate_chat_stream_response(
                 if output.usage:
                     response = ChatCompletionStreamResponse(
                         id=request_id,
+                        object=chunk_object_type,
                         created=created_time,
                         model=model,
                         choices=[],
@@ -265,6 +275,7 @@ async def generate_completion_response(
         )
     return CompletionResponse(
         id=request_id,
+        object="text_completion",
         created=created_time,
         model=model,
         choices=choices,
@@ -277,6 +288,7 @@ async def generate_completion_stream_response(
 ) -> StreamingResponse:
     request_id = f"cmpl-{shortuuid.random()}"
     created_time = int(time.time())
+    chunk_object_type = "text_completion"
 
     async def generate_stream_content():
         try:
@@ -285,6 +297,7 @@ async def generate_completion_stream_response(
                     # send chunk with delta message
                     response = CompletionStreamResponse(
                         id=request_id,
+                        object=chunk_object_type,
                         created=created_time,
                         model=model,
                         choices=[
@@ -299,6 +312,7 @@ async def generate_completion_stream_response(
                     if seq_output.finish_reason is not None:
                         response = CompletionStreamResponse(
                             id=request_id,
+                            object=chunk_object_type,
                             created=created_time,
                             model=model,
                             choices=[
@@ -314,6 +328,7 @@ async def generate_completion_stream_response(
             if output.usage:
                 response = CompletionStreamResponse(
                     id=request_id,
+                    object=chunk_object_type,
                     created=created_time,
                     model=model,
                     choices=[],
@@ -358,32 +373,133 @@ def parse_args():
     )
     parser.add_argument("--host", type=str, default="localhost", help="host name")
     parser.add_argument("--port", type=int, default=8080, help="port number")
+    parser.add_argument(
+        "--log_level", type=str, default="info", help="uvicorn log level"
+    )
 
     parser.add_argument(
         "--model",
         type=str,
         default="gpt2",
-        help="Name or path of the huggingface model.",
+        help="model name or path.",
     )
 
     parser.add_argument(
         "--revision", type=str, default=None, help="Revision of the model."
     )
-
     parser.add_argument("--devices", type=str, default="auto", help="devices to use.")
+    parser.add_argument(
+        "--draft_model", type=str, default=None, help="Draft model name or path."
+    )
+    parser.add_argument(
+        "--draft_revision", type=str, default=None, help="Revision of the draft model."
+    )
+    parser.add_argument(
+        "--draft_devices", type=str, default="auto", help="Draft devices to use."
+    )
+    parser.add_argument(
+        "--block_size",
+        type=int,
+        default=16,
+        help="Number of slots per kv cache block. Default is 16.",
+    )
+    parser.add_argument(
+        "--max_cache_size",
+        type=int,
+        default=10 * 1024 * 1024 * 1024,
+        help="Max gpu memory size for kv cache. Default is 10GB.",
+    )
+    parser.add_argument(
+        "--max_memory_utilization",
+        type=float,
+        default=0.9,
+        help="The fraction of GPU memory to be used for model inference, including model weights and kv cache.",
+    )
+    parser.add_argument(
+        "--enable_prefix_cache",
+        type=lambda s: s.lower() in ["true", "t", "yes", "1"],
+        default=True,
+        help="Enable prefix cache.",
+    )
+    parser.add_argument(
+        "--enable_cuda_graph",
+        type=lambda s: s.lower() in ["true", "t", "yes", "1"],
+        default=True,
+        help="Enable CUDA graph.",
+    )
+    parser.add_argument(
+        "--cuda_graph_max_seq_len",
+        type=int,
+        default=2048,
+        help="Max sequence length to capture for each CUDA graph. Batches with larger values will be executed in eager mode.",
+    )
+    parser.add_argument(
+        "--cuda_graph_batch_sizes",
+        type=str,
+        default=None,
+        help="Batch sizes to capture for CUDA graph. Values are a list of integers separated by comma. (e.g., 1,2,4,8,16,32,64,128)",
+    )
+    parser.add_argument(
+        "--draft_cuda_graph_batch_sizes",
+        type=str,
+        default=None,
+        help="Batch sizes to capture for draft CUDA graph. Values are a list of integers separated by comma. (e.g., 1,2,4,8,16,32,64,128)",
+    )
+    parser.add_argument(
+        "--max_tokens_per_batch",
+        type=int,
+        default=512,
+        help="Max number of tokens per batch.",
+    )
+    parser.add_argument(
+        "--max_seqs_per_batch",
+        type=int,
+        default=128,
+        help="Max number of sequences per batch.",
+    )
+    parser.add_argument(
+        "--num_speculative_tokens",
+        type=int,
+        default=0,
+        help="Number of speculative tokens.",
+    )
+    return parser.parse_args()
 
-    args = parser.parse_args()
-    return args
+
+def parse_batch_sizes(batch_sizes_str):
+    if batch_sizes_str is None:
+        return None
+    return [int(size) for size in batch_sizes_str.split(",")]
 
 
 if __name__ == "__main__":
     args = parse_args()
     # initialize the LLM engine
-    llm_engine = AsyncLLMEngine(args.model, args.devices)
+    llm_engine = AsyncLLMEngine(
+        model=args.model,
+        revision=args.revision,
+        devices=args.devices,
+        draft_model=args.draft_model,
+        draft_revision=args.draft_revision,
+        draft_devices=args.draft_devices,
+        block_size=args.block_size,
+        max_cache_size=args.max_cache_size,
+        max_memory_utilization=args.max_memory_utilization,
+        enable_prefix_cache=args.enable_prefix_cache,
+        enable_cuda_graph=args.enable_cuda_graph,
+        cuda_graph_max_seq_len=args.cuda_graph_max_seq_len,
+        cuda_graph_batch_sizes=parse_batch_sizes(args.cuda_graph_batch_sizes),
+        draft_cuda_graph_batch_sizes=parse_batch_sizes(
+            args.draft_cuda_graph_batch_sizes
+        ),
+        max_tokens_per_batch=args.max_tokens_per_batch,
+        max_seqs_per_batch=args.max_seqs_per_batch,
+        num_speculative_tokens=args.num_speculative_tokens,
+    )
 
     try:
         llm_engine.start()
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
     except KeyboardInterrupt:
         pass
     finally:
