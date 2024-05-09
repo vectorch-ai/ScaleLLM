@@ -1,5 +1,7 @@
 #include "completion_handler.h"
 
+#include <absl/time/clock.h>
+#include <absl/time/time.h>
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
@@ -20,20 +22,36 @@ std::string generate_request_id() {
 }
 
 bool send_delta_to_client(CompletionCallData* call_data,
+                          const std::string& request_id,
+                          int64_t created_time,
+                          const std::string& model,
                           const RequestOutput& output) {
   for (const auto& seq_output : output.outputs) {
     if (!seq_output.text.empty()) {
       proto::CompletionResponse response;
       response.set_object("text_completion");
-      // response.set_id(request->id);
-      // response.set_created(request->created_time);
-      // response.set_model(request->model);
+      response.set_id(request_id);
+      response.set_created(created_time);
+      response.set_model(model);
       auto* choice = response.add_choices();
       choice->set_index(seq_output.index);
       choice->set_text(seq_output.text);
-      if (seq_output.finish_reason.has_value()) {
-        choice->set_finish_reason(seq_output.finish_reason.value());
+      if (!call_data->write(std::move(response))) {
+        return false;
       }
+    }
+
+    // send finish reason as a separate message
+    if (seq_output.finish_reason.has_value()) {
+      proto::CompletionResponse response;
+      response.set_object("text_completion");
+      response.set_id(request_id);
+      response.set_created(created_time);
+      response.set_model(model);
+      auto* choice = response.add_choices();
+      choice->set_index(seq_output.index);
+      choice->set_text("");
+      choice->set_finish_reason(seq_output.finish_reason.value());
       if (!call_data->write(std::move(response))) {
         return false;
       }
@@ -43,17 +61,16 @@ bool send_delta_to_client(CompletionCallData* call_data,
 }
 
 bool send_result_to_client(CompletionCallData* call_data,
+                           const std::string& request_id,
+                           int64_t created_time,
+                           const std::string& model,
                            const RequestOutput& req_output) {
-  if (req_output.outputs.empty()) {
-    // TODO: mapping status to grpc status
-    return call_data->finish();
-  }
 
   proto::CompletionResponse response;
   response.set_object("text_completion");
-  // response.set_id(request->id);
-  // response.set_created(request->created_time);
-  // response.set_model(request->model);
+  response.set_id(request_id);
+  response.set_created(created_time);
+  response.set_model(model);
 
   // add choices into response
   for (const auto& output : req_output.outputs) {
@@ -76,9 +93,8 @@ bool send_result_to_client(CompletionCallData* call_data,
         static_cast<int32_t>(usage.num_generated_tokens));
     proto_usage->set_total_tokens(static_cast<int32_t>(usage.num_total_tokens));
   }
-  // TODO: combine write and finish
-  call_data->write(response);
-  return call_data->finish();
+
+  return call_data->write_and_finish(response);
 }
 
 SamplingParams grpc_request_to_sampling_params(
@@ -130,15 +146,25 @@ SamplingParams grpc_request_to_sampling_params(
 
 }  // namespace
 
-CompletionHandler::CompletionHandler(LLMHandler* llm_handler)
-    : llm_handler_(llm_handler) {
+CompletionHandler::CompletionHandler(LLMHandler* llm_handler,
+                                     const std::vector<std::string>& models)
+    : llm_handler_(llm_handler), models_(models.begin(), models.end()) {
   CHECK(llm_handler_ != nullptr);
+  CHECK(!models_.empty());
 }
 
 void CompletionHandler::complete_async(CompletionCallData* call_data) {
   const auto& grpc_request = call_data->request();
+  // check if model is supported
+  const auto& model = grpc_request.model();
+  if (!models_.contains(model)) {
+    call_data->finish_with_error(grpc::StatusCode::NOT_FOUND,
+                                 "Model not supported");
+    return;
+  }
+
   auto sp = grpc_request_to_sampling_params(grpc_request);
-  auto priority = grpc_priority_to_priority(grpc_request.priority());
+  auto priority = to_priority(grpc_request.priority());
   auto stream = grpc_request.stream();
 
   // schedule the request
@@ -147,12 +173,26 @@ void CompletionHandler::complete_async(CompletionCallData* call_data) {
       sp = std::move(sp),
       priority,
       stream,
-      [call_data](const RequestOutput& req_output) -> bool {
+      [call_data,
+       model,
+       request_id = generate_request_id(),
+       created_time = absl::ToUnixSeconds(absl::Now())](
+          const RequestOutput& req_output) -> bool {
+        if (req_output.status.has_value()) {
+          const auto& status = req_output.status.value();
+          if (!status.ok()) {
+            return call_data->finish_with_error(
+                to_grpc_status_code(status.code()), status.message());
+          }
+        }
+
         if (req_output.finished) {
-          return send_result_to_client(call_data, req_output);
+          return send_result_to_client(
+              call_data, request_id, created_time, model, req_output);
         }
         // send delta to client
-        return send_delta_to_client(call_data, req_output);
+        return send_delta_to_client(
+            call_data, request_id, created_time, model, req_output);
       });
 }
 

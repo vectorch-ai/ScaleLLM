@@ -1,6 +1,8 @@
 #include "chat_handler.h"
 
 #include <absl/strings/escaping.h>
+#include <absl/time/clock.h>
+#include <absl/time/time.h>
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
@@ -25,47 +27,76 @@ std::string generate_request_id() {
 
 bool send_delta_to_client(ChatCallData* call_data,
                           std::unordered_set<size_t>* first_message_sent,
+                          const std::string& request_id,
+                          int64_t created_time,
+                          const std::string& model,
                           const RequestOutput& output) {
   // send delta to client
   for (const auto& seq_output : output.outputs) {
-    proto::ChatResponse response;
-    response.set_object("chat.completion.chunk");
-    // response.set_id(request->id);
-    // response.set_created(request->created_time);
-    // response.set_model(request->model);
-    auto* choice = response.add_choices();
     const auto& index = seq_output.index;
-    choice->set_index(index);
-    // add message
-    auto* message = choice->mutable_delta();
-    // only set role for first message
+
+    // send role as a seperate message
     if (first_message_sent->find(index) == first_message_sent->end()) {
+      proto::ChatResponse response;
+      response.set_object("chat.completion.chunk");
+      response.set_id(request_id);
+      response.set_created(created_time);
+      response.set_model(model);
+      auto* choice = response.add_choices();
+      choice->set_index(index);
+      auto* message = choice->mutable_delta();
       message->set_role("assistant");
+      message->set_content("");
+      // update first_message_sent
       first_message_sent->insert(index);
+      if (!call_data->write(std::move(response))) {
+        return false;
+      }
     }
-    message->set_content(seq_output.text);
+
+    if (!seq_output.text.empty()) {
+      proto::ChatResponse response;
+      response.set_object("chat.completion.chunk");
+      response.set_id(request_id);
+      response.set_created(created_time);
+      response.set_model(model);
+      auto* choice = response.add_choices();
+      choice->set_index(index);
+      auto* message = choice->mutable_delta();
+      message->set_content(seq_output.text);
+      if (!call_data->write(std::move(response))) {
+        return false;
+      }
+    }
+
+    // send finish reason as a separate message
     if (seq_output.finish_reason.has_value()) {
+      proto::ChatResponse response;
+      response.set_object("chat.completion.chunk");
+      response.set_id(request_id);
+      response.set_created(created_time);
+      response.set_model(model);
+      auto* choice = response.add_choices();
+      choice->set_index(index);
       choice->set_finish_reason(seq_output.finish_reason.value());
-    }
-    if (!call_data->write(std::move(response))) {
-      return false;
+      if (!call_data->write(std::move(response))) {
+        return false;
+      }
     }
   }
   return true;
 }
 
 bool send_result_to_client(ChatCallData* call_data,
+                           const std::string& request_id,
+                           int64_t created_time,
+                           const std::string& model,
                            const RequestOutput& req_output) {
-  if (req_output.outputs.empty()) {
-    // TODO: mapping status to grpc status
-    return call_data->finish();
-  }
-
   proto::ChatResponse response;
   response.set_object("chat.completion");
-  // response.set_id(request->id);
-  // response.set_created(request->created_time);
-  // response.set_model(request->model);
+  response.set_id(request_id);
+  response.set_created(created_time);
+  response.set_model(model);
 
   for (const auto& output : req_output.outputs) {
     // add choices into response
@@ -90,9 +121,7 @@ bool send_result_to_client(ChatCallData* call_data,
     proto_usage->set_total_tokens(static_cast<int32_t>(usage.num_total_tokens));
   }
 
-  // TODO: combine write and finish
-  call_data->write(response);
-  return call_data->finish();
+  return call_data->write_and_finish(response);
 }
 
 SamplingParams grpc_request_to_sampling_params(
@@ -141,14 +170,25 @@ SamplingParams grpc_request_to_sampling_params(
 
 }  // namespace
 
-ChatHandler::ChatHandler(LLMHandler* llm_handler) : llm_handler_(llm_handler) {
+ChatHandler::ChatHandler(LLMHandler* llm_handler,
+                         const std::vector<std::string>& models)
+    : llm_handler_(llm_handler), models_(models.begin(), models.end()) {
   CHECK(llm_handler != nullptr);
+  CHECK(!models_.empty());
 }
 
 void ChatHandler::chat_async(ChatCallData* call_data) {
   const auto& grpc_request = call_data->request();
+  // check if model is supported
+  const auto& model = grpc_request.model();
+  if (!models_.contains(model)) {
+    call_data->finish_with_error(grpc::StatusCode::NOT_FOUND,
+                                 "Model not supported");
+    return;
+  }
+
   auto sp = grpc_request_to_sampling_params(grpc_request);
-  auto priority = grpc_priority_to_priority(grpc_request.priority());
+  auto priority = to_priority(grpc_request.priority());
   auto stream = grpc_request.stream();
 
   std::vector<Message> messages;
@@ -163,13 +203,31 @@ void ChatHandler::chat_async(ChatCallData* call_data) {
       std::move(sp),
       priority,
       stream,
-      [call_data, first_message_sent = std::unordered_set<size_t>()](
+      [call_data,
+       model,
+       first_message_sent = std::unordered_set<size_t>(),
+       request_id = generate_request_id(),
+       created_time = absl::ToUnixSeconds(absl::Now())](
           const RequestOutput& req_output) mutable -> bool {
+        if (req_output.status.has_value()) {
+          const auto& status = req_output.status.value();
+          if (!status.ok()) {
+            return call_data->finish_with_error(
+                to_grpc_status_code(status.code()), status.message());
+          }
+        }
+
         if (req_output.finished) {
-          return send_result_to_client(call_data, req_output);
+          return send_result_to_client(
+              call_data, request_id, created_time, model, req_output);
         }
         // send delta to client
-        return send_delta_to_client(call_data, &first_message_sent, req_output);
+        return send_delta_to_client(call_data,
+                                    &first_message_sent,
+                                    request_id,
+                                    created_time,
+                                    model,
+                                    req_output);
       });
 }
 

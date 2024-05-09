@@ -6,20 +6,17 @@
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "sequence.h"
 
 namespace llm {
 
-Request::Request(const std::string& id,
-                 std::string prompt,
+Request::Request(std::string prompt,
                  std::vector<int32_t> prompt_tokens,
                  size_t seq_capacity,
                  size_t num_seqs)
-    : id(id),
-      prompt(std::move(prompt)),
+    : prompt(std::move(prompt)),
       prompt_tokens(std::move(prompt_tokens)),
       seq_capacity(seq_capacity),
       num_seqs(num_seqs),

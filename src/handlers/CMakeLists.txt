@@ -40,4 +40,5 @@ cc_library(
     stduuid
     glog::glog
     grpc_proto::completion
+    absl::flat_hash_set
 )

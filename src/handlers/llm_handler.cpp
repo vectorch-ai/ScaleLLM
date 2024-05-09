@@ -271,8 +271,7 @@ std::unique_ptr<Request> LLMHandler::create_request(std::string prompt,
   // tokens
   const size_t capacity = prompt_tokens.size() + max_tokens +
                           options_.num_speculative_tokens() + /*bouns_token*/ 1;
-  auto request = std::make_unique<Request>("request_id",
-                                           std::move(prompt),
+  auto request = std::make_unique<Request>(std::move(prompt),
                                            std::move(prompt_tokens),
                                            capacity,
                                            num_seqs);

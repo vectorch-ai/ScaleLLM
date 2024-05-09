@@ -1,10 +1,14 @@
 #pragma once
 
+#include <grpcpp/grpcpp.h>
+
 #include "common.pb.h"
 #include "request/output.h"
-
+#include "request/status.h"
 namespace llm {
 
-Priority grpc_priority_to_priority(proto::Priority priority);
+Priority to_priority(proto::Priority priority);
+
+grpc::StatusCode to_grpc_status_code(StatusCode code);
 
 }  // namespace llm

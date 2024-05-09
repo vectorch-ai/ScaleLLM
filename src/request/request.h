@@ -24,8 +24,7 @@ using OnOutput = std::function<bool(const RequestOutput& output)>;
 struct Request final {
  public:
   // caller needs to gurantee prompt's lifecycle
-  Request(const std::string& id,
-          std::string prompt,
+  Request(std::string prompt,
           std::vector<int32_t> prompt_tokens,
           size_t seq_capacity,
           size_t num_seqs);
@@ -47,10 +46,6 @@ struct Request final {
   bool is_cancelled() const {
     return is_cancelled_.load(std::memory_order_relaxed);
   }
-
-  // The unique id of the request.
-  // NOLINTNEXTLINE
-  const std::string id;
 
   // Scheduled time of the request.
   // NOLINTNEXTLINE
