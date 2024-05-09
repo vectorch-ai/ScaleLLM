@@ -93,7 +93,7 @@ class LLMHandler:
         def __init__(self) -> None: ...
         model_path: str
         devices: Optional[str]
-        draft_mode_path: Optional[str]
+        draft_model_path: Optional[str]
         draft_devices: Optional[str]
         block_size: int
         max_cache_size: int

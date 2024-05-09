@@ -27,9 +27,6 @@ message ChatRequest {
 
   // A list of messages comprising the conversation so far.
   repeated ChatMessage messages = 2;
-
-  // request priority. default = DEFAULT
-  optional Priority priority = 15;
   
   // the maximum number of tokens to generate in the chat completion. default = 16
   optional uint32 max_tokens = 10;
@@ -48,6 +45,11 @@ message ChatRequest {
   // "auto" - the model can pick between an end-user or calling a function.
   // string function_call = 4;
 
+  // temperature of the sampling, between [0, 2]. default = 1.0
+  // higher value will make the ouput more random, while a lower value will make it more deterministic.
+  // it is recommended altering this or top_p but not both.
+  optional float temperature = 5;
+
   // values between [-2.0, 2.0]. default = 0.0
   // Positive values penalize new tokens based on their existing in the text so far, increasing 
   // the model's likelihood to talk about new topics.
@@ -62,11 +64,6 @@ message ChatRequest {
   // text. values > 1.0 encourage the model to use new tokens, while values
   // < 1.0 encourage the model to repeat tokens. default = 1.0
   optional float repetition_penalty = 17;
-
-  // temperature of the sampling, between [0, 2]. default = 1.0
-  // higher value will make the ouput more random, while a lower value will make it more deterministic.
-  // it is recommended altering this or top_p but not both.
-  optional float temperature = 5;
 
   // top_p sampling cutoff, between [0, 1.0]. default = 1.0
   optional float top_p = 6;
@@ -92,6 +89,9 @@ message ChatRequest {
 
   // the list of token ids where the API will stop generating further tokens.
   repeated int32 stop_token_ids = 16;
+
+  // request priority. default = DEFAULT
+  optional Priority priority = 15;
 }
 
 message ChatChoice {

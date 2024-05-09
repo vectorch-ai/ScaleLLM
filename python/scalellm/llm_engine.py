@@ -3,7 +3,8 @@ import os
 import queue
 from typing import List, Optional
 
-from scalellm._C import LLMHandler, Message, Priority, RequestOutput, SamplingParams
+from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
+                         SamplingParams)
 from scalellm.downloader import download_hf_model
 
 
@@ -104,9 +105,13 @@ class OutputAsyncStream:
 class AsyncLLMEngine:
     def __init__(
         self,
-        model_path: str,
+        model: str,
+        revision: Optional[str] = None,
+        draft_model: Optional[str] = None,
+        draft_revision: Optional[str] = None,
+        allow_patterns: Optional[str] = None,
+        cache_dir: Optional[str] = None,
         devices: Optional[str] = None,
-        draft_mode_path: Optional[str] = None,
         draft_devices: Optional[str] = None,
         block_size: int = 16,
         max_cache_size: int = 10 * 1024 * 1024 * 1024,
@@ -121,15 +126,27 @@ class AsyncLLMEngine:
         num_speculative_tokens: int = 0,
     ) -> None:
         # download hf model if it does not exist
+        model_path = model
         if not os.path.exists(model_path):
-            model_path = download_hf_model(model_path)
-        if draft_mode_path is not None and not os.path.exists(draft_mode_path):
-            draft_mode_path = download_hf_model(draft_mode_path)
+            model_path = download_hf_model(
+                repo_id=model_path,
+                revision=revision,
+                allow_patterns=allow_patterns,
+                cache_dir=cache_dir,
+            )
+        draft_model_path = draft_model
+        if draft_model_path is not None and not os.path.exists(draft_model_path):
+            draft_model_path = download_hf_model(
+                repo_id=draft_model_path,
+                revision=draft_revision,
+                allow_patterns=allow_patterns,
+                cache_dir=cache_dir,
+            )
 
         options = LLMHandler.Options()
         options.model_path = model_path
         options.devices = devices
-        options.draft_mode_path = draft_mode_path
+        options.draft_model_path = draft_model_path
         options.draft_devices = draft_devices
         options.block_size = block_size
         options.max_cache_size = max_cache_size
@@ -142,6 +159,7 @@ class AsyncLLMEngine:
         options.max_tokens_per_batch = max_tokens_per_batch
         options.max_seqs_per_batch = max_seqs_per_batch
         options.num_speculative_tokens = num_speculative_tokens
+        # create the LLM handler
         self._handler = LLMHandler(options)
 
     # schedule a request to the engine, and return a stream to receive output

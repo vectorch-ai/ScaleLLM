@@ -99,24 +99,24 @@ SamplingParams grpc_request_to_sampling_params(
   if (request.has_presence_penalty()) {
     sampling_params.presence_penalty = request.presence_penalty();
   }
-  // if (request.has_repetition_penalty()) {
-  //   sampling_params.repetition_penalty = request.repetition_penalty();
-  // }
+  if (request.has_repetition_penalty()) {
+    sampling_params.repetition_penalty = request.repetition_penalty();
+  }
   if (request.has_temperature()) {
     sampling_params.temperature = request.temperature();
   }
   if (request.has_top_p()) {
     sampling_params.top_p = request.top_p();
   }
-  // if (request.has_top_k()) {
-  //   sampling_params.top_k = request.top_k();
-  // }
-  // if (request.has_skip_special_tokens()) {
-  //   sampling_params.skip_special_tokens = request.skip_special_tokens();
-  // }
-  // if (request.has_ignore_eos()) {
-  //   sampling_params.ignore_eos = request.ignore_eos();
-  // }
+  if (request.has_top_k()) {
+    sampling_params.top_k = request.top_k();
+  }
+  if (request.has_skip_special_tokens()) {
+    sampling_params.skip_special_tokens = request.skip_special_tokens();
+  }
+  if (request.has_ignore_eos()) {
+    sampling_params.ignore_eos = request.ignore_eos();
+  }
   if (request.stop_size() > 0) {
     sampling_params.stop =
         std::vector<std::string>(request.stop().begin(), request.stop().end());

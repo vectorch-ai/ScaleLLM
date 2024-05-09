@@ -114,51 +114,32 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
 
   // LLMHandler::Options
   py::class_<LLMHandler::Options>(llm_handler, "Options")
-      .def_property("model_path",
-                    &LLMHandler::Options::model_path,
-                    &LLMHandler::Options::model_path)
-      .def_property("devices",
-                    &LLMHandler::Options::devices,
-                    &LLMHandler::Options::devices)
-      .def_property("draft_model_path",
-                    &LLMHandler::Options::draft_model_path,
-                    &LLMHandler::Options::draft_model_path)
-      .def_property("draft_devices",
-                    &LLMHandler::Options::draft_devices,
-                    &LLMHandler::Options::draft_devices)
-      .def_property("block_size",
-                    &LLMHandler::Options::block_size,
-                    &LLMHandler::Options::block_size)
-      .def_property("max_cache_size",
-                    &LLMHandler::Options::max_cache_size,
-                    &LLMHandler::Options::max_cache_size)
-      .def_property("max_memory_utilization",
-                    &LLMHandler::Options::max_memory_utilization,
-                    &LLMHandler::Options::max_memory_utilization)
-      .def_property("enable_prefix_cache",
-                    &LLMHandler::Options::enable_prefix_cache,
-                    &LLMHandler::Options::enable_prefix_cache)
-      .def_property("enable_cuda_graph",
-                    &LLMHandler::Options::enable_cuda_graph,
-                    &LLMHandler::Options::enable_cuda_graph)
-      .def_property("cuda_graph_max_seq_len",
-                    &LLMHandler::Options::cuda_graph_max_seq_len,
-                    &LLMHandler::Options::cuda_graph_max_seq_len)
-      .def_property("cuda_graph_batch_sizes",
-                    &LLMHandler::Options::cuda_graph_batch_sizes,
-                    &LLMHandler::Options::cuda_graph_batch_sizes)
-      .def_property("draft_cuda_graph_batch_sizes",
-                    &LLMHandler::Options::draft_cuda_graph_batch_sizes,
-                    &LLMHandler::Options::draft_cuda_graph_batch_sizes)
-      .def_property("max_tokens_per_batch",
-                    &LLMHandler::Options::max_tokens_per_batch,
-                    &LLMHandler::Options::max_tokens_per_batch)
-      .def_property("max_seqs_per_batch",
-                    &LLMHandler::Options::max_seqs_per_batch,
-                    &LLMHandler::Options::max_seqs_per_batch)
-      .def_property("num_speculative_tokens",
-                    &LLMHandler::Options::num_speculative_tokens,
-                    &LLMHandler::Options::num_speculative_tokens);
+      .def(py::init())
+      .def_readwrite("model_path", &LLMHandler::Options::model_path_)
+      .def_readwrite("devices", &LLMHandler::Options::devices_)
+      .def_readwrite("draft_model_path",
+                     &LLMHandler::Options::draft_model_path_)
+      .def_readwrite("draft_devices", &LLMHandler::Options::draft_devices_)
+      .def_readwrite("block_size", &LLMHandler::Options::block_size_)
+      .def_readwrite("max_cache_size", &LLMHandler::Options::max_cache_size_)
+      .def_readwrite("max_memory_utilization",
+                     &LLMHandler::Options::max_memory_utilization_)
+      .def_readwrite("enable_prefix_cache",
+                     &LLMHandler::Options::enable_prefix_cache_)
+      .def_readwrite("enable_cuda_graph",
+                     &LLMHandler::Options::enable_cuda_graph_)
+      .def_readwrite("cuda_graph_max_seq_len",
+                     &LLMHandler::Options::cuda_graph_max_seq_len_)
+      .def_readwrite("cuda_graph_batch_sizes",
+                     &LLMHandler::Options::cuda_graph_batch_sizes_)
+      .def_readwrite("draft_cuda_graph_batch_sizes",
+                     &LLMHandler::Options::draft_cuda_graph_batch_sizes_)
+      .def_readwrite("max_tokens_per_batch",
+                     &LLMHandler::Options::max_tokens_per_batch_)
+      .def_readwrite("max_seqs_per_batch",
+                     &LLMHandler::Options::max_seqs_per_batch_)
+      .def_readwrite("num_speculative_tokens",
+                     &LLMHandler::Options::num_speculative_tokens_);
 
   // class LLM
   py::class_<LLM, std::shared_ptr<LLM>>(m, "LLM")
