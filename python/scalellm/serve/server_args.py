@@ -12,6 +12,13 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--model_id",
+        type=str,
+        default=None,
+        help="The model name used in the API.",
+    )
+
+    parser.add_argument(
         "--model",
         type=str,
         default="gpt2",

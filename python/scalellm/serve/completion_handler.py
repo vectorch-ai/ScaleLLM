@@ -100,6 +100,8 @@ async def generate_completion_stream_response(
                         CompletionResponseStreamChoice(
                             index=seq_output.index,
                             text=seq_output.text,
+                            logprobs=None,
+                            finish_reason=None,
                         )
                     ],
                 )
@@ -115,6 +117,7 @@ async def generate_completion_stream_response(
                             CompletionResponseStreamChoice(
                                 index=seq_output.index,
                                 text="",
+                                logprobs=None,
                                 finish_reason=seq_output.finish_reason,
                             )
                         ],
