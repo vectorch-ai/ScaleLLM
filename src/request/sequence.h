@@ -184,6 +184,11 @@ class Sequence final {
     return &options_.stopping_criteria;
   }
 
+  // close the sequence once all outputs have been sent
+  void close() { closed_ = true; }
+
+  bool is_closed() const { return closed_; }
+
  private:
   // global unique id for the sequence
   const int64_t id_;
@@ -225,6 +230,9 @@ class Sequence final {
 
   // the reason why the sequence is finished
   mutable FinishReason finish_reason_ = FinishReason::NONE;
+
+  // is the sequence closed.
+  bool closed_ = false;
 
   // id allocator for sequences
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)

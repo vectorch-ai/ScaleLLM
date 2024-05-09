@@ -6,17 +6,19 @@
 
 namespace llm {
 
-ModelsHandler::ModelsHandler(const std::string& model_id)
-    : model_id_(model_id), created_(absl::ToUnixSeconds(absl::Now())) {}
+ModelsHandler::ModelsHandler(const std::vector<std::string>& models)
+    : models_(models), created_(absl::ToUnixSeconds(absl::Now())) {}
 
 grpc::Status ModelsHandler::List(grpc::ServerContext* /*context*/,
                                  const proto::ListRequest* /*request*/,
                                  proto::ListResponse* response) {
-  auto* model_card = response->add_data();
-  model_card->set_id(model_id_);
-  model_card->set_created(created_);
-  model_card->set_object("model");
-  model_card->set_owned_by("scalellm");
+  for (const auto& model_id : models_) {
+    auto* model_card = response->add_data();
+    model_card->set_id(model_id);
+    model_card->set_created(created_);
+    model_card->set_object("model");
+    model_card->set_owned_by("scalellm");
+  }
   return grpc::Status::OK;
 }
 

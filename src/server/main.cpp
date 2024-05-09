@@ -177,10 +177,12 @@ int main(int argc, char** argv) {
   auto llm_handler = std::make_unique<LLMHandler>(options);
   llm_handler->start();
 
+  // supported models
+  std::vector<std::string> models = {FLAGS_model_id};
   auto completion_handler =
-      std::make_unique<CompletionHandler>(llm_handler.get());
-  auto chat_handler = std::make_unique<ChatHandler>(llm_handler.get());
-  auto models_handler = std::make_unique<ModelsHandler>(FLAGS_model_id);
+      std::make_unique<CompletionHandler>(llm_handler.get(), models);
+  auto chat_handler = std::make_unique<ChatHandler>(llm_handler.get(), models);
+  auto models_handler = std::make_unique<ModelsHandler>(models);
 
   // start grpc server
   GrpcServer grpc_server(std::move(completion_handler),

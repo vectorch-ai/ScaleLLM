@@ -32,12 +32,17 @@ class StreamCallData : public CallData {
   struct ResponseWithState {
     ResponseWithState(Response _response) : response(std::move(_response)) {}
 
-    ResponseWithState(grpc::Status _grpc_status) : grpc_status(_grpc_status) {}
+    ResponseWithState(grpc::Status _grpc_status)
+        : grpc_status(std::move(_grpc_status)) {}
+
+    ResponseWithState(Response _response, grpc::Status _grpc_status)
+        : response(std::move(_response)),
+          grpc_status(std::move(_grpc_status)) {}
 
     // response to be sent to client
     std::optional<Response> response;
     // grpc status to be sent to client
-    grpc::Status grpc_status = grpc::Status::OK;
+    std::optional<grpc::Status> grpc_status;
   };
 
   // callback for registering itself to the service
@@ -75,17 +80,15 @@ class StreamCallData : public CallData {
     // pack the response with state
     auto new_response =
         std::make_shared<ResponseWithState>(std::move(response));
-    // wait previous response to be processed
-    std::shared_ptr<ResponseWithState> expected = nullptr;
-    while (!std::atomic_compare_exchange_weak(
-        &response_, &expected, new_response)) {
-      expected = nullptr;
-    }
+    return send_response(new_response);
+  }
 
-    // notify the grpc handler thread
-    notify_alarm_.Set(
-        cq_, gpr_time_0(gpr_clock_type::GPR_CLOCK_MONOTONIC), this);
-    return rpc_ok_.load(std::memory_order_relaxed);
+  bool write_and_finish(Response response,
+                        grpc::Status grpc_status = grpc::Status::OK) {
+    // pack the response with state
+    auto new_response = std::make_shared<ResponseWithState>(
+        std::move(response), std::move(grpc_status));
+    return send_response(new_response);
   }
 
   // returns false if the rpc channel has been closed/cancelled.
@@ -95,13 +98,18 @@ class StreamCallData : public CallData {
   }
 
   // returns false if the rpc channel has been closed/cancelled.
-  bool finish(const grpc::Status& grpc_status = grpc::Status::OK) {
+  bool finish(grpc::Status grpc_status = grpc::Status::OK) {
     // pack status with grpc status
-    auto new_response = std::make_shared<ResponseWithState>(grpc_status);
+    auto new_response =
+        std::make_shared<ResponseWithState>(std::move(grpc_status));
+    return send_response(new_response);
+  }
+
+  bool send_response(std::shared_ptr<ResponseWithState> response) {
     // wait previous response to be processed
     std::shared_ptr<ResponseWithState> expected = nullptr;
-    while (!std::atomic_compare_exchange_weak(
-        &response_, &expected, new_response)) {
+    while (
+        !std::atomic_compare_exchange_weak(&response_, &expected, response)) {
       expected = nullptr;
     }
 
@@ -137,7 +145,18 @@ class StreamCallData : public CallData {
     } else if (status_ == Status::WRITE) {
       if (auto rs = std::atomic_load(&response_)) {
         // send the response to client
-        if (rs->response.has_value()) {
+        // WriteAndFinish
+        if (rs->response.has_value() && rs->grpc_status.has_value()) {
+          if (rpc_ok) {
+            // change the status to pending to wait for write op to finish
+            status_ = Status::FINISH;
+            responder_.WriteAndFinish(
+                rs->response.value(), {}, rs->grpc_status.value(), this);
+          } else {
+            // the request has been finished, release the calldata
+            return false;
+          }
+        } else if (rs->response.has_value()) {
           // if rpc is ok, send the response to client, otherwise, wait for
           // finish alarm
           if (rpc_ok) {
@@ -151,7 +170,7 @@ class StreamCallData : public CallData {
           if (rpc_ok) {
             // the rpc is ok, send the finish status to client
             status_ = Status::FINISH;
-            responder_.Finish(rs->grpc_status, this);
+            responder_.Finish(rs->grpc_status.value(), this);
           } else {
             // the request has been finished, release the calldata
             return false;

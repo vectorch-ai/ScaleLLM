@@ -70,24 +70,19 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
   if (world_size > 1) {
     // create a process group for each device if there are multiple gpus
     process_groups_ = ProcessGroup::create_process_groups(devices);
+
+    // It is a known issue
+    // (https://github.com/vectorch-ai/ScaleLLM/issues/131)
+    // that CUDA graph capture may occasionally become stuck with multiple
+    // gpus.
+    // disable cuda graph for multi-gpus by default.
+    options_.enable_cuda_graph(false);
   }
 
   // sort cuda graph batch sizes
   if (options_.enable_cuda_graph()) {
-    if (options_.cuda_graph_batch_sizes().has_value()) {
-      batch_sizes_ = options_.cuda_graph_batch_sizes().value();
-    } else {
-      // It is a known issue
-      // (https://github.com/vectorch-ai/ScaleLLM/issues/131)
-      // that CUDA graph capture may occasionally become stuck with multiple
-      // gpus.
-      if (world_size > 1) {
-        // disable cuda graph for multi-gpus by default.
-        options_.enable_cuda_graph(false);
-      } else {
-        batch_sizes_ = kDefaultBatchSizesForCudaGraph;
-      }
-    }
+    batch_sizes_ = options_.cuda_graph_batch_sizes().value_or(
+        kDefaultBatchSizesForCudaGraph);
     std::sort(batch_sizes_.begin(), batch_sizes_.end());
   }
 

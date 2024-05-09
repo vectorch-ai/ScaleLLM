@@ -8,14 +8,14 @@ namespace llm {
 
 class ModelsHandler : public proto::Models::Service {
  public:
-  ModelsHandler(const std::string& model_id);
+  ModelsHandler(const std::vector<std::string>& models);
 
   grpc::Status List(grpc::ServerContext* context,
                     const proto::ListRequest* request,
                     proto::ListResponse* response) override;
 
  private:
-  std::string model_id_;
+  std::vector<std::string> models_;
   // model created time
   // TODO: read from model config
   uint32_t created_;
