@@ -7,9 +7,8 @@ from pydantic import BaseModel, Field
 
 
 class ErrorResponse(BaseModel):
-    object: str = "error"
-    message: str
-    code: int
+    message: Optional[str] = None
+    code: Optional[int] = None
 
 
 class ModelPermission(BaseModel):

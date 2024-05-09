@@ -3,3 +3,4 @@ shortuuid
 pydantic
 uvicorn
 fastapi
+anyio
