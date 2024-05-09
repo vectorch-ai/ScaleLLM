@@ -56,9 +56,8 @@ void ResponseHandler::on_request_stream(Request* request) {
   std::vector<Slice<int32_t>> token_ids;
   for (size_t i = 0; i < request->sequences.size(); ++i) {
     Sequence& seq = request->sequences[i];
-    if (seq.num_blocks() == 0) {
-      CHECK(seq.is_finished());
-      // skip already finished sequences
+    if (seq.is_closed()) {
+      // skip already closed sequences
       continue;
     }
 
@@ -68,6 +67,11 @@ void ResponseHandler::on_request_stream(Request* request) {
         ids.size() - seq.output_offset() >= FLAGS_streaming_token_buffer_size) {
       indexes.push_back(i);
       token_ids.push_back(ids);
+    }
+
+    // close the sequence after sending finish reason
+    if (seq.is_finished()) {
+      seq.close();
     }
   }
 

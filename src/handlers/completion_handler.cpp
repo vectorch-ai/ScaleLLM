@@ -65,7 +65,6 @@ bool send_result_to_client(CompletionCallData* call_data,
                            int64_t created_time,
                            const std::string& model,
                            const RequestOutput& req_output) {
-
   proto::CompletionResponse response;
   response.set_object("text_completion");
   response.set_id(request_id);
