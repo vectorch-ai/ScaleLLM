@@ -2,7 +2,6 @@ import time
 from typing import List
 
 import shortuuid
-from fastapi.responses import StreamingResponse
 from scalellm import AsyncLLMEngine, Message, SamplingParams
 from scalellm.serve.api_protocol import (ChatCompletionMessage,
                                          ChatCompletionRequest,
@@ -85,7 +84,7 @@ async def generate_chat_response(
 
 async def generate_chat_stream_response(
     request: ChatCompletionRequest, engine: AsyncLLMEngine
-) -> StreamingResponse:
+) -> SafeStreamingResponse:
     assert request.stream, "Streaming request expected"
 
     request_id = f"chatcmpl-{shortuuid.random()}"

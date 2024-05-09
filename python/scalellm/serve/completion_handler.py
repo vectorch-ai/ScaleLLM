@@ -1,7 +1,6 @@
 import time
 
 import shortuuid
-from fastapi.responses import StreamingResponse
 from scalellm import AsyncLLMEngine, SamplingParams
 from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
                                          CompletionResponseChoice,
@@ -74,7 +73,7 @@ async def generate_completion_response(
 
 async def generate_completion_stream_response(
     request: CompletionRequest, engine: AsyncLLMEngine
-) -> StreamingResponse:
+) -> SafeStreamingResponse:
     assert request.stream, "non-streaming request is not supported"
 
     request_id = f"cmpl-{shortuuid.random()}"
