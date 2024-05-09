@@ -1,5 +1,6 @@
 import json
 from functools import partial
+from http import HTTPStatus
 from typing import AsyncIterable, Awaitable, Callable, Mapping, Optional
 
 from anyio import create_task_group
@@ -14,14 +15,14 @@ class SafeStreamingResponse(Response):
     def __init__(
         self,
         content: AsyncIterable[str],
-        status_code: int = 200,
-        error_code: int = 400,
+        status_code: HTTPStatus = HTTPStatus.OK,
+        error_code: HTTPStatus = HTTPStatus.BAD_REQUEST,
         headers: Optional[Mapping[str, str]] = None,
         media_type: Optional[str] = None,
     ) -> None:
         self.body_iterator = content
-        self.status_code = status_code
-        self.error_code = error_code
+        self.status_code = status_code.value
+        self.error_code = error_code.value
         self.media_type = self.media_type if media_type is None else media_type
         self.init_headers(headers)
         self.background = None

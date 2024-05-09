@@ -7,14 +7,18 @@ Usage:
 python3 -m scalellm.serve.api_server
 """
 
+import os
+from http import HTTPStatus
+from pathlib import Path
+from typing import Optional
+
 import fastapi
 import uvicorn
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
 from scalellm import AsyncLLMEngine, ValidationError, get_metrics
 from scalellm.serve.api_protocol import (ChatCompletionRequest,
                                          CompletionRequest, ErrorResponse,
-                                         ModelList)
+                                         ModelCard, ModelList, ModelPermission)
 from scalellm.serve.chat_handler import (generate_chat_response,
                                          generate_chat_stream_response)
 from scalellm.serve.completion_handler import (
@@ -23,40 +27,58 @@ from scalellm.serve.server_args import parse_args
 
 app = fastapi.FastAPI()
 llm_engine: AsyncLLMEngine = None
+models = None
 
 
-def jsonify_model(obj: BaseModel):
-    return obj.model_dump_json(exclude_unset=True)
+def create_error_response(
+    message: str, code: int, status_code: HTTPStatus = HTTPStatus.BAD_REQUEST
+) -> JSONResponse:
+    return JSONResponse(
+        {"error": ErrorResponse(message=message, code=code).dict()},
+        status_code=status_code.value,
+    )
+
+
+def check_model(request) -> Optional[JSONResponse]:
+    if request.model not in models:
+        return create_error_response(
+            message=f"The model `{request.model}` does not exist.",
+            code=404,
+            status_code=HTTPStatus.NOT_FOUND,
+        )
+    return None
 
 
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request, e):
-    return JSONResponse(
-        {"error": ErrorResponse(message=e.message, code=e.code).dict()},
-        status_code=400,
-    )
+    return create_error_response(e.message, e.code)
 
 
 @app.get("/metrics")
 async def show_metrics() -> Response:
     metrics = get_metrics()
-    return Response(content=metrics, status_code=200)
+    return Response(content=metrics)
+
 
 
 @app.get("/health")
 async def show_health() -> Response:
-    return Response(content="OK\n", status_code=200)
+    return Response(content="OK\n")
 
 
 @app.get("/v1/models")
 async def show_available_models():
-    model_cards = []
+    model_cards = [ModelCard(id=model_id, root=None, permission=[ModelPermission()])]
     return ModelList(data=model_cards)
 
 
 @app.post("/v1/chat/completions")
 async def create_chat_completion(request: ChatCompletionRequest):
     """Creates a completion for the chat message"""
+    error_response = check_model(request)
+    if error_response is not None:
+        return error_response
+
     if request.stream:
         return await generate_chat_stream_response(request, llm_engine)
     return await generate_chat_response(request, llm_engine)
@@ -65,6 +87,10 @@ async def create_chat_completion(request: ChatCompletionRequest):
 @app.post("/v1/completions")
 async def create_completion(request: CompletionRequest):
     """Creates a completion for the prompt"""
+    error_response = check_model(request)
+    if error_response is not None:
+        return error_response
+
     if request.stream:
         return await generate_completion_stream_response(request, llm_engine)
     return await generate_completion_response(request, llm_engine)
@@ -78,6 +104,18 @@ def parse_batch_sizes(batch_sizes_str):
 
 if __name__ == "__main__":
     args = parse_args()
+    # set the model_id
+    if args.model_id is not None:
+        #  use the model_id provided by the user
+        model_id = args.model_id
+    elif os.path.exists(args.model):
+        # use the directory name of the model path
+        model_id = Path(args.model).stem
+    else:
+        # model is model name
+        model_id = args.model
+    models = [model_id]
+
     # initialize the LLM engine
     llm_engine = AsyncLLMEngine(
         model=args.model,
