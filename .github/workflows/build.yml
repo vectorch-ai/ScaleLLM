@@ -24,6 +24,7 @@ on:
       - "tools/**"
       - "gateway/**"
       - "scripts/**"
+      - "python/**"
       - "**/*.md"
       - "**/*.txt"
       - "**/*.sh"
