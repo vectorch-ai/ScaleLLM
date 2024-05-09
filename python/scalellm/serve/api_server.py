@@ -7,12 +7,11 @@ Usage:
 python3 -m scalellm.serve.api_server
 """
 
-
 import fastapi
 import uvicorn
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
-from scalellm import AsyncLLMEngine, OutputError, get_metrics
+from scalellm import AsyncLLMEngine, ValidationError, get_metrics
 from scalellm.serve.api_protocol import (ChatCompletionRequest,
                                          CompletionRequest, ErrorResponse,
                                          ModelList)
@@ -28,6 +27,14 @@ llm_engine: AsyncLLMEngine = None
 
 def jsonify_model(obj: BaseModel):
     return obj.model_dump_json(exclude_unset=True)
+
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request, e):
+    return JSONResponse(
+        {"error": ErrorResponse(message=e.message, code=e.code).dict()},
+        status_code=400,
+    )
 
 
 @app.get("/metrics")
@@ -50,23 +57,17 @@ async def show_available_models():
 @app.post("/v1/chat/completions")
 async def create_chat_completion(request: ChatCompletionRequest):
     """Creates a completion for the chat message"""
-    try:
-        if request.stream:
-            return await generate_chat_stream_response(request, llm_engine)
-        return await generate_chat_response(request, llm_engine)
-    except OutputError as e:
-        return ErrorResponse(object="error", message=e.message, code=e.code)
+    if request.stream:
+        return await generate_chat_stream_response(request, llm_engine)
+    return await generate_chat_response(request, llm_engine)
 
 
 @app.post("/v1/completions")
 async def create_completion(request: CompletionRequest):
     """Creates a completion for the prompt"""
-    try:
-        if request.stream:
-            return await generate_completion_stream_response(request, llm_engine)
-        return await generate_completion_response(request, llm_engine)
-    except OutputError as e:
-        return ErrorResponse(object="error", message=e.message, code=e.code)
+    if request.stream:
+        return await generate_completion_stream_response(request, llm_engine)
+    return await generate_completion_response(request, llm_engine)
 
 
 def parse_batch_sizes(batch_sizes_str):

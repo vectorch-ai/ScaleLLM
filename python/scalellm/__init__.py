@@ -4,7 +4,7 @@ from scalellm._C import (LLM, LLMHandler, Message, Priority, RequestOutput,
                          SamplingParams, SequenceOutput, Status, StatusCode,
                          Usage, get_metrics)
 from scalellm.llm_engine import (AsyncLLMEngine, OutputAsyncStream,
-                                 OutputError, OutputStream)
+                                 OutputStream, ValidationError)
 
 __all__ = [
     "Message",
@@ -12,7 +12,7 @@ __all__ = [
     "AsyncLLMEngine",
     "OutputAsyncStream",
     "OutputStream",
-    "OutputError",
+    "ValidationError",
     "Priority",
     "RequestOutput",
     "SamplingParams",

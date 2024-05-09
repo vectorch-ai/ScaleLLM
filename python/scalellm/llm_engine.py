@@ -8,7 +8,7 @@ from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
 from scalellm.downloader import download_hf_model
 
 
-class OutputError(Exception):
+class ValidationError(Exception):
     def __init__(self, code: int, message: str) -> None:
         super().__init__()
         self.code = code
@@ -25,7 +25,9 @@ class OutputStream:
             return False
 
         if item.status is not None and not item.status.ok:
-            self._queue.put_nowait(OutputError(item.status.code, item.status.message))
+            self._queue.put_nowait(
+                ValidationError(item.status.code, item.status.message)
+            )
             return False
 
         self._queue.put_nowait(item)
@@ -71,7 +73,9 @@ class OutputAsyncStream:
             return False
 
         if item.status is not None and not item.status.ok:
-            self._queue.put_nowait(OutputError(item.status.code, item.status.message))
+            self._queue.put_nowait(
+                ValidationError(item.status.code, item.status.message)
+            )
             return False
 
         # put the item into the queue

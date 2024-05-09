@@ -2,13 +2,13 @@ import time
 
 import shortuuid
 from fastapi.responses import StreamingResponse
-from scalellm import AsyncLLMEngine, OutputError, SamplingParams
+from scalellm import AsyncLLMEngine, SamplingParams
 from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
                                          CompletionResponseChoice,
                                          CompletionResponseStreamChoice,
-                                         CompletionStreamResponse,
-                                         ErrorResponse, UsageInfo)
+                                         CompletionStreamResponse, UsageInfo)
 from scalellm.serve.common import jsonify_model, to_priority
+from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
 def to_sampling_params(request: CompletionRequest) -> SamplingParams:
@@ -32,6 +32,8 @@ def to_sampling_params(request: CompletionRequest) -> SamplingParams:
 async def generate_completion_response(
     request: CompletionRequest, engine: AsyncLLMEngine
 ) -> CompletionResponse:
+    assert not request.stream, "streaming request is not supported"
+
     request_id = f"cmpl-{shortuuid.random()}"
     created_time = int(time.time())
     model = request.model
@@ -73,6 +75,8 @@ async def generate_completion_response(
 async def generate_completion_stream_response(
     request: CompletionRequest, engine: AsyncLLMEngine
 ) -> StreamingResponse:
+    assert request.stream, "non-streaming request is not supported"
+
     request_id = f"cmpl-{shortuuid.random()}"
     created_time = int(time.time())
     chunk_object_type = "text_completion"
@@ -85,10 +89,24 @@ async def generate_completion_stream_response(
     )
 
     async def generate_stream_content():
-        try:
-            async for output in output_stream:
-                for seq_output in output.outputs:
-                    # send chunk with delta message
+        async for output in output_stream:
+            for seq_output in output.outputs:
+                # send chunk with delta message
+                response = CompletionStreamResponse(
+                    id=request_id,
+                    object=chunk_object_type,
+                    created=created_time,
+                    model=model,
+                    choices=[
+                        CompletionResponseStreamChoice(
+                            index=seq_output.index,
+                            text=seq_output.text,
+                        )
+                    ],
+                )
+                yield f"data: {jsonify_model(response)}\n\n"
+                # send the final chunk with finish reason
+                if seq_output.finish_reason is not None:
                     response = CompletionStreamResponse(
                         id=request_id,
                         object=chunk_object_type,
@@ -97,46 +115,29 @@ async def generate_completion_stream_response(
                         choices=[
                             CompletionResponseStreamChoice(
                                 index=seq_output.index,
-                                text=seq_output.text,
+                                text="",
+                                finish_reason=seq_output.finish_reason,
                             )
                         ],
                     )
                     yield f"data: {jsonify_model(response)}\n\n"
-                    # send the final chunk with finish reason
-                    if seq_output.finish_reason is not None:
-                        response = CompletionStreamResponse(
-                            id=request_id,
-                            object=chunk_object_type,
-                            created=created_time,
-                            model=model,
-                            choices=[
-                                CompletionResponseStreamChoice(
-                                    index=seq_output.index,
-                                    text="",
-                                    finish_reason=seq_output.finish_reason,
-                                )
-                            ],
-                        )
-                        yield f"data: {jsonify_model(response)}\n\n"
-            # send additional chunk for usage info
-            if output.usage:
-                response = CompletionStreamResponse(
-                    id=request_id,
-                    object=chunk_object_type,
-                    created=created_time,
-                    model=model,
-                    choices=[],
-                    usage=UsageInfo(
-                        prompt_tokens=output.usage.num_prompt_tokens,
-                        total_tokens=output.usage.num_total_tokens,
-                        completion_tokens=output.usage.num_generated_tokens,
-                    ),
-                )
-                yield f"data: {jsonify_model(response)}\n\n"
-            yield "data: [DONE]\n\n"
-        except OutputError as e:
-            yield f"error: {jsonify_model(ErrorResponse(object='error', message=e.message, code=e.code))}\n\n"
+        # send additional chunk for usage info
+        if output.usage:
+            response = CompletionStreamResponse(
+                id=request_id,
+                object=chunk_object_type,
+                created=created_time,
+                model=model,
+                choices=[],
+                usage=UsageInfo(
+                    prompt_tokens=output.usage.num_prompt_tokens,
+                    total_tokens=output.usage.num_total_tokens,
+                    completion_tokens=output.usage.num_generated_tokens,
+                ),
+            )
+            yield f"data: {jsonify_model(response)}\n\n"
+        yield "data: [DONE]\n\n"
 
-    return StreamingResponse(
+    return SafeStreamingResponse(
         content=generate_stream_content(), media_type="text/event-stream"
     )
