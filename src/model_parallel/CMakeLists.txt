@@ -10,7 +10,6 @@ cc_library(
     process_group.cpp
   DEPS
     torch
-    NCCL::nccl
     glog::glog
 )
 

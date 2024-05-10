@@ -92,7 +92,7 @@ jobs:
 
     - name: CMake Build in the 'build' subdirectory
       run: |
-        cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80 -DTORCH_CUDA_ARCH_LIST=8.0 -DUSE_CCACHE=ON
+        cmake -G Ninja -S . -B build
         cmake --build build --config ${{env.BUILD_TYPE}} --target all
 
     # - name: benchmark

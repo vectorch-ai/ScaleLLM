@@ -46,7 +46,7 @@ WORKDIR /ScaleLLM
 COPY ./ ./
 
 # build
-RUN cmake -G Ninja -S . -B build
+RUN cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES="80;90" -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build build --target scalellm --config Release -j$(nproc)
 
 # install

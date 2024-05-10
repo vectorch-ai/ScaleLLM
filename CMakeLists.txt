@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.24)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 
-option(USE_CCACHE "Attempt using CCache to wrap the compilation" OFF)
+option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
 option(ENABLE_CXX11_ABI "Use the new C++-11 ABI, which is not backwards compatible." ON)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -36,7 +36,7 @@ if(USE_CCACHE)
     set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "CUDA compiler launcher")
     message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
   else()
-    message(STATUS "Could not find ccache. Consider installing ccache to speed up compilation.")
+    message(WARNING "Could not find ccache. Consider installing ccache to speed up compilation.")
   endif()
 endif()
 
@@ -50,12 +50,10 @@ endif()
 
 # set architecture for CUDA
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
-  set(TORCH_CUDA_ARCH_LIST "8.0 8.6 8.9 9.0")
-  message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
-else()
-  message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+  set(CMAKE_CUDA_ARCHITECTURES native)
 endif()
+
+message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
 
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
@@ -130,8 +128,6 @@ find_package(prometheus-cpp CONFIG REQUIRED)
 find_package(stduuid CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
-set(USE_STATIC_NCCL ON)
-find_package(NCCL REQUIRED)
 
 # libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
