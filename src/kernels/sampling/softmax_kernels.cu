@@ -1,6 +1,5 @@
 // adapted from https://github.com/NVIDIA/FasterTransformer
 #include <ATen/cuda/CUDAContext.h>
-#include <ATen/ops/_functional_sym_constrain_range_ops.h>
 #include <torch/torch.h>
 
 #include <cfloat>

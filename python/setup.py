@@ -99,7 +99,7 @@ class CMakeBuild(build_ext):
 
         # python directories
         python_include_dir = sysconfig.get_path("platinclude")
-        cuda_architectures="80;90"
+        cuda_architectures="80;89;90"
         cmake_args = [
             "-G", "Ninja", # Ninja is much faster than make
             "-DUSE_CCACHE=ON", # use ccache if available
