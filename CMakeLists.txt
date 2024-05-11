@@ -53,7 +53,21 @@ if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 80)
 endif()
 
-message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+# Build TORCH_CUDA_ARCH_LIST
+set(TORCH_CUDA_ARCH_LIST "")
+foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
+  if(CUDA_ARCH MATCHES "^([0-9])([0-9])(-real)*$")
+    set(TORCH_ARCH "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}")
+  elseif(CUDA_ARCH STREQUAL "native")
+    set(TORCH_ARCH "Auto")
+  else()
+    message(FATAL_ERROR "${CUDA_ARCH} is not supported")
+  endif()
+  list(APPEND TORCH_CUDA_ARCH_LIST ${TORCH_ARCH})
+endforeach()
+
+message(STATUS "CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES}")
+message(STATUS "TORCH_CUDA_ARCH_LIST: ${TORCH_CUDA_ARCH_LIST}")
 
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
