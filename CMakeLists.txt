@@ -130,9 +130,6 @@ find_package(prometheus-cpp CONFIG REQUIRED)
 find_package(stduuid CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
-set(USE_STATIC_NCCL ON)
-find_package(NCCL REQUIRED)
-
 # libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 
@@ -185,6 +182,8 @@ else()
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
   message(STATUS "Downloading and using libtorch 2.3 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
+
+find_package(NCCL REQUIRED)
 
 # carry over torch flags to the rest of the project
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS} -DC10_USE_GLOG -flto=auto")
