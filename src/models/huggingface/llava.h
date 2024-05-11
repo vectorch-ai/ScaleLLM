@@ -68,5 +68,85 @@ class LlavaProjectorImpl : public torch::nn::Module {
 
   ActFunc act_func_{nullptr};
 };
+TORCH_MODULE(LlavaProjector);
+
+// TODO: CLIP, https://github.com/huggingface/transformers
+class CLIPVisionModelImpl : public torch::nn::Module {
+ public:
+  CLIPVisionModelImpl(const ModelArgs& args,
+                      const QuantArgs& quant_args,
+                      const ParallelArgs& parallel_args,
+                      const torch::TensorOptions& options) {
+  }
+
+  torch::Tensor forward(const torch::Tensor& images) {
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+  }
+
+  void verify_loaded_weights() const {
+  }
+};
+TORCH_MODULE(CLIPVisionModel);
+
+class LlavaModelForCausalLMImpl : public torch::nn::Module {
+ public:
+  LlavaModelForCasalLMImpl(const ModelArgs& args,
+                           const QuantArgs& quant_args,
+                           const ParallelArgs& parallel_args,
+                           const torch::TensorOptions& options) {
+    vision_model_ = register_module(
+        "vision_model", CLIPVisionModel(args, quant_args, parallel_args, options));
+
+    projector_ = register_module(
+        "projector", LlavaProjector(args, quant_args, parallel_args, options));
+
+    llm_model_ = register_module(
+        "llm_model", LlamaModel(args, quant_args, parallel_args, options));
+
+    lm_head_ = register_module("lm_head",
+                               ColumnParallelLinear(args.hidden_size(),
+                                                    args.vocab_size(),
+                                                    /*bias=*/false,
+                                                    /*gather_output*/true,
+                                                    parallel_args,
+                                                    options));
+  }
+
+  torch::Tensor forward(const torch::Tensor& images,
+                        const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
+                        std::vector<KVCache>& kv_caches,
+                        const InputParameters& input_params) {
+    auto& image_features = vision_model_(images);
+    auto& vision_embedding = projector_(image_features);
+    // TODO: Merge vision_embedding, text embedding
+    return llm_model_(tokens, positions, kv_caches, input_params);
+  }
+
+  torch::Tensor logits(const torch::Tensor& hidden_states,
+                       const torch::Tensor& selected_idxes) {
+    auto h = hidden_states;
+    if (selected_idxes.defined()) {
+      h = h.index_select(/*dim=*/0, selected_idxes);
+    }
+    return lm_head_(h);
+  }
+  
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+  }
+
+  void verify_loaded_weights() const {
+  }
+
+ private:
+  LlamaModel llm_model_{nullptr};
+
+  ColumnParallelLinear lm_head_{nullptr};
+};
+TORCH_MODULE(LlavaForCausalLM);
 
 }  // namespace llm::hf
