@@ -14,7 +14,7 @@ DTYPE_MAP = {
 }
 
 SM = [80]  # Sm80 kernels support up to
-HEAD_DIMENSIONS = [32, 64, 96, 128, 160, 192, 224, 256]
+HEAD_DIMENSIONS = [64, 96, 128, 256]
 KERNEL_IMPL_TEMPLATE_FWD = """#include "flash_fwd_launch_template.h"
 
 template<>

@@ -34,12 +34,12 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Convert the bool variable to integer.
-if(NOT USE_CXX11_ABI)
+if(USE_CXX11_ABI)
   set(USE_CXX11_ABI 1)
-  message(STATUS "Using the pre C++-11 ABI, which is backwards compatible.")
+  message(STATUS "Using the C++-11 ABI.")
 else()
   set(USE_CXX11_ABI 0)
-  message(STATUS "Using the C++-11 ABI, which is not backwards compatible.")
+  message(STATUS "Using the pre C++-11 ABI.")
 endif()
 
 if(USE_CCACHE)
