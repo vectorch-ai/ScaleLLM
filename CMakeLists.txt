@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 
-option(USE_CCACHE "Attempt using CCache to wrap the compilation" OFF)
+option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
 option(ENABLE_CXX11_ABI "Use the new C++-11 ABI, which is not backwards compatible." ON)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -36,7 +36,7 @@ if(USE_CCACHE)
     set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "CUDA compiler launcher")
     message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
   else()
-    message(STATUS "Could not find ccache. Consider installing ccache to speed up compilation.")
+    message(WARNING "Could not find ccache. Consider installing ccache to speed up compilation.")
   endif()
 endif()
 
@@ -50,12 +50,10 @@ endif()
 
 # set architecture for CUDA
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 80 86 89 90)
-  set(TORCH_CUDA_ARCH_LIST "8.0 8.6 8.9 9.0")
-  message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
-else()
-  message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
+  set(CMAKE_CUDA_ARCHITECTURES 80)
 endif()
+
+message(STATUS "Using CUDA Architecture: ${CMAKE_CUDA_ARCHITECTURES}")
 
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
@@ -133,12 +131,13 @@ find_package(RapidJSON CONFIG REQUIRED)
 # libtorch requires python headers
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 
-# if (NOT ENABLE_CXX11_ABI)
-#   find_package(Jemalloc)
-#   if(Jemalloc_FOUND)
-#     link_libraries(Jemalloc::jemalloc)
-#   endif()
-# endif()
+if (ENABLE_CXX11_ABI)
+  # only use jemalloc if using the new C++-11 ABI
+  find_package(Jemalloc)
+  if(Jemalloc_FOUND)
+    link_libraries(Jemalloc::jemalloc)
+  endif()
+endif()
 
 # Important Note: Always invoke find_package for other dependencies
 # before including libtorch, as doing so afterwards may lead to
