@@ -15,7 +15,6 @@ cc_library(
     :engine
     :models
     :chat_template
-    :jinja_chat_template
     glog::glog
 )
 
@@ -36,7 +35,6 @@ cc_library(
   DEPS
     :llm_handler
     :chat_template
-    :jinja_chat_template
     stduuid
     glog::glog
     grpc_proto::completion

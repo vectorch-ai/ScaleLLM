@@ -106,7 +106,7 @@ class CMakeBuild(build_ext):
 
         # python directories
         python_include_dir = sysconfig.get_path("platinclude")
-
+        cuda_architectures="80;89;90"
         cmake_args = [
             "-G", "Ninja", # Ninja is much faster than make
             "-DUSE_CCACHE=ON", # use ccache if available
@@ -116,6 +116,7 @@ class CMakeBuild(build_ext):
             "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
             f"-DPython_EXECUTABLE:FILEPATH={sys.executable}",
             f"-DPYTHON_INCLUDE_DIRS={python_include_dir}",
+            f"-DCMAKE_CUDA_ARCHITECTURES={cuda_architectures}",
             f"-DCMAKE_BUILD_TYPE={build_type}",  # not used on MSVC, but no harm
         ]
 
@@ -126,9 +127,9 @@ class CMakeBuild(build_ext):
                 
         # check if torch binary is built with cxx11 abi
         if use_cxx11_abi():
-            cmake_args += ["-DENABLE_CXX11_ABI=ON"]
+            cmake_args += ["-DUSE_CXX11_ABI=ON"]
         else:
-            cmake_args += ["-DENABLE_CXX11_ABI=OFF"]
+            cmake_args += ["-DUSE_CXX11_ABI=OFF"]
 
         build_args = ["--config", build_type]
         max_jobs = os.getenv("MAX_JOBS", str(os.cpu_count()))
