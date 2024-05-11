@@ -127,9 +127,9 @@ class CMakeBuild(build_ext):
                 
         # check if torch binary is built with cxx11 abi
         if use_cxx11_abi():
-            cmake_args += ["-DENABLE_CXX11_ABI=ON"]
+            cmake_args += ["-DUSE_CXX11_ABI=ON"]
         else:
-            cmake_args += ["-DENABLE_CXX11_ABI=OFF"]
+            cmake_args += ["-DUSE_CXX11_ABI=OFF"]
 
         build_args = ["--config", build_type]
         max_jobs = os.getenv("MAX_JOBS", str(os.cpu_count()))
