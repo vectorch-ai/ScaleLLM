@@ -8,7 +8,7 @@ on:
 
 jobs:
   publish_scalellm:
-    runs-on: [self-hosted, linux, x64, release]
+    runs-on: [self-hosted, linux, release]
     steps:
       - uses: olegtarasov/get-tag@v2.1
         id: tagName

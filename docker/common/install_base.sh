@@ -10,6 +10,7 @@ install_ubuntu() {
     ${deploy_deps} \
     build-essential \
     ccache \
+    cmake \
     zip \
     pkg-config \
     libssl-dev \

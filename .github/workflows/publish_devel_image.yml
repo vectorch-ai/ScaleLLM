@@ -1,0 +1,39 @@
+name: Publish devel docker image
+on:
+  workflow_dispatch:
+
+jobs:
+  publish_base:
+    runs-on: [self-hosted, linux, release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build devel image for cuda 12.1
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.devel
+          push: true
+          build-args: |
+            UBUNTU_VERSION=22.04
+            CUDA_VERSION=12.1
+            GCC_VERSION=12
+            CMAKE_VERSION=3.18.5
+            NINJA_VERSION=1.9.0
+          tags: |
+            vectorchai/scalellm_devel:cuda12.1-ubuntu22.04
+            vectorchai/scalellm_devel:latest
+

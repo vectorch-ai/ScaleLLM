@@ -1,10 +1,10 @@
-name: Publish docker base image
+name: Publish base docker image
 on:
   workflow_dispatch:
 
 jobs:
   publish_base:
-    runs-on: [self-hosted, linux, build]
+    runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
