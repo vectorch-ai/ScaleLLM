@@ -1,32 +1,46 @@
-# ---- Build ----
-FROM nvcr.io/nvidia/cuda:12.1.0-devel-ubuntu22.04 as build
+ARG UBUNTU_VERSION=22.04
 
-ARG UID=1000
-ARG GID=1000
+FROM ubuntu:${UBUNTU_VERSION}
 
 LABEL maintainer="mi@vectorch.com"
+ENV DEBIAN_FRONTEND noninteractive
 
-# install build tools
-RUN apt-get update -q -y && \
-    apt-get install -q -y \
-    build-essential \
-    ninja-build \
-    cmake \
-    ccache \
-    python3-dev \
-    python3-pip \
-    zip \
-    pkg-config \
-    libssl-dev \
-    libboost-all-dev \
-    curl \
-    git \
-    wget \
-    gcc-12 \
-    g++-12
+# Install common dependencies
+COPY ./common/install_base.sh install_base.sh
+RUN bash ./install_base.sh && rm install_base.sh
 
-# build with gcc-12
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 10 --slave /usr/bin/g++ g++ /usr/bin/g++-12
+# Install multiple python versions
+COPY ./common/install_python.sh install_python.sh
+RUN bash ./install_python.sh "3.9.0"
+RUN bash ./install_python.sh "3.10.1"
+RUN bash ./install_python.sh "3.11.0"
+RUN bash ./install_python.sh "3.12.0"
+RUN rm install_python.sh
+
+# Install cuda, cudnn and nccl
+ARG CUDA_VERSION=12.1
+RUN wget -q https://raw.githubusercontent.com/pytorch/builder/main/common/install_cuda.sh -O install_cuda.sh
+RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
+ENV DESIRED_CUDA ${CUDA_VERSION}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
+
+# Install gcc
+ARG GCC_VERSION=12
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    software-properties-common gpg-agent
+COPY ./common/install_gcc.sh install_gcc.sh
+RUN bash ./install_gcc.sh && rm install_gcc.sh
+
+ARG CMAKE_VERSION=3.18.5
+COPY ./common/install_cmake.sh install_cmake.sh
+RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
+RUN rm install_cmake.sh
+
+ARG NINJA_VERSION=1.9.0
+COPY ./common/install_ninja.sh install_ninja.sh
+RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
+RUN rm install_ninja.sh
 
 # install jemalloc (optional)
 RUN cd /tmp && \
@@ -42,6 +56,8 @@ ADD https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/20
 RUN apt-get install -y ./nsight-systems-2024.2.1_2024.2.1.106-1_amd64.deb
 
 # install rust
+ARG UID=1000
+ARG GID=1000
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
 ENV PATH=/usr/local/cargo/bin:$PATH
@@ -65,6 +81,4 @@ RUN echo "\
 . \${HOME}/miniconda3/etc/profile.d/conda.sh\n\
 conda activate base\n" >> ${HOME}/.bashrc
 
-CMD ["/bin/bash"]
-
-
+CMD ["bash"]

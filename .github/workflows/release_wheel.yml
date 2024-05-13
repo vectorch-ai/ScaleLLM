@@ -1,0 +1,54 @@
+name: Publish cpp docker image
+# Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
+# Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
+# on:
+#   push:
+#     tags:
+#       - v[0-9]+.[0-9]+.[0-9]+*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and push'
+        required: true
+        type: string
+env:
+  # Tells where to store caches.
+  CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
+
+jobs:
+  build_wheel:
+    strategy:
+      matrix:
+        python: ["3.9"]
+        cuda: ["12.1"]
+        torch: ["2.3"]
+    runs-on: [self-hosted, linux, release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      
+      - name: Build wheel
+        run: |
+            docker run --rm -t \
+                -v "$CI_CACHE_DIR":/ci_cache \
+                -v "$GITHUB_WORKSPACE":/ScaleLLM \
+                -e PYTHON_VERSION=${{ matrix.python }} \
+                -e CUDA_VERSION=${{ matrix.cuda }} \
+                -e TORCH_VERSION=${{ matrix.torch }} \
+                -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
+                -e CCACHE_DIR=/ci_cache/.ccache \
+                vectorchai/scalellm_builder:cuda${{ matrix.cuda }}-ubuntu22.04 \
+                bash /ScaleLLM/scripts/build_wheel.sh
+        timeout-minutes: 60
+
+      - name: show wheel size
+        run: du -h python/dist/*
+
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+      #     path: python/dist/*
+      
+

@@ -2,6 +2,7 @@ ARG UBUNTU_VERSION=22.04
 
 FROM ubuntu:${UBUNTU_VERSION}
 
+LABEL maintainer="mi@vectorch.com"
 ENV DEBIAN_FRONTEND noninteractive
 
 # Install common dependencies
