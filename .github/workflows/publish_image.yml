@@ -4,7 +4,7 @@ on:
 
 jobs:
   publish_base:
-    runs-on: [self-hosted, linux, build]
+    runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
