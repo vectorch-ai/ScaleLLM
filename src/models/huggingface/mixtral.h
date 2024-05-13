@@ -6,6 +6,7 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
+#include "layers/fused_moe.h"
 #include "layers/linear.h"
 #include "layers/linear_impl.h"
 #include "layers/normalization.h"
@@ -30,10 +31,12 @@ class MixtralMoEImpl : public torch::nn::Module {
                                              /*skip_bias_add*/ false,
                                              quant_args,
                                              options));
-    w1_ = register_parameter(
-        "weight", torch::empty({}, options), /*required_grad*/ false);
-    w2_ = register_parameter(
-        "weight", torch::empty({}, options), /*required_grad*/ false);
+    fused_moe_ = register_module("fused_moe",
+                                 FusedMoeLayer(args_.n_experts_per_tok(),
+                                               /*renormalize*/ true,
+                                               /*inplace*/ true,
+                                               quant_args,
+                                               options))
   }
 
   torch::Tensor forward(torch::Tensor hidden_states) {
@@ -44,84 +47,31 @@ class MixtralMoEImpl : public torch::nn::Module {
     torch::Tensor out_bias;
     auto router_logits = gate_(hidden_states, out_bias);
     // router_logits: (num_tokens, n_experts)
-    auto final_hidden_states = fused_moe(hidden_states,
-                                         w1_,
-                                         w2_,
-                                         router_logits,
-                                         args_.n_experts_per_tok(),
-                                         true,
-                                         true);
-    /*
-    if self.tp_size > 1: # 张量并行的做法
-          final_hidden_states = tensor_model_parallel_all_reduce(
-              final_hidden_states)
-    */
-    return final_hidden_states.view({num_token, hidden_size});
+    auto final_hidden_states =
+        fused_moe_(hidden_states, router_logits)
+
+        /*
+        if self.tp_size > 1: # 张量并行的做法
+              final_hidden_states = tensor_model_parallel_all_reduce(
+                  final_hidden_states)
+        */
+        return final_hidden_states.view({num_token, hidden_size});
+  }
+  void load_state_dict(const StateDict& state_dict) {
+    gate_->load_state_dict(state_dict.select("gate"));
+    fused_moe_->load_state_dict(state_dict.select("experts"));
   }
 
-  // TODO:
-  /*
-     This function computes a Mixture of Experts (MoE) layer using two sets of
-     weights, w1 and w2, and top-k gating mechanis
-     Parameters:
-      - hidden_states (torch.Tensor): The input tensor to the MoE layer.
-     [hidden_size,hidden_dim]
-      - w1 (torch.Tensor): The first set of expert weights.
-     [n_expert,,hidden_size]
-      - w2 (torch.Tensor): The second set of expert weights.
-      - gating_output (torch.Tensor): The output of the gating operation
-        (before softmax). [n_tokens,n_expert]
-      - topk (int): The number of top-k experts to select.
-      - renormalize (bool): If True, renormalize the top-k weights to sum to 1.
-      - inplace (bool): If True, perform the operation in-place.
-        Defaults to False.
-  */
-  torch::Tensor fused_moe(torch::Tensor hidden_states,
-                          torch::Tensor w1,
-                          torch::Tensor w2,
-                          torch::Tensor gating_output,
-                          int topk,
-                          bool renormalize,
-                          bool inplace) {
-    // match the number of tokens
-    DCHECK_EQ(hidden_states.sizes()[0], gating_output.sizes()[0]);
-    // match the number of hidden_size
-    DCHECK_EQ(hidden_states.sizes()[1], w1.sizes()[2]);
-    // match the number of experts
-    DCHECK_EQ(gating_output.sizes()[1], w1.sizes()[0]);
-    // be sure that hidden_states/w1/w2 are contiguous
-    DCHECK_EQ(hidden_states.is_contiguous(), true);
-    DCHECK_EQ(w1.is_contiguous(), true);
-    DCHECK_EQ(w2.is_contiguous(), true);
-
-    auto M = hidden_states.sizes()[0];
-    auto E = w1.sizes()[0];
-    auto N = w1.sizes()[1];
-
-    // topk_output = softmax(topk(gating_output))
-    // gating_output:[num_tokens,n_experts]
-    auto router_weight = torch::softmax(gating_output, -1, torch::kFloat32);
-    // top_weights,topk_indices: [num_tokens,topk]
-    auto [topk_weights, topk_indices] = torch::topk(router_weight, topk, -1);
-
-    if (renormalize) {
-      topk_weights = topk_weights / topk_weights.sum(-1, true);
-    }
-    // TODO aggregation layer
-
-    return torch::Tensor();
+  void verify_loaded_weights(const std::string& prefix) const {
+    gate_->verify_loaded_weights(prefix + "gate");
+    fused_moe_->verify_loaded_weights(prefix + "experts");
   }
-
-  void load_state_dict(const StateDict& state_dict) {}
-
-  void verify_loaded_weights(const std::string& prefix) const {}
 
  private:
   ModelArgs args_;
-  torch::Tensor w1_;
-  torch::Tensor w2_;
 
   ReplicatedLinear gate_{nullptr};
+  FusedMoeLayer fused_moe_{nullptr};
 };
 TORCH_MODULE(MixtralMoE);
 
