@@ -12,8 +12,8 @@ on:
       - "**/*.md"
       - "**/*.txt"
       - "**/*.sh"
-      - "Dockerfile"
-      - "Dockerfile.*"
+      - "**/Dockerfile"
+      - "**/Dockerfile.*"
     branches: 
       - main
 
@@ -28,8 +28,8 @@ on:
       - "**/*.md"
       - "**/*.txt"
       - "**/*.sh"
-      - "Dockerfile"
-      - "Dockerfile.*"
+      - "**/Dockerfile"
+      - "**/Dockerfile.*"
     branches:
       - main
 

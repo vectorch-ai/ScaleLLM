@@ -172,6 +172,8 @@ setup(
     url="https://github.com/vectorch-ai/ScaleLLM",
     packages=[
         "scalellm", 
+        "scalellm/serve",
+        "examples"
     ],
     ext_modules=[CMakeExtension("_C", "scalellm/")],
     cmdclass={"build_ext": CMakeBuild},
