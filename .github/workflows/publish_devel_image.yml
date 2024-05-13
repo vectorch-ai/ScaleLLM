@@ -34,6 +34,6 @@ jobs:
             CMAKE_VERSION=3.18.5
             NINJA_VERSION=1.9.0
           tags: |
-            vectorchai/scalellm_builder:devel-cuda12.1-ubuntu22.04
-            vectorchai/scalellm_builder:latest
+            vectorchai/scalellm_devel:cuda12.1-ubuntu22.04
+            vectorchai/scalellm_devel:latest
 
