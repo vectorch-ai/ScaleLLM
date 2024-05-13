@@ -43,7 +43,9 @@ RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
 RUN rm install_ninja.sh
 
 # install rust
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH=$HOME/.cargo/bin:$PATH
 
 CMD ["bash"]
