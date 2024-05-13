@@ -19,16 +19,16 @@ jobs:
         torch: ["2.3"]
     runs-on: [self-hosted, linux, release]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      
       - name: Show uid and gid
         run: |
           echo "CI_UID: $CI_UID"
           echo "CI_GID: $CI_GID"
           id
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
       
       - name: Build wheel
         run: |
