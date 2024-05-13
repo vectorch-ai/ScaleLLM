@@ -1,4 +1,4 @@
-name: Publish cpp docker image
+name: Release wheel
 # Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
 # Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
 # on:
