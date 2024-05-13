@@ -2,16 +2,14 @@
 
 set -ex
 
-install_ubuntu() {  
+install_ubuntu() {
+  deploy_deps="libffi-dev libbz2-dev libreadline-dev libncurses5-dev libncursesw5-dev libgdbm-dev libsqlite3-dev uuid-dev tk-dev"
   # Install common dependencies
   apt-get update
   apt-get install -y --no-install-recommends \
+    ${deploy_deps} \
     build-essential \
-    ninja-build \
-    cmake \
     ccache \
-    python3-dev \
-    python3-pip \
     zip \
     pkg-config \
     libssl-dev \
