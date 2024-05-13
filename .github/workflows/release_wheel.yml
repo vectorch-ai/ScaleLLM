@@ -5,6 +5,7 @@ name: Publish cpp docker image
 #   push:
 #     tags:
 #       - v[0-9]+.[0-9]+.[0-9]+*
+on:
   workflow_dispatch:
     inputs:
       tag:
