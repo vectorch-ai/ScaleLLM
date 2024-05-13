@@ -27,7 +27,7 @@ FinishReason StoppingCriteria::check_finished(const Slice<int32_t>& token_ids,
 
   const auto last_token_id = token_ids.back();
   // check against eos token id
-  if (!ignore_eos_token && last_token_id == eos_token_id) {
+  if (!ignore_eos && last_token_id == eos_token_id) {
     return FinishReason::STOP;
   }
   // check against stop tokens ids

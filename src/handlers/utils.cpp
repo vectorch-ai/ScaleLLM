@@ -1,44 +1,52 @@
 #include "utils.h"
 
 #include <glog/logging.h>
-
-#include <string>
+#include <grpcpp/grpcpp.h>
 
 #include "common.pb.h"
-#include "request/request.h"
 
 namespace llm {
 
-RequestPriority grpc_priority_to_priority(Priority priority) {
+Priority to_priority(proto::Priority priority) {
   switch (priority) {
-    case Priority::DEFAULT:
-      return RequestPriority::MEDIUM;
-    case Priority::LOW:
-      return RequestPriority::LOW;
-    case Priority::MEDIUM:
-      return RequestPriority::MEDIUM;
-    case Priority::HIGH:
-      return RequestPriority::HIGH;
+    case proto::Priority::DEFAULT:
+      return Priority::NORMAL;
+    case proto::Priority::LOW:
+      return Priority::LOW;
+    case proto::Priority::NORMAL:
+      return Priority::NORMAL;
+    case proto::Priority::HIGH:
+      return Priority::HIGH;
     default:
       LOG(WARNING) << "Unknown priority: " << static_cast<int>(priority);
   }
-  return RequestPriority::MEDIUM;
+  return Priority::NORMAL;
 }
 
-std::string finish_reason_to_string(FinishReason reason) {
-  switch (reason) {
-    case FinishReason::NONE:
-      return "";
-    case FinishReason::STOP:
-      return "stop";
-    case FinishReason::LENGTH:
-      return "length";
-    case FinishReason::FUNCTION_CALL:
-      return "function_call";
+grpc::StatusCode to_grpc_status_code(StatusCode code) {
+  switch (code) {
+    case StatusCode::OK:
+      return grpc::StatusCode::OK;
+    case StatusCode::CANCELLED:
+      return grpc::StatusCode::CANCELLED;
+    case StatusCode::UNKNOWN:
+      return grpc::StatusCode::UNKNOWN;
+    case StatusCode::INVALID_ARGUMENT:
+      return grpc::StatusCode::INVALID_ARGUMENT;
+    case StatusCode::DEADLINE_EXCEEDED:
+      return grpc::StatusCode::DEADLINE_EXCEEDED;
+    case StatusCode::RESOURCE_EXHAUSTED:
+      return grpc::StatusCode::RESOURCE_EXHAUSTED;
+    case StatusCode::UNAUTHENTICATED:
+      return grpc::StatusCode::UNAUTHENTICATED;
+    case StatusCode::UNAVAILABLE:
+      return grpc::StatusCode::UNAVAILABLE;
+    case StatusCode::UNIMPLEMENTED:
+      return grpc::StatusCode::UNIMPLEMENTED;
     default:
-      LOG(WARNING) << "Unknown finish reason: " << static_cast<int>(reason);
+      LOG(WARNING) << "Unknown status code: " << static_cast<uint8_t>(code);
   }
-  return "";
+  return grpc::StatusCode::UNKNOWN;
 }
 
 }  // namespace llm

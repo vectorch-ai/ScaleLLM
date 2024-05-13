@@ -1,15 +1,19 @@
 #pragma once
 #include <optional>
 #include <string>
-
-#include "chat.pb.h"
+#include <vector>
 
 namespace llm {
 
-// It is not ideal to use protobuf as the interface between the server and the
-// model. However, it is the easiest way to do it. We can change it later if
-// needed.
-using ChatMessages = google::protobuf::RepeatedPtrField<ChatMessage>;
+struct Message {
+  Message() = default;
+  Message(const std::string& role, const std::string& content)
+      : role(role), content(content) {}
+
+  std::string role;
+  std::string content;
+};
+using ChatMessages = std::vector<Message>;
 
 // ChatTemplate only supports 'system', 'user' and 'assistant' roles.
 // start with system message, then user and assistant message. (u/a/u/a/u...)
@@ -19,7 +23,8 @@ class ChatTemplate {
 
   // apply the chat template to the messages
   // return std::nullopt if the template is not applicable.
-  virtual std::optional<std::string> apply(const ChatMessages& messages) const = 0;
+  virtual std::optional<std::string> apply(
+      const ChatMessages& messages) const = 0;
 };
 
 }  // namespace llm

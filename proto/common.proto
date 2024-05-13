@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 option go_package = "github.com/vectorch-ai/scalellm;scalellm";
-package llm;
+package llm.proto;
 
 message Usage {
   // the number of tokens in the prompt.
@@ -19,7 +19,7 @@ enum Priority {
 
   HIGH = 1;
 
-  MEDIUM = 2;
+  NORMAL = 2;
 
   LOW = 3;
 }

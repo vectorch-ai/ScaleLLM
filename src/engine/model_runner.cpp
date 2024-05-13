@@ -51,9 +51,9 @@ void ModelRunner::capture_cuda_graphs(std::vector<KVCache>& kv_cache) {
 
   const auto max_seq_len = options_.cuda_graph_max_seq_len();
   const auto block_size = options_.block_size();
-  // round up to the nearest block size
+  // round up and add one additional block for speculative decoding
   const int64_t max_block_table_len =
-      (max_seq_len + block_size - 1) / block_size;
+      (max_seq_len + block_size - 1) / block_size + 1;
   torch::Tensor block_tables =
       torch::zeros({max_batch_size, max_block_table_len}, options);
 

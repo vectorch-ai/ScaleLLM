@@ -231,7 +231,7 @@ class TopKTopPLogitsProcessor : public LogitsProcessor {
       top_k_ = top_k.unsqueeze(1);
       // replace 0 with max_value to disable top_k
       const auto max_value = std::numeric_limits<int64_t>::max();
-      top_k_ = torch::where(top_k_ == 0, torch::tensor(max_value), top_k_);
+      top_k_ = torch::where(top_k_ <= 0, torch::tensor(max_value), top_k_);
     }
 
     if (top_p.defined()) {

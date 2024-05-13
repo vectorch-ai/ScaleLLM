@@ -2,6 +2,7 @@
 
 from scalellm import LLM, SamplingParameter, StoppingCriteria
 
+
 def test_llm_generate():
   sampling_parameter = SamplingParameter()
   sampling_parameter.temperature = 0

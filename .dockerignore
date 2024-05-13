@@ -7,6 +7,9 @@
 # clangd cache
 /.cache*
 
+# ccache
+/.ccache*
+
 # github workflows
 /.github*
 
@@ -18,3 +21,13 @@
 
 # gateway
 /gateway*
+
+# dist
+/dist/*
+
+# python
+/python/build/
+/python/*.egg-info/
+/python/scalellm/*.pyd
+/python/scalellm/*.so
+**/__pycache__/*

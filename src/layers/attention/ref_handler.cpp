@@ -1,6 +1,5 @@
 #include "ref_handler.h"
 
-#include <gflags/gflags.h>
 #include <torch/torch.h>
 
 #include "memory/kv_cache.h"
@@ -10,8 +9,6 @@ namespace llm {
 using ISlice = torch::indexing::Slice;
 
 namespace {
-constexpr float negative_infinity = -std::numeric_limits<float>::infinity();
-
 torch::Tensor masked_self_attention(
     const torch::Tensor& query,         // [q_seq_len, n_heads, head_dim]
     const torch::Tensor& key,           // [k_seq_len, n_heads, head_dim]
@@ -31,7 +28,7 @@ torch::Tensor masked_self_attention(
   }
   // apply causal mask
   if (mask.defined()) {
-    scores = scores.masked_fill(mask == 0, negative_infinity);
+    scores = scores.masked_fill(mask == 0, -INFINITY);
   }
 
   scores = torch::softmax(scores, /*dim=*/-1);

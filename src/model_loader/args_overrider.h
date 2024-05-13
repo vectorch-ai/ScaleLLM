@@ -1,6 +1,6 @@
 #pragma once
 
-#include <gflags/gflags.h>
+#include <gflags/gflags_declare.h>
 
 #include "models/model_args.h"
 #include "quantization/quant_args.h"

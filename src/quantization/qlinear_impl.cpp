@@ -1,13 +1,10 @@
 #include "qlinear_impl.h"
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
 #include "model_loader/state_dict.h"
-#include "model_parallel/model_parallel.h"
-#include "models/model_args.h"
 
 namespace llm {
 namespace {

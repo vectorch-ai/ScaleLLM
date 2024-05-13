@@ -5,6 +5,7 @@
 #include "engine/engine.h"
 #include "engine/llm_engine.h"
 #include "memory/block_manager.h"
+#include "models/model_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
 
@@ -32,14 +33,18 @@ class SpeculativeEngine : public Engine {
     // the number of speculative tokens per step
     DEFINE_ARG(int32_t, num_speculative_tokens) = 0;
 
+    // enable cuda graph
+    DEFINE_ARG(bool, enable_cuda_graph) = true;
+
     // max sequence length used to capture cuda graphs
     DEFINE_ARG(int64_t, cuda_graph_max_seq_len) = 1024;
 
     // batch sizes to capture cuda graphs
-    DEFINE_ARG(std::vector<uint32_t>, cuda_graph_batch_sizes);
+    DEFINE_ARG(std::optional<std::vector<uint32_t>>, cuda_graph_batch_sizes);
 
     // batch sizes to capture cuda graphs for draft model
-    DEFINE_ARG(std::vector<uint32_t>, draft_cuda_graph_batch_sizes);
+    DEFINE_ARG(std::optional<std::vector<uint32_t>>,
+               draft_cuda_graph_batch_sizes);
   };
 
   // create an engine with the given devices
@@ -62,7 +67,7 @@ class SpeculativeEngine : public Engine {
     return engine_->block_manager();
   }
 
-  const ModelArgs& model_args() const override { return engine_->model_args(); }
+  const ModelArgs& model_args() const override { return model_args_; }
 
   const TokenizerArgs& tokenizer_args() const override {
     return engine_->tokenizer_args();
@@ -91,6 +96,8 @@ class SpeculativeEngine : public Engine {
 
   // whether target and draft engine are sharing the same device
   bool share_device_ = false;
+
+  ModelArgs model_args_;
 };
 
 }  // namespace llm

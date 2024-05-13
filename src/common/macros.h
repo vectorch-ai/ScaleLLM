@@ -12,7 +12,6 @@ namespace llm {
   inline const T& name() const noexcept { return this->name##_; } \
   inline T& name() noexcept { return this->name##_; }             \
                                                                   \
- private:                                                         \
   T name##_
 
 #define DEFINE_PTR_ARG(T, name)                             \
@@ -23,7 +22,6 @@ namespace llm {
   }                                                         \
   inline T* name() const noexcept { return this->name##_; } \
                                                             \
- private:                                                   \
   T* name##_
 
 // clang-format on

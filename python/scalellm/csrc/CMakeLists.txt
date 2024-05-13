@@ -1,0 +1,20 @@
+include(pybind_extension)
+
+pybind_extension(
+  NAME
+    _C
+  COPTS
+    -DPY_MODULE_NAME=_C
+  HDRS
+    llm.h
+  SRCS
+    llm.cpp
+    scalellm.cpp
+  DEPS
+    :llm_handler
+    torch
+    absl::strings
+    gflags::gflags
+    glog::glog
+    Python::Python
+)

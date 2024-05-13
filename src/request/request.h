@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "output.h"
 #include "sampling/parameters.h"
 #include "sequence.h"
 #include "status.h"
@@ -12,63 +13,8 @@
 
 namespace llm {
 
-// Status of the request.
-enum class ScheduleStatus {
-  // The request is waiting to be processed.
-  // still waiting in the queue.
-  WAITING,
-
-  // The request is currently being processed.
-  // a worker has been assigned to the request.
-  PROCESSING,
-
-  // The request has been preempted.
-  // preempted usually due to a higher priority request or limit on resources.
-  PREEMPTED,
-
-  // The request has been completed.
-  // usually due to reaching the maximum number of tokens or
-  // reaching a stopping condition.
-  COMPLETED,
-
-  // The request has been cancelled.
-  // usually due to a user request.
-  CANCELLED,
-};
-
-struct Statistics {
-  // the number of tokens in the prompt.
-  size_t num_prompt_tokens = 0;
-  // the number of tokens in the generated completion.
-  size_t num_generated_tokens = 0;
-  // the total number of tokens used in the request (prompt + completion).
-  size_t num_total_tokens = 0;
-};
-
-// Priority of the request.
-// The higher the priority, the sooner the request is processed.
-enum class RequestPriority { HIGH = 0, MEDIUM, LOW };
-
-struct SequenceOutput {
-  std::string text;
-
-  FinishReason finish_reason;
-};
-
-// Function to call when a request is finished.
-using OnFinish =
-    std::function<bool(const std::vector<SequenceOutput>& seq_results,
-                       const Status& status,
-                       const Statistics& stats)>;
-
-using OnStreamDelta =
-    std::function<bool(size_t index, const SequenceDeltaOutput& output)>;
-
-// Function to call when a stream request is finished.
-using OnStreamFinish = std::function<bool(const Status& status)>;
-
-// Function to check rpc health.
-using IsRpcOK = std::function<bool()>;
+// Function to call when an output is generated.
+using OnOutput = std::function<bool(const RequestOutput& output)>;
 
 // A request is a data structure that encapsulates all the necessary
 // information required to process a request efficiently. It acts as a
@@ -78,9 +24,8 @@ using IsRpcOK = std::function<bool()>;
 struct Request final {
  public:
   // caller needs to gurantee prompt's lifecycle
-  Request(const std::string& id,
-          const std::string_view& prompt,
-          const std::vector<int32_t>& prompt_tokens,
+  Request(std::string prompt,
+          std::vector<int32_t> prompt_tokens,
           size_t seq_capacity,
           size_t num_seqs);
 
@@ -88,7 +33,7 @@ struct Request final {
 
   bool is_finished() const;
 
-  bool is_cancelled() const;
+  bool is_streaming() const { return stream; }
 
   size_t num_prompt_tokens() const { return prompt_tokens.size(); }
 
@@ -96,9 +41,11 @@ struct Request final {
 
   void expand_sequences();
 
-  // The unique id of the request.
-  // NOLINTNEXTLINE
-  const std::string id;
+  void cancel() { is_cancelled_.store(true, std::memory_order_relaxed); }
+
+  bool is_cancelled() const {
+    return is_cancelled_.load(std::memory_order_relaxed);
+  }
 
   // Scheduled time of the request.
   // NOLINTNEXTLINE
@@ -106,15 +53,15 @@ struct Request final {
 
   // prompt text string
   // NOLINTNEXTLINE
-  const std::string_view prompt;
-
-  // the number of sequences to generate completions for the prompt.
-  // NOLINTNEXTLINE
-  const size_t num_seqs;
+  const std::string prompt;
 
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
   const std::vector<int32_t> prompt_tokens;
+
+  // the number of sequences to generate completions for the prompt.
+  // NOLINTNEXTLINE
+  const size_t num_seqs;
 
   // max number of tokens per sequence.
   // NOLINTNEXTLINE
@@ -130,26 +77,21 @@ struct Request final {
   bool stream = false;
 
   // Whether to echo back the prompt in the output.
-  bool echo = true;
+  bool echo = false;
 
   // the priority of the request.
-  RequestPriority priority = RequestPriority::MEDIUM;
+  Priority priority = Priority::NORMAL;
 
   // list of sequences to generate completions for the prompt
   // use deque instead of vector to avoid no-copy move for Sequence
   std::deque<Sequence> sequences;
 
-  // function to call when the request is finished.
-  OnFinish on_finish;
+  // function to call when an output is generated.
+  OnOutput on_output;
 
-  // function to call when a delta is generated.
-  OnStreamDelta on_stream_delta;
-
-  // function to call when a stream request is finished.
-  OnStreamFinish on_stream_finish;
-
-  // function to check rpc health.
-  IsRpcOK is_rpc_ok;
+ private:
+  // is the sequence cancelled
+  std::atomic_bool is_cancelled_{false};
 };
 
 // Compare two request contexts based on priority then scheduled time.

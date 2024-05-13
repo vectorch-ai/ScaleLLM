@@ -68,7 +68,7 @@ void SamplingParameters::init(
     this->temperatures = torch::tensor(temperatures, torch::kFloat32);
   }
   if (std::any_of(
-          top_k.begin(), top_k.end(), [](int64_t t) { return t != 0; })) {
+          top_k.begin(), top_k.end(), [](int64_t t) { return t > 0; })) {
     this->top_k = torch::tensor(top_k, torch::kInt64);
   }
   if (std::any_of(
@@ -92,7 +92,7 @@ void SamplingParameters::init(
     const auto* p = sampling_params[idx];
     // need to do sample if any of following is true
     const bool sample = p->do_sample || p->temperature != 0.0 ||
-                        p->top_p != 1.0 || p->top_k != 0;
+                        p->top_p != 1.0 || p->top_k > 0;
     do_sample.push_back(sample ? 1 : 0);
   }
   this->sample_idxes = torch::tensor(sample_idxes, torch::kInt);

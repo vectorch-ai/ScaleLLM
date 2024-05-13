@@ -1,45 +1,26 @@
 #pragma once
-
-#include <gflags/gflags.h>
+#include <absl/container/flat_hash_set.h>
 
 #include "call_data.h"
 #include "chat.grpc.pb.h"  // IWYU pragma: keep
-#include "chat_template/chat_template.h"
-#include "common/threadpool.h"
-#include "models/model_args.h"
-#include "tokenizer/tokenizer.h"
-
-DECLARE_bool(disable_default_chat_template);
+#include "llm_handler.h"
 
 namespace llm {
-using ChatCallData = StreamCallData<ChatRequest, ChatResponse>;
-
-class Scheduler;
-class Engine;
+using ChatCallData = StreamCallData<proto::ChatRequest, proto::ChatResponse>;
 
 // a class to handle completion requests
 class ChatHandler final {
  public:
-  ChatHandler(Scheduler* scheduler, const Engine* engine);
+  ChatHandler(LLMHandler* llm_handler, const std::vector<std::string>& models);
 
   // caller needs to guarantee the lifetime of call_data.
   void chat_async(ChatCallData* call_data);
 
  private:
   // request scheduler
-  Scheduler* scheduler_;
+  LLMHandler* llm_handler_;
 
-  // tokenizer instance
-  std::unique_ptr<Tokenizer> tokenizer_;
-
-  // chat template instance
-  std::unique_ptr<ChatTemplate> chat_template_;
-
-  // model args
-  ModelArgs model_args_;
-
-  // converter threadpool
-  ThreadPool converter_threadpool_;
+  absl::flat_hash_set<std::string> models_;
 };
 
 }  // namespace llm

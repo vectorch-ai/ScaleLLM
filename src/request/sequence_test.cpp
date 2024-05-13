@@ -369,7 +369,7 @@ TEST(SequenceTest, SpeculativeStopEosTokenId) {
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   Sequence::Options options;
   options.stopping_criteria.max_tokens = 100;
-  options.stopping_criteria.ignore_eos_token = false;
+  options.stopping_criteria.ignore_eos = false;
   options.stopping_criteria.eos_token_id = eos_token_id;
 
   Sequence sequence(/*prompt=*/"",

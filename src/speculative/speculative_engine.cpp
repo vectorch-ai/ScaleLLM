@@ -21,18 +21,19 @@ SpeculativeEngine::SpeculativeEngine(const Options& options)
   engine_options.block_size(options.block_size())
       .max_cache_size(options.max_cache_size())
       .max_memory_utilization(options.max_memory_utilization())
-      .enable_prefix_cache(options.enable_prefix_cache());
+      .enable_prefix_cache(options.enable_prefix_cache())
+      .enable_cuda_graph(options.enable_cuda_graph())
+      .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len());
+
   // target engine
-  engine_options.devices(options.devices());
-  engine_options.num_decoding_tokens(options.num_speculative_tokens() + 1)
-      .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+  engine_options.devices(options.devices())
+      .num_decoding_tokens(options.num_speculative_tokens() + 1)
       .cuda_graph_batch_sizes(options.cuda_graph_batch_sizes());
   engine_ = std::make_unique<LLMEngine>(engine_options);
 
   // draft engine
-  engine_options.devices(options.draft_devices());
-  engine_options.num_decoding_tokens(1)
-      .cuda_graph_max_seq_len(options.cuda_graph_max_seq_len())
+  engine_options.devices(options.draft_devices())
+      .num_decoding_tokens(1)
       .cuda_graph_batch_sizes(options.draft_cuda_graph_batch_sizes());
   draft_engine_ = std::make_unique<LLMEngine>(engine_options);
 
@@ -77,8 +78,43 @@ bool SpeculativeEngine::init_model(
     return false;
   }
 
-  // TODO: check if the tokenizers are the same
-  // TODO: check if the max context length are the same
+  // check if the tokenizers are compatible
+  auto draft_tokenizer = draft_engine_->tokenizer();
+  auto target_tokenizer = engine_->tokenizer();
+  if (draft_tokenizer->vocab_size() != target_tokenizer->vocab_size()) {
+    LOG(ERROR) << "draft and target tokenizers have different vocab sizes, "
+                  "draft vocab_size: "
+               << draft_tokenizer->vocab_size()
+               << ", target vocab_size: " << target_tokenizer->vocab_size();
+    return false;
+  }
+
+  const std::string test_text = "hello from scalellm!";
+  std::vector<int32_t> draft_token_ids;
+  std::vector<int32_t> target_token_ids;
+  if (!draft_tokenizer->encode(test_text, &draft_token_ids) ||
+      !target_tokenizer->encode(test_text, &target_token_ids)) {
+    if (draft_token_ids != target_token_ids) {
+      LOG(ERROR) << "draft and target tokenizers are not compatible";
+      return false;
+    }
+  }
+
+  // check if the max context length are the same
+  model_args_ = engine_->model_args();
+  const auto& draft_model_args = draft_engine_->model_args();
+  if (model_args_.max_position_embeddings() !=
+      draft_model_args.max_position_embeddings()) {
+    LOG(WARNING) << "draft and target models have different max context "
+                    "lengths, draft max_position_embeddings: "
+                 << draft_model_args.max_position_embeddings()
+                 << ", target max_position_embeddings: "
+                 << model_args_.max_position_embeddings()
+                 << ", using the minimum between them";
+    model_args_.max_position_embeddings() =
+        std::min(model_args_.max_position_embeddings(),
+                 draft_model_args.max_position_embeddings());
+  }
   return true;
 }
 
@@ -173,8 +209,12 @@ void SpeculativeEngine::validate(Batch& batch,
       std::make_unique<RejectionSampler>(target_output.do_sample);
 
   // get the accepted tokens
-  auto accepted_tokens = rejection_sampler->forward(
-      draft_token_ids, draft_probs, target_probs, bonus_token_ids);
+  auto accepted_tokens =
+      rejection_sampler->forward(draft_token_ids,
+                                 draft_probs,
+                                 target_probs,
+                                 bonus_token_ids,
+                                 /*mask_out_rejected_tokens=*/true);
 
   // update the batch with the accpeted tokens
   batch.process_validate_output(accepted_tokens);

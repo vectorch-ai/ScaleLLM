@@ -1,7 +1,6 @@
 #include "qlinear_gptq_impl.h"
 
 #include <c10/core/DeviceType.h>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>

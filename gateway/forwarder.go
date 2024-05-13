@@ -35,7 +35,6 @@ func ForwardResponseStream(ctx context.Context, marshaler runtime.Marshaler, w h
 			return
 		}
 		if err != nil {
-			glog.Errorf("Failed to receive a response: %v", err)
 			handleForwardResponseStreamError(ctx, wroteHeader, marshaler, w, req, err)
 			return
 		}

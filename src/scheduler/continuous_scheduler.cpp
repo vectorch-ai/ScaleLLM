@@ -20,14 +20,11 @@ ContinuousScheduler::ContinuousScheduler(Engine* engine, const Options& options)
     : options_(options), engine_(engine), request_queue_(kRequestQueueSize) {
   CHECK(engine_ != nullptr);
   block_manager_ = engine_->block_manager();
-  tokenizer_ = engine_->tokenizer();
   CHECK(block_manager_ != nullptr);
-  CHECK(tokenizer_ != nullptr);
 
   enable_prefix_cache_ = block_manager_->options().enable_prefix_cache();
 
-  response_handler_ =
-      std::make_unique<ResponseHandler>(block_manager_, tokenizer_.get());
+  response_handler_ = std::make_unique<ResponseHandler>(engine_->tokenizer());
 }
 
 ContinuousScheduler::~ContinuousScheduler() {
@@ -88,6 +85,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
        ++it) {
     Request* request = *it;
     if (request->is_finished() || request->is_cancelled()) {
+      block_manager_->release_blocks_for(request);
       // release the ownership of the request
       response_handler_->on_request_finish(std::unique_ptr<Request>(request));
       continue;
@@ -99,6 +97,13 @@ Batch ContinuousScheduler::build_sequence_batch() {
       block_manager_->cache_blocks_for(&request->sequences[0]);
       // expand sequences to the target number
       request->expand_sequences();
+    }
+
+    // release blocks for finished sequences here
+    for (Sequence& sequence : request->sequences) {
+      if (sequence.is_finished()) {
+        block_manager_->release_blocks_for(&sequence);
+      }
     }
 
     // put it to the front of the preemptable queue as it has higher priority
@@ -241,6 +246,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
     // no enough memory to schedule single sequence, just finish the request
     Request* request = priority_queue_.top();
     priority_queue_.pop();
+    block_manager_->release_blocks_for(request);
     // release the ownership of the request
     response_handler_->on_request_finish(std::unique_ptr<Request>(request));
   }
@@ -253,22 +259,16 @@ Batch ContinuousScheduler::build_sequence_batch() {
   return batch;
 }
 
-// step the scheduler forward by one step
-// may get blocked if there are no requests to process
-void ContinuousScheduler::step(const absl::Duration& timeout) {
-  // get a new batch of requests
+Batch ContinuousScheduler::wait_for_batch(const absl::Duration& timeout) {
   const auto deadline = absl::Now() + timeout;
-  Batch batch;
   while (true) {
-    batch = build_sequence_batch();
+    Batch batch = std::move(build_sequence_batch());
     if (!batch.empty()) {
-      // find one batch of requests to process
-      break;
+      return batch;
     }
     const auto now = absl::Now();
     if (now > deadline) {
-      // no requests to process
-      return;
+      break;
     }
     // wait for new requests to arrive
     constexpr uint64_t kStepSleepTimeMs = 10;
@@ -276,19 +276,51 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
         std::min(absl::Milliseconds(kStepSleepTimeMs), deadline - now);
     absl::SleepFor(time_to_sleep);
   }
+  // return an empty batch
+  return {};
+}
+
+// step the scheduler forward by one step
+// may get blocked if there are no requests to process
+void ContinuousScheduler::step(const absl::Duration& timeout) {
+  // get a new batch of requests
+  Batch batch = wait_for_batch(timeout);
+  if (batch.empty()) {
+    return;
+  }
 
   engine_->execute_model(batch);
 
-  // process sequence in batch
-  for (int64_t i = 0; i < batch.size(); ++i) {
-    Sequence* seq = batch[i];
-    // stream delta to client if streaming is enabled
-    if (seq->is_streaming()) {
-      response_handler_->on_sequence_stream(seq);
+  // process request output in batch
+  for (Request* request : running_requests_) {
+    if (request->is_streaming()) {
+      response_handler_->on_request_stream(request);
+    }
+  }
+}
+
+void ContinuousScheduler::run_until_complete() {
+  while (true) {
+    // build a batch of requests/sequences
+    auto batch = build_sequence_batch();
+    if (batch.empty()) {
+      // no more requests to process
+      break;
+    }
+
+    // run inference for the batch
+    engine_->execute_model(batch);
+
+    // process request output in batch
+    for (Request* request : running_requests_) {
+      if (request->is_streaming()) {
+        response_handler_->on_request_stream(request);
+      }
     }
   }
 
-  // TODO: return a task to support waiting for the completion of the batch
+  // wait for all responses to be processed
+  response_handler_->wait_for_complete();
 }
 
 bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,

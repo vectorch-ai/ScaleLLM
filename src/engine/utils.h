@@ -8,13 +8,20 @@
 
 namespace llm {
 
-class Utils {
- public:
-  static void prepare_profile_inputs(int64_t max_num_tokens,
-                                     int64_t max_num_seqs,
-                                     torch::Tensor* flatten_token_ids,
-                                     torch::Tensor* flatten_positions,
-                                     InputParameters* input_params);
-};
+std::vector<torch::Device> parse_devices(const std::string& device_str);
+
+template <typename T>
+std::string to_string(const std::vector<T>& items) {
+  std::stringstream ss;
+  for (size_t i = 0; i < items.size(); ++i) {
+    const auto& item = items[i];
+    if (i == 0) {
+      ss << item;
+    } else {
+      ss << "," << item;
+    }
+  }
+  return ss.str();
+}
 
 }  // namespace llm

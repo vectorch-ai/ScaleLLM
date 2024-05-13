@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 option go_package = "github.com/vectorch-ai/scalellm;scalellm";
-package llm;
+package llm.proto;
 
 message ModelCard {
   // The model identifier, which can be referenced in the API endpoints.

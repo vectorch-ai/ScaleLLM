@@ -20,7 +20,12 @@ RUN apt-get update -q -y && \
     libboost-all-dev \
     curl \
     git \
-    wget
+    wget \
+    gcc-12 \
+    g++-12
+
+# build with gcc-12
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 10 --slave /usr/bin/g++ g++ /usr/bin/g++-12
 
 # install jemalloc (optional)
 RUN cd /tmp && \
@@ -41,7 +46,7 @@ WORKDIR /ScaleLLM
 COPY ./ ./
 
 # build
-RUN cmake -G Ninja -S . -B build
+RUN cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES="80;89;90"
 RUN cmake --build build --target scalellm --config Release -j$(nproc)
 
 # install

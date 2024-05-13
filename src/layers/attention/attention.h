@@ -1,13 +1,10 @@
 #pragma once
 
-#include <gflags/gflags.h>
 #include <torch/torch.h>
 
 #include "layers/attention/handler.h"
 #include "memory/kv_cache.h"
 #include "models/parameters.h"
-
-DECLARE_bool(disable_custom_kernels);
 
 namespace llm {
 

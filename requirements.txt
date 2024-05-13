@@ -1,1 +1,6 @@
 huggingface_hub
+shortuuid
+pydantic
+uvicorn
+fastapi
+anyio

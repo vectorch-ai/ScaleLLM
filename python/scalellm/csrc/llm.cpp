@@ -1,18 +1,17 @@
-#include "server/llm.h"
+#include "llm.h"
 
 #include <absl/strings/str_split.h>
 
 #include "engine/llm_engine.h"
 #include "request/sequence.h"
 
-namespace llm {
+namespace llm::csrc {
 
 LLM::LLM(const std::string& model_path,
-         const llm::SamplingParameter& sp,
-         const llm::StoppingCriteria& sc,
+         const SamplingParams& sp,
          int64_t max_seq_len,
          const std::string& device_str)
-    : sampling_param_(sp), stopping_criteria_(sc), max_seq_len_(max_seq_len) {
+    : max_seq_len_(max_seq_len) {
   auto devices = parse_devices(device_str);
   LLMEngine::Options options;
   options.devices(devices);
@@ -94,4 +93,4 @@ std::vector<torch::Device> LLM::parse_devices(const std::string& device_str) {
   return devices;
 }
 
-}  // namespace llm
+}  // namespace llm::csrc

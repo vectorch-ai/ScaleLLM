@@ -6,11 +6,12 @@ import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 import sysconfig
+from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+
 
 def use_cxx11_abi():
     try:
@@ -23,6 +24,13 @@ def get_torch_root():
     try:
         import torch
         return str(Path(torch.__file__).parent)
+    except ImportError:
+        return None
+    
+def get_nccl_root():
+    try:
+        from nvidia import nccl
+        return str(Path(nccl.__file__).parent)
     except ImportError:
         return None
 
@@ -94,21 +102,22 @@ class CMakeBuild(build_ext):
         # auxiliary "native" libs
 
         debug = int(os.environ.get("DEBUG", 0)) if self.debug is None else self.debug
-        cfg = "Debug" if debug else "Release"
+        build_type = "Debug" if debug else "Release"
 
         # python directories
         python_include_dir = sysconfig.get_path("platinclude")
-
+        cuda_architectures="80;89;90"
         cmake_args = [
             "-G", "Ninja", # Ninja is much faster than make
             "-DUSE_CCACHE=ON", # use ccache if available
             f"-DCMAKE_MAKE_PROGRAM={ninja_dir}",     # pass in the ninja build path
-            f"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
-            f"-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
+            "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
             f"-DPython_EXECUTABLE:FILEPATH={sys.executable}",
             f"-DPYTHON_INCLUDE_DIRS={python_include_dir}",
-            f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
+            f"-DCMAKE_CUDA_ARCHITECTURES={cuda_architectures}",
+            f"-DCMAKE_BUILD_TYPE={build_type}",  # not used on MSVC, but no harm
         ]
 
         # Adding CMake arguments set as environment variable
@@ -118,18 +127,27 @@ class CMakeBuild(build_ext):
                 
         # check if torch binary is built with cxx11 abi
         if use_cxx11_abi():
-            cmake_args += ["-DENABLE_CXX11_ABI=ON"]
+            cmake_args += ["-DUSE_CXX11_ABI=ON"]
         else:
-            cmake_args += ["-DENABLE_CXX11_ABI=OFF"]
+            cmake_args += ["-DUSE_CXX11_ABI=OFF"]
 
-        build_args = ["--config", cfg]
-        max_jobs = os.getenv("MAX_JOBS", str(2 * os.cpu_count()))
+        build_args = ["--config", build_type]
+        max_jobs = os.getenv("MAX_JOBS", str(os.cpu_count()))
         build_args += ['-j' + max_jobs]
         
         env = os.environ.copy()
         LIBTORCH_ROOT = get_torch_root()
         if LIBTORCH_ROOT is not None:
             env["LIBTORCH_ROOT"] = LIBTORCH_ROOT
+            
+        NCCL_ROOT = get_nccl_root()
+        if NCCL_ROOT is not None:
+            env["NCCL_ROOT"] = NCCL_ROOT
+            env["NCCL_VERSION"] = "2"
+            
+        # print cmake args
+        print("CMake Args: ", cmake_args)
+        print("Env: ", env)
             
         cmake_dir = get_cmake_dir()
         subprocess.check_call(["cmake", self.base_dir] + cmake_args, cwd=cmake_dir, env=env)
@@ -146,7 +164,7 @@ scalellm_package_data = [
 
 setup(
     name="scalellm",
-    version="0.0.5",
+    version="0.0.9",
     license="Apache 2.0",
     author="ScaleLLM Team",
     description="A high-performance inference system for large language models.",
@@ -155,13 +173,13 @@ setup(
     packages=[
         "scalellm", 
     ],
-    ext_modules=[CMakeExtension("wrapper", "scalellm/")],
+    ext_modules=[CMakeExtension("_C", "scalellm/")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     package_data={
         "scalellm": scalellm_package_data,
     },
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     install_requires=[
         "torch",
     ],

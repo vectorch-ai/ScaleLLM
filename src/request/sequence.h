@@ -9,19 +9,12 @@
 #include "common/slice.h"
 #include "incremental_decoder.h"
 #include "memory/block.h"
+#include "output.h"
 #include "sampling/parameters.h"
 #include "stopping_criteria.h"
 #include "tokenizer/tokenizer.h"
 
 namespace llm {
-
-struct SequenceDeltaOutput {
-  std::string delta;
-
-  FinishReason finish_reason;
-};
-
-using OnDelta = std::function<bool(const SequenceDeltaOutput& output)>;
 
 // The sequence is shared between LLM and SSM for speculative decoding, and
 // it's possible that the numbers of tokens in kv cache are out of sync.
@@ -53,9 +46,6 @@ class Sequence final {
 
     // whether to echo the prompt tokens back
     bool echo = false;
-
-    // the callback function to call when new tokens are generated
-    OnDelta on_delta = nullptr;
   };
 
   Sequence(const std::string_view& prompt,
@@ -65,6 +55,9 @@ class Sequence final {
 
   // get the id of the sequence
   int64_t id() const { return id_; }
+
+  // get the index of the sequence in the request
+  size_t index() const { return index_; }
 
   // get token ids
   Slice<int32_t> token_ids() const { return {token_ids_, num_tokens_}; }
@@ -165,16 +158,6 @@ class Sequence final {
   // get the offset of output tokens
   size_t output_offset() const { return decoder_.output_offset(); }
 
-  // check if streaming is enabled
-  bool is_streaming() const { return options_.on_delta != nullptr; }
-
-  // stream the delta output to the client
-  // cancel the sequence if the callback returns false
-  void stream_delta(const SequenceDeltaOutput& output);
-
-  // check if the sequence is cancelled
-  bool is_cancelled() const;
-
   // check finish status, use cached value if not invalidated
   bool is_finished() const;
 
@@ -201,9 +184,17 @@ class Sequence final {
     return &options_.stopping_criteria;
   }
 
+  // close the sequence once all outputs have been sent
+  void close() { closed_ = true; }
+
+  bool is_closed() const { return closed_; }
+
  private:
   // global unique id for the sequence
   const int64_t id_;
+
+  // the index of the sequence in the request
+  size_t index_ = 0;
 
   // options for the sequence
   Options options_;
@@ -231,9 +222,6 @@ class Sequence final {
   // physical blocks that hold the kv cache.
   std::vector<Block> blocks_;
 
-  // is the sequence cancelled
-  std::atomic_bool is_cancelled_{false};
-
   // is the sequence finished
   mutable bool is_finished_ = false;
 
@@ -242,6 +230,9 @@ class Sequence final {
 
   // the reason why the sequence is finished
   mutable FinishReason finish_reason_ = FinishReason::NONE;
+
+  // is the sequence closed.
+  bool closed_ = false;
 
   // id allocator for sequences
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)

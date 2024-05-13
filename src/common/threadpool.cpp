@@ -1,6 +1,5 @@
 #include "threadpool.h"
 
-#include <functional>
 #include <thread>
 
 #include "concurrent_queue.h"

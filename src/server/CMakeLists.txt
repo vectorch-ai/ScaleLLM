@@ -9,7 +9,7 @@ cc_library(
   SRCS 
     grpc_server.cpp
   DEPS
-    :handlers
+    :grpc_handlers
     :request
     absl::strings
     glog::glog
@@ -27,28 +27,14 @@ cc_library(
     glog::glog
 )
 
-cc_library(
-  NAME
-    llm
-  HDRS
-    llm.h
-  SRCS
-    llm.cpp
-  DEPS
-    :engine
-    torch
-    absl::strings
-    gflags::gflags
-    glog::glog
-)
-
 cc_binary(
   NAME 
     simple
   SRCS 
     simple.cpp
   DEPS
-    :engine_factory
+    :engine
+    :speculative
     torch
     absl::strings
     gflags::gflags
@@ -64,7 +50,8 @@ cc_binary(
   DEPS
     :grpc_server
     :http_server
-    :engine_factory
+    :grpc_handlers
+    :llm_handler
     absl::strings
     gflags::gflags
     glog::glog
@@ -79,8 +66,7 @@ install(CODE [[
     file(GET_RUNTIME_DEPENDENCIES
           RESOLVED_DEPENDENCIES_VAR DEPENDENCIES
           UNRESOLVED_DEPENDENCIES_VAR UNRESOLVED_DEPENDENCIES
-          EXECUTABLES $<TARGET_FILE:scalellm>
-          POST_EXCLUDE_REGEXES "^/lib(64)?/.*")
+          EXECUTABLES $<TARGET_FILE:scalellm>)
 
     file(INSTALL
           DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"

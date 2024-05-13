@@ -1,11 +1,11 @@
 syntax = "proto3";
 
 option go_package = "github.com/vectorch-ai/scalellm;scalellm";
-package llm;
+package llm.proto;
 
 import "common.proto";
 
-// Next ID: 19
+// Next ID: 21
 message CompletionRequest {
   // ID of the model to use. (required)
   // You can use the ListModels endpoint to list available models.
@@ -21,13 +21,6 @@ message CompletionRequest {
   // the prompt token count + max_tokens can't exceed the model's max context length.
   optional uint32 max_tokens = 4;
 
-  // temperature of the sampling, between [0, 2]. default = 1.0
-  // higher value will make the ouput more random.
-  optional float temperature = 5;
-
-  // top_p sampling cutoff, between [0, 1.0]. default = 1.0
-  optional float top_p = 6;
-
   // number of completions to return for each prompt. default = 1
   optional uint32 n = 7;
 
@@ -40,11 +33,9 @@ message CompletionRequest {
   // whether to include the original prompt in the completion response. default = true
   optional bool echo = 10;
 
-  // up to 4 sequences where the API will stop generating further tokens.
-  repeated string stop = 11;
-
-  // the list of token ids where the API will stop generating further tokens.
-  repeated int32 stop_token_ids = 18;
+  // temperature of the sampling, between [0, 2]. default = 1.0
+  // higher value will make the ouput more random.
+  optional float temperature = 5;
 
   // presence penalty to reduce the likelihood of generating words already in the prompt.
   // values between [-2.0, 2.0]. Positive values penalize new tokens based on their existing
@@ -56,18 +47,35 @@ message CompletionRequest {
   // Positive values penalize new tokens based on their existing frequency in the text.
   optional float frequency_penalty = 13;
 
-  // Generates best_of completions server-side and returns the "best" (the one with the lowest log probability per token).
-  // Results can't be streamed once set.
-  // when used with n, best_of controls the number of candidate completions and n specifies how many to return
-  // best_of must be >= n
-  optional uint32 best_of = 14;
+  // repetition penalty to penalize new tokens based on their occurence in the
+  // text. values > 1.0 encourage the model to use new tokens, while values
+  // < 1.0 encourage the model to repeat tokens. default = 1.0
+  optional float repetition_penalty = 20;
 
-  // TODO: logit_bias
-  // modify the likelihood of specified tokens appearing in the completion.
-  // map<int64, float> logit_bias = 15;
+  // top_p sampling cutoff, between [0, 1.0]. default = 1.0
+  optional float top_p = 6;
+
+  // top_k sampling cutoff, default = -1 (no cutoff)
+  optional int64 top_k = 19;
 
   // A unique identifier representing your end-user, which can help system to monitor and detect abuse.
   string user = 16;
+
+  // whether to skip special tokens in the output. default = true
+  optional bool skip_special_tokens = 14;
+
+  // whether to ignore the end of sequence token. default = false.
+  optional bool ignore_eos = 15;
+
+  // up to 4 sequences where the API will stop generating further tokens.
+  repeated string stop = 11;
+
+  // the list of token ids where the API will stop generating further tokens.
+  repeated int32 stop_token_ids = 18;
+
+  // TODO: logit_bias
+  // modify the likelihood of specified tokens appearing in the completion.
+  // map<int64, float> logit_bias = 18;
 
   // request priority. default = DEFAULT
   optional Priority priority = 17;

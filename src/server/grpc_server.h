@@ -44,8 +44,8 @@ class GrpcServer final {
   std::unique_ptr<ModelsHandler> models_handler_;
 
   // registed service
-  Completion::AsyncService completion_service_;
-  Chat::AsyncService chat_service_;
+  proto::Completion::AsyncService completion_service_;
+  proto::Chat::AsyncService chat_service_;
 
   // grpc server
   std::unique_ptr<grpc::Server> grpc_server_;

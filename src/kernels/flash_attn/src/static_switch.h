@@ -27,33 +27,33 @@
   }()
 
 #ifdef FLASHATTENTION_DISABLE_ALIBI
-  #define ALIBI_SWITCH(COND, CONST_NAME, ...)   \
-  [&] {                                         \
-    constexpr static bool CONST_NAME = false;   \
-    return __VA_ARGS__();                       \
+#define ALIBI_SWITCH(COND, CONST_NAME, ...)   \
+  [&] {                                       \
+    constexpr static bool CONST_NAME = false; \
+    return __VA_ARGS__();                     \
   }()
 #else
-  #define ALIBI_SWITCH BOOL_SWITCH
+#define ALIBI_SWITCH BOOL_SWITCH
 #endif
 
 #ifdef FLASHATTENTION_DISABLE_UNEVEN_K
-  #define EVENK_SWITCH(COND, CONST_NAME, ...)   \
-  [&] {                                         \
-    constexpr static bool CONST_NAME = true;    \
-    return __VA_ARGS__();                       \
+#define EVENK_SWITCH(COND, CONST_NAME, ...)  \
+  [&] {                                      \
+    constexpr static bool CONST_NAME = true; \
+    return __VA_ARGS__();                    \
   }()
 #else
-  #define EVENK_SWITCH BOOL_SWITCH
+#define EVENK_SWITCH BOOL_SWITCH
 #endif
 
 #ifdef FLASHATTENTION_DISABLE_LOCAL
-  #define LOCAL_SWITCH(COND, CONST_NAME, ...)   \
-  [&] {                                         \
-    constexpr static bool CONST_NAME = false;    \
-    return __VA_ARGS__();                       \
+#define LOCAL_SWITCH(COND, CONST_NAME, ...)   \
+  [&] {                                       \
+    constexpr static bool CONST_NAME = false; \
+    return __VA_ARGS__();                     \
   }()
 #else
-  #define LOCAL_SWITCH BOOL_SWITCH
+#define LOCAL_SWITCH BOOL_SWITCH
 #endif
 
 #define FP16_SWITCH(COND, ...)               \
@@ -67,12 +67,9 @@
     }                                        \
   }()
 
-#define HEADDIM_SWITCH(HEADDIM, ...)   \
+#define HEADDIM_SWITCH(HEADDIM, ...)       \
   [&] {                                    \
-    if (HEADDIM <= 32) {                   \
-      constexpr static int kHeadDim = 32;  \
-      return __VA_ARGS__();                \
-    } else if (HEADDIM <= 64) {            \
+    if (HEADDIM <= 64) {                   \
       constexpr static int kHeadDim = 64;  \
       return __VA_ARGS__();                \
     } else if (HEADDIM <= 96) {            \
@@ -80,15 +77,6 @@
       return __VA_ARGS__();                \
     } else if (HEADDIM <= 128) {           \
       constexpr static int kHeadDim = 128; \
-      return __VA_ARGS__();                \
-    } else if (HEADDIM <= 160) {           \
-      constexpr static int kHeadDim = 160; \
-      return __VA_ARGS__();                \
-    } else if (HEADDIM <= 192) {           \
-      constexpr static int kHeadDim = 192; \
-      return __VA_ARGS__();                \
-    } else if (HEADDIM <= 224) {           \
-      constexpr static int kHeadDim = 224; \
       return __VA_ARGS__();                \
     } else if (HEADDIM <= 256) {           \
       constexpr static int kHeadDim = 256; \

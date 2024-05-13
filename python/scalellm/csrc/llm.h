@@ -1,16 +1,15 @@
 #pragma once
 
 #include "engine/llm_engine.h"
+#include "handlers/sampling_params.h"
 #include "request/stopping_criteria.h"
-#include "sampling/parameters.h"
 
-namespace llm {
+namespace llm::csrc {
 
 class LLM {
  public:
   LLM(const std::string& model_path,
-      const SamplingParameter& sp,
-      const StoppingCriteria& sc,
+      const SamplingParams& sp,
       int64_t max_seq_len,
       const std::string& device_str);
 
@@ -28,4 +27,4 @@ class LLM {
   int64_t max_seq_len_;
 };
 
-}  // namespace llm
+}  // namespace llm::csrc
