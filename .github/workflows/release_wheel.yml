@@ -24,6 +24,12 @@ jobs:
         with:
           submodules: recursive
       
+      - name: Show uid and gid
+        run: |
+          echo "CI_UID: $CI_UID"
+          echo "CI_GID: $CI_GID"
+          id
+      
       - name: Build wheel
         run: |
           chown -R $CI_UID:$CI_GID "$GITHUB_WORKSPACE"
