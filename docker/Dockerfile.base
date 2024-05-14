@@ -29,7 +29,7 @@ ENV DESIRED_CUDA ${CUDA_VERSION}
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
 
 # Install gcc
-ARG GCC_VERSION=12
+ARG GCC_VERSION=11
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     software-properties-common gpg-agent

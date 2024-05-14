@@ -35,7 +35,7 @@ jobs:
           build-args: |
             UBUNTU_VERSION=22.04
             CUDA_VERSION=12.1
-            GCC_VERSION=12
+            GCC_VERSION=11
             CMAKE_VERSION=3.18.5
             NINJA_VERSION=1.9.0
           tags: |
