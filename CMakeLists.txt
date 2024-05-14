@@ -161,7 +161,12 @@ find_package(prometheus-cpp CONFIG REQUIRED)
 find_package(stduuid CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
-find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+find_package(Python COMPONENTS Interpreter Development)
+if (NOT Python_FOUND)
+  # manylinux doesn't ship Development.Embed
+  find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+endif()
+
 find_package(NCCL REQUIRED)
 
 if (USE_CXX11_ABI)
