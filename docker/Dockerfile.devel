@@ -36,7 +36,7 @@ RUN apt-get update \
 COPY ./common/install_gcc.sh install_gcc.sh
 RUN bash ./install_gcc.sh && rm install_gcc.sh
 
-ARG CMAKE_VERSION=3.28.1
+ARG CMAKE_VERSION=3.18.5
 COPY ./common/install_cmake.sh install_cmake.sh
 RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
 RUN rm install_cmake.sh
