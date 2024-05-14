@@ -62,19 +62,25 @@ RUN_OPTS+=("-v $(pwd):$(pwd)")
 RUN_OPTS+=("-v /tmp:/tmp")
 RUN_OPTS+=("-v ${HOME}:${HOME}")
 
-# carry over some environment variables
-RUN_OPTS+=("-e VCPKG_DEFAULT_BINARY_CACHE=${VCPKG_DEFAULT_BINARY_CACHE}")
-RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
+# carry over cache settings
+if [[ -n "${VCPKG_DEFAULT_BINARY_CACHE}" ]]; then
+  RUN_OPTS+=("-v ${VCPKG_DEFAULT_BINARY_CACHE}:${VCPKG_DEFAULT_BINARY_CACHE}")
+  RUN_OPTS+=("-e VCPKG_DEFAULT_BINARY_CACHE=${VCPKG_DEFAULT_BINARY_CACHE}")
+fi
+
+if [[ -n "${CCACHE_DIR}" ]]; then
+  RUN_OPTS+=("-v ${CCACHE_DIR}:${CCACHE_DIR}")
+  RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
+fi
 
 CMD="sh -c 'cd $(pwd); $@'"
 
 [[ "${CMD}" = "" ]] && usage
 [[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
 
-echo "== Pulling docker image: ${IMAGE}"
 if ! docker pull ${IMAGE} ; then
   echo "WARNING: Failed to docker pull image ${IMAGE}"
 fi
 
-echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"$(get_switch_user_cmd) ${CMD}\""
+# echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"$(get_switch_user_cmd) ${CMD}\""
 docker run ${RUN_OPTS[@]} ${IMAGE} bash -c "$(get_switch_user_cmd) ${CMD}"

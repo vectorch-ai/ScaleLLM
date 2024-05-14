@@ -37,16 +37,16 @@ jobs:
           tags: |
             vectorchai/scalellm_manylinux:cuda12.1
 
-      # - name: Build base for cuda 11.8
-      #   uses: docker/build-push-action@v5
-      #   with:
-      #     context: ./docker
-      #     file: ./docker/Dockerfile.manylinux
-      #     push: true
-      #     cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
-      #     cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
-      #     build-args: |
-      #       CUDA_VERSION=11.8
-      #     tags: |
-      #       vectorchai/scalellm_manylinux:cuda11.8
+      - name: Build base for cuda 11.8
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.manylinux_gcc11
+          push: true
+          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
+          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          build-args: |
+            CUDA_VERSION=11.8
+          tags: |
+            vectorchai/scalellm_manylinux:cuda11.8
 
