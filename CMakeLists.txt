@@ -3,6 +3,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
 option(USE_CXX11_ABI "Use the new C++-11 ABI, which is not backwards compatible." ON)
+option(USE_MANYLINUX "Build for manylinux" OFF)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -161,10 +162,11 @@ find_package(prometheus-cpp CONFIG REQUIRED)
 find_package(stduuid CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
-find_package(Python COMPONENTS Interpreter Development)
-if (NOT Python_FOUND)
+if (USE_MANYLINUX)
   # manylinux doesn't ship Development.Embed
   find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+else()
+  find_package(Python REQUIRED COMPONENTS Interpreter Development)
 endif()
 
 find_package(NCCL REQUIRED)
