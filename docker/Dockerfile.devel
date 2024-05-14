@@ -9,6 +9,10 @@ ENV DEBIAN_FRONTEND noninteractive
 COPY ./common/install_base.sh install_base.sh
 RUN bash ./install_base.sh && rm install_base.sh
 
+# Install user
+COPY ./common/install_user.sh install_user.sh
+RUN bash ./install_user.sh && rm install_user.sh
+
 # Install multiple python versions
 COPY ./common/install_python.sh install_python.sh
 RUN bash ./install_python.sh "3.9.0"
@@ -32,15 +36,24 @@ RUN apt-get update \
 COPY ./common/install_gcc.sh install_gcc.sh
 RUN bash ./install_gcc.sh && rm install_gcc.sh
 
-ARG CMAKE_VERSION=3.18.5
+ARG CMAKE_VERSION=3.28.1
 COPY ./common/install_cmake.sh install_cmake.sh
 RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
 RUN rm install_cmake.sh
 
-ARG NINJA_VERSION=1.9.0
+ARG NINJA_VERSION=1.11.1
 COPY ./common/install_ninja.sh install_ninja.sh
 RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
 RUN rm install_ninja.sh
+
+# install rust
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+# give everyone permission to use rust
+RUN chmod -R a+w ${RUSTUP_HOME} ${CARGO_HOME}
+RUN rustup --version; cargo --version; rustc --version
 
 # install jemalloc (optional)
 RUN cd /tmp && \
@@ -50,21 +63,6 @@ RUN cd /tmp && \
         ./configure --enable-prof --disable-initial-exec-tls && \
         make -j$(nproc) && make install && \
         ldconfig)
-
-# install nsys
-# ADD https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/2024_2/nsight-systems-2024.2.1_2024.2.1.106-1_amd64.deb .
-# RUN apt-get install -y ./nsight-systems-2024.2.1_2024.2.1.106-1_amd64.deb
-
-# install rust
-ARG UID=1000
-ARG GID=1000
-ENV RUSTUP_HOME=/usr/local/rustup
-ENV CARGO_HOME=/usr/local/cargo
-ENV PATH=/usr/local/cargo/bin:$PATH
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-# change owner so that non-root user can install rust packages
-RUN chown -R $UID:$GID /usr/local/rustup
-RUN chown -R $UID:$GID /usr/local/cargo
 
 # Install miniconda
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/Miniconda3-latest-Linux-x86_64.sh

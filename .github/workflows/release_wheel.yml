@@ -32,7 +32,6 @@ jobs:
       
       - name: Build wheel
         run: |
-          chown -R $CI_UID:$CI_GID "$GITHUB_WORKSPACE"
           docker pull vectorchai/scalellm_builder:cuda${{ matrix.cuda }}-ubuntu22.04
           docker run --rm -t \
               -v "$CI_CACHE_DIR":/ci_cache \
@@ -42,7 +41,7 @@ jobs:
               -e TORCH_VERSION=${{ matrix.torch }} \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
-              --user $CI_UID:$CI_GID \
+              --user ${id -u}:${id -g} \
               vectorchai/scalellm_builder:cuda${{ matrix.cuda }}-ubuntu22.04 \
               bash /ScaleLLM/scripts/build_wheel.sh
         timeout-minutes: 60

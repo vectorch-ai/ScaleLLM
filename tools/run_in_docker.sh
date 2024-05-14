@@ -42,7 +42,7 @@ function get_switch_user_cmd() {
 
 (( $# < 1 )) && usage
 
-IMAGE="vectorchai/scalellm:devel"
+IMAGE="vectorchai/scalellm_devel:latest"
 RUN_OPTS=()
 while [[ $# > 1 ]]; do
   case "$1" in
@@ -61,7 +61,12 @@ RUN_OPTS+=(--rm -it --network=host)
 RUN_OPTS+=("-v $(pwd):$(pwd)")
 RUN_OPTS+=("-v /tmp:/tmp")
 RUN_OPTS+=("-v ${HOME}:${HOME}")
-CMD="bash -c 'cd $(pwd); VCPKG_DEFAULT_BINARY_CACHE=$(pwd)/.vcpkg/bincache $@'"
+
+# carry over some environment variables
+RUN_OPTS+=("-e VCPKG_DEFAULT_BINARY_CACHE=${VCPKG_DEFAULT_BINARY_CACHE}")
+RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
+
+CMD="sh -c 'cd $(pwd); $@'"
 
 [[ "${CMD}" = "" ]] && usage
 [[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
