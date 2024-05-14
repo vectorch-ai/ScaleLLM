@@ -1,6 +1,9 @@
 name: Publish devel docker image
 on:
   workflow_dispatch:
+env:
+  # Tells where to store caches.
+  CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
   publish_base:
@@ -27,6 +30,8 @@ jobs:
           context: ./docker
           file: ./docker/Dockerfile.devel
           push: true
+          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
+          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
           build-args: |
             UBUNTU_VERSION=22.04
             CUDA_VERSION=12.1
