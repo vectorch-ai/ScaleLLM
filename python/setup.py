@@ -114,6 +114,7 @@ class CMakeBuild(build_ext):
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
             "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
+            "-DUSE_MANYLINUX:BOOL=ON",
             f"-DPython_EXECUTABLE:FILEPATH={sys.executable}",
             f"-DPYTHON_INCLUDE_DIRS={python_include_dir}",
             f"-DCMAKE_CUDA_ARCHITECTURES={cuda_architectures}",

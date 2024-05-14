@@ -13,10 +13,11 @@ env:
 jobs:
   build_wheel:
     strategy:
+      fail-fast: false
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12"]
-        cuda: ["11.8", "12.1"]
-        torch: ["2.1", "2.2", "2.3"]
+        python: ["3.9", "3.10", "3.11"]
+        cuda: ["12.1"]
+        torch: ["2.2", "2.3"]
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -36,7 +37,7 @@ jobs:
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
               --user $(id -u):$(id -g) \
-              vectorchai/scalellm_builder:cuda${{ matrix.cuda }}-ubuntu22.04 \
+              vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }} \
               bash /ScaleLLM/scripts/build_wheel.sh
         timeout-minutes: 60
 

@@ -31,10 +31,30 @@ install_ubuntu() {
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 }
 
+install_almalinux() {
+  yum -y update
+  yum -y install \
+    zip \
+    wget \
+    curl \
+    perl \
+    sudo \
+    vim \
+    jq \
+    libtool \
+    unzip
+  
+  # Cleanup
+  yum clean all
+}
+
 ID=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
 case "$ID" in
   ubuntu)
     install_ubuntu
+    ;;
+  almalinux)
+    install_almalinux
     ;;
   *)
     echo "Unable to determine OS..."

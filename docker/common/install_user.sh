@@ -10,7 +10,3 @@ echo "jenkins:*:19110:0:99999:7:::" >>/etc/shadow
 
 # allow sudo
 echo 'jenkins ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/jenkins
-
-
-# test that sudo works
-sudo -u jenkins sudo -v
