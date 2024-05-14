@@ -9,6 +9,5 @@ torch::Tensor apply_fused_moe(torch::Tensor hidden_states,
                               torch::Tensor w2,
                               torch::Tensor topk_weight,
                               torch::Tensor topk_ids,
-                              bool inplace,
-                              );
+                              bool inplace);
 }  // namespace llm::kernel

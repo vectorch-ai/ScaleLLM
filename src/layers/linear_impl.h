@@ -148,7 +148,7 @@ class ReplicatedLinearImpl : public torch::nn::Module {
   torch::Tensor forward(torch::Tensor input, torch::Tensor& output_bias);
   void load_state_dict(const StateDict& state_dict);
 
-  void verify_loaded_weights(const std::string& prefix = "") {
+  void verify_loaded_weights(const std::string& prefix = "") const {
     CHECK(weight_is_loaded_)
         << "weight is not loaded for " << prefix + "weight";
     CHECK(!bias_.defined() || bias_is_loaded_)

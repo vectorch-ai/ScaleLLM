@@ -32,11 +32,13 @@ class MixtralMoEImpl : public torch::nn::Module {
                                              quant_args,
                                              options));
     fused_moe_ = register_module("fused_moe",
-                                 FusedMoeLayer(args_.n_experts_per_tok(),
-                                               /*renormalize*/ true,
-                                               /*inplace*/ true,
-                                               quant_args,
-                                               options))
+                                 FusedMoeLayer(
+                                     /*renormalize*/ true,
+                                     /*inplace*/ true,
+                                     args,
+                                     quant_args,
+                                     parallel_args,
+                                     options));
   }
 
   torch::Tensor forward(torch::Tensor hidden_states) {
@@ -47,24 +49,23 @@ class MixtralMoEImpl : public torch::nn::Module {
     torch::Tensor out_bias;
     auto router_logits = gate_(hidden_states, out_bias);
     // router_logits: (num_tokens, n_experts)
-    auto final_hidden_states =
-        fused_moe_(hidden_states, router_logits)
+    auto final_hidden_states = fused_moe_(hidden_states, router_logits);
 
-        /*
-        if self.tp_size > 1: # 张量并行的做法
-              final_hidden_states = tensor_model_parallel_all_reduce(
-                  final_hidden_states)
-        */
-        return final_hidden_states.view({num_token, hidden_size});
+    /*
+    if self.tp_size > 1: # 张量并行的做法
+          final_hidden_states = tensor_model_parallel_all_reduce(
+              final_hidden_states)
+    */
+    return final_hidden_states.view({num_token, hidden_size});
   }
   void load_state_dict(const StateDict& state_dict) {
-    gate_->load_state_dict(state_dict.select("gate"));
-    fused_moe_->load_state_dict(state_dict.select("experts"));
+    gate_->load_state_dict(state_dict.select("gate."));
+    fused_moe_->load_state_dict(state_dict.select("experts."));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
-    gate_->verify_loaded_weights(prefix + "gate");
-    fused_moe_->verify_loaded_weights(prefix + "experts");
+    gate_->verify_loaded_weights(prefix + "gate.");
+    fused_moe_->verify_loaded_weights(prefix + "experts.");
   }
 
  private:
