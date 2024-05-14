@@ -1,4 +1,4 @@
-name: build and test
+name: Build and test
 
 on:
   push:
@@ -46,11 +46,11 @@ jobs:
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../_vcpkg/bincache
+        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincache
         # Tells ccache where to store its cache.
-        CCACHE_DIR: ${{ github.workspace }}/../../_ccache
+        CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache
         # Tells where to store the dependencies.
-        DEPENDENCES_ROOT: ${{ github.workspace }}/../../_deps
+        DEPENDENCES_ROOT: ${{ github.workspace }}/../../ci_cache/.deps
 
     steps:
     - name: Install toolkits

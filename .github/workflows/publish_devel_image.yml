@@ -30,9 +30,6 @@ jobs:
           build-args: |
             UBUNTU_VERSION=22.04
             CUDA_VERSION=12.1
-            GCC_VERSION=12
-            CMAKE_VERSION=3.18.5
-            NINJA_VERSION=1.9.0
           tags: |
             vectorchai/scalellm_devel:cuda12.1-ubuntu22.04
             vectorchai/scalellm_devel:latest

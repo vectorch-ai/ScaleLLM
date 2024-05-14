@@ -9,6 +9,10 @@ ENV DEBIAN_FRONTEND noninteractive
 COPY ./common/install_base.sh install_base.sh
 RUN bash ./install_base.sh && rm install_base.sh
 
+# Install user
+COPY ./common/install_user.sh install_user.sh
+RUN bash ./install_user.sh && rm install_user.sh
+
 # Install multiple python versions
 COPY ./common/install_python.sh install_python.sh
 RUN bash ./install_python.sh "3.9.0"
@@ -43,7 +47,12 @@ RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
 RUN rm install_ninja.sh
 
 # install rust
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH=$HOME/.cargo/bin:$PATH
+# give everyone permission to use rust
+RUN chmod -R a+w ${RUSTUP_HOME} ${CARGO_HOME}
+RUN rustup --version; cargo --version; rustc --version
 
 CMD ["bash"]
