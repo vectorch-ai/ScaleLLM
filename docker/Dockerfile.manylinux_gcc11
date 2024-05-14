@@ -15,8 +15,16 @@ RUN bash ./install_base.sh && rm install_base.sh
 COPY ./common/install_user.sh install_user.sh
 RUN bash ./install_user.sh && rm install_user.sh
 
+# Install gcc-11
+RUN rm -rf /opt/rh/gcc-toolset-12
+RUN yum install -y gcc-toolset-11-toolchain
+ENV PATH=/opt/rh/gcc-toolset-11/root/usr/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/rh/gcc-toolset-11/root/usr/lib64:/opt/rh/gcc-toolset-11/root/usr/lib:$LD_LIBRARY_PATH
+RUN gcc --version; g++ --version
+
+
 # Install cuda, cudnn and nccl
-ARG CUDA_VERSION=12.1
+ARG CUDA_VERSION=11.8
 COPY ./common/install_cuda.sh install_cuda.sh
 RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH

@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.9", "3.10", "3.11"]
-        cuda: ["12.1"]
+        cuda: ["11.8", "12.1"]
         torch: ["2.2", "2.3"]
     runs-on: [self-hosted, linux, release]
     steps:
@@ -27,7 +27,7 @@ jobs:
       
       - name: Build wheel
         run: |
-          docker pull vectorchai/scalellm_builder:cuda${{ matrix.cuda }}-ubuntu22.04
+          docker pull vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }}
           docker run --rm -t \
               -v "$CI_CACHE_DIR":/ci_cache \
               -v "$GITHUB_WORKSPACE":/ScaleLLM \
