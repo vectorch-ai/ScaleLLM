@@ -10,6 +10,9 @@ case "$ID" in
   ubuntu)
     apt-get remove cmake -y
     ;;
+  almalinux)
+    rm /usr/local/bin/cmake
+    ;;
   *)
     echo "Unable to determine OS..."
     exit 1

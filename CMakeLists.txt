@@ -144,7 +144,6 @@ if(UNIX)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og")
 endif()
 
-find_package(Boost CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 # find all dependencies from vcpkg
 find_package(fmt CONFIG REQUIRED)
@@ -162,7 +161,7 @@ find_package(prometheus-cpp CONFIG REQUIRED)
 find_package(stduuid CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
-find_package(Python REQUIRED COMPONENTS Interpreter Development)
+find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 find_package(NCCL REQUIRED)
 
 if (USE_CXX11_ABI)

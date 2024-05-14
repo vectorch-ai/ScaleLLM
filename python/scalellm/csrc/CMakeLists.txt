@@ -16,5 +16,5 @@ pybind_extension(
     absl::strings
     gflags::gflags
     glog::glog
-    Python::Python
+    Python::Module
 )

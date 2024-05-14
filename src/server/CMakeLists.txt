@@ -39,7 +39,7 @@ cc_binary(
     absl::strings
     gflags::gflags
     glog::glog
-    Python::Python
+    Python::Module
 )
 
 cc_binary(
