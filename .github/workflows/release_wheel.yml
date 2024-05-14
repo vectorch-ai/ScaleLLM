@@ -35,7 +35,7 @@ jobs:
               -e TORCH_VERSION=${{ matrix.torch }} \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
-              --user ${id -u}:${id -g} \
+              --user $(id -u):$(id -g) \
               vectorchai/scalellm_builder:cuda${{ matrix.cuda }}-ubuntu22.04 \
               bash /ScaleLLM/scripts/build_wheel.sh
         timeout-minutes: 60
