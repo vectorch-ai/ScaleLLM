@@ -1,6 +1,4 @@
 name: Release wheel
-permissions:
-  contents: write
 on:
   workflow_dispatch:
     inputs:
@@ -54,6 +52,8 @@ jobs:
   release:
     needs: build_wheel
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download wheel
         uses: actions/download-artifact@v4
