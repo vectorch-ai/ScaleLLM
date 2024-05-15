@@ -78,7 +78,7 @@ CMD="sh -c 'cd $(pwd); $@'"
 [[ "${CMD}" = "" ]] && usage
 [[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
 
-if ! docker pull ${IMAGE} ; then
+if ! docker pull ${IMAGE} > /dev/null; then
   echo "WARNING: Failed to docker pull image ${IMAGE}"
 fi
 
