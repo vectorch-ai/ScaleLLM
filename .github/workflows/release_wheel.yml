@@ -21,7 +21,7 @@ jobs:
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       
@@ -44,9 +44,38 @@ jobs:
       - name: show wheel size
         run: du -h python/dist/*
 
-      # - uses: actions/upload-artifact@v4
-      #   with:
-      #     name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
-      #     path: python/dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+          path: python/dist/*
+
+  release:
+    needs: build_wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          path: python/dist
+          merge-multiple: true
+          pattern: wheel-*
+
+      - name: Show wheels
+        run: ls -lha python/dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: python/dist/scalellm-*.tar.gz
+          tag_name: ${{ inputs.tag }}
+          draft: true
+          prerelease: true
+
+      # - name: Upload to pypi
+      #   run: |
+      #     pip install twine
+      #     python -m twine upload --repository testpypi python/dist/scalellm-*.tar.gz
+      #   env:
+      #     TWINE_PASSWORD: ${{ secrets.PYPI_TEST_TOKEN }}
       
 
