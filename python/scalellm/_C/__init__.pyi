@@ -5,7 +5,22 @@ from typing import Callable, List, Optional
 def get_metrics() -> str: ...
 
 class SamplingParams:
-    def __init__(self) -> None: ...
+    def __init__(
+        self,
+        max_tokens: int = 16,
+        n: int = 1,
+        echo: bool = False,
+        frequency_penalty: float = 0.0,
+        presence_penalty: float = 0.0,
+        repetition_penalty: float = 1.0,
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+        top_k: int = -1,
+        skip_special_tokens: bool = True,
+        ignore_eos: bool = False,
+        stop: Optional[List[str]] = None,
+        stop_token_ids: Optional[List[int]] = None,
+    ) -> None: ...
     # number of tokens to generate. truncted to model's max context length.
     max_tokens: int
     # number of sequences to generate for each prompt.
@@ -127,14 +142,3 @@ class LLMHandler:
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def run_until_complete(self) -> None: ...
-
-# Defined in scalellm/csrc/llm.h
-class LLM:
-    def __init__(
-        self,
-        model_path: str,
-        sampling_parameter: SamplingParams,
-        max_seq_len: int,
-        devices: str,
-    ) -> None: ...
-    def generate(self, batched_prompt: List[str]) -> None: ...
