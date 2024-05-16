@@ -35,7 +35,7 @@ def to_sampling_params(request: ChatCompletionRequest) -> SamplingParams:
 
 
 def to_messages(messages: List[ChatCompletionMessage]) -> List[Message]:
-    return [Message(msg.role, msg.content) for msg in messages]
+    return [Message(role=msg.role, content=msg.content) for msg in messages]
 
 
 async def generate_chat_response(

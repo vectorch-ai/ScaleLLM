@@ -65,7 +65,9 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("stop_token_ids", &SamplingParams::stop_token_ids);
 
   py::class_<Message>(m, "Message")
-      .def(py::init<const std::string&, const std::string&>())
+      .def(py::init<const std::string&, const std::string&>(),
+           py::arg("role"),
+           py::arg("content"))
       .def_readwrite("role", &Message::role)
       .def_readwrite("content", &Message::content);
 
@@ -95,7 +97,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .export_values();
 
   py::class_<Status>(m, "Status")
-      .def(py::init<StatusCode, const std::string&>())
+      .def(py::init<StatusCode, const std::string&>(), py::arg("code"), py::arg("message"))
       .def_property_readonly("code", &Status::code)
       .def_property_readonly("message", &Status::message)
       .def_property_readonly("ok", &Status::ok);
@@ -119,7 +121,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def("get", &ScheduleTask::get, py::call_guard<py::gil_scoped_release>());
 
   auto llm_handler = py::class_<LLMHandler>(m, "LLMHandler")
-                         .def(py::init<const LLMHandler::Options&>())
+                         .def(py::init<const LLMHandler::Options&>(), py::arg("options"))
                          .def("schedule_async",
                               &LLMHandler::schedule_async,
                               py::call_guard<py::gil_scoped_release>())
