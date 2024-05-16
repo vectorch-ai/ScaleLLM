@@ -24,7 +24,32 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
 
   // class SamplingParameter
   py::class_<SamplingParams>(m, "SamplingParams")
-      .def(py::init())
+      .def(py::init<uint32_t,
+                    uint32_t,
+                    bool,
+                    float,
+                    float,
+                    float,
+                    float,
+                    float,
+                    int64_t,
+                    bool,
+                    bool,
+                    std::optional<std::vector<std::string>>,
+                    std::optional<std::vector<int32_t>>>(),
+           py::arg("max_tokens") = 16,
+           py::arg("n") = 1,
+           py::arg("echo") = false,
+           py::arg("frequency_penalty") = 0.0,
+           py::arg("presence_penalty") = 0.0,
+           py::arg("repetition_penalty") = 1.0,
+           py::arg("temperature") = 1.0,
+           py::arg("top_p") = 1.0,
+           py::arg("top_k") = -1,
+           py::arg("skip_special_tokens") = true,
+           py::arg("ignore_eos") = false,
+           py::arg("stop") = std::nullopt,
+           py::arg("stop_token_ids") = std::nullopt)
       .def_readwrite("max_tokens", &SamplingParams::max_tokens)
       .def_readwrite("n", &SamplingParams::n)
       .def_readwrite("echo", &SamplingParams::echo)
