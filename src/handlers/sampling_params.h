@@ -11,10 +11,17 @@ namespace llm {
 // following: https://platform.openai.com/docs/api-reference/completions/create
 struct SamplingParams {
   SamplingParams() = default;
-  SamplingParams(uint32_t max_tokens, uint32_t n, bool echo,
-                 float frequency_penalty, float presence_penalty,
-                 float repetition_penalty, float temperature, float top_p,
-                 int64_t top_k, bool skip_special_tokens, bool ignore_eos,
+  SamplingParams(uint32_t max_tokens,
+                 uint32_t n,
+                 bool echo,
+                 float frequency_penalty,
+                 float presence_penalty,
+                 float repetition_penalty,
+                 float temperature,
+                 float top_p,
+                 int64_t top_k,
+                 bool skip_special_tokens,
+                 bool ignore_eos,
                  std::optional<std::vector<std::string>> stop,
                  std::optional<std::vector<int32_t>> stop_token_ids)
       : max_tokens(max_tokens),
