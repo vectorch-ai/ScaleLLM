@@ -6,7 +6,6 @@
 #include "common/metrics.h"
 #include "handlers/llm_handler.h"
 #include "handlers/sampling_params.h"
-#include "llm.h"
 #include "request/status.h"
 
 namespace llm::csrc {
@@ -165,14 +164,6 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
                      &LLMHandler::Options::max_seqs_per_batch_)
       .def_readwrite("num_speculative_tokens",
                      &LLMHandler::Options::num_speculative_tokens_);
-
-  // class LLM
-  py::class_<LLM, std::shared_ptr<LLM>>(m, "LLM")
-      .def(py::init<const std::string&,
-                    const SamplingParams&,
-                    int64_t,
-                    const std::string>())
-      .def("generate", &LLM::generate);
 }
 
 }  // namespace llm::csrc
