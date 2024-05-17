@@ -24,6 +24,9 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USER }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
+      - name: Create cache directory
+        run: mkdir -p $CI_CACHE_DIR/.buildx-cache
+
       - name: Build devel image for cuda 12.1
         uses: docker/build-push-action@v5
         with:
