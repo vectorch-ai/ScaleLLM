@@ -1,10 +1,21 @@
 name: Publish cpp docker image
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and push'
+        required: true
+        type: string
+    
 # Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
 # Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
-on:
-  push:
-    tags:
-      - v[0-9]+.[0-9]+.[0-9]+*
+  # push:
+  #   tags:
+  #     - v[0-9]+.[0-9]+.[0-9]+*
+env:
+# Tells where to store caches.
+VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincache \
+CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache \
 
 jobs:
   publish_scalellm:
@@ -37,28 +48,46 @@ jobs:
           push: true
           no-cache: true
           tags: |
-            vectorchai/scalellm-gateway:${{ steps.tagName.outputs.tag }}
+            vectorchai/scalellm-gateway:${{ inputs.tag }}
             vectorchai/scalellm-gateway:latest
 
-      - name: Build and push scalellm for cuda 12.1
+      - name: Build ScaleLLM for cuda 12.1
+        run: |
+          rm -rf build app
+          ./tools/run_in_docker.sh \
+            -d vectorchai/scalellm_devel:cuda12.1 \
+            ./scripts/build_scalellm.sh
+        timeout-minutes: 60
+
+      - name: Build and push scalellm docker image for cuda 12.1
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./docker/Dockerfile.scalellm
           push: true
           no-cache: true
           tags: |
-            vectorchai/scalellm:${{ steps.tagName.outputs.tag }}
+            vectorchai/scalellm:${{ inputs.tag }}
             vectorchai/scalellm:latest
+
+      - name: Build ScaleLLM for cuda 11.8
+        run: |
+          rm -rf build app
+          ./tools/run_in_docker.sh \
+            -d vectorchai/scalellm_devel:cuda11.8 \
+            ./scripts/build_scalellm.sh
+        timeout-minutes: 60
 
       - name: Build and push scalellm for cuda 11.8
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./docker/Dockerfile.scalellm
           push: true
           no-cache: true
           build-args: |
             BASE_IMAGE=nvcr.io/nvidia/cuda:11.8.0-devel-ubuntu22.04
           tags: |
-            vectorchai/scalellm_cu118:${{ steps.tagName.outputs.tag }}
+            vectorchai/scalellm_cu118:${{ inputs.tag }}
             vectorchai/scalellm_cu118:latest
 
