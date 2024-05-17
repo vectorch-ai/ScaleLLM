@@ -18,12 +18,9 @@ VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincac
 CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache \
 
 jobs:
-  publish_scalellm:
+  publish_gateway:
     runs-on: [self-hosted, linux, release]
     steps:
-      - uses: olegtarasov/get-tag@v2.1
-        id: tagName
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -51,13 +48,33 @@ jobs:
             vectorchai/scalellm-gateway:${{ inputs.tag }}
             vectorchai/scalellm-gateway:latest
 
+  publish_scalellm_cuda12.1:
+    depends-on: publish_gateway
+    runs-on: [self-hosted, linux, release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - name: Build ScaleLLM for cuda 12.1
         run: |
-          rm -rf build app
           ./tools/run_in_docker.sh \
             -d vectorchai/scalellm_devel:cuda12.1 \
             ./scripts/build_scalellm.sh
         timeout-minutes: 60
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Build and push scalellm docker image for cuda 12.1
         uses: docker/build-push-action@v5
@@ -70,13 +87,33 @@ jobs:
             vectorchai/scalellm:${{ inputs.tag }}
             vectorchai/scalellm:latest
 
+  publish_scalellm_cuda11.8:
+    depends-on: publish_gateway
+    runs-on: [self-hosted, linux, release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - name: Build ScaleLLM for cuda 11.8
         run: |
-          rm -rf build app
           ./tools/run_in_docker.sh \
             -d vectorchai/scalellm_devel:cuda11.8 \
             ./scripts/build_scalellm.sh
         timeout-minutes: 60
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Build and push scalellm for cuda 11.8
         uses: docker/build-push-action@v5
@@ -85,8 +122,6 @@ jobs:
           file: ./docker/Dockerfile.scalellm
           push: true
           no-cache: true
-          build-args: |
-            BASE_IMAGE=nvcr.io/nvidia/cuda:11.8.0-devel-ubuntu22.04
           tags: |
             vectorchai/scalellm_cu118:${{ inputs.tag }}
             vectorchai/scalellm_cu118:latest
