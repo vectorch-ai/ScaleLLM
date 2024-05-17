@@ -1,11 +1,6 @@
 name: Release wheel
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build and push'
-        required: true
-        type: string
 env:
   # Tells where to store caches.
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
@@ -16,8 +11,8 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.9", "3.10", "3.11"]
-        cuda: ["11.8", "12.1"]
-        torch: ["2.1", "2.2", "2.3"]
+        cuda: ["12.1"]
+        torch: ["2.3"]
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -34,7 +29,6 @@ jobs:
               -e PYTHON_VERSION=${{ matrix.python }} \
               -e CUDA_VERSION=${{ matrix.cuda }} \
               -e TORCH_VERSION=${{ matrix.torch }} \
-              -e RENAME_WHL=true \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
               --user $(id -u):$(id -g) \
@@ -42,15 +36,27 @@ jobs:
               bash /ScaleLLM/scripts/build_wheel.sh
         timeout-minutes: 60
 
-      - name: show wheel size
-        run: du -h python/dist/*
+      - name: show wheels
+        run: ls -lh python/dist
+
+      - name: rename wheel to manylinux
+        run: |
+          for whl in python/dist/scalellm-*.whl; do
+            new_whl=${whl//"-linux_"/"-manylinux_2_28_"}
+            if [ "$whl" != "$new_whl" ]; then
+              mv $whl $new_whl
+            fi
+          done
+
+      - name: show wheels
+        run: ls -lh python/dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
           path: python/dist/*
 
-  release:
+  publish_whl:
     needs: build_wheel
     runs-on: ubuntu-latest
     permissions:
@@ -64,21 +70,14 @@ jobs:
           pattern: wheel-*
 
       - name: Show wheels
-        run: ls -lha python/dist
+        run: ls -lh python/dist
 
-      - name: Create release
-        uses: softprops/action-gh-release@v1
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1.8
         with:
-          files: python/dist/scalellm-*.whl
-          tag_name: ${{ inputs.tag }}
-          draft: true
-          prerelease: true
-
-      # - name: Upload to pypi
-      #   run: |
-      #     pip install twine
-      #     python -m twine upload --repository testpypi python/dist/scalellm-*.tar.gz
-      #   env:
-      #     TWINE_PASSWORD: ${{ secrets.PYPI_TEST_TOKEN }}
+          packages-dir: python/dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+          verbose: true
       
 
