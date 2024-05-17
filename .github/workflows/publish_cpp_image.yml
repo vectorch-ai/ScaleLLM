@@ -48,8 +48,7 @@ jobs:
             vectorchai/scalellm-gateway:${{ inputs.tag }}
             vectorchai/scalellm-gateway:latest
 
-  publish_scalellm_cuda12.1:
-    depends-on: publish_gateway
+  publish_scalellm_cuda121:
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -87,8 +86,7 @@ jobs:
             vectorchai/scalellm:${{ inputs.tag }}
             vectorchai/scalellm:latest
 
-  publish_scalellm_cuda11.8:
-    depends-on: publish_gateway
+  publish_scalellm_cuda118:
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
