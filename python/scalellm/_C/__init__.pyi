@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Callable, List, Optional
 
+import torch  # noqa: F401
+
 # Defined in scalellm/csrc/scalellm.cpp
 def get_metrics() -> str: ...
 

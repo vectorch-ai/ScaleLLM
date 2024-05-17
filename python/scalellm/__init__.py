@@ -1,5 +1,4 @@
-__version__ = "0.0.9"
-
+__version__ = "0.1.0"
 from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
                          SamplingParams, SequenceOutput, Status, StatusCode,
                          Usage, get_metrics)

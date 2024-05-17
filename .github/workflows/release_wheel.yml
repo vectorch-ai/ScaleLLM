@@ -34,6 +34,7 @@ jobs:
               -e PYTHON_VERSION=${{ matrix.python }} \
               -e CUDA_VERSION=${{ matrix.cuda }} \
               -e TORCH_VERSION=${{ matrix.torch }} \
+              -e RENAME_WHL=true \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
               --user $(id -u):$(id -g) \

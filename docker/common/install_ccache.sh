@@ -12,5 +12,5 @@ curl -L "$url" | xz -d | tar -x
 cp ./ccache-${CCACHE_VERSION}-linux-x86_64/ccache /usr/bin/ccache
 popd
 
-# set max cache size to 5GiB
-/usr/bin/ccache -M 5Gi
+# set max cache size to 25GiB
+/usr/bin/ccache -M 25Gi

@@ -48,17 +48,6 @@ def join_path(*paths):
     return os.path.join(get_base_dir(), *paths)
 
 
-def get_version_suffix():
-    try:
-        import torch
-
-        version, other = torch.__version__.split("+")
-        major, minor, _ = version.split(".")
-        return f"{other}torch{major}.{minor}"
-    except ImportError:
-        return None
-
-
 def extract_version(file_path):
     with open(file_path, "r") as f:
         for line in f:
@@ -70,11 +59,7 @@ def extract_version(file_path):
 
 def get_scalellm_version():
     init_file = join_path("python", "scalellm", "__init__.py")
-    version = extract_version(init_file)
-    version_suffix = get_version_suffix()
-    if version_suffix is not None:
-        version += f"+{version_suffix}"
-    return version
+    return extract_version(init_file)
 
 
 def read_readme() -> str:
@@ -90,9 +75,6 @@ def get_cmake_dir():
     plat_name = sysconfig.get_platform()
     python_version = sysconfig.get_python_version().replace(".", "")
     dir_name = f"cmake.{plat_name}-{sys.implementation.name}-{python_version}"
-    version_suffix = get_version_suffix()
-    if version_suffix is not None:
-        dir_name += f"-{version_suffix}"
     cmake_dir = Path(get_base_dir()) / "python" / "build" / dir_name
     cmake_dir.mkdir(parents=True, exist_ok=True)
     return cmake_dir
@@ -224,7 +206,20 @@ setup(
     author="ScaleLLM Team",
     description="A high-performance inference system for large language models.",
     long_description=read_readme(),
+    long_description_content_type="text/markdown",
     url="https://github.com/vectorch-ai/ScaleLLM",
+    project_url={
+        "Homepage": "https://github.com/vectorch-ai/ScaleLLM",
+    },
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Intended Audience :: Developers",
+        "Operating System :: POSIX",
+        "License :: OSI Approved :: Apache Software License",
+    ],
     packages=["scalellm", "scalellm/serve", "examples"],
     ext_modules=[CMakeExtension("_C", "scalellm/")],
     cmdclass={"build_ext": CMakeBuild},
