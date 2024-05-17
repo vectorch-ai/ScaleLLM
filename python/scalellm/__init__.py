@@ -1,4 +1,10 @@
 __version__ = "0.1.0"
+try:
+    # torch needs to be imported first, otherwise it will segfault upon import.
+    import torch  # noqa: F401
+except ImportError:
+    pass
+
 from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
                          SamplingParams, SequenceOutput, Status, StatusCode,
                          Usage, get_metrics)
