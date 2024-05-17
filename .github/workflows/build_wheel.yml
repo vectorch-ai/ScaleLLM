@@ -1,4 +1,4 @@
-name: Release wheel
+name: Build wheel
 on:
   workflow_dispatch:
     inputs:
