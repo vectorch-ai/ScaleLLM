@@ -8,6 +8,7 @@ import subprocess
 import sys
 import sysconfig
 from pathlib import Path
+from typing import List
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -78,11 +79,17 @@ def get_scalellm_version():
 
 
 def read_readme() -> str:
-    p = os.path.join(get_base_dir(), "README.md")
+    p = join_path("README.md")
     if os.path.isfile(p):
         return io.open(p, "r", encoding="utf-8").read()
     else:
         return ""
+
+
+def read_requirements() -> List[str]:
+    file = join_path("requirements.txt")
+    with open(file) as f:
+        return f.read().splitlines()
 
 
 # ---- cmake extension ----
@@ -233,7 +240,5 @@ setup(
         "scalellm": scalellm_package_data,
     },
     python_requires=">=3.9",
-    install_requires=[
-        "torch",
-    ],
+    install_requires=read_requirements(),
 )

@@ -61,7 +61,6 @@ async def show_metrics() -> Response:
     return Response(content=metrics)
 
 
-
 @app.get("/health")
 async def show_health() -> Response:
     return Response(content="OK\n")
@@ -69,7 +68,7 @@ async def show_health() -> Response:
 
 @app.get("/v1/models")
 async def show_available_models():
-    model_cards = [ModelCard(id=model_id, root=None, permission=[ModelPermission()])]
+    model_cards = [ModelCard(id=model_id, permission=[ModelPermission()])]
     return ModelList(data=model_cards)
 
 
