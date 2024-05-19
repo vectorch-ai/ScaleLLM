@@ -65,11 +65,13 @@ if [[ -n "${CCACHE_DIR}" ]]; then
   RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
 fi
 
-CMD="sh -c 'cd $(pwd); $@'"
+CMD="$@"
+[[ "${CMD}" = "" ]] && usage
+
 [[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
 if ! docker pull ${IMAGE} > /dev/null; then
   echo "WARNING: Failed to docker pull image ${IMAGE}"
 fi
 
-# echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"$(get_switch_user_cmd) ${CMD}\""
-docker run ${RUN_OPTS[@]} ${IMAGE} bash -c "${CMD}"
+# echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"cd $(pwd); ${CMD}\""
+docker run ${RUN_OPTS[@]} ${IMAGE} bash -c "cd $(pwd); ${CMD}"
