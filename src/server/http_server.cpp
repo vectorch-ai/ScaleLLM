@@ -7,7 +7,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace llm {
 
@@ -49,11 +48,11 @@ void HttpServer::handle_request(tcp::socket& socket) {
   boost::beast::http::response<boost::beast::http::string_body> res;
   res.version(req.version());
   res.keep_alive(req.keep_alive());
-  auto it = endpoints_.find(req.target().to_string());
+  const std::string target = req.target();
+  auto it = endpoints_.find(target);
   if (it == endpoints_.end()) {
     res.result(boost::beast::http::status::not_found);
-    res.body() =
-        "The resource '" + req.target().to_string() + "' was not found.";
+    res.body() = "The resource '" + target + "' was not found.";
     res.set(boost::beast::http::field::content_type, "text/plain");
   } else {
     auto& handler = it->second;

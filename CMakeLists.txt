@@ -145,6 +145,7 @@ if(UNIX)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og")
 endif()
 
+find_package(Boost REQUIRED)
 find_package(Threads REQUIRED)
 # find all dependencies from vcpkg
 find_package(fmt CONFIG REQUIRED)

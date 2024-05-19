@@ -14,7 +14,6 @@ install_ubuntu() {
     zip \
     pkg-config \
     libssl-dev \
-    libboost-all-dev \
     software-properties-common \
     curl \
     git \

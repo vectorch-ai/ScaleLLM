@@ -13,9 +13,8 @@ on:
   #   tags:
   #     - v[0-9]+.[0-9]+.[0-9]+*
 env:
-# Tells where to store caches.
-VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincache \
-CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache \
+  # Tells where to store caches.
+  CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
   publish_gateway:
@@ -48,8 +47,7 @@ jobs:
             vectorchai/scalellm-gateway:${{ inputs.tag }}
             vectorchai/scalellm-gateway:latest
 
-  publish_scalellm_cuda12.1:
-    depends-on: publish_gateway
+  publish_scalellm_cuda121:
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -59,9 +57,15 @@ jobs:
 
       - name: Build ScaleLLM for cuda 12.1
         run: |
-          ./tools/run_in_docker.sh \
-            -d vectorchai/scalellm_devel:cuda12.1 \
-            ./scripts/build_scalellm.sh
+          docker pull vectorchai/scalellm_devel:cuda12.1
+          docker run --rm -it \
+            -v "$CI_CACHE_DIR":/ci_cache \
+            -v "$GITHUB_WORKSPACE":/ScaleLLM \
+            -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
+            -e CCACHE_DIR=/ci_cache/.ccache \
+            -u $(id -u):$(id -g) \
+            vectorchai/scalellm_devel:cuda12.1 \
+            bash /ScaleLLM/scripts/build_scalellm.sh
         timeout-minutes: 60
 
       - name: Set up QEMU
@@ -87,8 +91,7 @@ jobs:
             vectorchai/scalellm:${{ inputs.tag }}
             vectorchai/scalellm:latest
 
-  publish_scalellm_cuda11.8:
-    depends-on: publish_gateway
+  publish_scalellm_cuda118:
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -98,9 +101,15 @@ jobs:
 
       - name: Build ScaleLLM for cuda 11.8
         run: |
-          ./tools/run_in_docker.sh \
-            -d vectorchai/scalellm_devel:cuda11.8 \
-            ./scripts/build_scalellm.sh
+          docker pull vectorchai/scalellm_devel:cuda11.8
+          docker run --rm -it \
+            -v "$CI_CACHE_DIR":/ci_cache \
+            -v "$GITHUB_WORKSPACE":/ScaleLLM \
+            -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
+            -e CCACHE_DIR=/ci_cache/.ccache \
+            -u $(id -u):$(id -g) \
+            vectorchai/scalellm_devel:cuda11.8 \
+            bash /ScaleLLM/scripts/build_scalellm.sh
         timeout-minutes: 60
 
       - name: Set up QEMU
