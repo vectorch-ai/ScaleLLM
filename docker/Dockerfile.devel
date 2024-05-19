@@ -9,6 +9,9 @@ ENV DEBIAN_FRONTEND noninteractive
 COPY ./common/install_base.sh install_base.sh
 RUN bash ./install_base.sh && rm install_base.sh
 
+# Install python3
+RUN apt-get update -q -y && apt-get install -q -y python3-dev
+
 # Install gcc
 ARG GCC_VERSION=12
 RUN apt-get update \
