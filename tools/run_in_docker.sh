@@ -29,17 +29,6 @@ function usage() {
   exit 1
 }
 
-function get_switch_user_cmd() {
-  local uid=$(id -u)
-  local gid=$(id -g)
-  local username=$(id -n -u)
-  local groupname=$(id -n -g)
-  local cmdline="groupadd -f ${groupname} && groupmod -o -g ${gid} ${groupname}"
-  cmdline+="; id -u ${username} &>/dev/null || useradd -N ${username} && usermod -o -u ${uid} -g ${gid} ${username}"
-  cmdline+="; chroot --userspec=${username} / "
-  echo "${cmdline}"
-}
-
 (( $# < 1 )) && usage
 
 IMAGE="vectorchai/scalellm_devel:latest"
@@ -62,6 +51,9 @@ RUN_OPTS+=("-v $(pwd):$(pwd)")
 RUN_OPTS+=("-v /tmp:/tmp")
 RUN_OPTS+=("-v ${HOME}:${HOME}")
 
+# run as the current user
+RUN_OPTS+=("-u $(id -u):$(id -g)")
+
 # carry over cache settings
 if [[ -n "${VCPKG_DEFAULT_BINARY_CACHE}" ]]; then
   RUN_OPTS+=("-v ${VCPKG_DEFAULT_BINARY_CACHE}:${VCPKG_DEFAULT_BINARY_CACHE}")
@@ -73,14 +65,13 @@ if [[ -n "${CCACHE_DIR}" ]]; then
   RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
 fi
 
-CMD="sh -c 'cd $(pwd); $@'"
-
+CMD="$@"
 [[ "${CMD}" = "" ]] && usage
-[[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
 
+[[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
 if ! docker pull ${IMAGE} > /dev/null; then
   echo "WARNING: Failed to docker pull image ${IMAGE}"
 fi
 
-# echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"$(get_switch_user_cmd) ${CMD}\""
-docker run ${RUN_OPTS[@]} ${IMAGE} bash -c "$(get_switch_user_cmd) ${CMD}"
+# echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"cd $(pwd); ${CMD}\""
+docker run ${RUN_OPTS[@]} ${IMAGE} bash -c "cd $(pwd); ${CMD}"

@@ -58,7 +58,7 @@ jobs:
       - name: Build ScaleLLM for cuda 12.1
         run: |
           docker pull vectorchai/scalellm_devel:cuda12.1
-          docker run --rm -it \
+          docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
             -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
@@ -102,7 +102,7 @@ jobs:
       - name: Build ScaleLLM for cuda 11.8
         run: |
           docker pull vectorchai/scalellm_devel:cuda11.8
-          docker run --rm -it \
+          docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
             -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
