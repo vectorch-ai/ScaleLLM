@@ -3,7 +3,7 @@ from scalellm import AsyncLLMEngine, Message, SamplingParams
 
 def main():
     # Create an LLM engine.
-    engine = AsyncLLMEngine(model="meta-llama/Meta-Llama-3-8B-Instruct")
+    engine = AsyncLLMEngine(model="google/gemma-1.1-2b-it")
     # start the engine loop
     engine.start()
 
@@ -25,20 +25,25 @@ def main():
 
         # append the user message
         messages.append(Message(role="user", content=prompt))
-
-        output_stream = engine.schedule_chat(
-            messages=messages,
-            sampling_params=sampling_params,
-            stream=True,
-        )
-        assistant_response = ""
-        print("\n[Assistant]: ", end="", flush=True)
-        for output in output_stream:
-            if len(output.outputs) > 0:
-                response = output.outputs[0].text
-                assistant_response += response
-                print(response, end="", flush=True)
-        print()
+        
+        try:
+            output_stream = engine.schedule_chat(
+                messages=messages,
+                sampling_params=sampling_params,
+                stream=True,
+            )
+            assistant_response = ""
+            print("\n[Assistant]: ", end="", flush=True)
+            for output in output_stream:
+                if len(output.outputs) > 0:
+                    response = output.outputs[0].text
+                    assistant_response += response
+                    print(response, end="", flush=True)
+            print()
+        except KeyboardInterrupt:
+            # cancel the request
+            output_stream.cancel()
+            break
 
         # append the assistant message
         messages.append(Message(role="assistant", content=assistant_response))
@@ -48,7 +53,4 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
+    main()

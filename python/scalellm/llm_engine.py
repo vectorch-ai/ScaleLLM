@@ -43,7 +43,7 @@ class OutputStream:
     # cancel the stream
     def cancel(self) -> None:
         self._cancelled = True
-        self._queue.put_nowait(None)
+        self._queue.put_nowait(StopIteration())
 
     def __iter__(self):
         return self
@@ -92,7 +92,7 @@ class OutputAsyncStream:
     # cancel the stream
     def cancel(self) -> None:
         self._cancelled = True
-        self._queue.put_nowait(None)
+        self._queue.put_nowait(StopAsyncIteration())
 
     def __aiter__(self):
         return self
