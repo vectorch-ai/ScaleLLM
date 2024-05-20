@@ -5,21 +5,20 @@
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
-#include <uuid.h>
 
 #include <cstdint>
 #include <string>
 
 #include "request/output.h"
 #include "utils.h"
+#include "uuid.h"
 
 namespace llm {
 
 namespace {
-
-std::string generate_request_id() {
-  return "cmpl-" + uuids::to_string(uuids::uuid_system_generator{}());
-}
+// NOLINTNEXTLINE
+thread_local ShortUUID short_uuid;
+std::string generate_request_id() { return "cmpl-" + short_uuid.random(); }
 
 bool send_delta_to_client(CompletionCallData* call_data,
                           const std::string& request_id,

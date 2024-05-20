@@ -73,7 +73,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
 
   // special load_state_dict for fused cases
   void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string_view>& prefixes) override;
+                       const std::vector<std::string>& prefixes) override;
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()

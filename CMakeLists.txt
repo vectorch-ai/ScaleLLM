@@ -160,7 +160,6 @@ find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(prometheus-cpp CONFIG REQUIRED)
-find_package(stduuid CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
 if (USE_MANYLINUX)

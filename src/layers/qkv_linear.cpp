@@ -42,12 +42,12 @@ QKVColumnParallelLinearImpl::QKVColumnParallelLinearImpl(
 // special load_state_dict for fused cases
 void QKVColumnParallelLinearImpl::load_state_dict(
     const StateDict& state_dict,
-    const std::vector<std::string_view>& prefixes,
-    const std::vector<std::string_view>& kv_prefixes) {
+    const std::vector<std::string>& prefixes,
+    const std::vector<std::string>& kv_prefixes) {
   if (kv_replication_ratio_ > 1) {
     // replicate kv heads
     auto kv_replicated_state_dict = state_dict.select_with_transform(
-        "", [&](const std::string_view& name, const torch::Tensor& tensor) {
+        "", [&](const std::string& name, const torch::Tensor& tensor) {
           for (const auto& kv_prefix : kv_prefixes) {
             if (absl::StartsWith(name, kv_prefix)) {
               return tensor.repeat({kv_replication_ratio_, 1});
