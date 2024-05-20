@@ -28,8 +28,7 @@ class JsonReader {
   bool contains(const std::string& key) const;
 
   template <typename T, typename T2>
-  T value_or(const std::vector<std::string>& keys,
-             T2 default_value) const {
+  T value_or(const std::vector<std::string>& keys, T2 default_value) const {
     for (const auto& key : keys) {
       if (auto data = value<T>(key)) {
         return data.value();
