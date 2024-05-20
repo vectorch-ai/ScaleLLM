@@ -220,6 +220,7 @@ setup(
     },
     classifiers=[
         "Development Status :: 3 - Alpha",
+        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
@@ -234,6 +235,6 @@ setup(
     package_data={
         "scalellm": scalellm_package_data,
     },
-    python_requires=">=3.9",
+    python_requires=">=3.8",
     install_requires=read_requirements(),
 )
