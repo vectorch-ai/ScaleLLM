@@ -13,9 +13,9 @@ sampling_params = SamplingParams(temperature=0.8, top_p=0.95, echo=True)
 
 # Create an LLM.
 llm = LLM(
-    model="google/gemma-1.1-7b-it",
+    model="google/gemma-7b",
     devices="cuda",
-    draft_model="google/gemma-1.1-2b-it",
+    draft_model="google/gemma-2b",
     draft_devices="cuda",
     num_speculative_tokens=4,
 )
