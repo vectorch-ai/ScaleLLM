@@ -53,6 +53,6 @@ fi
 # pip install auditwheel
 # cd "$PROJECT_ROOT/python"
 # for whl in dist/*.whl; do
-#     auditwheel repair "$whl" --plat manylinux_2_28_x86_64 -w dist/
+#     auditwheel repair "$whl" --plat manylinux1_x86_64 -w dist/
 # done
 # echo "::endgroup::"

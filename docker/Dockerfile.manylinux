@@ -1,4 +1,5 @@
-FROM quay.io/pypa/manylinux_2_28_x86_64 as base
+ARG CUDA_VERSION=12.1
+FROM pytorch/manylinux-builder:cuda${CUDA_VERSION} as base
 
 LABEL maintainer="mi@vectorch.com"
 ENV DEBIAN_FRONTEND noninteractive
@@ -7,36 +8,24 @@ ENV LC_ALL en_US.UTF-8
 ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US.UTF-8
 
-# Install common dependencies
-COPY ./common/install_base.sh install_base.sh
-RUN bash ./install_base.sh && rm install_base.sh
+# Install dependencies for vcpkg
+RUN yum -y update && yum -y install \
+    zip \
+    unzip \
+    tar \
+    wget \
+    curl \
+    perl \
+    perl-IPC-Cmd \
+    sudo 
 
-# Install user
-COPY ./common/install_user.sh install_user.sh
-RUN bash ./install_user.sh && rm install_user.sh
-
-# Install cuda, cudnn and nccl
-ARG CUDA_VERSION=12.1
-COPY ./common/install_cuda.sh install_cuda.sh
-RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
-
-# ARG CMAKE_VERSION=3.29.3
-# COPY ./common/install_cmake.sh install_cmake.sh
-# RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
-# RUN rm install_cmake.sh
-
-ARG NINJA_VERSION=1.11.1
-COPY ./common/install_ninja.sh install_ninja.sh
-RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
-RUN rm install_ninja.sh
-
+# Install ccache
 ARG CCACHE_VERSION=4.8.3
 COPY ./common/install_ccache.sh install_ccache.sh
 RUN if [ -n "${CCACHE_VERSION}" ]; then bash ./install_ccache.sh; fi
 RUN rm install_ccache.sh
 
-# install rust
+# Install rust
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
 ENV PATH=/usr/local/cargo/bin:$PATH
