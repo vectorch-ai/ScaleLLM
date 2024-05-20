@@ -48,7 +48,7 @@ jobs:
       - name: rename wheel to manylinux
         run: |
           for whl in python/dist/scalellm-*.whl; do
-            new_whl=${whl//"-linux_"/"-manylinux_2_28_"}
+            new_whl=${whl//"-linux_"/"-manylinux1_"}
             if [ "$whl" != "$new_whl" ]; then
               mv $whl $new_whl
             fi

@@ -34,6 +34,11 @@ echo "::group::Install PyTorch"
 pip install torch==$TORCH_VERSION --index-url "https://download.pytorch.org/whl/cu${CUDA_MAJOR}${CUDA_MINOR}"
 echo "::endgroup::"
 
+echo "::group::Install other dependencies"
+pip install numpy
+pip install --upgrade setuptools wheel
+echo "::endgroup::"
+
 
 echo "::group::Build wheel for ScaleLLM"
 cd "$PROJECT_ROOT/python"
@@ -53,6 +58,6 @@ fi
 # pip install auditwheel
 # cd "$PROJECT_ROOT/python"
 # for whl in dist/*.whl; do
-#     auditwheel repair "$whl" --plat manylinux_2_28_x86_64 -w dist/
+#     auditwheel repair "$whl" --plat manylinux1_x86_64 -w dist/
 # done
 # echo "::endgroup::"

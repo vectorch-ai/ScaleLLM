@@ -11,10 +11,6 @@ ENV LANGUAGE en_US.UTF-8
 COPY ./common/install_base.sh install_base.sh
 RUN bash ./install_base.sh && rm install_base.sh
 
-# Install user
-COPY ./common/install_user.sh install_user.sh
-RUN bash ./install_user.sh && rm install_user.sh
-
 # Install gcc-11
 RUN rm -rf /opt/rh/gcc-toolset-12
 RUN yum install -y gcc-toolset-11-toolchain
