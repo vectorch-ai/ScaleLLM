@@ -34,6 +34,11 @@ echo "::group::Install PyTorch"
 pip install torch==$TORCH_VERSION --index-url "https://download.pytorch.org/whl/cu${CUDA_MAJOR}${CUDA_MINOR}"
 echo "::endgroup::"
 
+echo "::group::Install other dependencies"
+pip install numpy
+pip install --upgrade setuptools wheel
+echo "::endgroup::"
+
 
 echo "::group::Build wheel for ScaleLLM"
 cd "$PROJECT_ROOT/python"
