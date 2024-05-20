@@ -5,12 +5,14 @@
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_join.h>
 #include <absl/strings/str_split.h>
+#include <absl/strings/string_view.h>
 #include <glog/logging.h>
 #include <re2/re2.h>
 
 #include <fstream>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace llm {
 
@@ -151,7 +153,7 @@ void TiktokenTokenizer::byte_pair_encode(const std::string_view& piece,
       auto s = parts[start].first;
       auto e = parts[start + skip + 2].first;
       const auto key = piece.substr(s, e - s);
-      auto it = encoder_.find(key);
+      auto it = encoder_.find({key.data(), key.size()});
       if (it != encoder_.end()) {
         return it->second;
       }
@@ -200,7 +202,7 @@ void TiktokenTokenizer::byte_pair_encode(const std::string_view& piece,
     const auto e = parts[i + 1].first;
     // get rank for each piece
     const auto key = piece.substr(s, e - s);
-    auto it = encoder_.find(key);
+    auto it = encoder_.find({key.data(), key.size()});
     if (it == encoder_.end()) {
       LOG(ERROR) << "Failed to find key: " << key;
     } else {
@@ -216,15 +218,16 @@ void TiktokenTokenizer::encode_internal(const std::string_view& text,
     return;
   }
 
-  std::string_view input = text;
-  std::string_view piece;
+  absl::string_view input{text.data(), text.size()};
+  absl::string_view piece;
+  // std::string_view piece;
   while (re2::RE2::FindAndConsume(&input, *regex_, &piece)) {
     auto it = encoder_.find(piece);
     if (it != encoder_.end()) {
       ids->push_back(it->second);
       continue;
     }
-    byte_pair_encode(piece, ids);
+    byte_pair_encode({piece.data(), piece.size()}, ids);
   }
 }
 
@@ -241,8 +244,8 @@ bool TiktokenTokenizer::encode(const std::string_view& text,
     return true;
   }
 
-  std::string_view input = text;
-  std::string_view special;
+  absl::string_view input{text.data(), text.size()};
+  absl::string_view special;
   while (true) {
     const auto* start = input.begin();
     if (!re2::RE2::FindAndConsume(&input, *special_token_regex_, &special)) {
@@ -264,7 +267,7 @@ bool TiktokenTokenizer::encode(const std::string_view& text,
   }
 
   // encode remaining text if exists
-  encode_internal(input, ids);
+  encode_internal({input.data(), input.size()}, ids);
   return true;
 }
 
@@ -303,14 +306,15 @@ std::unique_ptr<Tokenizer> TiktokenTokenizer::clone() const {
 
 std::optional<int32_t> TiktokenTokenizer::token_to_id(
     const std::string_view& token) const {
+  const absl::string_view token_view{token.data(), token.size()};
   // encode special token
-  const auto sit = special_token_encoder_.find(token);
+  const auto sit = special_token_encoder_.find(token_view);
   if (sit != special_token_encoder_.end()) {
     return sit->second;
   }
 
   // encode token
-  const auto it = encoder_.find(token);
+  const auto it = encoder_.find(token_view);
   if (it != encoder_.end()) {
     return it->second;
   }

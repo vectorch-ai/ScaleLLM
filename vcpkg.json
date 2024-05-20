@@ -69,11 +69,6 @@
       "default-features": false
     },
     {
-      "name": "stduuid",
-      "version>=": "1.2.3",
-      "features": ["system-gen"]
-    },
-    {
       "name": "re2",
       "version>=": "2023-07-01",
       "default-features": false

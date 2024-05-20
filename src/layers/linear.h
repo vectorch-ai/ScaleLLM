@@ -32,7 +32,7 @@ class ParallelLinearImpl : public torch::nn::Module {
   // special load_state_dict for fused cases
   virtual void load_state_dict(
       const StateDict& /*state_dict*/,
-      const std::vector<std::string_view>& /*prefixes*/) {
+      const std::vector<std::string>& /*prefixes*/) {
     LOG(FATAL) << "not implemented";
   }
 };

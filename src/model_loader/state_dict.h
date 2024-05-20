@@ -30,23 +30,23 @@ class StateDict final {
             int num_shards);
 
   // get the tensor with the given name. return nullptr if not found.
-  torch::Tensor get_tensor(const std::string_view& tensor_name) const;
+  torch::Tensor get_tensor(const std::string& tensor_name) const;
 
   // get the sharded tensor with the given name for the given rank.
-  torch::Tensor get_sharded_tensor(const std::string_view& tensor_name,
+  torch::Tensor get_sharded_tensor(const std::string& tensor_name,
                                    int64_t dim,
                                    int rank,
                                    int world_size) const;
 
   // select all the tensors whose name starts with prefix.
   // the returned tensor name will be the suffix of the original name.
-  StateDict select(const std::string_view& prefix) const;
+  StateDict select(const std::string& prefix) const;
 
   // select all tensors whose name starts with prefix and apply the transform
   // for each tensor.
-  using TensorTransform = std::function<torch::Tensor(const std::string_view&,
+  using TensorTransform = std::function<torch::Tensor(const std::string&,
                                                       const torch::Tensor&)>;
-  StateDict select_with_transform(const std::string_view& prefix,
+  StateDict select_with_transform(const std::string& prefix,
                                   TensorTransform transform_func) const;
 
   size_t size() const { return dict_.size(); }

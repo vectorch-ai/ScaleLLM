@@ -178,8 +178,8 @@ StateDict::StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
       << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
 }
 
-torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
-  const auto it = dict_.find(tensor_name.data());
+torch::Tensor StateDict::get_tensor(const std::string& tensor_name) const {
+  const auto it = dict_.find(tensor_name);
   if (it == dict_.end()) {
     return torch::Tensor{nullptr};
   }
@@ -188,7 +188,7 @@ torch::Tensor StateDict::get_tensor(const std::string_view& tensor_name) const {
                          : it->second;
 }
 
-torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
+torch::Tensor StateDict::get_sharded_tensor(const std::string& tensor_name,
                                             int64_t dim,
                                             int rank,
                                             int world_size) const {
@@ -230,7 +230,7 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string_view& tensor_name,
 }
 
 // select all the tensors whose name starts with prefix.
-StateDict StateDict::select(const std::string_view& prefix) const {
+StateDict StateDict::select(const std::string& prefix) const {
   std::unordered_map<std::string, torch::Tensor> selected;
   for (const auto& [name, tensor] : dict_) {
     if (absl::StartsWith(name, prefix)) {
@@ -241,7 +241,7 @@ StateDict StateDict::select(const std::string_view& prefix) const {
 }
 
 StateDict StateDict::select_with_transform(
-    const std::string_view& prefix,
+    const std::string& prefix,
     TensorTransform transform_func) const {
   auto selected = select(prefix);
   selected.transform_func_ = std::move(transform_func);
