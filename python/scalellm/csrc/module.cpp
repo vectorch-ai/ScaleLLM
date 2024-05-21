@@ -117,11 +117,6 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("usage", &RequestOutput::usage)
       .def_readwrite("finished", &RequestOutput::finished);
 
-  py::class_<ScheduleTask>(m, "ScheduleTask")
-      .def(
-          "wait", &ScheduleTask::wait, py::call_guard<py::gil_scoped_release>())
-      .def("get", &ScheduleTask::get, py::call_guard<py::gil_scoped_release>());
-
   auto llm_handler =
       py::class_<LLMHandler>(m, "LLMHandler")
           .def(py::init<const LLMHandler::Options&>(), py::arg("options"))
