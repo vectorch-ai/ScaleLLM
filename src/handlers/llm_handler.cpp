@@ -230,12 +230,12 @@ void LLMHandler::stop() {
   }
 }
 
-void LLMHandler::run_until_complete() { 
+void LLMHandler::run_until_complete() {
   const bool running = running_.load(std::memory_order_relaxed);
   CHECK(!running) << "Handler is already running";
 
   running_.store(true, std::memory_order_relaxed);
-  scheduler_->run_until_complete(); 
+  scheduler_->run_until_complete();
   running_.store(false, std::memory_order_relaxed);
 }
 

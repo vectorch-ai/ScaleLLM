@@ -46,12 +46,12 @@ class Scheduler {
   // not thread safe
   virtual void step(const absl::Duration& timeout) = 0;
 
-  // run the scheduler until all pending + scheduled requests are completed, blocking call
+  // run the scheduler until all pending + scheduled requests are completed,
+  // blocking call
   virtual void run_until_complete() = 0;
 
-  // Following methods are used for tracking requests from user but have not been
-  // scheduled yet. 
-  // add one request to the pending queue
+  // Following methods are used for tracking requests from user but have not
+  // been scheduled yet. add one request to the pending queue
   virtual void add_one_pending_request() {}
 
   // remove one request from the pending queue

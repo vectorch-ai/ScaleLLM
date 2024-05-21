@@ -53,7 +53,8 @@ class ContinuousScheduler final : public Scheduler {
 
   // remove one request from the pending queue
   void remove_one_pending_request() override {
-    const auto old_value = pending_requests_.fetch_sub(1, std::memory_order_relaxed);
+    const auto old_value =
+        pending_requests_.fetch_sub(1, std::memory_order_relaxed);
     CHECK_GT(old_value, 0) << "pending requests underflow";
   }
 
