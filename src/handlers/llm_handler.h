@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <future>
 #include <memory>
 #include <string>
 #include <thread>
@@ -14,21 +13,8 @@
 
 namespace llm {
 
+// callback function for output, return true to continue, false to stop/cancel
 using OutputCallback = std::function<bool(RequestOutput output)>;
-
-class ScheduleTask {
- public:
-  ScheduleTask(std::future<bool> finish) : finish_(std::move(finish)) {}
-
-  // wait until the request has been scheduled
-  void wait() { finish_.wait(); }
-
-  // get the status of the request scheduling
-  bool get() { return finish_.get(); }
-
- private:
-  std::future<bool> finish_;
-};
 
 // NOLINTNEXTLINE
 class LLMHandler {
@@ -86,17 +72,17 @@ class LLMHandler {
   // and call the callback with output when the request is done
   // the callback will be called multiple times if the request is a streaming
   // request
-  ScheduleTask schedule_async(std::string prompt,
-                              SamplingParams sp,
-                              Priority priority,
-                              bool stream,
-                              OutputCallback callback);
+  void schedule_async(std::string prompt,
+                      SamplingParams sp,
+                      Priority priority,
+                      bool stream,
+                      OutputCallback callback);
 
-  ScheduleTask schedule_chat_async(std::vector<Message> messages,
-                                   SamplingParams sp,
-                                   Priority priority,
-                                   bool stream,
-                                   OutputCallback callback);
+  void schedule_chat_async(std::vector<Message> messages,
+                           SamplingParams sp,
+                           Priority priority,
+                           bool stream,
+                           OutputCallback callback);
 
   // start the handling loop
   void start();
@@ -142,6 +128,8 @@ class LLMHandler {
   std::thread loop_thread_;
 
   std::atomic_bool stoped_{false};
+
+  std::atomic_bool running_{false};
 };
 
 }  // namespace llm

@@ -83,22 +83,16 @@ class LLM:
             raise ValueError("The number of prompts and sampling parameters must match")
 
         outputs = [None] * len(prompts)
-        tasks = []
         for i in range(len(prompts)):
 
             def callback(output: RequestOutput, idx: int = i) -> bool:
                 outputs[idx] = output
                 return True
 
-            task = self._handler.schedule_async(
+            self._handler.schedule_async(
                 prompts[i], sampling_params[i], priority, False, callback
             )
-            tasks.append(task)
 
-        # wait for requests to be scheduled in the engine
-        for task in tasks:
-            task.wait()
-
-        # run until all scheduled requst complete
+        # run until all scheduled requsts complete
         self._handler.run_until_complete()
         return outputs

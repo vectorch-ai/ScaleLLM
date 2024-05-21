@@ -2,9 +2,11 @@
 
 #include <glog/logging.h>
 
+#include <atomic>
 #include <memory>
 #include <thread>
 
+#include "common/scope_guard.h"
 #include "engine/utils.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -133,95 +135,88 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
 
 LLMHandler::~LLMHandler() { stop(); }
 
-ScheduleTask LLMHandler::schedule_async(std::string prompt,
-                                        SamplingParams sp,
-                                        Priority priority,
-                                        bool stream,
-                                        OutputCallback callback) {
-  std::promise<bool> promise;
-  auto future = promise.get_future();
+void LLMHandler::schedule_async(std::string prompt,
+                                SamplingParams sp,
+                                Priority priority,
+                                bool stream,
+                                OutputCallback callback) {
+  // add one pending request
+  scheduler_->add_one_pending_request();
 
   thread_pool_.schedule([this,
                          prompt = std::move(prompt),
                          sp = std::move(sp),
                          priority,
                          stream,
-                         callback,
-                         promise = std::move(promise)]() mutable {
+                         callback]() mutable {
+    // remove the pending request after scheduling
+    ScopeGuard cleanup = [&] { scheduler_->remove_one_pending_request(); };
+
     // verify the prompt
     if (!verify_params(sp, callback)) {
-      promise.set_value(false);
       return;
     }
 
     auto request =
         create_request(std::move(prompt), sp, priority, stream, callback);
     if (!request) {
-      promise.set_value(false);
       return;
     }
 
     if (!scheduler_->schedule(request)) {
       CALLBACK_WITH_ERROR(StatusCode::RESOURCE_EXHAUSTED,
                           "No available resources to schedule request");
-      promise.set_value(false);
       return;
     }
-
-    promise.set_value(true);
   });
-
-  return {std::move(future)};
 }
 
-ScheduleTask LLMHandler::schedule_chat_async(std::vector<Message> messages,
-                                             SamplingParams sp,
-                                             Priority priority,
-                                             bool stream,
-                                             OutputCallback callback) {
-  std::promise<bool> promise;
-  auto future = promise.get_future();
-
+void LLMHandler::schedule_chat_async(std::vector<Message> messages,
+                                     SamplingParams sp,
+                                     Priority priority,
+                                     bool stream,
+                                     OutputCallback callback) {
+  // add one pending request
+  scheduler_->add_one_pending_request();
   thread_pool_.schedule([this,
                          messages = std::move(messages),
                          sp = std::move(sp),
                          priority,
                          stream,
-                         callback,
-                         promise = std::move(promise)]() mutable {
+                         callback]() mutable {
+    // remove the pending request after scheduling
+    ScopeGuard cleanup = [&] { scheduler_->remove_one_pending_request(); };
     // verify the prompt
     if (!verify_params(sp, callback)) {
-      promise.set_value(false);
       return;
     }
 
     auto request =
         create_chat_request(messages, sp, priority, stream, callback);
     if (!request) {
-      promise.set_value(false);
       return;
     }
 
     if (!scheduler_->schedule(request)) {
       CALLBACK_WITH_ERROR(StatusCode::RESOURCE_EXHAUSTED,
                           "No available resources to schedule request");
-      promise.set_value(false);
       return;
     }
-
-    promise.set_value(true);
   });
-
-  return {std::move(future)};
 }
 
 void LLMHandler::start() {
   loop_thread_ = std::thread([this]() {
+    const bool running = running_.load(std::memory_order_relaxed);
+    CHECK(!running) << "Handler is already running";
+
+    running_.store(true, std::memory_order_relaxed);
     const auto timeout = absl::Milliseconds(500);
     while (!stoped_.load(std::memory_order_relaxed)) {
       // move scheduler forward
       scheduler_->step(timeout);
     }
+    running_.store(false, std::memory_order_relaxed);
   });
 }
 
@@ -235,7 +230,14 @@ void LLMHandler::stop() {
   }
 }
 
-void LLMHandler::run_until_complete() { scheduler_->run_until_complete(); }
+void LLMHandler::run_until_complete() { 
+  const bool running = running_.load(std::memory_order_relaxed);
+  CHECK(!running) << "Handler is already running";
+
+  running_.store(true, std::memory_order_relaxed);
+  scheduler_->run_until_complete(); 
+  running_.store(false, std::memory_order_relaxed);
+}
 
 std::unique_ptr<Request> LLMHandler::create_request(std::string prompt,
                                                     const SamplingParams& sp,
