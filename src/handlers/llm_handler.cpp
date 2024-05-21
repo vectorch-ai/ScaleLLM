@@ -150,7 +150,7 @@ void LLMHandler::schedule_async(std::string prompt,
                          stream,
                          callback]() mutable {
     // remove the pending request after scheduling
-    ScopeGuard cleanup = [&] { scheduler_->remove_one_pending_request(); };
+    ScopeGuard cleanup = [this] { scheduler_->remove_one_pending_request(); };
 
     // verify the prompt
     if (!verify_params(sp, callback)) {
@@ -185,7 +185,7 @@ void LLMHandler::schedule_chat_async(std::vector<Message> messages,
                          stream,
                          callback]() mutable {
     // remove the pending request after scheduling
-    ScopeGuard cleanup = [&] { scheduler_->remove_one_pending_request(); };
+    ScopeGuard cleanup = [this] { scheduler_->remove_one_pending_request(); };
     // verify the prompt
     if (!verify_params(sp, callback)) {
       return;
