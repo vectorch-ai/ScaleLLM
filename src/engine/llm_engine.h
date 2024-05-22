@@ -66,9 +66,7 @@ class LLMEngine : public Engine {
   // step the engine forward by one step with the batch
   ModelOutput execute_model(Batch& batch) override;
 
-  const Tokenizer* tokenizer() const override {
-    return tokenizer_.get();
-  }
+  const Tokenizer* tokenizer() const override { return tokenizer_.get(); }
 
   BlockManager* block_manager() const override { return block_manager_.get(); }
 

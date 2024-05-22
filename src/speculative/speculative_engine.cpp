@@ -80,7 +80,7 @@ bool SpeculativeEngine::init_model(
 
   // check if the tokenizers are compatible
   const auto* draft_tokenizer = draft_engine_->tokenizer();
-  const auto*  target_tokenizer = engine_->tokenizer();
+  const auto* target_tokenizer = engine_->tokenizer();
   if (draft_tokenizer->vocab_size() != target_tokenizer->vocab_size()) {
     LOG(ERROR) << "draft and target tokenizers have different vocab sizes, "
                   "draft vocab_size: "

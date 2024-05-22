@@ -59,9 +59,7 @@ class SpeculativeEngine : public Engine {
   // N.B. the model output is the output of the target model.
   ModelOutput execute_model(Batch& batch) override;
 
-  const Tokenizer* tokenizer() const override {
-    return engine_->tokenizer();
-  }
+  const Tokenizer* tokenizer() const override { return engine_->tokenizer(); }
 
   BlockManager* block_manager() const override {
     return engine_->block_manager();
