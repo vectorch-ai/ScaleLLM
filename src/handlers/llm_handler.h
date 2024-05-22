@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "chat_template/chat_template.h"
+#include "common/concurrent_queue.h"
 #include "engine/engine.h"
 #include "request/output.h"
 #include "sampling_params.h"
@@ -62,6 +63,9 @@ class LLMHandler {
 
     // the number of speculative tokens per step
     DEFINE_ARG(int32_t, num_speculative_tokens) = 0;
+
+    // the number of threads to use for handling requests
+    DEFINE_ARG(size_t, num_handling_threads) = 4;
   };
 
   LLMHandler(const Options& options);
@@ -94,18 +98,25 @@ class LLMHandler {
   void run_until_complete();
 
  private:
-  std::unique_ptr<Request> create_request(std::string prompt,
+  using Task = std::function<void(size_t tid)>;
+  std::unique_ptr<Request> create_request(size_t tid,
+                                          std::string prompt,
                                           const SamplingParams& sp,
                                           Priority priority,
                                           bool stream,
                                           OutputCallback callback);
 
   std::unique_ptr<Request> create_chat_request(
+      size_t tid,
       const std::vector<Message>& messages,
       const SamplingParams& sp,
       Priority priority,
       bool stream,
       OutputCallback callback);
+
+  void schedule(Task task);
+
+  void handling_loop(size_t tid);
 
   const Options options_;
 
@@ -113,22 +124,29 @@ class LLMHandler {
 
   std::unique_ptr<Scheduler> scheduler_;
 
-  // tokenizer instance
-  std::unique_ptr<Tokenizer> tokenizer_;
-
   // model args
   ModelArgs model_args_;
 
   // thread pool for handling requests
-  ThreadPool thread_pool_;
+  std::vector<std::thread> handling_threads_;
+
+  // queue for tasks
+  ConcurrentQueue<Task> queue_;
+
+  // we don't know if tokenizer is thread safe, so we create one for each thread
+  // for now
+  std::vector<std::unique_ptr<Tokenizer>> tokenizers_;
 
   // chat template instance
   std::unique_ptr<ChatTemplate> chat_template_;
 
+  // thread for moving forward the scheduler
   std::thread loop_thread_;
 
+  // flag to stop the loop
   std::atomic_bool stoped_{false};
 
+  // flag to indicate if the handler is running
   std::atomic_bool running_{false};
 };
 

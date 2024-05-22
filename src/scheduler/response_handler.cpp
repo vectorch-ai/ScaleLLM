@@ -15,8 +15,8 @@ DEFINE_int32(streaming_token_buffer_size,
              1,
              "number of tokens to buffer before streaming to client");
 
-ResponseHandler::ResponseHandler(std::unique_ptr<Tokenizer> tokenizer)
-    : tokenizer_(std::move(tokenizer)) {}
+ResponseHandler::ResponseHandler(const Tokenizer* tokenizer)
+    : tokenizer_(tokenizer->clone()) {}
 
 void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
   // schedule the response handling

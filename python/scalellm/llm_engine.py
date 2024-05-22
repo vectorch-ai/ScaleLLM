@@ -128,6 +128,7 @@ class AsyncLLMEngine:
         max_tokens_per_batch: int = 512,
         max_seqs_per_batch: int = 128,
         num_speculative_tokens: int = 0,
+        num_handling_threads: int = 4,
     ) -> None:
         # download hf model if it does not exist
         model_path = model
@@ -163,6 +164,7 @@ class AsyncLLMEngine:
         options.max_tokens_per_batch = max_tokens_per_batch
         options.max_seqs_per_batch = max_seqs_per_batch
         options.num_speculative_tokens = num_speculative_tokens
+        options.num_handling_threads = num_handling_threads
         # create the LLM handler
         self._handler = LLMHandler(options)
 

@@ -12,7 +12,7 @@ class Sequence;
 class Tokenizer;
 class ResponseHandler final {
  public:
-  ResponseHandler(std::unique_ptr<Tokenizer> tokenizer);
+  ResponseHandler(const Tokenizer* tokenizer);
 
   // take over the ownership of the request
   void on_request_finish(std::unique_ptr<Request> request);

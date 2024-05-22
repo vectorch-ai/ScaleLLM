@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
 
   std::unique_ptr<Engine> engine = create_engine(model_path, draft_model_path);
 
-  auto tokenizer = engine->tokenizer();
+  const auto* tokenizer = engine->tokenizer();
   BlockManager* block_manager = engine->block_manager();
   const auto& model_args = engine->model_args();
 
