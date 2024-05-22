@@ -136,6 +136,22 @@ class LLMHandler:
         stream: bool,
         callback: Callable[[RequestOutput], bool],
     ) -> None: ...
+    def schedule_batch_async(
+        self,
+        prompts: List[str],
+        sps: List[SamplingParams],
+        priority: Priority,
+        stream: bool,
+        callback: Callable[[int, RequestOutput], bool],
+    ) -> None: ...
+    def schedule_batch_chat_async(
+        self,
+        conversations: List[List[Message]],
+        sps: List[SamplingParams],
+        priority: Priority,
+        stream: bool,
+        callback: Callable[[int, RequestOutput], bool],
+    ) -> None: ...
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def run_until_complete(self) -> None: ...

@@ -126,6 +126,12 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
           .def("schedule_chat_async",
                &LLMHandler::schedule_chat_async,
                py::call_guard<py::gil_scoped_release>())
+          .def("schedule_batch_async",
+               &LLMHandler::schedule_batch_async,
+               py::call_guard<py::gil_scoped_release>())
+          .def("schedule_chat_batch_async",
+               &LLMHandler::schedule_chat_batch_async,
+               py::call_guard<py::gil_scoped_release>())
           .def("start",
                &LLMHandler::start,
                py::call_guard<py::gil_scoped_release>())

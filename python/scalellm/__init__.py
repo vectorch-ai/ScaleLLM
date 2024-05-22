@@ -8,9 +8,9 @@ except ImportError:
 from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
                          SamplingParams, SequenceOutput, Status, StatusCode,
                          Usage, get_metrics)
+from scalellm.errors import ValidationError
 from scalellm.llm import LLM
-from scalellm.llm_engine import (AsyncLLMEngine, OutputAsyncStream,
-                                 OutputStream, ValidationError)
+from scalellm.llm_engine import AsyncLLMEngine, OutputAsyncStream, OutputStream
 
 __all__ = [
     "Message",

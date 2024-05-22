@@ -1,14 +1,13 @@
 import time
 
 import shortuuid
+from scalellm import AsyncLLMEngine, SamplingParams
 from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
                                          CompletionResponseChoice,
                                          CompletionResponseStreamChoice,
                                          CompletionStreamResponse, UsageInfo)
 from scalellm.serve.common import jsonify_model, to_priority
 from scalellm.serve.streaming_response import SafeStreamingResponse
-
-from scalellm import AsyncLLMEngine, SamplingParams
 
 
 def to_sampling_params(request: CompletionRequest) -> SamplingParams:

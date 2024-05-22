@@ -46,13 +46,11 @@ class ContinuousScheduler final : public Scheduler {
   // run the scheduler until all pending + scheduled requests are completed
   void run_until_complete() override;
 
-  // add one request to the pending queue
-  void add_one_pending_request() override {
-    pending_requests_.fetch_add(1, std::memory_order_relaxed);
+  // inc/dec pending requests
+  void inc_pending_requests(size_t count) override {
+    pending_requests_.fetch_add(count, std::memory_order_relaxed);
   }
-
-  // remove one request from the pending queue
-  void remove_one_pending_request() override {
+  void dec_pending_requests() override {
     const auto old_value =
         pending_requests_.fetch_sub(1, std::memory_order_relaxed);
     CHECK_GT(old_value, 0) << "pending requests underflow";
