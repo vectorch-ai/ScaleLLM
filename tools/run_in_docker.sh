@@ -69,7 +69,7 @@ CMD="$@"
 [[ "${CMD}" = "" ]] && usage
 
 [[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
-if ! docker pull ${IMAGE} > /dev/null; then
+if ! docker pull ${IMAGE}; then
   echo "WARNING: Failed to docker pull image ${IMAGE}"
 fi
 
