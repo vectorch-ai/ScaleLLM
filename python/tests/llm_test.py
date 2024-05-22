@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 
-from scalellm import LLM, SamplingParameter, StoppingCriteria
+from scalellm import LLM, SamplingParams
 
 
 def test_llm_generate():
-  sampling_parameter = SamplingParameter()
-  sampling_parameter.temperature = 0
+    sampling_params = SamplingParams(
+        temperature=0, top_p=1.0, max_tokens=100, echo=True
+    )
 
-  stopping_criteria = StoppingCriteria()
-  stopping_criteria.max_tokens = 100
-  stopping_criteria.ignore_eos_token = False
+    test_llm = LLM(model="/data/llama-2-7b-hf/", devices="cuda")
+    test_llm.generate(["who is messi"], sampling_params)
 
-  test_llm = LLM("/data/llama-2-7b-hf/", sampling_parameter,
-      stopping_criteria, 100, "cuda:0")
-  test_llm.generate(["who is messi"])
 
 def main():
-  test_llm_generate()
+    test_llm_generate()
+
 
 if __name__ == "__main__":
-  main()
+    main()

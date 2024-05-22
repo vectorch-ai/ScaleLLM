@@ -8,7 +8,11 @@ def parse_args():
     parser.add_argument("--host", type=str, default=None, help="host name")
     parser.add_argument("--port", type=int, default=8080, help="port number")
     parser.add_argument(
-        "--log_level", type=str, default="info", help="uvicorn log level"
+        "--log_level",
+        type=str,
+        default="info",
+        choices=["debug", "info", "warning", "error", "critical", "trace"],
+        help="uvicorn log level",
     )
 
     parser.add_argument(

@@ -228,7 +228,7 @@ setup(
         "Operating System :: POSIX",
         "License :: OSI Approved :: Apache Software License",
     ],
-    packages=["scalellm", "scalellm/serve", "scalellm/examples"],
+    packages=["scalellm", "scalellm/serve", "examples", "benchmarks"],
     ext_modules=[CMakeExtension("_C", "scalellm/")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
