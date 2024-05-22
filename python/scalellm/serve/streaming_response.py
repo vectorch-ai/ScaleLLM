@@ -5,9 +5,8 @@ from typing import AsyncIterable, Awaitable, Callable, Mapping, Optional
 
 from anyio import create_task_group
 from fastapi.responses import Response
-from scalellm.serve.api_protocol import ErrorResponse
-
 from scalellm import ValidationError
+from scalellm.serve.api_protocol import ErrorResponse
 
 
 class SafeStreamingResponse(Response):

@@ -51,11 +51,11 @@ class Scheduler {
   virtual void run_until_complete() = 0;
 
   // Following methods are used for tracking requests from user but have not
-  // been scheduled yet. add one request to the pending queue
-  virtual void add_one_pending_request() {}
+  // been scheduled yet.
 
-  // remove one request from the pending queue
-  virtual void remove_one_pending_request() {}
+  // inc/dec pending requests
+  virtual void inc_pending_requests(size_t count) {}
+  virtual void dec_pending_requests() {}
 };
 
 }  // namespace llm

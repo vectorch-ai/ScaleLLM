@@ -6,13 +6,7 @@ from typing import List, Optional
 from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
                          SamplingParams)
 from scalellm.downloader import download_hf_model
-
-
-class ValidationError(Exception):
-    def __init__(self, code: int, message: str) -> None:
-        super().__init__()
-        self.code = code
-        self.message = message
+from scalellm.errors import ValidationError
 
 
 class OutputStream:
