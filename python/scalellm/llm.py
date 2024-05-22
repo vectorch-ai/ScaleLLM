@@ -3,6 +3,7 @@ from typing import List, Optional, Union
 
 from scalellm._C import LLMHandler, Priority, RequestOutput, SamplingParams
 from scalellm.downloader import download_hf_model
+from scalellm.errors import ValidationError
 
 
 class LLM:
@@ -27,7 +28,7 @@ class LLM:
         max_tokens_per_batch: int = 512,
         max_seqs_per_batch: int = 128,
         num_speculative_tokens: int = 0,
-        num_handling_threads:int = 4,
+        num_handling_threads: int = 4,
     ) -> None:
         # download hf model if it does not exist
         model_path = model
@@ -73,28 +74,36 @@ class LLM:
         sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None,
         priority: Priority = Priority.NORMAL,
     ) -> List[RequestOutput]:
+        # use default sampling parameters if not provided
+        if sampling_params is None:
+            sampling_params = SamplingParams()
+        # convert single prompt to list
         if isinstance(prompts, str):
             prompts = [prompts]
-        if sampling_params is None:
-            # use default sampling parameters
-            sampling_params = SamplingParams()
         if isinstance(sampling_params, SamplingParams):
-            sampling_params = [sampling_params] * len(prompts)
+            sampling_params = [sampling_params]
 
-        if len(sampling_params) != len(prompts):
+        if len(sampling_params) != len(prompts) and len(sampling_params) != 1:
             raise ValueError("The number of prompts and sampling parameters must match")
 
         outputs = [None] * len(prompts)
-        for i in range(len(prompts)):
 
-            def callback(output: RequestOutput, idx: int = i) -> bool:
-                outputs[idx] = output
-                return True
+        def callback(index: int, output: RequestOutput) -> bool:
+            outputs[index] = output
+            return True
 
-            self._handler.schedule_async(
-                prompts[i], sampling_params[i], priority, False, callback
-            )
+        # schedule the batch requests
+        self._handler.schedule_batch_async(
+            prompts, sampling_params, priority, False, callback
+        )
 
         # run until all scheduled requsts complete
         self._handler.run_until_complete()
+
+        # throw an exception if there is any error
+        for output in outputs:
+            if output is None:
+                raise RuntimeError("Request failed, no output received")
+            if output.status is not None and not output.status.ok:
+                raise ValidationError(output.status.code, output.status.message)
         return outputs

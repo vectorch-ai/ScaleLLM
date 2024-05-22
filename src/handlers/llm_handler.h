@@ -17,6 +17,9 @@ namespace llm {
 // callback function for output, return true to continue, false to stop/cancel
 using OutputCallback = std::function<bool(RequestOutput output)>;
 
+using BatchOutputCallback =
+    std::function<bool(size_t index, RequestOutput output)>;
+
 // NOLINTNEXTLINE
 class LLMHandler {
  public:
@@ -88,6 +91,20 @@ class LLMHandler {
                            bool stream,
                            OutputCallback callback);
 
+  // batch version
+  void schedule_batch_async(std::vector<std::string> prompts,
+                            std::vector<SamplingParams> sp,
+                            Priority priority,
+                            bool stream,
+                            BatchOutputCallback callback);
+
+  void schedule_chat_batch_async(
+      std::vector<std::vector<Message>> conversations,
+      std::vector<SamplingParams> sp,
+      Priority priority,
+      bool stream,
+      BatchOutputCallback callback);
+
   // start the handling loop
   void start();
 
@@ -114,7 +131,17 @@ class LLMHandler {
       bool stream,
       OutputCallback callback);
 
-  void schedule(Task task);
+  void schedule(std::string prompt,
+                SamplingParams sp,
+                Priority priority,
+                bool stream,
+                OutputCallback callback);
+
+  void schedule(std::vector<Message> messages,
+                SamplingParams sp,
+                Priority priority,
+                bool stream,
+                OutputCallback callback);
 
   void handling_loop(size_t tid);
 

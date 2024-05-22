@@ -5,6 +5,7 @@
 #include <atomic>
 #include <memory>
 #include <thread>
+#include <utility>
 
 #include "common/scope_guard.h"
 #include "engine/utils.h"
@@ -131,7 +132,7 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
     }
   }
 
-  // construct tokenizers and handler threads
+  // construct tokenizers and handling threads
   const auto* tokenizer = engine_->tokenizer();
   for (size_t i = 0; i < options.num_handling_threads(); ++i) {
     // create a tokenizer for each thread for now
@@ -160,15 +161,83 @@ void LLMHandler::schedule_async(std::string prompt,
                                 bool stream,
                                 OutputCallback callback) {
   // add one pending request
-  scheduler_->add_one_pending_request();
-  schedule([this,
-            prompt = std::move(prompt),
-            sp = std::move(sp),
-            priority,
-            stream,
-            callback](size_t tid) mutable {
+  scheduler_->inc_pending_requests(1);
+  schedule(
+      std::move(prompt), std::move(sp), priority, stream, std::move(callback));
+}
+
+void LLMHandler::schedule_chat_async(std::vector<Message> messages,
+                                     SamplingParams sp,
+                                     Priority priority,
+                                     bool stream,
+                                     OutputCallback callback) {
+  // add one pending request
+  scheduler_->inc_pending_requests(1);
+  schedule(std::move(messages),
+           std::move(sp),
+           priority,
+           stream,
+           std::move(callback));
+}
+
+void LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
+                                      std::vector<SamplingParams> sps,
+                                      Priority priority,
+                                      bool stream,
+                                      BatchOutputCallback callback) {
+  CHECK(prompts.size() == sps.size() || sps.size() == 1)
+      << "Number of prompts and sampling parameters should be the same";
+
+  const size_t num_requests = prompts.size();
+  scheduler_->inc_pending_requests(num_requests);
+  for (size_t i = 0; i < num_requests; ++i) {
+    schedule(std::move(prompts[i]),
+             // the sampling parameter may be shared
+             sps.size() == 1 ? sps[0] : std::move(sps[i]),
+             priority,
+             stream,
+             [i, callback](const RequestOutput& output) {
+               return callback(i, output);
+             });
+  }
+}
+
+void LLMHandler::schedule_chat_batch_async(
+    std::vector<std::vector<Message>> conversations,
+    std::vector<SamplingParams> sps,
+    Priority priority,
+    bool stream,
+    BatchOutputCallback callback) {
+  CHECK(conversations.size() == sps.size() || sps.size() == 1)
+      << "Number of conversations and sampling parameters should be the same";
+
+  const size_t num_requests = conversations.size();
+  scheduler_->inc_pending_requests(num_requests);
+  for (size_t i = 0; i < conversations.size(); ++i) {
+    schedule(std::move(conversations[i]),
+             // the sampling parameter may be shared
+             sps.size() == 1 ? sps[0] : std::move(sps[i]),
+             priority,
+             stream,
+             [i, callback](const RequestOutput& output) {
+               return callback(i, output);
+             });
+  }
+}
+
+void LLMHandler::schedule(std::string prompt,
+                          SamplingParams sp,
+                          Priority priority,
+                          bool stream,
+                          OutputCallback callback) {
+  auto task = [this,
+               prompt = std::move(prompt),
+               sp = std::move(sp),
+               priority,
+               stream,
+               callback](size_t tid) mutable {
     // remove the pending request after scheduling
-    ScopeGuard cleanup = [this] { scheduler_->remove_one_pending_request(); };
+    ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
 
     // verify the prompt
     if (!verify_params(sp, callback)) {
@@ -186,24 +255,24 @@ void LLMHandler::schedule_async(std::string prompt,
                           "No available resources to schedule request");
       return;
     }
-  });
+  };
+  // add into the queue
+  queue_.push(std::move(task));
 }
 
-void LLMHandler::schedule_chat_async(std::vector<Message> messages,
-                                     SamplingParams sp,
-                                     Priority priority,
-                                     bool stream,
-                                     OutputCallback callback) {
-  // add one pending request
-  scheduler_->add_one_pending_request();
-  schedule([this,
-            messages = std::move(messages),
-            sp = std::move(sp),
-            priority,
-            stream,
-            callback](size_t tid) mutable {
+void LLMHandler::schedule(std::vector<Message> messages,
+                          SamplingParams sp,
+                          Priority priority,
+                          bool stream,
+                          OutputCallback callback) {
+  auto task = [this,
+               messages = std::move(messages),
+               sp = std::move(sp),
+               priority,
+               stream,
+               callback](size_t tid) mutable {
     // remove the pending request after scheduling
-    ScopeGuard cleanup = [this] { scheduler_->remove_one_pending_request(); };
+    ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
     // verify the prompt
     if (!verify_params(sp, callback)) {
       return;
@@ -220,7 +289,9 @@ void LLMHandler::schedule_chat_async(std::vector<Message> messages,
                           "No available resources to schedule request");
       return;
     }
-  });
+  };
+  // add into the queue
+  queue_.push(std::move(task));
 }
 
 void LLMHandler::handling_loop(size_t tid) {
@@ -232,11 +303,6 @@ void LLMHandler::handling_loop(size_t tid) {
     }
     task(tid);
   }
-}
-
-void LLMHandler::schedule(Task task) {
-  DCHECK(task != nullptr);
-  queue_.push(std::move(task));
 }
 
 void LLMHandler::start() {

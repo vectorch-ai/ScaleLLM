@@ -2,6 +2,7 @@ import time
 from typing import List
 
 import shortuuid
+from scalellm import AsyncLLMEngine, Message, SamplingParams
 from scalellm.serve.api_protocol import (ChatCompletionMessage,
                                          ChatCompletionRequest,
                                          ChatCompletionResponse,
@@ -11,8 +12,6 @@ from scalellm.serve.api_protocol import (ChatCompletionMessage,
                                          ChatMessage, DeltaMessage, UsageInfo)
 from scalellm.serve.common import jsonify_model, to_priority
 from scalellm.serve.streaming_response import SafeStreamingResponse
-
-from scalellm import AsyncLLMEngine, Message, SamplingParams
 
 
 def to_sampling_params(request: ChatCompletionRequest) -> SamplingParams:
