@@ -112,13 +112,11 @@ torch::Tensor RejectionSampler::random_sample(
   auto accepted = (uniform_rand < acceptance_probs);
 
   // construct recovered probs
-  const auto epsilon = std::numeric_limits<float>::epsilon();
-  auto recovered_probs = (target_probs - draft_probs);
+  auto recovered_probs = (target_probs - draft_probs).clamp_min_(0);
   // a small value to avoid division by zero
-  recovered_probs.clamp_min_(/*min=*/epsilon);
-
-  auto recovered_probs_sum = recovered_probs.sum(-1, /*keepdim=*/true);
-  recovered_probs.div_(recovered_probs_sum);
+  const auto epsilon = 1e-6f;
+  auto sum = recovered_probs.sum(-1, /*keepdim=*/true).clamp_min_(epsilon);
+  recovered_probs.div_(sum);
 
   // resample on the recovered probs
   torch::Tensor recovered_token_ids = Sampler::random_sample(recovered_probs);
