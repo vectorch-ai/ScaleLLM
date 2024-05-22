@@ -30,34 +30,33 @@ PYVER="${PYTHON_VERSION//./}"
 export PATH="/opt/python/cp${PYVER}-cp${PYVER}/bin:$PATH"
 
 
-echo "::group::Install PyTorch"
+# install PyTorch
 pip install torch==$TORCH_VERSION --index-url "https://download.pytorch.org/whl/cu${CUDA_MAJOR}${CUDA_MINOR}"
-echo "::endgroup::"
 
-echo "::group::Install other dependencies"
+# install other dependencies
 pip install numpy
 pip install --upgrade setuptools wheel
-echo "::endgroup::"
 
+# zero out ccache if ccache is installed
+command -v ccache >/dev/null && ccache -z
 
-echo "::group::Build wheel for ScaleLLM"
 cd "$PROJECT_ROOT/python"
 python setup.py bdist_wheel
-echo "::endgroup::"
 
+# show ccache statistics
+command -v ccache >/dev/null && ccache -vs
+
+# rename wheel to include torch and cuda versions
 if [ "$RENAME_WHL" = "true" ]; then
-    echo "::group::Rename wheel to include torch and cuda versions"
     cd "$PROJECT_ROOT/python"
     for whl in dist/*.whl; do
         python rename_whl.py "$whl"
     done
-    echo "::endgroup::"
 fi
 
-# echo "::group::Bundle external shared libraries into wheel"
+# bundle external shared libraries into wheel
 # pip install auditwheel
 # cd "$PROJECT_ROOT/python"
 # for whl in dist/*.whl; do
 #     auditwheel repair "$whl" --plat manylinux1_x86_64 -w dist/
 # done
-# echo "::endgroup::"

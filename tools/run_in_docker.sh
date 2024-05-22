@@ -56,11 +56,13 @@ RUN_OPTS+=("-u $(id -u):$(id -g)")
 
 # carry over cache settings
 if [[ -n "${VCPKG_DEFAULT_BINARY_CACHE}" ]]; then
+  mkdir -p ${VCPKG_DEFAULT_BINARY_CACHE}
   RUN_OPTS+=("-v ${VCPKG_DEFAULT_BINARY_CACHE}:${VCPKG_DEFAULT_BINARY_CACHE}")
   RUN_OPTS+=("-e VCPKG_DEFAULT_BINARY_CACHE=${VCPKG_DEFAULT_BINARY_CACHE}")
 fi
 
 if [[ -n "${CCACHE_DIR}" ]]; then
+  mkdir -p ${CCACHE_DIR}
   RUN_OPTS+=("-v ${CCACHE_DIR}:${CCACHE_DIR}")
   RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
 fi
