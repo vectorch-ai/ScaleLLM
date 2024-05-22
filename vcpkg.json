@@ -12,6 +12,18 @@
       "version>=": "20230125.3"
     },
     {
+      "name": "boost-asio",
+      "version>=": "1.84.0"
+    },
+    {
+      "name": "boost-algorithm",
+      "version>=": "1.84.0"
+    },
+    {
+      "name": "boost-beast",
+      "version>=": "1.84.0"
+    },
+    {
       "name": "benchmark",
       "version>=": "1.8.0"
     },
@@ -55,11 +67,6 @@
       "name": "rapidjson",
       "version>=": "2023-07-17",
       "default-features": false
-    },
-    {
-      "name": "stduuid",
-      "version>=": "1.2.3",
-      "features": ["system-gen"]
     },
     {
       "name": "re2",

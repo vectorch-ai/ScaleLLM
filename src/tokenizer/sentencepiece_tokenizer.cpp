@@ -2,8 +2,11 @@
 
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_join.h>
+#include <absl/strings/string_view.h>
 #include <glog/logging.h>
 #include <re2/re2.h>
+
+#include <string_view>
 
 #include "sentencepiece.pb.h"
 #include "sentencepiece/sentencepiece_processor.h"
@@ -101,7 +104,7 @@ bool SentencePieceTokenizer::encode_internal(const std::string_view& text,
   }
 
   sentencepiece::SentencePieceText spt;
-  RETURN_FALSE_IF_ERROR(sp_processor_.Encode(text, &spt));
+  RETURN_FALSE_IF_ERROR(sp_processor_.Encode({text.data(), text.size()}, &spt));
   for (const auto& sp : spt.pieces()) {
     ids->emplace_back(sp.id());
   }
@@ -120,8 +123,8 @@ bool SentencePieceTokenizer::encode(const std::string_view& text,
     return encode_internal(text, ids);
   }
 
-  std::string_view input = text;
-  std::string_view special;
+  absl::string_view input{text.data(), text.size()};
+  absl::string_view special;
   while (true) {
     const auto* start = input.begin();
     if (!re2::RE2::FindAndConsume(&input, *special_token_regex_, &special)) {
@@ -145,7 +148,7 @@ bool SentencePieceTokenizer::encode(const std::string_view& text,
   }
 
   // encode remaining text if exists
-  return encode_internal(input, ids);
+  return encode_internal({input.data(), input.size()}, ids);
 }
 
 void SentencePieceTokenizer::decode_internal(const Slice<int32_t>& ids,
@@ -201,13 +204,14 @@ std::string SentencePieceTokenizer::decode(const Slice<int32_t>& ids,
 std::optional<int32_t> SentencePieceTokenizer::token_to_id(
     const std::string_view& token) const {
   // encode special token
-  const auto sit = special_token_encoder_.find(token);
+  const absl::string_view token_view{token.data(), token.size()};
+  const auto sit = special_token_encoder_.find(token_view);
   if (sit != special_token_encoder_.end()) {
     return sit->second;
   }
 
   // encode token
-  const auto token_id = sp_processor_.PieceToId(token);
+  const auto token_id = sp_processor_.PieceToId(token_view);
   if (sp_processor_.IsUnknown(token_id)) {
     LOG(ERROR) << "Failed to find token for token: " << token;
     return std::nullopt;

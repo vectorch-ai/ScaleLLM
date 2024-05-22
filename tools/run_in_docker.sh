@@ -29,20 +29,9 @@ function usage() {
   exit 1
 }
 
-function get_switch_user_cmd() {
-  local uid=$(id -u)
-  local gid=$(id -g)
-  local username=$(id -n -u)
-  local groupname=$(id -n -g)
-  local cmdline="groupadd -f ${groupname} && groupmod -o -g ${gid} ${groupname}"
-  cmdline+="; id -u ${username} &>/dev/null || useradd -N ${username} && usermod -o -u ${uid} -g ${gid} ${username}"
-  cmdline+="; chroot --userspec=${username} / "
-  echo "${cmdline}"
-}
-
 (( $# < 1 )) && usage
 
-IMAGE="vectorchai/scalellm:devel"
+IMAGE="vectorchai/scalellm_devel:latest"
 RUN_OPTS=()
 while [[ $# > 1 ]]; do
   case "$1" in
@@ -61,15 +50,28 @@ RUN_OPTS+=(--rm -it --network=host)
 RUN_OPTS+=("-v $(pwd):$(pwd)")
 RUN_OPTS+=("-v /tmp:/tmp")
 RUN_OPTS+=("-v ${HOME}:${HOME}")
-CMD="bash -c 'cd $(pwd); VCPKG_DEFAULT_BINARY_CACHE=$(pwd)/.vcpkg/bincache $@'"
 
+# run as the current user
+RUN_OPTS+=("-u $(id -u):$(id -g)")
+
+# carry over cache settings
+if [[ -n "${VCPKG_DEFAULT_BINARY_CACHE}" ]]; then
+  RUN_OPTS+=("-v ${VCPKG_DEFAULT_BINARY_CACHE}:${VCPKG_DEFAULT_BINARY_CACHE}")
+  RUN_OPTS+=("-e VCPKG_DEFAULT_BINARY_CACHE=${VCPKG_DEFAULT_BINARY_CACHE}")
+fi
+
+if [[ -n "${CCACHE_DIR}" ]]; then
+  RUN_OPTS+=("-v ${CCACHE_DIR}:${CCACHE_DIR}")
+  RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
+fi
+
+CMD="$@"
 [[ "${CMD}" = "" ]] && usage
-[[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
 
-echo "== Pulling docker image: ${IMAGE}"
-if ! docker pull ${IMAGE} ; then
+[[ ! -x $(command -v docker) ]] && echo "ERROR: 'docker' command missing from PATH." && usage
+if ! docker pull ${IMAGE} > /dev/null; then
   echo "WARNING: Failed to docker pull image ${IMAGE}"
 fi
 
-echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"$(get_switch_user_cmd) ${CMD}\""
-docker run ${RUN_OPTS[@]} ${IMAGE} bash -c "$(get_switch_user_cmd) ${CMD}"
+# echo "docker run ${RUN_OPTS[@]} ${IMAGE} bash -c \"cd $(pwd); ${CMD}\""
+docker run ${RUN_OPTS[@]} ${IMAGE} bash -c "cd $(pwd); ${CMD}"

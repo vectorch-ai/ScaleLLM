@@ -1,0 +1,37 @@
+ARG CUDA_VERSION=12.1
+FROM pytorch/manylinux-builder:cuda${CUDA_VERSION} as base
+
+LABEL maintainer="mi@vectorch.com"
+ENV DEBIAN_FRONTEND noninteractive
+
+ENV LC_ALL en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US.UTF-8
+
+# Install dependencies for vcpkg
+RUN yum -y update && yum -y install \
+    zip \
+    unzip \
+    tar \
+    wget \
+    curl \
+    perl \
+    perl-IPC-Cmd \
+    sudo 
+
+# Install ccache
+ARG CCACHE_VERSION=4.8.3
+COPY ./common/install_ccache.sh install_ccache.sh
+RUN if [ -n "${CCACHE_VERSION}" ]; then bash ./install_ccache.sh; fi
+RUN rm install_ccache.sh
+
+# Install rust
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+# give everyone permission to use rust
+RUN chmod -R a+w ${RUSTUP_HOME} ${CARGO_HOME}
+RUN rustup --version; cargo --version; rustc --version
+
+CMD ["bash"]

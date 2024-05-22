@@ -43,8 +43,20 @@ class ContinuousScheduler final : public Scheduler {
   // may get blocked if there are no requests to process
   void step(const absl::Duration& timeout) override;
 
-  // run the scheduler until all scheduled requests are completed
+  // run the scheduler until all pending + scheduled requests are completed
   void run_until_complete() override;
+
+  // add one request to the pending queue
+  void add_one_pending_request() override {
+    pending_requests_.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  // remove one request from the pending queue
+  void remove_one_pending_request() override {
+    const auto old_value =
+        pending_requests_.fetch_sub(1, std::memory_order_relaxed);
+    CHECK_GT(old_value, 0) << "pending requests underflow";
+  }
 
  private:
   Batch wait_for_batch(const absl::Duration& timeout);
@@ -94,6 +106,9 @@ class ContinuousScheduler final : public Scheduler {
   std::unique_ptr<ResponseHandler> response_handler_;
 
   bool enable_prefix_cache_ = false;
+
+  // the number of requests that are waiting to be scheduled
+  std::atomic<size_t> pending_requests_{0};
 };
 
 }  // namespace llm

@@ -24,18 +24,19 @@ cc_library(
   HDRS 
     call_data.h
     utils.h
+    uuid.h
     completion_handler.h
     chat_handler.h
     models_handler.h
   SRCS 
     utils.cpp
+    uuid.cpp
     completion_handler.cpp
     chat_handler.cpp
     models_handler.cpp
   DEPS
     :llm_handler
     :chat_template
-    stduuid
     glog::glog
     grpc_proto::completion
     absl::flat_hash_set

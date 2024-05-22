@@ -1,0 +1,89 @@
+name: Publish wheel
+on:
+  workflow_dispatch:
+
+# Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
+# Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
+  push:
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+*
+env:
+  # Tells where to store caches.
+  CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
+
+jobs:
+  build_wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11"]
+        cuda: ["12.1"]
+        torch: ["2.3"]
+    runs-on: [self-hosted, linux, release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Build wheel
+        run: |
+          docker pull vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }}
+          docker run --rm -t \
+              -v "$CI_CACHE_DIR":/ci_cache \
+              -v "$GITHUB_WORKSPACE":/ScaleLLM \
+              -e PYTHON_VERSION=${{ matrix.python }} \
+              -e CUDA_VERSION=${{ matrix.cuda }} \
+              -e TORCH_VERSION=${{ matrix.torch }} \
+              -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
+              -e CCACHE_DIR=/ci_cache/.ccache \
+              -u $(id -u):$(id -g) \
+              vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }} \
+              bash /ScaleLLM/scripts/build_wheel.sh
+        timeout-minutes: 60
+
+      - name: show wheels
+        run: ls -lh python/dist
+
+      - name: rename wheel to manylinux
+        run: |
+          for whl in python/dist/scalellm-*.whl; do
+            new_whl=${whl//"-linux_"/"-manylinux1_"}
+            if [ "$whl" != "$new_whl" ]; then
+              mv $whl $new_whl
+            fi
+          done
+
+      - name: show wheels
+        run: ls -lh python/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+          path: python/dist/*
+
+  publish_wheel:
+    needs: build_wheel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          path: python/dist
+          merge-multiple: true
+          pattern: wheel-*
+
+      - name: Show wheels
+        run: ls -lh python/dist
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1.8
+        with:
+          packages-dir: python/dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+          verbose: true
+      
+

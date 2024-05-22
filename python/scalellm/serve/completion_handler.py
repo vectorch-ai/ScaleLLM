@@ -1,13 +1,14 @@
 import time
 
 import shortuuid
-from scalellm import AsyncLLMEngine, SamplingParams
 from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
                                          CompletionResponseChoice,
                                          CompletionResponseStreamChoice,
                                          CompletionStreamResponse, UsageInfo)
 from scalellm.serve.common import jsonify_model, to_priority
 from scalellm.serve.streaming_response import SafeStreamingResponse
+
+from scalellm import AsyncLLMEngine, SamplingParams
 
 
 def to_sampling_params(request: CompletionRequest) -> SamplingParams:
@@ -40,7 +41,10 @@ async def generate_completion_response(
     sampling_params = to_sampling_params(request)
     priority = to_priority(request.priority)
     output_stream = await engine.schedule_async(
-        request.prompt, sampling_params, priority, request.stream
+        request.prompt,
+        sampling_params=sampling_params,
+        priority=priority,
+        stream=request.stream,
     )
 
     # only one output is expected for non-streaming request
@@ -84,7 +88,10 @@ async def generate_completion_stream_response(
     sampling_params = to_sampling_params(request)
     priority = to_priority(request.priority)
     output_stream = await engine.schedule_async(
-        request.prompt, sampling_params, priority, request.stream
+        request.prompt,
+        sampling_params=sampling_params,
+        priority=priority,
+        stream=request.stream,
     )
 
     async def generate_stream_content():

@@ -6,7 +6,6 @@
 #include <glog/logging.h>
 #include <grpcpp/grpcpp.h>
 #include <torch/torch.h>
-#include <uuid.h>
 
 #include <boost/algorithm/string.hpp>
 #include <cstdint>
@@ -16,14 +15,15 @@
 #include "chat_template/chat_template.h"
 #include "handlers/sampling_params.h"
 #include "utils.h"
+#include "uuid.h"
 
 namespace llm {
 
 namespace {
+// NOLINTNEXTLINE
+thread_local ShortUUID short_uuid;
 
-std::string generate_request_id() {
-  return "chatcmpl-" + uuids::to_string(uuids::uuid_system_generator{}());
-}
+std::string generate_request_id() { return "chatcmpl-" + short_uuid.random(); }
 
 bool send_delta_to_client(ChatCallData* call_data,
                           std::unordered_set<size_t>* first_message_sent,

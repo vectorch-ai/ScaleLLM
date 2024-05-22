@@ -10,6 +10,34 @@ namespace llm {
 // request.
 // following: https://platform.openai.com/docs/api-reference/completions/create
 struct SamplingParams {
+  SamplingParams() = default;
+  SamplingParams(uint32_t max_tokens,
+                 uint32_t n,
+                 bool echo,
+                 float frequency_penalty,
+                 float presence_penalty,
+                 float repetition_penalty,
+                 float temperature,
+                 float top_p,
+                 int64_t top_k,
+                 bool skip_special_tokens,
+                 bool ignore_eos,
+                 std::optional<std::vector<std::string>> stop,
+                 std::optional<std::vector<int32_t>> stop_token_ids)
+      : max_tokens(max_tokens),
+        n(n),
+        echo(echo),
+        frequency_penalty(frequency_penalty),
+        presence_penalty(presence_penalty),
+        repetition_penalty(repetition_penalty),
+        temperature(temperature),
+        top_p(top_p),
+        top_k(top_k),
+        skip_special_tokens(skip_special_tokens),
+        ignore_eos(ignore_eos),
+        stop(stop),
+        stop_token_ids(stop_token_ids) {}
+
   // number of tokens to generate. truncted to model's max context length.
   uint32_t max_tokens = 16;
 

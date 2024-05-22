@@ -43,7 +43,7 @@ class OutputStream:
     # cancel the stream
     def cancel(self) -> None:
         self._cancelled = True
-        self._queue.put_nowait(None)
+        self._queue.put_nowait(StopIteration())
 
     def __iter__(self):
         return self
@@ -92,7 +92,7 @@ class OutputAsyncStream:
     # cancel the stream
     def cancel(self) -> None:
         self._cancelled = True
-        self._queue.put_nowait(None)
+        self._queue.put_nowait(StopAsyncIteration())
 
     def __aiter__(self):
         return self
@@ -170,15 +170,17 @@ class AsyncLLMEngine:
     async def schedule_async(
         self,
         prompt: str,
-        sampling_params: SamplingParams,
-        priority: Priority,
-        stream: bool,
+        sampling_params: Optional[SamplingParams] = None,
+        priority: Priority = Priority.NORMAL,
+        stream: bool = False,
     ) -> OutputAsyncStream:
         output_stream = OutputAsyncStream()
 
         def callback(output: RequestOutput) -> bool:
             return output_stream.put(output)
 
+        # use default sampling parameters if not provided
+        sampling_params = sampling_params or SamplingParams()
         self._handler.schedule_async(
             prompt, sampling_params, priority, stream, callback
         )
@@ -187,15 +189,17 @@ class AsyncLLMEngine:
     async def schedule_chat_async(
         self,
         messages: List[Message],
-        sampling_params: SamplingParams,
-        priority: Priority,
-        stream: bool,
+        sampling_params: Optional[SamplingParams] = None,
+        priority: Priority = Priority.NORMAL,
+        stream: bool = False,
     ) -> OutputAsyncStream:
         output_stream = OutputAsyncStream()
 
         def callback(output: RequestOutput) -> bool:
             return output_stream.put(output)
 
+        # use default sampling parameters if not provided
+        sampling_params = sampling_params or SamplingParams()
         self._handler.schedule_chat_async(
             messages, sampling_params, priority, stream, callback
         )
@@ -204,15 +208,17 @@ class AsyncLLMEngine:
     def schedule(
         self,
         prompt: str,
-        sampling_params: SamplingParams,
-        priority: Priority,
-        stream: bool,
+        sampling_params: Optional[SamplingParams] = None,
+        priority: Priority = Priority.NORMAL,
+        stream: bool = False,
     ) -> OutputStream:
         output_stream = OutputStream()
 
         def callback(output: RequestOutput) -> bool:
             return output_stream.put(output)
 
+        # use default sampling parameters if not provided
+        sampling_params = sampling_params or SamplingParams()
         self._handler.schedule_async(
             prompt, sampling_params, priority, stream, callback
         )
@@ -221,15 +227,17 @@ class AsyncLLMEngine:
     def schedule_chat(
         self,
         messages: List[Message],
-        sampling_params: SamplingParams,
-        priority: Priority,
-        stream: bool,
+        sampling_params: Optional[SamplingParams] = None,
+        priority: Priority = Priority.NORMAL,
+        stream: bool = False,
     ) -> OutputStream:
         output_stream = OutputStream()
 
         def callback(output: RequestOutput) -> bool:
             return output_stream.put(output)
 
+        # use default sampling parameters if not provided
+        sampling_params = sampling_params or SamplingParams()
         self._handler.schedule_chat_async(
             messages, sampling_params, priority, stream, callback
         )

@@ -27,20 +27,23 @@ cc_library(
     glog::glog
 )
 
-cc_binary(
-  NAME 
-    simple
-  SRCS 
-    simple.cpp
-  DEPS
-    :engine
-    :speculative
-    torch
-    absl::strings
-    gflags::gflags
-    glog::glog
-    Python::Python
-)
+if (NOT USE_MANYLINUX)
+  # manylinux doesn't ship with Development.Embed
+  cc_binary(
+    NAME 
+      simple
+    SRCS 
+      simple.cpp
+    DEPS
+      :engine
+      :speculative
+      torch
+      absl::strings
+      gflags::gflags
+      glog::glog
+      Python::Python
+  )
+endif()
 
 cc_binary(
   NAME 

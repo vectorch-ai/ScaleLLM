@@ -6,7 +6,6 @@
 #include "common/metrics.h"
 #include "handlers/llm_handler.h"
 #include "handlers/sampling_params.h"
-#include "llm.h"
 #include "request/status.h"
 
 namespace llm::csrc {
@@ -24,7 +23,32 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
 
   // class SamplingParameter
   py::class_<SamplingParams>(m, "SamplingParams")
-      .def(py::init())
+      .def(py::init<uint32_t,
+                    uint32_t,
+                    bool,
+                    float,
+                    float,
+                    float,
+                    float,
+                    float,
+                    int64_t,
+                    bool,
+                    bool,
+                    std::optional<std::vector<std::string>>,
+                    std::optional<std::vector<int32_t>>>(),
+           py::arg("max_tokens") = 16,
+           py::arg("n") = 1,
+           py::arg("echo") = false,
+           py::arg("frequency_penalty") = 0.0,
+           py::arg("presence_penalty") = 0.0,
+           py::arg("repetition_penalty") = 1.0,
+           py::arg("temperature") = 1.0,
+           py::arg("top_p") = 1.0,
+           py::arg("top_k") = -1,
+           py::arg("skip_special_tokens") = true,
+           py::arg("ignore_eos") = false,
+           py::arg("stop") = std::nullopt,
+           py::arg("stop_token_ids") = std::nullopt)
       .def_readwrite("max_tokens", &SamplingParams::max_tokens)
       .def_readwrite("n", &SamplingParams::n)
       .def_readwrite("echo", &SamplingParams::echo)
@@ -41,7 +65,9 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("stop_token_ids", &SamplingParams::stop_token_ids);
 
   py::class_<Message>(m, "Message")
-      .def(py::init<const std::string&, const std::string&>())
+      .def(py::init<const std::string&, const std::string&>(),
+           py::arg("role"),
+           py::arg("content"))
       .def_readwrite("role", &Message::role)
       .def_readwrite("content", &Message::content);
 
@@ -71,7 +97,9 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .export_values();
 
   py::class_<Status>(m, "Status")
-      .def(py::init<StatusCode, const std::string&>())
+      .def(py::init<StatusCode, const std::string&>(),
+           py::arg("code"),
+           py::arg("message"))
       .def_property_readonly("code", &Status::code)
       .def_property_readonly("message", &Status::message)
       .def_property_readonly("ok", &Status::ok);
@@ -89,28 +117,24 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("usage", &RequestOutput::usage)
       .def_readwrite("finished", &RequestOutput::finished);
 
-  py::class_<ScheduleTask>(m, "ScheduleTask")
-      .def(
-          "wait", &ScheduleTask::wait, py::call_guard<py::gil_scoped_release>())
-      .def("get", &ScheduleTask::get, py::call_guard<py::gil_scoped_release>());
-
-  auto llm_handler = py::class_<LLMHandler>(m, "LLMHandler")
-                         .def(py::init<const LLMHandler::Options&>())
-                         .def("schedule_async",
-                              &LLMHandler::schedule_async,
-                              py::call_guard<py::gil_scoped_release>())
-                         .def("schedule_chat_async",
-                              &LLMHandler::schedule_chat_async,
-                              py::call_guard<py::gil_scoped_release>())
-                         .def("start",
-                              &LLMHandler::start,
-                              py::call_guard<py::gil_scoped_release>())
-                         .def("stop",
-                              &LLMHandler::stop,
-                              py::call_guard<py::gil_scoped_release>())
-                         .def("run_until_complete",
-                              &LLMHandler::run_until_complete,
-                              py::call_guard<py::gil_scoped_release>());
+  auto llm_handler =
+      py::class_<LLMHandler>(m, "LLMHandler")
+          .def(py::init<const LLMHandler::Options&>(), py::arg("options"))
+          .def("schedule_async",
+               &LLMHandler::schedule_async,
+               py::call_guard<py::gil_scoped_release>())
+          .def("schedule_chat_async",
+               &LLMHandler::schedule_chat_async,
+               py::call_guard<py::gil_scoped_release>())
+          .def("start",
+               &LLMHandler::start,
+               py::call_guard<py::gil_scoped_release>())
+          .def("stop",
+               &LLMHandler::stop,
+               py::call_guard<py::gil_scoped_release>())
+          .def("run_until_complete",
+               &LLMHandler::run_until_complete,
+               py::call_guard<py::gil_scoped_release>());
 
   // LLMHandler::Options
   py::class_<LLMHandler::Options>(llm_handler, "Options")
@@ -140,14 +164,6 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
                      &LLMHandler::Options::max_seqs_per_batch_)
       .def_readwrite("num_speculative_tokens",
                      &LLMHandler::Options::num_speculative_tokens_);
-
-  // class LLM
-  py::class_<LLM, std::shared_ptr<LLM>>(m, "LLM")
-      .def(py::init<const std::string&,
-                    const SamplingParams&,
-                    int64_t,
-                    const std::string>())
-      .def("generate", &LLM::generate);
 }
 
 }  // namespace llm::csrc

@@ -1,0 +1,62 @@
+name: Publish devel docker image
+on:
+  workflow_dispatch:
+env:
+  # Tells where to store caches.
+  CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
+
+jobs:
+  publish_base:
+    runs-on: [self-hosted, linux, release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Create cache directory
+        run: mkdir -p $CI_CACHE_DIR/.buildx-cache
+
+      - name: Build devel image for cuda 12.1
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.devel
+          push: true
+          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
+          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          build-args: |
+            UBUNTU_VERSION=22.04
+            CUDA_VERSION=12.1
+            GCC_VERSION=12
+          tags: |
+            vectorchai/scalellm_devel:cuda12.1-ubuntu22.04
+            vectorchai/scalellm_devel:cuda12.1
+            vectorchai/scalellm_devel:latest
+
+      - name: Build devel image for cuda 11.8
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.devel
+          push: true
+          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
+          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          build-args: |
+            UBUNTU_VERSION=22.04
+            CUDA_VERSION=11.8
+            GCC_VERSION=11
+          tags: |
+            vectorchai/scalellm_devel:cuda11.8-ubuntu22.04
+            vectorchai/scalellm_devel:cuda11.8
+

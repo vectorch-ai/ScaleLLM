@@ -5,6 +5,7 @@
 #include <folly/MPMCQueue.h>
 #include <glog/logging.h>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
@@ -29,9 +30,9 @@ ContinuousScheduler::ContinuousScheduler(Engine* engine, const Options& options)
 
 ContinuousScheduler::~ContinuousScheduler() {
   // release all requests in the queue
-  while (!request_queue_.isEmpty()) {
-    Request* request = nullptr;
-    request_queue_.read(request);
+  Request* request = nullptr;
+  while (request_queue_.read(request)) {
+    CHECK(request != nullptr);
     std::unique_ptr<Request> request_ptr(request);
   }
 
@@ -64,10 +65,9 @@ bool ContinuousScheduler::schedule(std::unique_ptr<Request>& request) {
 
 Batch ContinuousScheduler::build_sequence_batch() {
   // propogate new requests to priority_queue_
-  while (!request_queue_.isEmpty()) {
-    Request* request = nullptr;
-    // read from request queue then push to priority queue
-    request_queue_.read(request);
+  Request* request = nullptr;
+  // read from request queue then push to priority queue
+  while (request_queue_.read(request)) {
     CHECK(request != nullptr);
 
     // expand sequences to the target number if prefix cache is disabled.
@@ -262,7 +262,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
 Batch ContinuousScheduler::wait_for_batch(const absl::Duration& timeout) {
   const auto deadline = absl::Now() + timeout;
   while (true) {
-    Batch batch = std::move(build_sequence_batch());
+    Batch batch = build_sequence_batch();
     if (!batch.empty()) {
       return batch;
     }
@@ -304,6 +304,11 @@ void ContinuousScheduler::run_until_complete() {
     // build a batch of requests/sequences
     auto batch = build_sequence_batch();
     if (batch.empty()) {
+      if (pending_requests_.load(std::memory_order_relaxed) > 0) {
+        // wait for new requests to arrive
+        continue;
+      }
+
       // no more requests to process
       break;
     }

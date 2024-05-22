@@ -8,6 +8,7 @@ cc_library(
     macros.h
     metrics.h
     slice.h
+    scope_guard.h
     tensor_helper.h
     concurrent_queue.h
     time.h

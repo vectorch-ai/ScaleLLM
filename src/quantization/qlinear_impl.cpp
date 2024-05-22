@@ -228,7 +228,7 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
 // special load_state_dict for fused cases
 void ColumnParallelQLinearImpl::load_state_dict(
     const StateDict& state_dict,
-    const std::vector<std::string_view>& prefixes) {
+    const std::vector<std::string>& prefixes) {
   const size_t count = prefixes.size();
   std::vector<torch::Tensor> qweight_list(count);
   std::vector<torch::Tensor> qzeros_list(count);

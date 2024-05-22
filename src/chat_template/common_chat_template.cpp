@@ -60,7 +60,8 @@ std::optional<std::string> Llama3ChatTemplate::get_prompt(
   };
   auto add_message = [&ss](const std::string_view& message) {
     // strip leading/trailing whitespaces
-    ss << absl::StripAsciiWhitespace(message) << "<|eot_id|>";
+    ss << absl::StripAsciiWhitespace({message.data(), message.size()})
+       << "<|eot_id|>";
   };
 
   ss << "<|begin_of_text|>";

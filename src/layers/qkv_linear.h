@@ -30,8 +30,8 @@ class QKVColumnParallelLinearImpl : public torch::nn::Module {
 
   // special load_state_dict for fused cases
   void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string_view>& prefixes,
-                       const std::vector<std::string_view>& kv_prefixes);
+                       const std::vector<std::string>& prefixes,
+                       const std::vector<std::string>& kv_prefixes);
 
   void verify_loaded_weights(const std::string& prefix = "") const {
     parallel_linear_->verify_loaded_weights(prefix);

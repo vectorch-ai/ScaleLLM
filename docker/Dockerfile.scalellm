@@ -1,0 +1,31 @@
+
+# ---- Production ----
+FROM ubuntu:22.04 as runtime
+WORKDIR /app
+
+# copy artifacts
+COPY /app ./
+COPY ./scripts/download_hf_models.py download_hf_models.py
+COPY ./scripts/entrypoint.sh entrypoint.sh
+
+# install python3 and pip3
+RUN apt-get update -q -y && \
+    apt-get install -q -y \
+    python3 \
+    python3-pip && \
+    apt-get -y autoremove && \
+    apt-get clean
+
+# install python dependencies
+RUN pip3 install huggingface_hub
+
+# expose port for grpc
+EXPOSE 8888
+
+# expose port for http
+EXPOSE 9999
+
+# start the server
+ENTRYPOINT [ "/app/entrypoint.sh" ]
+
+

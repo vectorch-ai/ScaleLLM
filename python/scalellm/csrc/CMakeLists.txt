@@ -5,16 +5,13 @@ pybind_extension(
     _C
   COPTS
     -DPY_MODULE_NAME=_C
-  HDRS
-    llm.h
   SRCS
-    llm.cpp
-    scalellm.cpp
+    module.cpp
   DEPS
     :llm_handler
     torch
     absl::strings
     gflags::gflags
     glog::glog
-    Python::Python
+    Python::Module
 )

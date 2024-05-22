@@ -142,7 +142,7 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
 // special load_state_dict for fused cases
 void ColumnParallelLinearImpl::load_state_dict(
     const StateDict& state_dict,
-    const std::vector<std::string_view>& prefixes) {
+    const std::vector<std::string>& prefixes) {
   std::vector<torch::Tensor> weight_list(prefixes.size());
   std::vector<torch::Tensor> bias_list(prefixes.size());
   for (size_t i = 0; i < prefixes.size(); ++i) {

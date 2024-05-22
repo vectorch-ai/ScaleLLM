@@ -43,7 +43,7 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
 
   // special load_state_dict for fused cases
   void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string_view>& prefixes) override;
+                       const std::vector<std::string>& prefixes) override;
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix) const override {
