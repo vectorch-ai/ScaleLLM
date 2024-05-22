@@ -117,6 +117,7 @@ class LLMHandler:
         max_tokens_per_batch: int
         max_seqs_per_batch: int
         num_speculative_tokens: int
+        num_handling_threads: int
 
     def __init__(self, options: Options) -> None: ...
     def schedule_async(

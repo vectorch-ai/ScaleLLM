@@ -107,7 +107,6 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
     engine_ = std::move(engine);
   }
 
-  tokenizer_ = engine_->tokenizer();
   model_args_ = engine_->model_args();
 
   ContinuousScheduler::Options scheduler_options;
@@ -131,9 +130,29 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
                    << model_args_.model_type();
     }
   }
+
+  // construct tokenizers and handler threads
+  const auto* tokenizer = engine_->tokenizer();
+  for (size_t i = 0; i < options.num_handling_threads(); ++i) {
+    // create a tokenizer for each thread for now
+    tokenizers_.emplace_back(tokenizer->clone());
+    handling_threads_.emplace_back([this, i] { handling_loop(i); });
+  }
 }
 
-LLMHandler::~LLMHandler() { stop(); }
+LLMHandler::~LLMHandler() {
+  stop();
+
+  // stop all handling threads
+  // push nullptr to the queue to signal threads to exit
+  for (size_t i = 0; i < handling_threads_.size(); ++i) {
+    queue_.push(nullptr);
+  }
+  // wait for all threads to finish
+  for (auto& thread : handling_threads_) {
+    thread.join();
+  }
+}
 
 void LLMHandler::schedule_async(std::string prompt,
                                 SamplingParams sp,
@@ -142,13 +161,12 @@ void LLMHandler::schedule_async(std::string prompt,
                                 OutputCallback callback) {
   // add one pending request
   scheduler_->add_one_pending_request();
-
-  thread_pool_.schedule([this,
-                         prompt = std::move(prompt),
-                         sp = std::move(sp),
-                         priority,
-                         stream,
-                         callback]() mutable {
+  schedule([this,
+            prompt = std::move(prompt),
+            sp = std::move(sp),
+            priority,
+            stream,
+            callback](size_t tid) mutable {
     // remove the pending request after scheduling
     ScopeGuard cleanup = [this] { scheduler_->remove_one_pending_request(); };
 
@@ -158,7 +176,7 @@ void LLMHandler::schedule_async(std::string prompt,
     }
 
     auto request =
-        create_request(std::move(prompt), sp, priority, stream, callback);
+        create_request(tid, std::move(prompt), sp, priority, stream, callback);
     if (!request) {
       return;
     }
@@ -178,12 +196,12 @@ void LLMHandler::schedule_chat_async(std::vector<Message> messages,
                                      OutputCallback callback) {
   // add one pending request
   scheduler_->add_one_pending_request();
-  thread_pool_.schedule([this,
-                         messages = std::move(messages),
-                         sp = std::move(sp),
-                         priority,
-                         stream,
-                         callback]() mutable {
+  schedule([this,
+            messages = std::move(messages),
+            sp = std::move(sp),
+            priority,
+            stream,
+            callback](size_t tid) mutable {
     // remove the pending request after scheduling
     ScopeGuard cleanup = [this] { scheduler_->remove_one_pending_request(); };
     // verify the prompt
@@ -192,7 +210,7 @@ void LLMHandler::schedule_chat_async(std::vector<Message> messages,
     }
 
     auto request =
-        create_chat_request(messages, sp, priority, stream, callback);
+        create_chat_request(tid, messages, sp, priority, stream, callback);
     if (!request) {
       return;
     }
@@ -203,6 +221,22 @@ void LLMHandler::schedule_chat_async(std::vector<Message> messages,
       return;
     }
   });
+}
+
+void LLMHandler::handling_loop(size_t tid) {
+  while (true) {
+    Task task = queue_.pop();
+    if (task == nullptr) {
+      // nullptr is a signal to exit
+      break;
+    }
+    task(tid);
+  }
+}
+
+void LLMHandler::schedule(Task task) {
+  DCHECK(task != nullptr);
+  queue_.push(std::move(task));
 }
 
 void LLMHandler::start() {
@@ -239,7 +273,8 @@ void LLMHandler::run_until_complete() {
   running_.store(false, std::memory_order_relaxed);
 }
 
-std::unique_ptr<Request> LLMHandler::create_request(std::string prompt,
+std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
+                                                    std::string prompt,
                                                     const SamplingParams& sp,
                                                     Priority priority,
                                                     bool stream,
@@ -248,7 +283,7 @@ std::unique_ptr<Request> LLMHandler::create_request(std::string prompt,
 
   // encode the prompt
   std::vector<int> prompt_tokens;
-  if (!tokenizer_->encode(prompt, &prompt_tokens)) {
+  if (!tokenizers_[tid]->encode(prompt, &prompt_tokens)) {
     LOG(ERROR) << "Failed to encode prompt: " << prompt;
     CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
                         "Failed to encode prompt");
@@ -307,7 +342,7 @@ std::unique_ptr<Request> LLMHandler::create_request(std::string prompt,
   if (sp.stop.has_value()) {
     for (const auto& s : sp.stop.value()) {
       std::vector<int> stop_tokens;
-      if (!tokenizer_->encode(s, &stop_tokens)) {
+      if (!tokenizers_[tid]->encode(s, &stop_tokens)) {
         CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
                             "Failed to encode stop sequence");
         LOG(ERROR) << "Failed to encode stop sequence: " << s;
@@ -329,6 +364,7 @@ std::unique_ptr<Request> LLMHandler::create_request(std::string prompt,
 }
 
 std::unique_ptr<Request> LLMHandler::create_chat_request(
+    size_t tid,
     const std::vector<Message>& messages,
     const SamplingParams& sp,
     Priority priority,
@@ -353,7 +389,7 @@ std::unique_ptr<Request> LLMHandler::create_chat_request(
   }
 
   return create_request(
-      std::move(prompt.value()), sp, priority, stream, callback);
+      tid, std::move(prompt.value()), sp, priority, stream, callback);
 }
 
 }  // namespace llm

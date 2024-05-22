@@ -163,7 +163,9 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("max_seqs_per_batch",
                      &LLMHandler::Options::max_seqs_per_batch_)
       .def_readwrite("num_speculative_tokens",
-                     &LLMHandler::Options::num_speculative_tokens_);
+                     &LLMHandler::Options::num_speculative_tokens_)
+      .def_readwrite("num_handling_threads",
+                     &LLMHandler::Options::num_handling_threads_);
 }
 
 }  // namespace llm::csrc

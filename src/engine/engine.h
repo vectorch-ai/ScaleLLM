@@ -15,7 +15,7 @@ class Engine {
   virtual ModelOutput execute_model(Batch& batch) = 0;
 
   // return a clone of the tokenizer
-  virtual std::unique_ptr<Tokenizer> tokenizer() const = 0;
+  virtual const Tokenizer* tokenizer() const = 0;
 
   // return the block manager
   virtual BlockManager* block_manager() const = 0;
