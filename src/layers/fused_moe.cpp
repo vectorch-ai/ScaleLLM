@@ -5,7 +5,7 @@
 #include "kernels/fused_moe_kernels.h"
 #include "models/model_args.h"
 #include "models/parameters.h"
-namespace llm{
+namespace llm {
 FusedMoeLayerImpl::FusedMoeLayerImpl(bool renormalize,
                                      bool inplace,
                                      const ModelArgs& args,
@@ -52,7 +52,8 @@ torch::Tensor FusedMoeLayerImpl::forward(
   DCHECK_EQ(hidden_states.is_contiguous(), true);
   DCHECK_EQ(w13_.is_contiguous(), true);
   DCHECK_EQ(w2_.is_contiguous(), true);
-  return kernel::apply_fused_moe(hidden_states,w13_,w2_,topk_weights,topk_indices,inplace_);
+  return kernel::apply_fused_moe(
+      hidden_states, w13_, w2_, topk_weights, topk_indices, inplace_);
 }
 
 void FusedMoeLayerImpl::load_state_dict(const StateDict& state_dict) {
@@ -89,4 +90,4 @@ void FusedMoeLayerImpl::load_state_dict(const StateDict& state_dict) {
   }
 }
 
-} //namespace llm
+}  // namespace llm

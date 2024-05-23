@@ -168,6 +168,7 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   LOG(INFO) << "Initializing model with tokenizer args: " << tokenizer_args_;
 
   if (workers_.size() == 1) {
+    LOG(INFO) << "only one workers" << std::endl;
     Worker* worker = workers_[0].get();
     // only one worker, call init_model in current thread
     if (!worker->init_model(dtype_, args_, quant_args_)) {
