@@ -1,4 +1,4 @@
-name: Build wheel
+name: Build wheel for Release
 on:
   workflow_dispatch:
     inputs:
@@ -15,9 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11"]
-        cuda: ["12.1"]
-        torch: ["2.3"]
+        python: ["3.8", "3.9", "3.10", "3.11"]
+        cuda: ["11.8", "12.1"]
+        torch: ["2.1", "2.2", "2.3"]
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -55,7 +55,7 @@ jobs:
           name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
           path: python/dist/*
 
-  release:
+  create_release:
     needs: build_wheel
     runs-on: ubuntu-latest
     permissions:

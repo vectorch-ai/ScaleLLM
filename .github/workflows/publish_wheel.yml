@@ -1,4 +1,4 @@
-name: Publish wheel
+name: Publish wheel to PyPI
 on:
   workflow_dispatch:
 
