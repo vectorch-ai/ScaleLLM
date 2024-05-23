@@ -1,4 +1,4 @@
-name: Build wheel
+name: Build wheel for Release
 on:
   workflow_dispatch:
     inputs:
@@ -55,7 +55,7 @@ jobs:
           name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
           path: python/dist/*
 
-  release:
+  create_release:
     needs: build_wheel
     runs-on: ubuntu-latest
     permissions:
@@ -78,5 +78,39 @@ jobs:
           tag_name: ${{ inputs.tag }}
           draft: true
           prerelease: true
+  
+  publish_whl_index:
+    needs: build_wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: wheel-*
+
+      - name: Show wheels
+        run: ls -lha dist
+      
+      - name: Clone whl repo
+        run: |
+          git clone https://oauth2:${WHL_TOKEN}@github.com/vectorch-ai/whl.git
+        env:
+          WHL_TOKEN: ${{ secrets.WHL_TOKEN }}
+
+      - name: Update whl index
+        run: |
+          cd whl
+          python ./publish_whl.py --whl_path=../dist
+
+      - name: Publish whl index
+        run: |
+          cd whl
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update whl index for version ${{ inputs.tag }}"
+          git push
       
 
