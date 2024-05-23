@@ -10,7 +10,6 @@ cc_library(
   pos_embedding_kernels.h
   kv_cache_kernels.h
   sampling/sampling_kernels.h
-  fused_moe_kernels.h
   SRCS
   activation_kernels.cu
   layernorm_kernels.cu
@@ -20,7 +19,6 @@ cc_library(
   sampling/softmax_kernels.cu
   sampling/topk_kernels.cu
   sampling/topp_kernels.cu
-  fused_moe_kernels.cu
   DEPS
   glog::glog
   torch

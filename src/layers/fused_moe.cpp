@@ -36,23 +36,9 @@ torch::Tensor FusedMoeLayerImpl::forward(
     torch::Tensor hidden_states,  // [hidden_size,hidden_dim]
     torch::Tensor gating_output   // [n_tokens,n_expert]
 ) {
+  // ========  fused_topk: topk(softmax(gating_output))============
   // match the number of tokens
   DCHECK_EQ(hidden_states.sizes()[0], gating_output.sizes()[0]);
-  // match the number of hidden_size
-  DCHECK_EQ(hidden_states.sizes()[1], w13_.sizes()[2]);
-  // match the number of experts
-  DCHECK_EQ(gating_output.sizes()[1], w13_.sizes()[0]);
-  // be sure that hidden_states/w1/w2 are contiguous
-  DCHECK_EQ(hidden_states.is_contiguous(), true);
-
-  DCHECK_EQ(w13_.is_contiguous(), true);
-  DCHECK_EQ(w2_.is_contiguous(), true);
-
-  auto M = hidden_states.sizes()[0];
-  auto E = w13_.sizes()[0];
-  auto N = w13_.sizes()[1];
-
-  // ========  fused_topk: topk(softmax(gating_output))============
   auto router_weight = torch::softmax(gating_output, -1, torch::kFloat32);
   auto [topk_weights, topk_indices] =
       torch::topk(router_weight, topk_, -1);  // [n_tokens,n_topk]
@@ -62,6 +48,10 @@ torch::Tensor FusedMoeLayerImpl::forward(
   }
 
   // ================   fused_expert =================
+  // be sure that hidden_states/w13/w2 are contiguous
+  DCHECK_EQ(hidden_states.is_contiguous(), true);
+  DCHECK_EQ(w13_.is_contiguous(), true);
+  DCHECK_EQ(w2_.is_contiguous(), true);
   return kernel::apply_fused_moe(hidden_states,w13_,w2_,topk_weights,topk_indices,inplace_);
 }
 

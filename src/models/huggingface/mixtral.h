@@ -1,4 +1,6 @@
 #pragma once
+#include <torch/nn/functional/embedding.h>
+#include <torch/nn/options/activation.h>
 #include <torch/torch.h>
 
 #include "chat_template/coded_chat_template.h"
@@ -17,6 +19,65 @@
 
 namespace llm::hf {
 
+class MixtralBlockExpertImpl : public torch::nn::Module {
+ public:
+  MixtralBlockExpertImpl(const ModelArgs& args,
+                         const QuantArgs& quant_args,
+                         const ParallelArgs& parallel_args,
+                         const torch::TensorOptions& options) {
+    auto ffn_dim = args.intermediate_size();
+    auto hidden_dim = args.hidden_size();
+
+    w1_ = register_module("w1",
+                          ReplicatedLinear(hidden_dim,
+                                           ffn_dim,
+                                           /*bias*/ false,
+                                           /*skip_bias_add*/ false,
+                                           quant_args,
+                                           options));
+    w2_ = register_module("w2",
+                          ReplicatedLinear(ffn_dim,
+                                           hidden_dim,
+                                           /*bias*/ false,
+                                           /*skip_bias_add*/ false,
+                                           quant_args,
+                                           options));
+    w3_ = register_module("w3",
+                          ReplicatedLinear(hidden_dim,
+                                           ffn_dim,
+                                           /*bias*/ false,
+                                           /*skip_bias_add*/ false,
+                                           quant_args,
+                                           options));
+    act_fn_ = Activation::get_act_func(args.hidden_act(), options.device());
+  }
+  torch::Tensor forward(torch::Tensor hidden_states) {
+    torch::Tensor out_bias;
+    auto current_hidden_states =
+        act_fn_(w1_(hidden_states, out_bias)) * w3_(hidden_states, out_bias);
+    current_hidden_states = w2_(current_hidden_states, out_bias);
+    return current_hidden_states;
+  }
+
+  void load_state_dict(const StateDict& state_dict) {
+    w1_->load_state_dict(state_dict.select("w1."));
+    w2_->load_state_dict(state_dict.select("w2."));
+    w3_->load_state_dict(state_dict.select("w3."));
+  }
+
+  void verify_loaded_weights(const std::string& prefix) const {
+    w1_->verify_loaded_weights(prefix + "w1.");
+    w2_->verify_loaded_weights(prefix + "w2.");
+    w3_->verify_loaded_weights(prefix + "w3.");
+  }
+
+ private:
+  ReplicatedLinear w1_{nullptr};
+  ReplicatedLinear w2_{nullptr};
+  ReplicatedLinear w3_{nullptr};
+  ActFunc act_fn_{nullptr};
+};
+TORCH_MODULE(MixtralBlockExpert);
 class MixtralMoEImpl : public torch::nn::Module {
  public:
   MixtralMoEImpl(const ModelArgs& args,
@@ -31,48 +92,84 @@ class MixtralMoEImpl : public torch::nn::Module {
                                              /*skip_bias_add*/ false,
                                              quant_args,
                                              options));
-    fused_moe_ = register_module("fused_moe",
-                                 FusedMoeLayer(
-                                     /*renormalize*/ true,
-                                     /*inplace*/ true,
-                                     args,
-                                     quant_args,
-                                     parallel_args,
-                                     options));
+    layers_.reserve(args_.n_local_experts());
+    experts_ = register_module("experts", torch::nn::ModuleList());
+    for (auto i = 0; i < args_.n_experts_per_tok(); i++) {
+      auto expert =
+          MixtralBlockExpert(args, quant_args, parallel_args, options);
+      layers_.push_back(expert);
+      experts_->push_back(expert);
+    }
   }
-
+  // [selected_n_tokens,hidden_size]
   torch::Tensor forward(torch::Tensor hidden_states) {
     auto sizes = hidden_states.sizes();
     auto num_token = sizes[0];
     auto hidden_size = sizes[1];
     hidden_states = hidden_states.view({-1, hidden_size});
+
     torch::Tensor out_bias;
     auto router_logits = gate_(hidden_states, out_bias);
-    // router_logits: (num_tokens, n_experts)
-    auto final_hidden_states = fused_moe_(hidden_states, router_logits);
+    auto routing_weights = torch::softmax(router_logits, 1, torch::kFloat32);
+    auto [topk_weights, topk_indices] =
+        torch::topk(routing_weights, args_.n_experts_per_tok(), -1);
+    topk_weights = topk_weights / topk_weights.sum(-1, true);
+    // we cast back to the input dtype
+    topk_weights = topk_weights.to(hidden_states.dtype());
 
-    /*
-    if self.tp_size > 1: # 张量并行的做法
-          final_hidden_states = tensor_model_parallel_all_reduce(
-              final_hidden_states)
-    */
-    return final_hidden_states.view({num_token, hidden_size});
+    auto final_hidden_states = torch::zeros({num_token, hidden_size},
+                                            torch::TensorOptions()
+                                                .device(hidden_states.device())
+                                                .dtype(hidden_states.dtype()));
+    // One hot encode the selected experts to create an expert mask
+    // this will be used to easily index which expert is going to be
+    // sollicitated
+    auto expert_mask =
+        torch::nn::functional::one_hot(topk_indices, args_.n_local_experts())
+            .permute({2, 1, 0});  // [n_experts,n_topk,n_tokens]
+
+    // Loop over all available experts in the model and perform the computation
+    // on each expert
+    for (uint i = 0; i < args_.n_local_experts(); i++) {
+      auto expert_layer = layers_[i];  //[topk,n_tokens]
+      std::vector<torch::Tensor> v = torch::where(expert_mask[i]);
+      auto idx = v[0];    // row indexs, num_topk
+      auto top_x = v[1];  // col indexs, num_tokens
+      // TODO: 需要验证下情况?
+      auto current_state = hidden_states.index(
+          {top_x,
+           torch::indexing::None});  // select specific tokens' hidden_states
+      current_state = current_state.reshape({-1, hidden_size});
+      auto current_hidden_states =
+          expert_layer(current_state) * topk_weights.index({top_x, idx});
+      final_hidden_states.index_add_(
+          0, top_x, current_hidden_states.to(hidden_states.dtype()));
+    }
+    return final_hidden_states.view({-1, hidden_size});
   }
   void load_state_dict(const StateDict& state_dict) {
     gate_->load_state_dict(state_dict.select("gate."));
-    fused_moe_->load_state_dict(state_dict.select("experts."));
+    for (int i = 0; i < args_.n_local_experts(); i++) {
+      layers_[i]->load_state_dict(
+          state_dict.select("experts." + std::to_string(i) + "."));
+    }
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
     gate_->verify_loaded_weights(prefix + "gate.");
-    fused_moe_->verify_loaded_weights(prefix + "experts.");
+    for (int i = 0; i < args_.n_local_experts(); i++) {
+      layers_[i]->verify_loaded_weights(prefix + "experts." +
+                                        std::to_string(i) + ".");
+    }
   }
 
  private:
   ModelArgs args_;
 
   ReplicatedLinear gate_{nullptr};
-  FusedMoeLayer fused_moe_{nullptr};
+
+  std::vector<MixtralBlockExpert> layers_{nullptr};
+  torch::nn::ModuleList experts_{nullptr};
 };
 TORCH_MODULE(MixtralMoE);
 
@@ -322,7 +419,6 @@ class MixtralForCausalLMImpl : public torch::nn::Module {
     model_ = register_module(
         "model", MixtralModel(args, quant_args, parallel_args, options));
 
-    // TODO: we can need the lora flag in the future
     lm_head_ = register_module("lm_head",
                                ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
@@ -331,7 +427,7 @@ class MixtralForCausalLMImpl : public torch::nn::Module {
                                                     parallel_args,
                                                     options));
   }
-
+  // tokens
   torch::Tensor forward(const torch::Tensor& tokens,
                         const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
@@ -378,7 +474,7 @@ REGISTER_MODEL_ARGS(mixtral, [&] {
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   LOAD_ARG_OR(intermediate_size, "intermediate_size", 14336);
-  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 32768);
+  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 4096 * 32);
   LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
   LOAD_ARG_OR(n_experts_per_tok, "num_experts_per_tok", 2);
   LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
@@ -386,8 +482,8 @@ REGISTER_MODEL_ARGS(mixtral, [&] {
   LOAD_ARG_OR(n_local_experts, "num_local_experts", 8);
   LOAD_ARG_OR(out_router_logits, "output_router_logits", false);
   LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
-  LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-  LOAD_ARG_OR(router_aux_loss_coef, "router_aux_loss_coef", 0.02);
+  LOAD_ARG_OR(rope_theta, "rope_theta", 1e6);
+  LOAD_ARG_OR(router_aux_loss_coef, "router_aux_loss_coef", 0.001);
   LOAD_ARG_OR(dtype, "torch_dtype", "bfloat16");
   LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
 
