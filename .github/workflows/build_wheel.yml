@@ -15,9 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11"]
-        cuda: ["11.8", "12.1"]
-        torch: ["2.1", "2.2", "2.3"]
+        python: ["3.11"]
+        cuda: ["12.1"]
+        torch: ["2.3"]
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -78,5 +78,39 @@ jobs:
           tag_name: ${{ inputs.tag }}
           draft: true
           prerelease: true
+  
+  publish_whl_index:
+    needs: build_wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: wheel-*
+
+      - name: Show wheels
+        run: ls -lha dist
+      
+      - name: Clone whl repo
+        run: |
+          git clone https://oauth2:${WHL_TOKEN}@github.com/vectorch-ai/whl.git
+        env:
+          WHL_TOKEN: ${{ secrets.WHL_TOKEN }}
+
+      - name: Update whl index
+        run: |
+          cd whl
+          python ./publish_whl.py --whl_path=../dist
+
+      - name: Publish whl index
+        run: |
+          cd whl
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update whl index for version ${{ inputs.tag }}"
+          git push
       
 
