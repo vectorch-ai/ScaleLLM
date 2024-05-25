@@ -12,10 +12,12 @@ year = datetime.datetime.now().year
 
 project = 'ScaleLLM'
 copyright = f'{year}, ScaleLLM Team'
+
 author = 'ScaleLLM Team'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+
 extensions = []
 
 # templates_path = ['_templates']
