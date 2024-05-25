@@ -1,20 +1,44 @@
-.. ScaleLLM documentation master file, created by
-   sphinx-quickstart on Fri May 24 12:51:37 2024.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. ScaleLLM documentation root file.
 
-Welcome to ScaleLLM's documentation!
+ScaleLLM
 ====================================
+
+ScaleLLM is a cutting-edge inference system engineered for large language models (LLMs), meticulously designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including Llama3, Gemma, Bloom, GPT-NeoX, and more.
+
+
+.. note::
+   ScaleLLM is currently in alpha. We are actively working on improving the system and adding new features. If you have any feedback or suggestions, please feel free to reach out to us.
+
+Table of contents
+-----------------
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: User Guide
+
+   installation
+   quick_start
+   supported_models
+   examples
 
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Tutorials
 
-Indices and tables
-==================
+   tutorials
+   architecture
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Developer Guide
+
+   contributing
+
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+
+   api
