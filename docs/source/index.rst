@@ -42,4 +42,3 @@ Table of contents
    :caption: Reference
 
    api
-
