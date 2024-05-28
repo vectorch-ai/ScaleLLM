@@ -69,33 +69,38 @@ TORCH_MODULE(LlavaProjector);
 
 class CLIPVisionEmbeddingImpl : public torch::nn::Module {
  public:
-  // int64_t hidden_size, int64_t image_size, int64_t patch_size, int64_t num_channels
+  // int64_t hidden_size, int64_t image_size, int64_t patch_size, int64_t
+  // num_channels
   CLIPVisionEmbeddingImpl(const ModelArgs& args,
                           const QuantArgs& quant_args,
                           const ParallelArgs& parallel_args,
                           const torch::TensorOptions& options) {
     embed_dim_ = args.embed_dim;
-    class_embedding_ = register_parameter("class_embedding",
-        torch::randn({embed_dim_}));
-    patch_embedding_ = register_module("patch_embedding",
-        torch::nn::Conv2d(
-          torch::nn::Conv2dOptions(args.num_channels, embed_dim_,
-            args.patch_size).stride(args.patch_size).bias(false)));
+    class_embedding_ =
+        register_parameter("class_embedding", torch::randn({embed_dim_}));
+    patch_embedding_ = register_module(
+        "patch_embedding",
+        torch::nn::Conv2d(torch::nn::Conv2dOptions(
+                              args.num_channels, embed_dim_, args.patch_size)
+                              .stride(args.patch_size)
+                              .bias(false)));
     auto num_patches = (args.image_size / args.patch_size) *
                        (args.image_size / args.patch_size);
     auto num_positions = num_patches + 1;
-    position_embedding_ = register_parameter("position_embedding",
-        torch::randn({num_positions, embed_dim_}));
-    position_ids = register_buffer("position_ids",
+    position_embedding_ = register_parameter(
+        "position_embedding", torch::randn({num_positions, embed_dim_}));
+    position_ids = register_buffer(
+        "position_ids",
         torch::arange(0, num_positions, torch::kLong).unsqueeze(0));
   }
 
   torch::Tensor forward(const torch::Tensor& pixel_values) {
     int64_t batch_size = pixel_values.size(0);
-    auto patch_embeds = patch_embedding_->forward(
-        pixel_values.to(patch_embedding_->weight.dtype()))
-                    .flatten(2)
-                    .transpose(1, 2);
+    auto patch_embeds =
+        patch_embedding_
+            ->forward(pixel_values.to(patch_embedding_->weight.dtype()))
+            .flatten(2)
+            .transpose(1, 2);
 
     auto class_embeds = class_embedding_.expand({batch_size, 1, embed_dim_});
     auto embeddings = torch::cat({class_embeds, patch_embeds}, 1);
@@ -137,14 +142,14 @@ class CLIPMLPImpl : public torch::nn::Module {
                                                 quant_args,
                                                 parallel_args,
                                                 options));
-    fc2_ =register_module("fc2",
-                          RowParallelLinear(args.intermediate_size,
-                                            args.hidden_size,
-                                            /*bias=*/true,
-                                            /*input_is_parallelized*/true,
-                                            quant_args,
-                                            parallel_args,
-                                            options));
+    fc2_ = register_module("fc2",
+                           RowParallelLinear(args.intermediate_size,
+                                             args.hidden_size,
+                                             /*bias=*/true,
+                                             /*input_is_parallelized*/ true,
+                                             quant_args,
+                                             parallel_args,
+                                             options));
   }
 
   torch::Tensor forward(const torch::Tensor& hidden_states) {
@@ -169,28 +174,29 @@ class CLIPAttentionImpl : public torch::nn::Module {
                     const QuantArgs& quant_args,
                     const ParallelArgs& parallel_args,
                     const torch::TensorOptions& options) {
+    embed_dim_ = args.hidden_size();
     const int32_t world_size = parallel_args.world_size();
-    CHECK(args.hidden_size % args.n_heads_== 0);
-    const int64_t head_dim = args.hidden_size() / args.n_heads();
-    const int64_t n_local_heads = n_heads / world_size;
+    CHECK(args.hidden_size % args.n_heads_ == 0);
+    head_dim_ = args.hidden_size() / args.n_heads();
+    num_heads_ = args.n_heads();
+    const int64_t n_local_heads = num_heads_ / world_size;
 
-    qkv_sizes_ = {n_local_heads * head_dim,
-                  n_local_heads * head_dim,
-                  n_local_heads * head_dim};
+    qkv_sizes_ = {n_local_heads * head_dim_,
+                  n_local_heads * head_dim_,
+                  n_local_heads * head_dim_};
 
-    scale_ = std::pow(head_dim_, -0.5);
+    scale_ = 1.0f / std::sqrt(static_cast<float>(head_dim_));
     dropout_ = args.attention_dropout;
 
     // register submodules
     qkv_proj_ = register_module("qkv_proj",
-                                QKVColumnParallelLinear(args.hidden_size(),
-                                                        3 * args.n_heads() * head_dim,
-                                                        head_dim,
-                                                        /*bias=*/false,
-                                                        /*gather_output=*/false,
-                                                        quant_args,
-                                                        parallel_args,
-                                                        options));
+                                ColumnParallelLinear(args.hidden_size(),
+                                                     3 * args.hidden_size(),
+                                                     /*bias=*/false,
+                                                     /*gather_output=*/false,
+                                                     quant_args,
+                                                     parallel_args,
+                                                     options));
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(args.hidden_size,
@@ -202,16 +208,51 @@ class CLIPAttentionImpl : public torch::nn::Module {
                                                 options));
   }
 
-  torch::Tensor forward(const torch::Tensor& hidden_state) {
-    auto qkv = qkv_proj_(hidden_state).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
+  torch::Tensor forward(const torch::Tensor& hidden_states) {
+    auto qkv =
+        qkv_proj_(hidden_states).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
     DCHECK_EQ(qkv.size(), 3);
-    // TODO output = attn();
-    return o_proj_(output);
+
+    auto& query_states = qkv[0] * scale_;
+    auto bsz = hidden_states.size(0);
+    auto tgz_len = hidden_states.size(1);
+    auto& key_states = shape(qkv[1], -1, bsz);
+    auto& value_states = shape(qkv[2], -1, bsz);
+
+    auto proj_shape = std::vector<int64_t>{bsz * num_heads_, -1, head_dim_};
+    query_states = shape(query_states, tgt_len, bsz).view(proj_shape);
+    key_states = key_states.view(proj_shape);
+    value_states = value_states.view(proj_shape);
+
+    auto src_len = key_states.size(1);
+    auto attn_weights = torch::bmm(query_states, key_states.transpose(1, 2));
+    DCHECK_EQ(attn_weights.sizes(),
+              std::vector<int64_t>{bsz * num_heads_, tgt_len, src_len});
+
+    attn_weights = torch::softmax(attn_weights, -1);
+    auto attn_probs = torch::dropout(attn_weights, dropout_, false));
+    auto attn_output = torch::bmm(attn_probs, value_states);
+
+    DCHECK_EQ(attn_output.sizes(),
+              std::vector<int64_t>{bsz * num_heads_, tgt_len, head_dim_});
+    attn_output = attn_output.view({bsz, num_heads_, tgt_len, head_dim_})
+                      .transpose(1, 2)
+                      .contiguous();
+    attn_output = attn_output.view({bsz, tgt_len, embed_dim_});
+
+    return o_proj_(attn_output);
   }
 
   void load_state_dict(const StateDict& state_dict) {}
 
   void verify_loaded_weights() const {}
+
+ private:
+  torch::Tensor shape(torch::Tensor tensor, int64_t seq_len, int64_t bsz) {
+    return tensor.view({bsz, seq_len, num_heads, head_dim})
+        .transpose(1, 2)
+        .contiguous();
+  }
 
  private:
   int64_t embed_dim_;
@@ -230,12 +271,16 @@ class CLIPEncoderLayerImpl : public torch::nn::Module {
                        const QuantArgs& quant_args,
                        const ParallelArgs& parallel_args,
                        const torch::TensorOptions& options) {
-    self_attn_ = register_module("self_attn",
-        CLIPAttention(args, quant_args, parallel_args, options));
-    layer_norm1_ = register_module("layer_norm1", LayerNorm(args.hidden_size,
-          args.layer_norm_eps, /*bias=*/true, options));
-    layer_norm2_ = register_module("layer_norm2", LayerNorm(args.hidden_size,
-          args.layer_norm_eps, /*bias=*/true, options));
+    self_attn_ = register_module(
+        "self_attn", CLIPAttention(args, quant_args, parallel_args, options));
+    layer_norm1_ = register_module(
+        "layer_norm1",
+        LayerNorm(
+            args.hidden_size, args.layer_norm_eps, /*bias=*/true, options));
+    layer_norm2_ = register_module(
+        "layer_norm2",
+        LayerNorm(
+            args.hidden_size, args.layer_norm_eps, /*bias=*/true, options));
   }
 
   // TODO: self_attn, attention_mask, causal_attention_mask
@@ -267,8 +312,7 @@ class CLIPEncoderImpl : public torch::nn::Module {
                   const torch::TensorOptions& options) {
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = CLIPEncoderLayer(
-          args, quant_args, parallel_args, options);
+      auto block = CLIPEncoderLayer(args, quant_args, parallel_args, options);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -331,7 +375,7 @@ class CLIPVisionTransformerImpl : public torch::nn::Module {
   void load_state_dict(const StateDict& state_dict) {}
 
   void verify_loaded_weights() const {}
- 
+
  private:
   CLIPVisionEmbedding embeddings_{nullptr};
   torch::nn::LayerNorm pre_layernorm_{nullptr};
@@ -345,10 +389,10 @@ class CLIPVisionModelImpl : public torch::nn::Module {
   CLIPVisionModelImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
-                      const torch::TensorOptions& options) {
-    transformer_ = register_module("transformer", CLIPVisionTranformer(
-          args, quant_args, parallel_args, options))
-  }
+                      const torch::TensorOptions& options){
+      transformer_ = register_module(
+          "transformer",
+          CLIPVisionTranformer(args, quant_args, parallel_args, options))}
 
   // return hidden_state (TODO support return: output_attention, return_dict)
   std::vector<torch::Tensor> forward(const torch::Tensor& images) {
