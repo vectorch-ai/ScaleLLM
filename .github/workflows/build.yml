@@ -2,34 +2,26 @@ name: Build and test
 
 on:
   push:
-    paths-ignore:
-      - "docs/**"
-      - "tools/**"
-      - "gateway/**"
-      - "scripts/**"
-      - "python/**"
-      - "docker/**"
-      - "**/*.md"
-      - "**/*.txt"
-      - "**/*.sh"
-      - "**/Dockerfile"
-      - "**/Dockerfile.*"
+    paths:
+      - "src/**"
+      - "third_party/**"
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "python/*.cpp"
+      - "python/*.h"
+      - "**/CMakeLists.txt"
     branches: 
       - main
 
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "tools/**"
-      - "gateway/**"
-      - "scripts/**"
-      - "python/**"
-      - "docker/**"
-      - "**/*.md"
-      - "**/*.txt"
-      - "**/*.sh"
-      - "**/Dockerfile"
-      - "**/Dockerfile.*"
+    paths:
+      - "src/**"
+      - "third_party/**"
+      - "python/*.cpp"
+      - "python/*.h"
+      - "**/CMakeLists.txt"
+      - "CMakeLists.txt"
+      - "vcpkg.json"
     branches:
       - main
 

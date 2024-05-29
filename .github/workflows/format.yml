@@ -53,6 +53,6 @@ jobs:
       - name: Run ruff check
         run: |
           ruff check python/
-      # - name: Run isort check
-      #   run: |
-      #     isort --check-only python/
+      - name: Run isort check
+        run: |
+          isort --check-only python/
