@@ -131,7 +131,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "ScaleLLM",
-  "uid": "b281712d-8bff-41ef-9f3f-71ad43c05e9b",
-  "version": 5,
+  "version": 1,
   "weekStart": ""
 }
