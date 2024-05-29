@@ -4,6 +4,8 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+
 jobs:
   cpp-format-check:
     runs-on: ubuntu-latest
@@ -53,6 +55,6 @@ jobs:
       - name: Run ruff check
         run: |
           ruff check python/
-      # - name: Run isort check
-      #   run: |
-      #     isort --check-only python/
+      - name: Run isort check
+        run: |
+          isort --check-only python/

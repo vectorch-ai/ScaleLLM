@@ -2,11 +2,17 @@
 name: Publish Docs
 
 on:
-  # Runs on pushes targeting the default branch
   push:
     paths:
       - "docs/**"
-    branches: ["main"]
+    branches:
+      - main
+
+  pull_request:
+    paths:
+      - "docs/**"
+    branches:
+      - main
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -51,5 +57,7 @@ jobs:
     needs: build
     steps:
       - name: Deploy to GitHub Pages
+        # only deploy on new commits to main branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: deployment
         uses: actions/deploy-pages@v4

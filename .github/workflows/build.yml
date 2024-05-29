@@ -2,36 +2,32 @@ name: Build and test
 
 on:
   push:
-    paths-ignore:
-      - "docs/**"
-      - "tools/**"
-      - "gateway/**"
-      - "scripts/**"
-      - "python/**"
-      - "docker/**"
-      - "**/*.md"
-      - "**/*.txt"
-      - "**/*.sh"
-      - "**/Dockerfile"
-      - "**/Dockerfile.*"
+    paths:
+      - "src/**"
+      - "third_party/**"
+      - "cmake/**"
+      - "python/**/*.cpp"
+      - "python/**/*.h"
+      - "**/CMakeLists.txt"
+      - ".github/workflows/build.yml"
+      - "vcpkg.json"
     branches: 
       - main
 
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "tools/**"
-      - "gateway/**"
-      - "scripts/**"
-      - "python/**"
-      - "docker/**"
-      - "**/*.md"
-      - "**/*.txt"
-      - "**/*.sh"
-      - "**/Dockerfile"
-      - "**/Dockerfile.*"
+    paths:
+      - "src/**"
+      - "third_party/**"
+      - "cmake/**"
+      - "python/**/*.cpp"
+      - "python/**/*.h"
+      - "**/CMakeLists.txt"
+      - ".github/workflows/build.yml"
+      - "vcpkg.json"
     branches:
       - main
+
+  workflow_dispatch:
 
 jobs:
   linux-gcc:
