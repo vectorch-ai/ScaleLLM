@@ -5,11 +5,12 @@ on:
     paths:
       - "src/**"
       - "third_party/**"
-      - "CMakeLists.txt"
-      - "vcpkg.json"
+      - "cmake/**"
       - "python/*.cpp"
       - "python/*.h"
       - "**/CMakeLists.txt"
+      - ".github/workflows/build.yml"
+      - "vcpkg.json"
     branches: 
       - main
 
@@ -17,13 +18,16 @@ on:
     paths:
       - "src/**"
       - "third_party/**"
+      - "cmake/**"
       - "python/*.cpp"
       - "python/*.h"
       - "**/CMakeLists.txt"
-      - "CMakeLists.txt"
+      - ".github/workflows/build.yml"
       - "vcpkg.json"
     branches:
       - main
+
+  workflow_dispatch:
 
 jobs:
   linux-gcc:
