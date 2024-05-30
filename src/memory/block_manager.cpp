@@ -18,6 +18,7 @@ BlockManager::BlockManager(const Options& options)
   // reserve block 0 for padding
   padding_block_ = block_allocator_.allocate();
   CHECK_EQ(padding_block_.id(), 0) << "Padding block id should be 0";
+  num_blocks_in_use_ = 1;
 }
 
 bool BlockManager::allocate_blocks_for(Sequence* sequence) {
@@ -48,6 +49,8 @@ bool BlockManager::allocate_blocks_for(Sequence* sequence, size_t num_tokens) {
 
   const auto block_ids = block_allocator_.allocate(num_additional_blocks);
   sequence->append_blocks(block_ids);
+
+  num_blocks_in_use_ += num_additional_blocks;
   return true;
 }
 
@@ -78,14 +81,17 @@ void BlockManager::release_blocks_for(std::vector<Sequence*>& sequences) {
 
 void BlockManager::release_blocks_for(Sequence* sequence) {
   DCHECK(sequence != nullptr);
+
+  // add blocks to the prefix cache
   cache_blocks_for(sequence);
+
   // release the blocks after prefix cache insertion
   sequence->release_blocks();
 }
 
 bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
   // still have enough blocks
-  if (num_blocks <= block_allocator_.free_block_count()) {
+  if (num_blocks <= block_allocator_.num_free_blocks()) {
     return true;
   }
 
@@ -96,18 +102,18 @@ bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
 
   // try to evict some blocks from the prefix cache
   const uint32_t n_blocks_to_evict =
-      num_blocks - block_allocator_.free_block_count();
+      num_blocks - block_allocator_.num_free_blocks();
   const uint32_t n_blocks_evicted = prefix_cache_.evict(n_blocks_to_evict);
   if (n_blocks_evicted < n_blocks_to_evict) {
     return false;
   }
 
-  if (block_allocator_.free_block_count() >= num_blocks) {
+  if (block_allocator_.num_free_blocks() >= num_blocks) {
     return true;
   }
 
   LOG(WARNING) << "Potential block leak, free blocks in allocator: "
-               << block_allocator_.free_block_count()
+               << block_allocator_.num_free_blocks()
                << " blocks in prefix cache: " << prefix_cache_.num_blocks();
   return false;
 }
@@ -117,7 +123,15 @@ void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
   if (options_.enable_prefix_cache()) {
     const auto tokens_ids = sequence->token_ids();
     std::vector<Block> shared_blocks = prefix_cache_.match(tokens_ids);
-    sequence->append_shared_blocks(shared_blocks);
+
+    // update effective block usage
+    for (const auto& block : shared_blocks) {
+      // the block is not shared by other sequence
+      if (block.ref_count() <= 2) {
+        ++num_blocks_in_use_;
+      }
+    }
+    sequence->set_shared_blocks(std::move(shared_blocks));
   }
 }
 
@@ -128,6 +142,16 @@ void BlockManager::cache_blocks_for(Sequence* sequence) {
     const auto blocks = sequence->blocks();
     // Add the kv cache to the prefix cache
     prefix_cache_.insert(tokens_ids, blocks);
+
+    // update effective block usage
+    for (const auto& block : sequence->blocks()) {
+      // the block is not shared by other sequence
+      if (block.ref_count() <= 2) {
+        --num_blocks_in_use_;
+      }
+    }
+  } else {
+    num_blocks_in_use_ -= sequence->num_blocks();
   }
 }
 

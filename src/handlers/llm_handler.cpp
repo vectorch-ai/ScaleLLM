@@ -7,6 +7,7 @@
 #include <thread>
 #include <utility>
 
+#include "common/metrics.h"
 #include "common/scope_guard.h"
 #include "engine/utils.h"
 #include "models/model_args.h"
@@ -15,10 +16,72 @@
 #include "request/request.h"
 #include "speculative/speculative_engine.h"
 
+DEFINE_COUNTER_FAMILY(request_status_total, "Total number of request status");
+DEFINE_COUNTER_INSTANCE(request_ok, request_status_total, {{"code", "OK"}});
+DEFINE_COUNTER_INSTANCE(request_cancelled,
+                        request_status_total,
+                        {{"code", "CANCELLED"}});
+DEFINE_COUNTER_INSTANCE(request_unknown,
+                        request_status_total,
+                        {{"code", "UNKNOWN"}});
+DEFINE_COUNTER_INSTANCE(request_invalid_argument,
+                        request_status_total,
+                        {{"code", "INVALID_ARGUMENT"}});
+DEFINE_COUNTER_INSTANCE(request_deadline_exceeded,
+                        request_status_total,
+                        {{"code", "DEADLINE_EXCEEDED"}});
+DEFINE_COUNTER_INSTANCE(request_resource_exhausted,
+                        request_status_total,
+                        {{"code", "RESOURCE_EXHAUSTED"}});
+DEFINE_COUNTER_INSTANCE(request_unauthenticated,
+                        request_status_total,
+                        {{"code", "UNAUTHENTICATED"}});
+DEFINE_COUNTER_INSTANCE(request_unavailable,
+                        request_status_total,
+                        {{"code", "UNAVAILABLE"}});
+DEFINE_COUNTER_INSTANCE(request_unimplemented,
+                        request_status_total,
+                        {{"code", "UNIMPLEMENTED"}});
+
 namespace llm {
 namespace {
 
 #define CALLBACK_WITH_ERROR(CODE, MSG) callback(Status{CODE, MSG});
+
+void log_request_status(StatusCode code) {
+  switch (code) {
+    case StatusCode::OK:
+      COUNTER_INC(request_ok);
+      break;
+    case StatusCode::CANCELLED:
+      COUNTER_INC(request_cancelled);
+      break;
+    case StatusCode::UNKNOWN:
+      COUNTER_INC(request_unknown);
+      break;
+    case StatusCode::INVALID_ARGUMENT:
+      COUNTER_INC(request_invalid_argument);
+      break;
+    case StatusCode::DEADLINE_EXCEEDED:
+      COUNTER_INC(request_deadline_exceeded);
+      break;
+    case StatusCode::RESOURCE_EXHAUSTED:
+      COUNTER_INC(request_resource_exhausted);
+      break;
+    case StatusCode::UNAUTHENTICATED:
+      COUNTER_INC(request_unauthenticated);
+      break;
+    case StatusCode::UNAVAILABLE:
+      COUNTER_INC(request_unavailable);
+      break;
+    case StatusCode::UNIMPLEMENTED:
+      COUNTER_INC(request_unimplemented);
+      break;
+    default:
+      COUNTER_INC(request_unknown);
+      break;
+  }
+}
 
 bool verify_params(const SamplingParams& sp, OutputCallback callback) {
   // up to 4 stop sequences
@@ -162,8 +225,16 @@ void LLMHandler::schedule_async(std::string prompt,
                                 OutputCallback callback) {
   // add one pending request
   scheduler_->inc_pending_requests(1);
-  schedule(
-      std::move(prompt), std::move(sp), priority, stream, std::move(callback));
+  schedule(std::move(prompt),
+           std::move(sp),
+           priority,
+           stream,
+           [callback = std::move(callback)](const RequestOutput& output) {
+             if (output.status.has_value()) {
+               log_request_status(output.status.value().code());
+             }
+             return callback(output);
+           });
 }
 
 void LLMHandler::schedule_chat_async(std::vector<Message> messages,
@@ -177,7 +248,12 @@ void LLMHandler::schedule_chat_async(std::vector<Message> messages,
            std::move(sp),
            priority,
            stream,
-           std::move(callback));
+           [callback = std::move(callback)](const RequestOutput& output) {
+             if (output.status.has_value()) {
+               log_request_status(output.status.value().code());
+             }
+             return callback(output);
+           });
 }
 
 void LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
@@ -197,6 +273,9 @@ void LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
              priority,
              stream,
              [i, callback](const RequestOutput& output) {
+               if (output.status.has_value()) {
+                 log_request_status(output.status.value().code());
+               }
                return callback(i, output);
              });
   }
@@ -220,6 +299,9 @@ void LLMHandler::schedule_chat_batch_async(
              priority,
              stream,
              [i, callback](const RequestOutput& output) {
+               if (output.status.has_value()) {
+                 log_request_status(output.status.value().code());
+               }
                return callback(i, output);
              });
   }
@@ -235,7 +317,7 @@ void LLMHandler::schedule(std::string prompt,
                sp = std::move(sp),
                priority,
                stream,
-               callback](size_t tid) mutable {
+               callback = std::move(callback)](size_t tid) mutable {
     // remove the pending request after scheduling
     ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
 
@@ -270,7 +352,7 @@ void LLMHandler::schedule(std::vector<Message> messages,
                sp = std::move(sp),
                priority,
                stream,
-               callback](size_t tid) mutable {
+               callback = std::move(callback)](size_t tid) mutable {
     // remove the pending request after scheduling
     ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
     // verify the prompt

@@ -9,9 +9,23 @@
 #include <cstdint>
 #include <memory>
 
+#include "common/metrics.h"
 #include "engine/engine.h"
 #include "request/request.h"
 #include "request/sequence.h"
+
+// metrics
+DEFINE_GAUGE(num_pending_requests, "Number of pending requests in scheduler");
+DEFINE_GAUGE(num_running_requests, "Number of running requests in scheduler");
+DEFINE_GAUGE(num_waiting_requests, "Number of waiting requests in scheduler");
+DEFINE_GAUGE(num_preempted_requests,
+             "Number of preempted requests in scheduler");
+
+DEFINE_GAUGE(kv_cache_utilization, "Utilization of the kv cache in percentage");
+DEFINE_GAUGE(num_blocks_in_prefix_cache,
+             "Number of blocks in the prefix cache");
+DEFINE_GAUGE(num_free_blocks, "Number of free blocks in the block allocator");
+DEFINE_GAUGE(num_blocks_in_use, "Effective number of blocks in use");
 
 namespace llm {
 
@@ -135,6 +149,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
                        max_seqs_per_batch * avg_sequence_token_budget);
   size_t remaining_seq_budget = max_seqs_per_batch;
 
+  size_t num_preempted_requests = 0;
   // schedule the requests in the priority queue until budgets are exhausted
   while (!priority_queue_.empty() &&
          remaining_token_budget > options_.num_speculative_tokens() &&
@@ -202,6 +217,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
 
       // avoid preempting the candidate itself
       if (request_to_preempt != request) {
+        ++num_preempted_requests;
         block_manager_->release_blocks_for(request_to_preempt);
       }
       continue;
@@ -256,6 +272,18 @@ Batch ContinuousScheduler::build_sequence_batch() {
   for (const SequenceData& seq_data : new_batch) {
     batch.add(seq_data.sequence, seq_data.token_budget);
   }
+
+  // update metrics before returning
+  GAUGE_SET(num_pending_requests, pending_requests_.load(std::memory_order_relaxed));
+  GAUGE_SET(num_running_requests, running_requests_.size());
+  GAUGE_SET(num_waiting_requests, priority_queue_.size());
+  GAUGE_SET(num_preempted_requests, num_preempted_requests);
+
+  GAUGE_SET(kv_cache_utilization, block_manager_->kv_cache_utilization());
+  GAUGE_SET(num_blocks_in_prefix_cache, block_manager_->num_blocks_in_prefix_cache());
+  GAUGE_SET(num_free_blocks, block_manager_->num_free_blocks());
+  GAUGE_SET(num_blocks_in_use, block_manager_->num_blocks_in_use());
+
   return batch;
 }
 

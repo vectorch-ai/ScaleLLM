@@ -27,6 +27,7 @@ Checks: >
   -readability-use-anyofallof,
   -readability-magic-numbers,
   -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-non-const-global-variables,
   -cppcoreguidelines-special-member-functions,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-prefer-member-initializer,

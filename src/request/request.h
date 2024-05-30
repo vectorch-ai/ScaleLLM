@@ -1,5 +1,7 @@
 #pragma once
 
+#include <absl/time/time.h>
+
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -49,7 +51,7 @@ struct Request final {
 
   // Scheduled time of the request.
   // NOLINTNEXTLINE
-  const int64_t created_time;
+  const absl::Time created_time;
 
   // prompt text string
   // NOLINTNEXTLINE

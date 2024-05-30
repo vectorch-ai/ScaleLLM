@@ -135,8 +135,8 @@ class Sequence final {
   }
   void append_blocks(const std::vector<Block>& new_blocks);
 
-  // append shared cache blocks from prefix cache
-  void append_shared_blocks(const std::vector<Block>& shared_blocks);
+  // set shared cache blocks from prefix cache
+  void set_shared_blocks(std::vector<Block>&& shared_blocks);
 
   // release all cache blocks
   void release_blocks();

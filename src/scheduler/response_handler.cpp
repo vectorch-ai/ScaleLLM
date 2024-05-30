@@ -1,19 +1,31 @@
 #include "response_handler.h"
 
 #include <absl/synchronization/notification.h>
+#include <absl/time/clock.h>
 #include <glog/logging.h>
 
 #include <cstdint>
 #include <memory>
 
+#include "common/metrics.h"
 #include "request/request.h"
 #include "request/sequence.h"
 
-namespace llm {
-
+// gflags
 DEFINE_int32(streaming_token_buffer_size,
              1,
              "number of tokens to buffer before streaming to client");
+
+// metrics
+DEFINE_COUNTER(prompt_tokens_total, "Total number of prompt tokens");
+DEFINE_COUNTER(generated_tokens_total, "Total number of generated tokens");
+
+DEFINE_HISTOGRAM(
+    end_2_end_latency_seconds,
+    "Histogram of end to end latency in seconds",
+    std::vector<double>{1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 60.0});
+
+namespace llm {
 
 ResponseHandler::ResponseHandler(const Tokenizer* tokenizer)
     : tokenizer_(tokenizer->clone()) {}
@@ -32,6 +44,14 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
         usage.num_total_tokens =
             usage.num_prompt_tokens + usage.num_generated_tokens;
         req_output.usage = usage;
+
+        // update the metrics for the request
+        COUNTER_ADD(prompt_tokens_total, usage.num_prompt_tokens);
+        COUNTER_ADD(generated_tokens_total, usage.num_generated_tokens);
+
+        const auto duration = absl::Now() - request->created_time;
+        HISTOGRAM_OBSERVE(end_2_end_latency_seconds,
+                          absl::ToDoubleSeconds(duration));
 
         if (!request->is_streaming()) {
           auto& outputs = req_output.outputs;

@@ -209,7 +209,7 @@ TEST_P(PrefixCacheRandomTest, Random) {
     }
 
     // all blocks either in cache or allocator
-    ASSERT_EQ(cache.num_blocks() + allocator.free_block_count(), total_blocks);
+    ASSERT_EQ(cache.num_blocks() + allocator.num_free_blocks(), total_blocks);
   }
 
   // randomly query the prefix cache and compare the result with the saved
@@ -249,7 +249,7 @@ TEST_P(PrefixCacheRandomTest, Random) {
 
   // all blocks are evicted and return to allocator
   EXPECT_EQ(cache.num_blocks(), 0);
-  EXPECT_EQ(allocator.free_block_count(), total_blocks);
+  EXPECT_EQ(allocator.num_free_blocks(), total_blocks);
 }
 
 INSTANTIATE_TEST_SUITE_P(
