@@ -34,14 +34,17 @@ class BlockAllocator final {
   size_t block_size() const { return block_size_; }
 
   // get number of free blocks
-  size_t free_block_count() const { return free_block_count_; }
+  size_t num_free_blocks() const { return num_free_blocks_; }
+
+  // get number of total blocks
+  size_t num_total_blocks() const { return free_blocks_.size(); }
 
  private:
   friend class Block;
   void free(int32_t block_id);
 
   // free block count
-  size_t free_block_count_ = 0;
+  size_t num_free_blocks_ = 0;
 
   // number of slots per block
   size_t block_size_ = 0;

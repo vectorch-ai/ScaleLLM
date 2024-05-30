@@ -7,16 +7,16 @@ cc_library(
   HDRS
     macros.h
     metrics.h
+    timer.h
     slice.h
     scope_guard.h
     tensor_helper.h
     concurrent_queue.h
-    time.h
     threadpool.h
     pretty_print.h
     json_reader.h
   SRCS
-    time.cpp
+    timer.cpp
     threadpool.cpp
     pretty_print.cpp
     json_reader.cpp

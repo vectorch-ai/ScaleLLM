@@ -1,5 +1,8 @@
 #pragma once
 
+#include <absl/time/clock.h>
+#include <absl/time/time.h>
+
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -47,9 +50,14 @@ struct Request final {
     return is_cancelled_.load(std::memory_order_relaxed);
   }
 
+  // Get the elapsed time since the request was created.
+  double elapsed_seconds() const {
+    return absl::ToDoubleSeconds(absl::Now() - created_time);
+  }
+
   // Scheduled time of the request.
   // NOLINTNEXTLINE
-  const int64_t created_time;
+  const absl::Time created_time;
 
   // prompt text string
   // NOLINTNEXTLINE

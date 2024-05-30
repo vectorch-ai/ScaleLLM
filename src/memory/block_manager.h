@@ -46,6 +46,23 @@ class BlockManager final {
   // get the options for the block manager
   const Options& options() const { return options_; }
 
+  // get the number of blocks in the prefix cache
+  size_t num_blocks_in_prefix_cache() const {
+    return prefix_cache_.num_blocks();
+  }
+
+  // get the number of free blocks in the block allocator
+  size_t num_free_blocks() const { return block_allocator_.num_free_blocks(); }
+
+  // get the effective number of blocks in use
+  size_t num_blocks_in_use() const { return num_blocks_in_use_; }
+
+  // get the block utilization.
+  double kv_cache_utilization() const {
+    return static_cast<double>(num_blocks_in_use_) /
+           block_allocator_.num_total_blocks();
+  }
+
  private:
   // check if block allocator has enough slots, if not, try to evict some blocks
   // from the prefix cache
@@ -62,6 +79,9 @@ class BlockManager final {
 
   // reserved block id for padding
   Block padding_block_;
+
+  // number of blocks in use
+  size_t num_blocks_in_use_ = 0;
 };
 
 }  // namespace llm

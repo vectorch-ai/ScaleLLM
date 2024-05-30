@@ -7,11 +7,15 @@
 #include <boost/algorithm/string.hpp>
 #include <memory>
 
+#include "common/metrics.h"
 #include "common/pretty_print.h"
 #include "model_loader/model_loader.h"
 #include "model_parallel/parallel_args.h"
 #include "models/model_args.h"
 #include "worker.h"
+
+DEFINE_COUNTER(prepare_input_latency_seconds,
+               "Latency of preparing input in seconds");
 
 namespace llm {
 namespace {
@@ -354,8 +358,11 @@ ModelOutput LLMEngine::execute_model(Batch& batch) {
     }
   }
 
+  Timer timer;
   auto model_inputs = batch.prepare_model_input(options_.num_decoding_tokens(),
                                                 adjusted_batch_size);
+  COUNTER_ADD(prepare_input_latency_seconds, timer.elapsed_seconds());
+
   if (!model_inputs.token_ids.defined()) {
     // empty input, just return
     return {};

@@ -7,7 +7,9 @@
 #include <thread>
 #include <utility>
 
+#include "common/metrics.h"
 #include "common/scope_guard.h"
+#include "common/timer.h"
 #include "engine/utils.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -15,10 +17,86 @@
 #include "request/request.h"
 #include "speculative/speculative_engine.h"
 
+DEFINE_COUNTER_FAMILY(request_status_total, "Total number of request status");
+DEFINE_COUNTER_INSTANCE(request_ok, request_status_total, {{"code", "OK"}});
+DEFINE_COUNTER_INSTANCE(request_cancelled,
+                        request_status_total,
+                        {{"code", "CANCELLED"}});
+DEFINE_COUNTER_INSTANCE(request_unknown,
+                        request_status_total,
+                        {{"code", "UNKNOWN"}});
+DEFINE_COUNTER_INSTANCE(request_invalid_argument,
+                        request_status_total,
+                        {{"code", "INVALID_ARGUMENT"}});
+DEFINE_COUNTER_INSTANCE(request_deadline_exceeded,
+                        request_status_total,
+                        {{"code", "DEADLINE_EXCEEDED"}});
+DEFINE_COUNTER_INSTANCE(request_resource_exhausted,
+                        request_status_total,
+                        {{"code", "RESOURCE_EXHAUSTED"}});
+DEFINE_COUNTER_INSTANCE(request_unauthenticated,
+                        request_status_total,
+                        {{"code", "UNAUTHENTICATED"}});
+DEFINE_COUNTER_INSTANCE(request_unavailable,
+                        request_status_total,
+                        {{"code", "UNAVAILABLE"}});
+DEFINE_COUNTER_INSTANCE(request_unimplemented,
+                        request_status_total,
+                        {{"code", "UNIMPLEMENTED"}});
+
+DEFINE_COUNTER_FAMILY(request_handling_latency_seconds,
+                      "Request handling latency in seconds");
+DEFINE_COUNTER_INSTANCE(chat_handling_latency_seconds,
+                        request_handling_latency_seconds,
+                        {{"type", "chat"}});
+DEFINE_COUNTER_INSTANCE(completion_handling_latency_seconds,
+                        request_handling_latency_seconds,
+                        {{"type", "completion"}});
+
+DEFINE_COUNTER(tokenization_latency_seconds,
+               "Prompt tokenization latency in seconds");
+DEFINE_COUNTER(chat_template_latency_seconds,
+               "Chat template latency in seconds");
+
 namespace llm {
 namespace {
 
 #define CALLBACK_WITH_ERROR(CODE, MSG) callback(Status{CODE, MSG});
+
+void log_request_status(StatusCode code) {
+  switch (code) {
+    case StatusCode::OK:
+      COUNTER_INC(request_ok);
+      break;
+    case StatusCode::CANCELLED:
+      COUNTER_INC(request_cancelled);
+      break;
+    case StatusCode::UNKNOWN:
+      COUNTER_INC(request_unknown);
+      break;
+    case StatusCode::INVALID_ARGUMENT:
+      COUNTER_INC(request_invalid_argument);
+      break;
+    case StatusCode::DEADLINE_EXCEEDED:
+      COUNTER_INC(request_deadline_exceeded);
+      break;
+    case StatusCode::RESOURCE_EXHAUSTED:
+      COUNTER_INC(request_resource_exhausted);
+      break;
+    case StatusCode::UNAUTHENTICATED:
+      COUNTER_INC(request_unauthenticated);
+      break;
+    case StatusCode::UNAVAILABLE:
+      COUNTER_INC(request_unavailable);
+      break;
+    case StatusCode::UNIMPLEMENTED:
+      COUNTER_INC(request_unimplemented);
+      break;
+    default:
+      COUNTER_INC(request_unknown);
+      break;
+  }
+}
 
 bool verify_params(const SamplingParams& sp, OutputCallback callback) {
   // up to 4 stop sequences
@@ -162,8 +240,16 @@ void LLMHandler::schedule_async(std::string prompt,
                                 OutputCallback callback) {
   // add one pending request
   scheduler_->inc_pending_requests(1);
-  schedule(
-      std::move(prompt), std::move(sp), priority, stream, std::move(callback));
+  schedule(std::move(prompt),
+           std::move(sp),
+           priority,
+           stream,
+           [callback = std::move(callback)](const RequestOutput& output) {
+             if (output.status.has_value()) {
+               log_request_status(output.status.value().code());
+             }
+             return callback(output);
+           });
 }
 
 void LLMHandler::schedule_chat_async(std::vector<Message> messages,
@@ -177,7 +263,12 @@ void LLMHandler::schedule_chat_async(std::vector<Message> messages,
            std::move(sp),
            priority,
            stream,
-           std::move(callback));
+           [callback = std::move(callback)](const RequestOutput& output) {
+             if (output.status.has_value()) {
+               log_request_status(output.status.value().code());
+             }
+             return callback(output);
+           });
 }
 
 void LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
@@ -197,6 +288,9 @@ void LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
              priority,
              stream,
              [i, callback](const RequestOutput& output) {
+               if (output.status.has_value()) {
+                 log_request_status(output.status.value().code());
+               }
                return callback(i, output);
              });
   }
@@ -220,6 +314,9 @@ void LLMHandler::schedule_chat_batch_async(
              priority,
              stream,
              [i, callback](const RequestOutput& output) {
+               if (output.status.has_value()) {
+                 log_request_status(output.status.value().code());
+               }
                return callback(i, output);
              });
   }
@@ -235,10 +332,13 @@ void LLMHandler::schedule(std::string prompt,
                sp = std::move(sp),
                priority,
                stream,
-               callback](size_t tid) mutable {
-    // remove the pending request after scheduling
-    ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
+               callback = std::move(callback)](size_t tid) mutable {
+    AUTO_COUNTER(completion_handling_latency_seconds);
 
+    // remove the pending request after scheduling
+    SCOPE_GUARD([this] { scheduler_->dec_pending_requests(); });
+
+    Timer timer;
     // verify the prompt
     if (!verify_params(sp, callback)) {
       return;
@@ -270,9 +370,11 @@ void LLMHandler::schedule(std::vector<Message> messages,
                sp = std::move(sp),
                priority,
                stream,
-               callback](size_t tid) mutable {
+               callback = std::move(callback)](size_t tid) mutable {
+    AUTO_COUNTER(chat_handling_latency_seconds);
     // remove the pending request after scheduling
-    ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
+    SCOPE_GUARD([this] { scheduler_->dec_pending_requests(); });
+
     // verify the prompt
     if (!verify_params(sp, callback)) {
       return;
@@ -348,6 +450,7 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   CHECK(!prompt.empty()) << "Prompt should not be empty";
 
   // encode the prompt
+  Timer timer;
   std::vector<int> prompt_tokens;
   if (!tokenizers_[tid]->encode(prompt, &prompt_tokens)) {
     LOG(ERROR) << "Failed to encode prompt: " << prompt;
@@ -355,6 +458,7 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
                         "Failed to encode prompt");
     return nullptr;
   }
+  COUNTER_ADD(tokenization_latency_seconds, timer.elapsed_seconds());
 
   const int64_t max_context_len = model_args_.max_position_embeddings();
   if (prompt_tokens.size() >= max_context_len) {
@@ -446,6 +550,7 @@ std::unique_ptr<Request> LLMHandler::create_chat_request(
     return nullptr;
   }
 
+  Timer timer;
   auto prompt = chat_template_->apply(messages);
   if (!prompt.has_value()) {
     CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
@@ -453,6 +558,7 @@ std::unique_ptr<Request> LLMHandler::create_chat_request(
     LOG(ERROR) << "Failed to construct prompt from messages";
     return nullptr;
   }
+  COUNTER_ADD(chat_template_latency_seconds, timer.elapsed_seconds());
 
   return create_request(
       tid, std::move(prompt.value()), sp, priority, stream, callback);

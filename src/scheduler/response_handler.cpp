@@ -1,52 +1,105 @@
 #include "response_handler.h"
 
 #include <absl/synchronization/notification.h>
+#include <absl/time/clock.h>
 #include <glog/logging.h>
 
 #include <cstdint>
 #include <memory>
 
+#include "common/metrics.h"
 #include "request/request.h"
 #include "request/sequence.h"
+#include "request/status.h"
 
-namespace llm {
-
+// gflags
 DEFINE_int32(streaming_token_buffer_size,
              1,
              "number of tokens to buffer before streaming to client");
+
+// metrics
+DEFINE_COUNTER(prompt_tokens_total, "Total number of prompt tokens");
+DEFINE_COUNTER(generated_tokens_total, "Total number of generated tokens");
+
+DEFINE_COUNTER_FAMILY(detokenization_latency_seconds,
+                      "Latency of detokenization in seconds");
+DEFINE_COUNTER_INSTANCE(stream_decode_latency_seconds,
+                        detokenization_latency_seconds,
+                        {{"mode", "stream"}});
+DEFINE_COUNTER_INSTANCE(non_stream_decode_latency_seconds,
+                        detokenization_latency_seconds,
+                        {{"mode", "non-stream"}});
+
+DEFINE_COUNTER_FAMILY(responsing_latency_seconds,
+                      "Latency of responding in seconds");
+DEFINE_COUNTER_INSTANCE(stream_responsing_latency_seconds,
+                        responsing_latency_seconds,
+                        {{"mode", "stream"}});
+DEFINE_COUNTER_INSTANCE(non_stream_responsing_latency_seconds,
+                        responsing_latency_seconds,
+                        {{"mode", "non-stream"}});
+
+DEFINE_HISTOGRAM(
+    end_2_end_latency_seconds,
+    "Histogram of end to end latency in seconds",
+    std::vector<double>{0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 60.0});
+
+// ttft latency histogram
+// DEFINE_HISTOGRAM(
+//     time_to_first_token_latency_seconds,
+//     "Histogram of time to first token latency in seconds",
+//     std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1,
+//     0.5, 1.0});
+// inter token latency histogram
+// DEFINE_HISTOGRAM(
+//     inter_token_latency_seconds,
+//     "Histogram of inter token latency in seconds",
+//     std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1,
+//     0.5, 1.0});
+
+namespace llm {
 
 ResponseHandler::ResponseHandler(const Tokenizer* tokenizer)
     : tokenizer_(tokenizer->clone()) {}
 
 void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
   // schedule the response handling
-  response_threadpool_.schedule(
-      [tokenizer = tokenizer_.get(), request = std::move(request)]() {
-        RequestOutput req_output;
-        // summarize statistics for all sequences
-        Usage usage;
-        usage.num_prompt_tokens = request->num_prompt_tokens();
-        for (const Sequence& seq : request->sequences) {
-          usage.num_generated_tokens += seq.num_generated_tokens();
-        }
-        usage.num_total_tokens =
-            usage.num_prompt_tokens + usage.num_generated_tokens;
-        req_output.usage = usage;
+  response_threadpool_.schedule([tokenizer = tokenizer_.get(),
+                                 request = std::move(request)]() {
+    AUTO_COUNTER(non_stream_responsing_latency_seconds);
 
-        if (!request->is_streaming()) {
-          auto& outputs = req_output.outputs;
-          outputs.reserve(request->sequences.size());
-          for (size_t i = 0; i < request->sequences.size(); ++i) {
-            Sequence& seq = request->sequences[i];
-            const auto finish_reason = seq.finish_reason();
-            // generate the final output
-            auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
-            outputs.push_back({i, std::move(output), to_string(finish_reason)});
-          }
-        }
-        req_output.finished = true;
-        request->on_output(req_output);
-      });
+    RequestOutput req_output;
+    // summarize statistics for all sequences
+    Usage usage;
+    usage.num_prompt_tokens = request->num_prompt_tokens();
+    for (const Sequence& seq : request->sequences) {
+      usage.num_generated_tokens += seq.num_generated_tokens();
+    }
+    usage.num_total_tokens =
+        usage.num_prompt_tokens + usage.num_generated_tokens;
+    req_output.usage = usage;
+
+    // update the metrics for the request
+    COUNTER_ADD(prompt_tokens_total, usage.num_prompt_tokens);
+    COUNTER_ADD(generated_tokens_total, usage.num_generated_tokens);
+    HISTOGRAM_OBSERVE(end_2_end_latency_seconds, request->elapsed_seconds());
+
+    if (!request->is_streaming()) {
+      auto& outputs = req_output.outputs;
+      outputs.reserve(request->sequences.size());
+      for (size_t i = 0; i < request->sequences.size(); ++i) {
+        Sequence& seq = request->sequences[i];
+        const auto finish_reason = seq.finish_reason();
+        // generate the final output
+        AUTO_COUNTER(non_stream_decode_latency_seconds);
+        auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
+        outputs.push_back({i, std::move(output), to_string(finish_reason)});
+      }
+    }
+    req_output.status = Status(StatusCode::OK);
+    req_output.finished = true;
+    request->on_output(req_output);
+  });
 }
 
 void ResponseHandler::on_request_stream(Request* request) {
@@ -80,11 +133,14 @@ void ResponseHandler::on_request_stream(Request* request) {
                                  indexes = std::move(indexes),
                                  token_ids = std::move(token_ids),
                                  tokenizer = tokenizer_.get()]() {
+    AUTO_COUNTER(stream_responsing_latency_seconds);
+
     RequestOutput req_output;
     for (size_t i = 0; i < indexes.size(); ++i) {
       const size_t index = indexes[i];
       Sequence& seq = request->sequences[index];
       const auto finish_reason = seq.finish_reason();
+      AUTO_COUNTER(stream_decode_latency_seconds);
       auto delta = seq.decode_delta_text(token_ids[i], *tokenizer);
       if (!delta.empty() || finish_reason != FinishReason::NONE) {
         req_output.outputs.push_back(

@@ -1,6 +1,8 @@
 #include "sequence.h"
 
 #include <absl/strings/match.h>
+#include <absl/time/clock.h>
+#include <absl/time/time.h>
 
 #include <atomic>
 #include <cstdint>
@@ -20,6 +22,7 @@ Sequence::Sequence(const std::string_view& prompt,
                    size_t capacity,
                    const Options& option)
     : id_(next_id_.fetch_add(1)),
+      last_token_added_time_(absl::Now()),
       options_(option),
       decoder_(prompt,
                prompt_token_ids.size(),
@@ -50,6 +53,11 @@ void Sequence::append_token(int32_t token_id) {
 
   // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
+
+  // update the last token added time
+  inter_token_latency_ =
+      absl::ToDoubleSeconds(absl::Now() - last_token_added_time_);
+  last_token_added_time_ = absl::Now();
 }
 
 size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
@@ -126,16 +134,17 @@ void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
 }
 
 // append shared cache blocks from prefix cache
-void Sequence::append_shared_blocks(const std::vector<Block>& shared_blocks) {
+void Sequence::set_shared_blocks(std::vector<Block>&& shared_blocks) {
   CHECK(blocks_.empty()) << "shared blocks should be appended before any "
                             "other blocks";
   if (shared_blocks.empty()) {
     return;
   }
+
+  blocks_ = std::move(shared_blocks);
+
   // update the kv cache position
-  const size_t block_size = shared_blocks[0].size();
-  size_t num_shared_tokens = shared_blocks.size() * block_size;
-  blocks_.insert(blocks_.end(), shared_blocks.begin(), shared_blocks.end());
+  size_t num_shared_tokens = blocks_.size() * blocks_[0].size();
 
   // It is possible that num_shared_tokens == num_prompt_tokens_, indicating
   // that the exact same prompt has been received again. In this case, it

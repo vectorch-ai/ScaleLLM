@@ -6,9 +6,19 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "common/metrics.h"
 #include "memory/kv_cache.h"
 #include "models/causal_lm.h"
 #include "models/parameters.h"
+
+DEFINE_COUNTER_FAMILY(num_model_execution_total,
+                      "Total number of model execution");
+DEFINE_COUNTER_INSTANCE(num_cuda_graph_replayed_total,
+                        num_model_execution_total,
+                        {{"mode", "cuda_graph"}});
+DEFINE_COUNTER_INSTANCE(num_eager_execution_total,
+                        num_model_execution_total,
+                        {{"mode", "eager"}});
 
 namespace llm {
 
@@ -123,11 +133,13 @@ torch::Tensor ModelRunner::forward(const torch::Tensor& tokens,
 
     // replay the graph if all conditions are met
     if (in_decoding_phase && seq_len_supported && same_num_decoding_tokens) {
+      COUNTER_INC(num_cuda_graph_replayed_total);
       return it->second->replay(tokens, positions, params);
     }
   }
 
   // run model directly in eager mode
+  COUNTER_INC(num_eager_execution_total);
   return model_->forward(tokens, positions, kv_caches, params);
 }
 

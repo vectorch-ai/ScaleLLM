@@ -59,8 +59,11 @@ class ContinuousScheduler final : public Scheduler {
  private:
   Batch wait_for_batch(const absl::Duration& timeout);
 
-  // get a batch of requests from the priority queue
+  // build a batch of requests from the priority queue
   Batch build_sequence_batch();
+
+  // process the batch output
+  void process_batch_output();
 
   // allocate blocks for a sequence, honoring the tokens budget.
   // * for prefill sequence, the allocated_tokens will be within

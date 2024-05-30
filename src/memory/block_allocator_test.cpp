@@ -9,7 +9,7 @@ TEST(BlockAllocatorTest, Basic) {
   const uint32_t block_size = 2;
   BlockAllocator allocator(n_blocks, block_size);
 
-  EXPECT_EQ(allocator.free_block_count(), n_blocks);
+  EXPECT_EQ(allocator.num_free_blocks(), n_blocks);
   EXPECT_EQ(allocator.block_size(), block_size);
 
   // Allocate a block
@@ -20,10 +20,10 @@ TEST(BlockAllocatorTest, Basic) {
     EXPECT_EQ(block.is_shared(), false);
     EXPECT_EQ(block.ref_count(), 1);
 
-    EXPECT_EQ(allocator.free_block_count(), n_blocks - 1);
+    EXPECT_EQ(allocator.num_free_blocks(), n_blocks - 1);
   }
   // the block should be freed after the scope
-  EXPECT_EQ(allocator.free_block_count(), n_blocks);
+  EXPECT_EQ(allocator.num_free_blocks(), n_blocks);
 
   // Allocate a list of blocks
   {
@@ -36,7 +36,7 @@ TEST(BlockAllocatorTest, Basic) {
       EXPECT_EQ(block.ref_count(), 1);
       blocks.push_back(std::move(block));
     }
-    EXPECT_EQ(allocator.free_block_count(), 0);
+    EXPECT_EQ(allocator.num_free_blocks(), 0);
     for (const auto& block : blocks) {
       EXPECT_EQ(block.ref_count(), 1);
       EXPECT_EQ(block.is_shared(), false);
@@ -47,7 +47,7 @@ TEST(BlockAllocatorTest, Basic) {
   }
 
   // all blocks should be freed after the scope
-  EXPECT_EQ(allocator.free_block_count(), n_blocks);
+  EXPECT_EQ(allocator.num_free_blocks(), n_blocks);
 
   // Test shared blocks
   {

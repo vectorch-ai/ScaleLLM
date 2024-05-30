@@ -20,7 +20,7 @@ Request::Request(std::string prompt,
       prompt_tokens(std::move(prompt_tokens)),
       seq_capacity(seq_capacity),
       num_seqs(num_seqs),
-      created_time(absl::ToUnixSeconds(absl::Now())) {}
+      created_time(absl::Now()) {}
 
 void Request::add_sequence() {
   Sequence::Options options;

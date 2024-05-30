@@ -11,13 +11,28 @@
 #include <memory>
 #include <utility>
 
+#include "common/metrics.h"
 #include "common/threadpool.h"
+#include "common/timer.h"
 #include "memory/kv_cache.h"
 #include "memory/memory.h"
 #include "model_loader/state_dict.h"
 #include "models/parameters.h"
 #include "sampling/logits_processor.h"
 #include "sampling/sampler.h"
+
+// latency metrics
+DEFINE_COUNTER_FAMILY(execution_latency_seconds,
+                      "Execution latency in seconds");
+DEFINE_COUNTER_INSTANCE(model_execution_latency_seconds,
+                        execution_latency_seconds,
+                        {{"stage", "model"}});
+DEFINE_COUNTER_INSTANCE(logits_processing_latency_seconds,
+                        execution_latency_seconds,
+                        {{"stage", "logits_processing"}});
+DEFINE_COUNTER_INSTANCE(sampling_latency_seconds,
+                        execution_latency_seconds,
+                        {{"stage", "sampling"}});
 
 namespace llm {
 
@@ -92,6 +107,8 @@ std::tuple<int64_t, int64_t> Worker::profile_device_memory() {
 ModelOutput Worker::execute_model(const ModelInput& inputs) {
   torch::DeviceGuard device_guard(device_);
 
+  Timer timer;
+
   // all tensors should be on the same device as model
   auto flatten_tokens = inputs.token_ids.to(device_);
   auto flatten_positions = inputs.positions.to(device_);
@@ -100,9 +117,9 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   // call model runner forward to get hidden states
   auto hidden_states = model_runner_->forward(
       flatten_tokens, flatten_positions, kv_caches_, params);
-
   // waits for all kernels in current streams to complete.
   at::cuda::getCurrentCUDAStream().synchronize();
+  COUNTER_ADD(model_execution_latency_seconds, timer.elapsed_seconds());
 
   // prepare model output
   ModelOutput output;
@@ -114,20 +131,26 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
         model_->logits(hidden_states, sampling_params.selected_token_idxes);
 
     // create and call logits processors
+    timer.reset();
     auto logits_processor = LogitsProcessor::create(sampling_params);
     // apply logits processors to logits (in place)
     logits = logits_processor->forward(logits,
                                        sampling_params.unique_token_ids,
                                        sampling_params.unique_token_counts,
                                        sampling_params.unique_token_ids_lens);
+    COUNTER_ADD(logits_processing_latency_seconds, timer.elapsed_seconds());
+
     // set logits to output
     output.logits = logits;
 
+    timer.reset();
     auto sampler = std::make_unique<Sampler>(sampling_params.do_sample);
     // select sample logits
     auto sample_logits =
         logits.index_select(/*dim=*/0, sampling_params.sample_idxes);
     auto sample_output = sampler->forward(sample_logits);
+    COUNTER_ADD(sampling_latency_seconds, timer.elapsed_seconds());
+
     // set sample output to output
     output.sample_output = sample_output;
 
