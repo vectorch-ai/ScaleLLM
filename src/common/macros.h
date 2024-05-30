@@ -36,7 +36,6 @@ namespace llm {
 #define GUARDED_BY(x)
 #endif
 
-
 // concatenate two strings
 #define LLM_STR_CAT(s1, s2) s1##s2
 

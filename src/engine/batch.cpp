@@ -4,15 +4,15 @@
 
 #include <vector>
 
+#include "common/metrics.h"
 #include "common/slice.h"
 #include "common/tensor_helper.h"
 #include "models/parameters.h"
 #include "request/sequence.h"
 #include "sampling/parameters.h"
-#include "common/metrics.h"
 
-
-DEFINE_COUNTER(num_accepted_tokens, "Total number of accepted tokens in validation");
+DEFINE_COUNTER(num_accepted_tokens_total,
+               "Total number of accepted tokens in validation");
 
 namespace llm {
 
@@ -124,12 +124,12 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
     CHECK_GE(sequence->kv_cache_capacity(), seq_len);
 
     // at least one token to process otherwise the sequence should be finished.
-    CHECK(q_seq_len != 0) << "at least one token should be processed. "
-                          << "n_tokens: " << n_tokens
-                          << ", n_kv_cache_tokens: " << n_kv_cache_tokens
-                          << ", kv_cache_capacity: "
-                          << sequence->kv_cache_capacity()
-                          << ", token_budget: " << token_budgets_[i];
+    CHECK_GT(q_seq_len, 0) << "at least one token should be processed. "
+                           << "n_tokens: " << n_tokens
+                           << ", n_kv_cache_tokens: " << n_kv_cache_tokens
+                           << ", kv_cache_capacity: "
+                           << sequence->kv_cache_capacity()
+                           << ", token_budget: " << token_budgets_[i];
 
     // update budget used
     budget_used_[i] += q_seq_len;
@@ -312,8 +312,7 @@ void Batch::process_validate_output(const torch::Tensor& accepted_ids) {
 
     // validate the draft tokens with accepted tokens
     auto num_accepted_tokens = seq->validate_tokens(accepted_token_ids);
-    COUNTER_ADD(num_accepted_tokens, num_accepted_tokens);
-    
+    COUNTER_ADD(num_accepted_tokens_total, num_accepted_tokens);
   }
   CHECK_EQ(output_idx, num_seqs);
 }

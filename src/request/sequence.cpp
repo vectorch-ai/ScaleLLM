@@ -55,7 +55,8 @@ void Sequence::append_token(int32_t token_id) {
   finish_status_invalidated_ = true;
 
   // update the last token added time
-  inter_token_latency_ = absl::ToDoubleSeconds(absl::Now() - last_token_added_time_);
+  inter_token_latency_ =
+      absl::ToDoubleSeconds(absl::Now() - last_token_added_time_);
   last_token_added_time_ = absl::Now();
 }
 

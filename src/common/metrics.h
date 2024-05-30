@@ -10,8 +10,8 @@
 
 #include <string>
 
-#include "timer.h"
 #include "macros.h"
+#include "timer.h"
 
 namespace llm {
 

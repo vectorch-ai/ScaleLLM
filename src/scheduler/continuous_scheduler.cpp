@@ -22,7 +22,8 @@ DEFINE_GAUGE(num_waiting_requests, "Number of waiting requests in scheduler");
 DEFINE_GAUGE(num_preempted_requests,
              "Number of preempted requests in scheduler");
 
-DEFINE_GAUGE(kv_cache_utilization_perc, "Utilization of the kv cache in percentage");
+DEFINE_GAUGE(kv_cache_utilization_perc,
+             "Utilization of the kv cache in percentage");
 DEFINE_GAUGE(num_blocks_in_prefix_cache,
              "Number of blocks in the prefix cache");
 DEFINE_GAUGE(num_free_blocks, "Number of free blocks in the block allocator");

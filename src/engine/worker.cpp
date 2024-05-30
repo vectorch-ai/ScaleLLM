@@ -108,7 +108,7 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
   torch::DeviceGuard device_guard(device_);
 
   Timer timer;
-  
+
   // all tensors should be on the same device as model
   auto flatten_tokens = inputs.token_ids.to(device_);
   auto flatten_positions = inputs.positions.to(device_);
