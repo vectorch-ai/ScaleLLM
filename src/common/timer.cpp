@@ -11,7 +11,7 @@ Timer::Timer() : start_(absl::Now()) {}
 void Timer::reset() { start_ = absl::Now(); }
 
 // get the elapsed time in seconds
-double Timer::elapsed() const {
+double Timer::elapsed_seconds() const {
   return absl::ToDoubleSeconds(absl::Now() - start_);
 }
 

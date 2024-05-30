@@ -9,6 +9,10 @@
 #include "models/parameters.h"
 #include "request/sequence.h"
 #include "sampling/parameters.h"
+#include "common/metrics.h"
+
+
+DEFINE_COUNTER(num_accepted_tokens, "Total number of accepted tokens in validation");
 
 namespace llm {
 
@@ -307,7 +311,9 @@ void Batch::process_validate_output(const torch::Tensor& accepted_ids) {
         ids.data_ptr<int64_t>(), static_cast<size_t>(ids.numel())};
 
     // validate the draft tokens with accepted tokens
-    seq->validate_tokens(accepted_token_ids);
+    auto num_accepted_tokens = seq->validate_tokens(accepted_token_ids);
+    COUNTER_ADD(num_accepted_tokens, num_accepted_tokens);
+    
   }
   CHECK_EQ(output_idx, num_seqs);
 }

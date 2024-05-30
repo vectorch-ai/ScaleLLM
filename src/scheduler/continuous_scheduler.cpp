@@ -322,11 +322,7 @@ void ContinuousScheduler::step(const absl::Duration& timeout) {
   engine_->execute_model(batch);
 
   // process request output in batch
-  for (Request* request : running_requests_) {
-    if (request->is_streaming()) {
-      response_handler_->on_request_stream(request);
-    }
-  }
+  process_batch_output();
 }
 
 void ContinuousScheduler::run_until_complete() {
@@ -347,15 +343,21 @@ void ContinuousScheduler::run_until_complete() {
     engine_->execute_model(batch);
 
     // process request output in batch
-    for (Request* request : running_requests_) {
-      if (request->is_streaming()) {
-        response_handler_->on_request_stream(request);
-      }
-    }
+    process_batch_output();
   }
 
   // wait for all responses to be processed
   response_handler_->wait_for_complete();
+}
+
+void ContinuousScheduler::process_batch_output() {
+  // process request output in batch
+  for (Request* request : running_requests_) {
+    if (request->is_streaming()) {
+      response_handler_->on_request_stream(request);
+    }
+    // TODO: update token latency metrics
+  }
 }
 
 bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,

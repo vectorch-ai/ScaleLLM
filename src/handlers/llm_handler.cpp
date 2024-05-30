@@ -9,6 +9,7 @@
 
 #include "common/metrics.h"
 #include "common/scope_guard.h"
+#include "common/timer.h"
 #include "engine/utils.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -42,6 +43,20 @@ DEFINE_COUNTER_INSTANCE(request_unavailable,
 DEFINE_COUNTER_INSTANCE(request_unimplemented,
                         request_status_total,
                         {{"code", "UNIMPLEMENTED"}});
+
+DEFINE_COUNTER_FAMILY(request_handling_latency_seconds,
+                      "Request handling latency in seconds");
+DEFINE_COUNTER_INSTANCE(chat_handling_latency_seconds,
+                        request_handling_latency_seconds,
+                        {{"type", "chat"}});
+DEFINE_COUNTER_INSTANCE(completion_handling_latency_seconds,
+                        request_handling_latency_seconds,
+                        {{"type", "completion"}});
+
+DEFINE_COUNTER(tokenization_latency_seconds,
+               "Prompt tokenization latency in seconds");
+DEFINE_COUNTER(chat_template_latency_seconds,
+               "Chat template latency in seconds");
 
 namespace llm {
 namespace {
@@ -321,6 +336,7 @@ void LLMHandler::schedule(std::string prompt,
     // remove the pending request after scheduling
     ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
 
+    Timer timer;
     // verify the prompt
     if (!verify_params(sp, callback)) {
       return;
@@ -337,6 +353,7 @@ void LLMHandler::schedule(std::string prompt,
                           "No available resources to schedule request");
       return;
     }
+    COUNTER_ADD(completion_handling_latency_seconds, timer.elapsed_seconds());
   };
   // add into the queue
   queue_.push(std::move(task));
@@ -353,6 +370,7 @@ void LLMHandler::schedule(std::vector<Message> messages,
                priority,
                stream,
                callback = std::move(callback)](size_t tid) mutable {
+    Timer timer;
     // remove the pending request after scheduling
     ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
     // verify the prompt
@@ -371,6 +389,7 @@ void LLMHandler::schedule(std::vector<Message> messages,
                           "No available resources to schedule request");
       return;
     }
+    COUNTER_ADD(chat_handling_latency_seconds, timer.elapsed_seconds());
   };
   // add into the queue
   queue_.push(std::move(task));
@@ -429,6 +448,7 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
                                                     OutputCallback callback) {
   CHECK(!prompt.empty()) << "Prompt should not be empty";
 
+  Timer timer;
   // encode the prompt
   std::vector<int> prompt_tokens;
   if (!tokenizers_[tid]->encode(prompt, &prompt_tokens)) {
@@ -437,6 +457,7 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
                         "Failed to encode prompt");
     return nullptr;
   }
+  COUNTER_ADD(tokenization_latency_seconds, timer.elapsed_seconds());
 
   const int64_t max_context_len = model_args_.max_position_embeddings();
   if (prompt_tokens.size() >= max_context_len) {
@@ -528,6 +549,7 @@ std::unique_ptr<Request> LLMHandler::create_chat_request(
     return nullptr;
   }
 
+  Timer timer;
   auto prompt = chat_template_->apply(messages);
   if (!prompt.has_value()) {
     CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
@@ -535,6 +557,7 @@ std::unique_ptr<Request> LLMHandler::create_chat_request(
     LOG(ERROR) << "Failed to construct prompt from messages";
     return nullptr;
   }
+  COUNTER_ADD(chat_template_latency_seconds, timer.elapsed_seconds());
 
   return create_request(
       tid, std::move(prompt.value()), sp, priority, stream, callback);

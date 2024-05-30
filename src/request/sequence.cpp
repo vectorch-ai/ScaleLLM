@@ -1,6 +1,8 @@
 #include "sequence.h"
 
 #include <absl/strings/match.h>
+#include <absl/time/clock.h>
+#include <absl/time/time.h>
 
 #include <atomic>
 #include <cstdint>
@@ -20,6 +22,7 @@ Sequence::Sequence(const std::string_view& prompt,
                    size_t capacity,
                    const Options& option)
     : id_(next_id_.fetch_add(1)),
+      last_token_added_time_(absl::Now()),
       options_(option),
       decoder_(prompt,
                prompt_token_ids.size(),
@@ -50,6 +53,10 @@ void Sequence::append_token(int32_t token_id) {
 
   // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
+
+  // update the last token added time
+  inter_token_latency_ = absl::ToDoubleSeconds(absl::Now() - last_token_added_time_);
+  last_token_added_time_ = absl::Now();
 }
 
 size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {

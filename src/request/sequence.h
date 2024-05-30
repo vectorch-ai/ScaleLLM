@@ -1,5 +1,7 @@
 #pragma once
 
+#include <absl/time/time.h>
+
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -189,9 +191,18 @@ class Sequence final {
 
   bool is_closed() const { return closed_; }
 
+  // get the inter-token latency
+  double inter_token_latency() const { return inter_token_latency_; }
+
  private:
   // global unique id for the sequence
   const int64_t id_;
+
+  // last time when a token is added to the sequence
+  absl::Time last_token_added_time_;
+
+  // the time between two tokens generated for the sequence, in seconds
+  double inter_token_latency_ = 0.0;
 
   // the index of the sequence in the request
   size_t index_ = 0;

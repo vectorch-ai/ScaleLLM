@@ -5,9 +5,23 @@
 
 #include <memory>
 
+#include "common/metrics.h"
+#include "common/timer.h"
 #include "engine/llm_engine.h"
 #include "engine/parameters.h"
 #include "rejection_sampler.h"
+
+DEFINE_COUNTER_FAMILY(speculative_execution_latency_seconds,
+                      "Execution latency in seconds");
+DEFINE_COUNTER_INSTANCE(draft_execution_latency_seconds,
+                        speculative_execution_latency_seconds,
+                        {{"stage", "draft"}});
+DEFINE_COUNTER_INSTANCE(target_execution_latency_seconds,
+                        speculative_execution_latency_seconds,
+                        {{"stage", "target"}});
+DEFINE_COUNTER_INSTANCE(validation_latency_seconds,
+                        speculative_execution_latency_seconds,
+                        {{"stage", "validation"}});
 
 namespace llm {
 
@@ -147,19 +161,26 @@ bool SpeculativeEngine::init_kv_cache() {
 
 ModelOutput SpeculativeEngine::execute_model(Batch& batch) {
   // run the draft model to get proposals
+  Timer timer;
   std::vector<ModelOutput> draft_outputs;
   batch.set_engine_type(EngineType::SSM);
   for (size_t i = 0; i < options_.num_speculative_tokens(); ++i) {
     auto draft_output = draft_engine_->execute_model(batch);
     draft_outputs.push_back(draft_output);
   }
+  COUNTER_ADD(draft_execution_latency_seconds, timer.elapsed_seconds());
 
   // run the target model to get the verification scores
+  timer.reset();
   batch.set_engine_type(EngineType::LLM);
   ModelOutput output = engine_->execute_model(batch);
+  COUNTER_ADD(target_execution_latency_seconds, timer.elapsed_seconds());
 
   // verify the proposals with target and update the batch
+  timer.reset();
   validate(batch, draft_outputs, output);
+  COUNTER_ADD(validation_latency_seconds, timer.elapsed_seconds());
+
   return output;
 }
 

@@ -10,6 +10,7 @@
 #include "common/metrics.h"
 #include "request/request.h"
 #include "request/sequence.h"
+#include "request/status.h"
 
 // gflags
 DEFINE_int32(streaming_token_buffer_size,
@@ -23,7 +24,18 @@ DEFINE_COUNTER(generated_tokens_total, "Total number of generated tokens");
 DEFINE_HISTOGRAM(
     end_2_end_latency_seconds,
     "Histogram of end to end latency in seconds",
-    std::vector<double>{1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 60.0});
+    std::vector<double>{0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 60.0});
+
+// ttft latency histogram
+// DEFINE_HISTOGRAM(
+//     time_to_first_token_latency_seconds,
+//     "Histogram of time to first token latency in seconds",
+//     std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
+// inter token latency histogram
+// DEFINE_HISTOGRAM(
+//     inter_token_latency_seconds,
+//     "Histogram of inter token latency in seconds",
+//     std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
 
 namespace llm {
 
@@ -64,6 +76,7 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
             outputs.push_back({i, std::move(output), to_string(finish_reason)});
           }
         }
+        req_output.status = Status(StatusCode::OK);
         req_output.finished = true;
         request->on_output(req_output);
       });
