@@ -23,6 +23,7 @@ struct InputParameters {
 
     params.new_cache_slots = safe_to(new_cache_slots, device);
     params.block_tables = safe_to(block_tables, device);
+    params.images = safe_to(images, device);
     return params;
   }
 
@@ -54,6 +55,9 @@ struct InputParameters {
   // used in attention kernel to fetch cached key-value.
   // IntTensor: [n_seq, max_n_blocks]
   torch::Tensor block_tables;
+
+  // input images tensor for vlm models
+  torch::Tensor images;
 };
 
 }  // namespace llm

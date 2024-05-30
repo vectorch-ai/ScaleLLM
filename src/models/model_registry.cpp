@@ -13,6 +13,7 @@
 #include "huggingface/gpt_neox.h"  // IWYU pragma: keep
 #include "huggingface/internlm.h"  // IWYU pragma: keep
 #include "huggingface/llama.h"     // IWYU pragma: keep
+#include "huggingface/llava.h"     // IWYU pragma: keep
 #include "huggingface/mistral.h"   // IWYU pragma: keep
 #include "huggingface/mpt.h"       // IWYU pragma: keep
 #include "huggingface/phi.h"       // IWYU pragma: keep
