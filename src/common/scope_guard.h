@@ -35,3 +35,7 @@ template <typename Fun>
 ScopeGuard(Fun&&) -> ScopeGuard<std::decay_t<Fun>>;
 
 }  // namespace llm
+
+// Declares a ScopeGuard object with the given callback.
+// Example: SCOPE_GUARD([&]{...});
+#define SCOPE_GUARD llm::ScopeGuard LLM_ANON_VAR(scope_guard)

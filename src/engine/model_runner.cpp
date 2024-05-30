@@ -6,9 +6,12 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "common/metrics.h"
 #include "memory/kv_cache.h"
 #include "models/causal_lm.h"
 #include "models/parameters.h"
+
+DEFINE_COUNTER(num_cuda_graph_replayed, "Number of CUDA graphs replayed");
 
 namespace llm {
 
@@ -123,6 +126,7 @@ torch::Tensor ModelRunner::forward(const torch::Tensor& tokens,
 
     // replay the graph if all conditions are met
     if (in_decoding_phase && seq_len_supported && same_num_decoding_tokens) {
+      COUNTER_INC(num_cuda_graph_replayed);
       return it->second->replay(tokens, positions, params);
     }
   }

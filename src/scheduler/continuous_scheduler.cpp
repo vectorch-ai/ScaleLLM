@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "common/metrics.h"
+#include "common/timer.h"
 #include "engine/engine.h"
 #include "request/request.h"
 #include "request/sequence.h"
@@ -21,11 +22,13 @@ DEFINE_GAUGE(num_waiting_requests, "Number of waiting requests in scheduler");
 DEFINE_GAUGE(num_preempted_requests,
              "Number of preempted requests in scheduler");
 
-DEFINE_GAUGE(kv_cache_utilization, "Utilization of the kv cache in percentage");
+DEFINE_GAUGE(kv_cache_utilization_perc, "Utilization of the kv cache in percentage");
 DEFINE_GAUGE(num_blocks_in_prefix_cache,
              "Number of blocks in the prefix cache");
 DEFINE_GAUGE(num_free_blocks, "Number of free blocks in the block allocator");
 DEFINE_GAUGE(num_blocks_in_use, "Effective number of blocks in use");
+
+DEFINE_COUNTER(scheduling_latency_seconds, "Latency of scheduling in seconds");
 
 namespace llm {
 
@@ -78,6 +81,8 @@ bool ContinuousScheduler::schedule(std::unique_ptr<Request>& request) {
 }
 
 Batch ContinuousScheduler::build_sequence_batch() {
+  AUTO_COUNTER(scheduling_latency_seconds);
+
   // propogate new requests to priority_queue_
   Request* request = nullptr;
   // read from request queue then push to priority queue
@@ -280,12 +285,11 @@ Batch ContinuousScheduler::build_sequence_batch() {
   GAUGE_SET(num_waiting_requests, priority_queue_.size());
   GAUGE_SET(num_preempted_requests, num_preempted_requests);
 
-  GAUGE_SET(kv_cache_utilization, block_manager_->kv_cache_utilization());
+  GAUGE_SET(kv_cache_utilization_perc, block_manager_->kv_cache_utilization());
   GAUGE_SET(num_blocks_in_prefix_cache,
             block_manager_->num_blocks_in_prefix_cache());
   GAUGE_SET(num_free_blocks, block_manager_->num_free_blocks());
   GAUGE_SET(num_blocks_in_use, block_manager_->num_blocks_in_use());
-
   return batch;
 }
 

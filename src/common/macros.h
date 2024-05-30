@@ -36,4 +36,11 @@ namespace llm {
 #define GUARDED_BY(x)
 #endif
 
+
+// concatenate two strings
+#define LLM_STR_CAT(s1, s2) s1##s2
+
+// create an anonymous variable
+#define LLM_ANON_VAR(str) LLM_STR_CAT(str, __LINE__)
+
 }  // namespace llm

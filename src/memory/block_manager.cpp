@@ -7,7 +7,17 @@
 #include <vector>
 
 #include "block_allocator.h"
+#include "common/metrics.h"
+#include "common/timer.h"
 #include "request/request.h"
+
+DEFINE_COUNTER(prefix_cache_query_latency_seconds,
+               "Latency of querying prefix cache in seconds");
+
+DEFINE_COUNTER(prefix_cache_insert_latency_seconds,
+               "Latency of inserting into prefix cache in seconds");
+
+DEFINE_COUNTER(prefix_cache_match_length, "Length of matched prefix in tokens");
 
 namespace llm {
 
@@ -121,8 +131,15 @@ bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
 void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
   // only allocate shared blocks for prefill sequences
   if (options_.enable_prefix_cache()) {
+    AUTO_COUNTER(prefix_cache_query_latency_seconds);
+
     const auto tokens_ids = sequence->token_ids();
     std::vector<Block> shared_blocks = prefix_cache_.match(tokens_ids);
+
+    const size_t prefix_length =
+        shared_blocks.empty() ? 0
+                              : shared_blocks.size() * shared_blocks[0].size();
+    COUNTER_ADD(prefix_cache_match_length, prefix_length);
 
     // update effective block usage
     for (const auto& block : shared_blocks) {
@@ -137,6 +154,8 @@ void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
 
 void BlockManager::cache_blocks_for(Sequence* sequence) {
   if (options_.enable_prefix_cache()) {
+    AUTO_COUNTER(prefix_cache_insert_latency_seconds);
+
     // only insert tokens in kv cache to the prefix cache
     const auto tokens_ids = sequence->tokens_in_kv_cache();
     const auto blocks = sequence->blocks();

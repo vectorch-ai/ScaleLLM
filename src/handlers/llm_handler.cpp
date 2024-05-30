@@ -333,8 +333,10 @@ void LLMHandler::schedule(std::string prompt,
                priority,
                stream,
                callback = std::move(callback)](size_t tid) mutable {
+    AUTO_COUNTER(completion_handling_latency_seconds);
+
     // remove the pending request after scheduling
-    ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
+    SCOPE_GUARD([this] { scheduler_->dec_pending_requests(); });
 
     Timer timer;
     // verify the prompt
@@ -353,7 +355,6 @@ void LLMHandler::schedule(std::string prompt,
                           "No available resources to schedule request");
       return;
     }
-    COUNTER_ADD(completion_handling_latency_seconds, timer.elapsed_seconds());
   };
   // add into the queue
   queue_.push(std::move(task));
@@ -370,9 +371,10 @@ void LLMHandler::schedule(std::vector<Message> messages,
                priority,
                stream,
                callback = std::move(callback)](size_t tid) mutable {
-    Timer timer;
+    AUTO_COUNTER(chat_handling_latency_seconds);
     // remove the pending request after scheduling
-    ScopeGuard cleanup = [this] { scheduler_->dec_pending_requests(); };
+    SCOPE_GUARD([this] { scheduler_->dec_pending_requests(); });
+
     // verify the prompt
     if (!verify_params(sp, callback)) {
       return;
@@ -389,7 +391,6 @@ void LLMHandler::schedule(std::vector<Message> messages,
                           "No available resources to schedule request");
       return;
     }
-    COUNTER_ADD(chat_handling_latency_seconds, timer.elapsed_seconds());
   };
   // add into the queue
   queue_.push(std::move(task));
@@ -448,8 +449,8 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
                                                     OutputCallback callback) {
   CHECK(!prompt.empty()) << "Prompt should not be empty";
 
-  Timer timer;
   // encode the prompt
+  Timer timer;
   std::vector<int> prompt_tokens;
   if (!tokenizers_[tid]->encode(prompt, &prompt_tokens)) {
     LOG(ERROR) << "Failed to encode prompt: " << prompt;

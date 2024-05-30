@@ -10,7 +10,16 @@
 
 #include <string>
 
+#include "timer.h"
+#include "macros.h"
+
 namespace llm {
+
+using prometheus::Counter;
+using prometheus::Gauge;
+using prometheus::Histogram;
+using prometheus::Info;
+using prometheus::Summary;
 
 class Metrics final {
  public:
@@ -58,6 +67,23 @@ class Metrics final {
   prometheus::Registry registry_;
 };
 
+class AutoCounter final {
+ public:
+  AutoCounter(prometheus::Counter& counter) : counter_(counter) {}
+
+  ~AutoCounter() {
+    // increment the counter
+    counter_.Increment(timer_.elapsed_seconds());
+  }
+
+ private:
+  // NOLINTNEXTLINE
+  prometheus::Counter& counter_;
+
+  // the timer
+  Timer timer_;
+};
+
 }  // namespace llm
 
 // define helpful macros to hide boilerplate code
@@ -98,6 +124,10 @@ class Metrics final {
 #define COUNTER_ADD(name, value) COUNTER_##name.Increment(value);
 
 #define COUNTER_INC(name) COUNTER_##name.Increment();
+
+// Declares a latency counter having a variable name based on line number.
+// example: AUTO_COUNTER(a_counter_name);
+#define AUTO_COUNTER(name) llm::AutoCounter LLM_ANON_VAR(name)(COUNTER_##name);
 
 // define histogram
 // a histogram samples observations (usually things like request durations or
