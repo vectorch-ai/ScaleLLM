@@ -10,8 +10,7 @@
 namespace llm {
 
 BlockAllocator::BlockAllocator(uint32_t total_blocks, uint32_t block_size)
-    : num_free_blocks_(total_blocks),
-      block_size_(block_size) {
+    : num_free_blocks_(total_blocks), block_size_(block_size) {
   CHECK_GT(total_blocks, 0) << "No blocks to allocate";
   CHECK_GT(block_size, 0) << "Block size must be positive";
 

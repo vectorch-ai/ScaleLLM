@@ -103,9 +103,10 @@ class Metrics final {
 // a histogram samples observations (usually things like request durations or
 // response sizes) and counts them in configurable buckets. It also provides a
 // sum of all observed values.
-#define DEFINE_HISTOGRAM(name, desc, ...) \
-  auto& HISTOGRAM_##name =                    \
-      llm::Metrics::Instance().BuildHistogram(#name, desc).Add({}, __VA_ARGS__);
+#define DEFINE_HISTOGRAM(name, desc, ...)                   \
+  auto& HISTOGRAM_##name = llm::Metrics::Instance()         \
+                               .BuildHistogram(#name, desc) \
+                               .Add({}, __VA_ARGS__);
 
 #define DEFINE_HISTOGRAM_FAMILY(name, desc) \
   auto& name##_family = llm::Metrics::Instance().BuildHistogram(#name, desc);

@@ -274,13 +274,15 @@ Batch ContinuousScheduler::build_sequence_batch() {
   }
 
   // update metrics before returning
-  GAUGE_SET(num_pending_requests, pending_requests_.load(std::memory_order_relaxed));
+  GAUGE_SET(num_pending_requests,
+            pending_requests_.load(std::memory_order_relaxed));
   GAUGE_SET(num_running_requests, running_requests_.size());
   GAUGE_SET(num_waiting_requests, priority_queue_.size());
   GAUGE_SET(num_preempted_requests, num_preempted_requests);
 
   GAUGE_SET(kv_cache_utilization, block_manager_->kv_cache_utilization());
-  GAUGE_SET(num_blocks_in_prefix_cache, block_manager_->num_blocks_in_prefix_cache());
+  GAUGE_SET(num_blocks_in_prefix_cache,
+            block_manager_->num_blocks_in_prefix_cache());
   GAUGE_SET(num_free_blocks, block_manager_->num_free_blocks());
   GAUGE_SET(num_blocks_in_use, block_manager_->num_blocks_in_use());
 
