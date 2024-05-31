@@ -28,8 +28,11 @@ void Request::add_sequence() {
   options.sampling_param = this->sampling_param;
   options.stopping_criteria = this->stopping_criteria;
 
-  sequences.emplace_back(
-      this->prompt, this->prompt_tokens, this->seq_capacity, options);
+  sequences.emplace_back(this->prompt,
+                         this->prompt_tokens,
+                         this->created_time,
+                         this->seq_capacity,
+                         options);
 }
 
 bool Request::is_finished() const {

@@ -11,13 +11,24 @@
 #include "common/timer.h"
 #include "request/request.h"
 
-DEFINE_COUNTER(prefix_cache_query_latency_seconds,
-               "Latency of querying prefix cache in seconds");
+// metrics
+DEFINE_COUNTER_FAMILY(prefix_cache_latency_seconds,
+                      "Latency of prefix cache in seconds");
+DEFINE_COUNTER_INSTANCE(prefix_cache_insert_latency_seconds,
+                        prefix_cache_latency_seconds,
+                        {{"op", "insert"}});
+DEFINE_COUNTER_INSTANCE(prefix_cache_match_latency_seconds,
+                        prefix_cache_latency_seconds,
+                        {{"op", "match"}});
+DEFINE_COUNTER_INSTANCE(prefix_cache_evict_latency_seconds,
+                        prefix_cache_latency_seconds,
+                        {{"op", "evict"}});
 
-DEFINE_COUNTER(prefix_cache_insert_latency_seconds,
-               "Latency of inserting into prefix cache in seconds");
+DEFINE_COUNTER(prefix_cache_match_length_total,
+               "Length of matched prefix in tokens");
 
-DEFINE_COUNTER(prefix_cache_match_length, "Length of matched prefix in tokens");
+DEFINE_COUNTER(allocate_blocks_latency_seconds,
+               "Latency of blocks allocation in seconds");
 
 namespace llm {
 
@@ -28,7 +39,6 @@ BlockManager::BlockManager(const Options& options)
   // reserve block 0 for padding
   padding_block_ = block_allocator_.allocate();
   CHECK_EQ(padding_block_.id(), 0) << "Padding block id should be 0";
-  num_blocks_in_use_ = 1;
 }
 
 bool BlockManager::allocate_blocks_for(Sequence* sequence) {
@@ -37,6 +47,8 @@ bool BlockManager::allocate_blocks_for(Sequence* sequence) {
 }
 
 bool BlockManager::allocate_blocks_for(Sequence* sequence, size_t num_tokens) {
+  AUTO_COUNTER(allocate_blocks_latency_seconds);
+
   DCHECK(sequence != nullptr);
   // first try to allocate shared blocks
   if (sequence->num_blocks() == 0) {
@@ -113,6 +125,8 @@ bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
   // try to evict some blocks from the prefix cache
   const uint32_t n_blocks_to_evict =
       num_blocks - block_allocator_.num_free_blocks();
+
+  AUTO_COUNTER(prefix_cache_evict_latency_seconds);
   const uint32_t n_blocks_evicted = prefix_cache_.evict(n_blocks_to_evict);
   if (n_blocks_evicted < n_blocks_to_evict) {
     return false;
@@ -131,7 +145,7 @@ bool BlockManager::has_enough_blocks(uint32_t num_blocks) {
 void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
   // only allocate shared blocks for prefill sequences
   if (options_.enable_prefix_cache()) {
-    AUTO_COUNTER(prefix_cache_query_latency_seconds);
+    AUTO_COUNTER(prefix_cache_match_latency_seconds);
 
     const auto tokens_ids = sequence->token_ids();
     std::vector<Block> shared_blocks = prefix_cache_.match(tokens_ids);
@@ -139,7 +153,7 @@ void BlockManager::allocate_shared_blocks_for(Sequence* sequence) {
     const size_t prefix_length =
         shared_blocks.empty() ? 0
                               : shared_blocks.size() * shared_blocks[0].size();
-    COUNTER_ADD(prefix_cache_match_length, prefix_length);
+    COUNTER_ADD(prefix_cache_match_length_total, prefix_length);
 
     // update effective block usage
     for (const auto& block : shared_blocks) {

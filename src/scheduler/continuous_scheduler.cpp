@@ -31,6 +31,15 @@ DEFINE_GAUGE(num_blocks_in_use, "Effective number of blocks in use");
 
 DEFINE_COUNTER(scheduling_latency_seconds, "Latency of scheduling in seconds");
 
+DEFINE_COUNTER_FAMILY(num_processing_tokens_total,
+                      "Total number of processing tokens");
+DEFINE_COUNTER_INSTANCE(num_prompt_tokens_total,
+                        num_processing_tokens_total,
+                        {{"type", "prompt"}});
+DEFINE_COUNTER_INSTANCE(num_generated_tokens_total,
+                        num_processing_tokens_total,
+                        {{"type", "generated"}});
+
 namespace llm {
 
 constexpr size_t kRequestQueueSize = 100000;
@@ -82,7 +91,7 @@ bool ContinuousScheduler::schedule(std::unique_ptr<Request>& request) {
 }
 
 Batch ContinuousScheduler::build_sequence_batch() {
-  AUTO_COUNTER(scheduling_latency_seconds);
+  Timer timer;
 
   // propogate new requests to priority_queue_
   Request* request = nullptr;
@@ -274,12 +283,35 @@ Batch ContinuousScheduler::build_sequence_batch() {
   }
 
   // update the batch
+  size_t num_prompt_tokens = 0;
+  size_t num_generated_tokens = 0;
   Batch batch;
   for (const SequenceData& seq_data : new_batch) {
-    batch.add(seq_data.sequence, seq_data.token_budget);
+    const size_t token_budget = seq_data.token_budget;
+    auto* sequence = seq_data.sequence;
+
+    const size_t remaining_prompt_tokens =
+        sequence->num_prompt_tokens() > sequence->num_kv_cache_tokens()
+            ? sequence->num_prompt_tokens() - sequence->num_kv_cache_tokens()
+            : 0;
+    const size_t prompt_tokens =
+        std::min(remaining_prompt_tokens, token_budget);
+    const size_t generated_tokens = token_budget - prompt_tokens;
+    num_prompt_tokens += prompt_tokens;
+    num_generated_tokens += generated_tokens;
+
+    batch.add(sequence, token_budget);
   }
 
   // update metrics before returning
+  if (!batch.empty()) {
+    // only update the scheduling latency when there are requests to process
+    COUNTER_ADD(scheduling_latency_seconds, timer.elapsed_seconds());
+  }
+
+  COUNTER_ADD(num_prompt_tokens_total, num_prompt_tokens);
+  COUNTER_ADD(num_generated_tokens_total, num_generated_tokens);
+
   GAUGE_SET(num_pending_requests,
             pending_requests_.load(std::memory_order_relaxed));
   GAUGE_SET(num_running_requests, running_requests_.size());
@@ -361,7 +393,6 @@ void ContinuousScheduler::process_batch_output() {
     if (request->is_streaming()) {
       response_handler_->on_request_stream(request);
     }
-    // TODO: update token latency metrics
   }
 }
 
@@ -400,7 +431,7 @@ bool ContinuousScheduler::allocate_blocks_for(Sequence* sequence,
   }
 
   // make sure the sequence proceeds forward
-  CHECK(num_tokens > num_kv_cache_tokens);
+  CHECK_GT(num_tokens, num_kv_cache_tokens);
 
   // the actual allocated tokens is the difference between the total
   // number of tokens and the number of tokens already processed

@@ -52,6 +52,7 @@ class Sequence final {
 
   Sequence(const std::string_view& prompt,
            const std::vector<int32_t>& prompt_token_ids,
+           const absl::Time& created_time,
            size_t capacity,
            const Options& option);
 
@@ -157,6 +158,9 @@ class Sequence final {
   std::string decode_delta_text(const Slice<int32_t>& token_ids,
                                 const Tokenizer& tokenizer);
 
+  // whether the delta text is decoded
+  bool no_delta_text_decoded() const { return no_delta_text_decoded_; }
+
   // get the offset of output tokens
   size_t output_offset() const { return decoder_.output_offset(); }
 
@@ -192,17 +196,17 @@ class Sequence final {
   bool is_closed() const { return closed_; }
 
   // get the inter-token latency
-  double inter_token_latency() const { return inter_token_latency_; }
+  double inter_token_latency(const absl::Time& now);
 
  private:
   // global unique id for the sequence
   const int64_t id_;
 
-  // last time when a token is added to the sequence
-  absl::Time last_token_added_time_;
+  // last token generation time
+  absl::Time last_token_time_;
 
-  // the time between two tokens generated for the sequence, in seconds
-  double inter_token_latency_ = 0.0;
+  // whether the delta text is decoded
+  bool no_delta_text_decoded_ = true;
 
   // the index of the sequence in the request
   size_t index_ = 0;

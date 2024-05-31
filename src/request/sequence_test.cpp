@@ -144,6 +144,7 @@ TEST(SequenceTest, DiscardTokenIds) {
   options.stopping_criteria.max_tokens = max_tokens;
   Sequence sequence(/*prompt=*/"",
                     prompt_tokens,
+                    absl::Now(),
                     /*capacity=*/200,
                     options);
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
@@ -182,6 +183,7 @@ TEST(SequenceTest, SpeculativeBasic) {
   options.stopping_criteria.max_tokens = 100;
   Sequence sequence(/*prompt=*/"",
                     prompt_tokens,
+                    absl::Now(),
                     /*capacity=*/200,
                     options);
 
@@ -211,6 +213,7 @@ TEST(SequenceTest, SpeculativeFullMatch) {
   options.stopping_criteria.max_tokens = 100;
   Sequence sequence(/*prompt=*/"",
                     prompt_tokens,
+                    absl::Now(),
                     /*capacity=*/200,
                     options);
 
@@ -254,6 +257,7 @@ TEST(SequenceTest, SpeculativeNoMatch) {
   options.stopping_criteria.max_tokens = 100;
   Sequence sequence(/*prompt=*/"",
                     prompt_tokens,
+                    absl::Now(),
                     /*capacity=*/200,
                     options);
 
@@ -297,6 +301,7 @@ TEST(SequenceTest, SpeculativePartiallyMatch) {
   options.stopping_criteria.max_tokens = 100;
   Sequence sequence(/*prompt=*/"",
                     prompt_tokens,
+                    absl::Now(),
                     /*capacity=*/200,
                     options);
 
@@ -339,6 +344,7 @@ TEST(SequenceTest, SpeculativeStopMaxTokens) {
   options.stopping_criteria.max_tokens = 2;
   Sequence sequence(/*prompt=*/"",
                     prompt_tokens,
+                    absl::Now(),
                     /*capacity=*/200,
                     options);
 
@@ -374,6 +380,7 @@ TEST(SequenceTest, SpeculativeStopEosTokenId) {
 
   Sequence sequence(/*prompt=*/"",
                     prompt_tokens,
+                    absl::Now(),
                     /*capacity=*/200,
                     options);
 
