@@ -1,5 +1,6 @@
 #include "batch.h"
 
+#include <absl/time/clock.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -43,6 +44,7 @@ TEST(BatchTest, Basic) {
   // sequence in prefill phase
   Sequence seq1(/*prompt=*/"",
                 /*token_ids=*/{1, 3, 5, 7, 5, 4, 3, 2, 1},
+                absl::Now(),
                 capacity,
                 options);
   seq1.append_blocks(allocator.allocate(3));  // [1, 2, 3]
@@ -50,6 +52,7 @@ TEST(BatchTest, Basic) {
   // seq in decode phase
   Sequence seq2(/*prompt=*/"",
                 /*token_ids=*/{2, 4, 6, 8, 6, 4, 2},
+                absl::Now(),
                 capacity,
                 options);
   seq2.append_blocks(allocator.allocate(4));  // [4, 5, 6, 7]
@@ -60,6 +63,7 @@ TEST(BatchTest, Basic) {
   Sequence seq3(
       /*prompt=*/"",
       /*token_ids=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19},
+      absl::Now(),
       capacity,
       options);
   seq3.append_blocks(allocator.allocate(5));  // [8, 9, 10, 11, 12]

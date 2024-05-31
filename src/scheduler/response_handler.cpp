@@ -18,9 +18,6 @@ DEFINE_int32(streaming_token_buffer_size,
              "number of tokens to buffer before streaming to client");
 
 // metrics
-DEFINE_COUNTER(prompt_tokens_total, "Total number of prompt tokens");
-DEFINE_COUNTER(generated_tokens_total, "Total number of generated tokens");
-
 DEFINE_COUNTER_FAMILY(detokenization_latency_seconds,
                       "Latency of detokenization in seconds");
 DEFINE_COUNTER_INSTANCE(stream_decode_latency_seconds,
@@ -45,17 +42,15 @@ DEFINE_HISTOGRAM(
     std::vector<double>{0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 60.0});
 
 // ttft latency histogram
-// DEFINE_HISTOGRAM(
-//     time_to_first_token_latency_seconds,
-//     "Histogram of time to first token latency in seconds",
-//     std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1,
-//     0.5, 1.0});
+DEFINE_HISTOGRAM(
+    time_to_first_token_latency_seconds,
+    "Histogram of time to first token latency in seconds",
+    std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
 // inter token latency histogram
-// DEFINE_HISTOGRAM(
-//     inter_token_latency_seconds,
-//     "Histogram of inter token latency in seconds",
-//     std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1,
-//     0.5, 1.0});
+DEFINE_HISTOGRAM(
+    inter_token_latency_seconds,
+    "Histogram of inter token latency in seconds",
+    std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
 
 namespace llm {
 
@@ -80,8 +75,6 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
     req_output.usage = usage;
 
     // update the metrics for the request
-    COUNTER_ADD(prompt_tokens_total, usage.num_prompt_tokens);
-    COUNTER_ADD(generated_tokens_total, usage.num_generated_tokens);
     HISTOGRAM_OBSERVE(end_2_end_latency_seconds, request->elapsed_seconds());
 
     if (!request->is_streaming()) {
@@ -139,6 +132,13 @@ void ResponseHandler::on_request_stream(Request* request) {
     for (size_t i = 0; i < indexes.size(); ++i) {
       const size_t index = indexes[i];
       Sequence& seq = request->sequences[index];
+      if (seq.no_delta_text_decoded()) {
+        HISTOGRAM_OBSERVE(time_to_first_token_latency_seconds,
+                          seq.inter_token_latency(absl::Now()));
+      } else {
+        HISTOGRAM_OBSERVE(inter_token_latency_seconds,
+                          seq.inter_token_latency(absl::Now()));
+      }
       const auto finish_reason = seq.finish_reason();
       AUTO_COUNTER(stream_decode_latency_seconds);
       auto delta = seq.decode_delta_text(token_ids[i], *tokenizer);

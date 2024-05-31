@@ -1,7 +1,6 @@
 #include "sequence.h"
 
 #include <absl/strings/match.h>
-#include <absl/time/clock.h>
 #include <absl/time/time.h>
 
 #include <atomic>
@@ -19,10 +18,11 @@ std::atomic<int64_t> Sequence::next_id_{1};
 
 Sequence::Sequence(const std::string_view& prompt,
                    const std::vector<int32_t>& prompt_token_ids,
+                   const absl::Time& created_time,
                    size_t capacity,
                    const Options& option)
     : id_(next_id_.fetch_add(1)),
-      last_token_added_time_(absl::Now()),
+      last_token_time_(created_time),
       options_(option),
       decoder_(prompt,
                prompt_token_ids.size(),
@@ -53,11 +53,6 @@ void Sequence::append_token(int32_t token_id) {
 
   // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
-
-  // update the last token added time
-  inter_token_latency_ =
-      absl::ToDoubleSeconds(absl::Now() - last_token_added_time_);
-  last_token_added_time_ = absl::Now();
 }
 
 size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
@@ -126,6 +121,7 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(const Slice<int32_t>& token_ids,
                                         const Tokenizer& tokenizer) {
+  no_delta_text_decoded_ = false;
   return decoder_.decode(token_ids, tokenizer);
 }
 
@@ -211,6 +207,12 @@ bool Sequence::is_finished() const {
     return true;
   }
   return false;
+}
+
+double Sequence::inter_token_latency(const absl::Time& now) {
+  const double latency = absl::ToDoubleSeconds(now - last_token_time_);
+  last_token_time_ = now;
+  return latency;
 }
 
 }  // namespace llm
