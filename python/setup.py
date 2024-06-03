@@ -60,7 +60,11 @@ def extract_version(file_path):
 
 def get_scalellm_version():
     init_file = join_path("python", "scalellm", "__init__.py")
-    return extract_version(init_file)
+    version = extract_version(init_file)
+    version_suffix = os.getenv("SCALELLM_VERSION_SUFFIX")
+    if version_suffix:
+        version += version_suffix
+    return version
 
 
 def read_readme() -> str:
