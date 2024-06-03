@@ -63,10 +63,15 @@ struct SiluActivation {
 template <template <typename T> class Activation, typename T>
 __global__ void activation_kernel(T* __restrict__ out,
                                   const T* __restrict__ input,
-                                  int n,
-                                  int stride) {
-  const uint32_t src_base_idx = blockIdx.x * stride;
-  const uint32_t dst_base_idx = blockIdx.x * n;
+                                  int n,         // tensor的列数
+                                  int stride) {  // tensor的行数
+  const uint32_t src_base_idx =
+      blockIdx.x *
+      stride;  // TODO:
+               // 一个block处理张量的一行,所以应该src_base_idx=blockIdx.x*n吧？
+  const uint32_t dst_base_idx =
+      blockIdx.x *
+      n;  // TODO:为什么做？感觉很复杂,出于什么考虑，直接grid=input.size(0),dim=input.size(1),然后每个线程就地activation
   for (uint32_t i = threadIdx.x; i < n; i += blockDim.x) {
     const T x = __ldg(&input[src_base_idx + i]);
     out[dst_base_idx + i] = Activation<T>::apply(x);
@@ -108,7 +113,7 @@ template <template <typename T> class Activation>
 void launch_activation_and_mul(torch::Tensor& out, torch::Tensor input) {
   const int n = static_cast<int>(input.size(1)) / 2;
   dim3 grid(input.size(0));
-  dim3 block(std::min(n, 1024));
+  dim3 block(std::min(n, 1024));  // TODO:why 1024?
   DISPATCH_FLOATING_TYPES(
       input.scalar_type(), "activation_and_mul_kernel", ([&] {
         activation_and_mul_kernel<Activation, scalar_t>

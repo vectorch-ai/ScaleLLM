@@ -28,7 +28,8 @@ __global__ void softmax_kernel(T* logits, int vocab_size) {
   }
 
   // get max value in the thread block and save it to shared memory
-  max_val = block_reduce_max<float>(max_val);
+  max_val = block_reduce_max<float>(
+      max_val);  // TODO:这个function里面就是把block又划分为warp,然后使用warp的相关的api,这个warp相关的api是有什么手册吗？
   if (tid == 0) {
     s_max_val = max_val;
   }
@@ -63,8 +64,12 @@ void invoke_softmax(torch::Tensor& logits) {
 
   // each thread block handles one batch
   dim3 grid(batch_size);
-  dim3 block(std::min(vocab_size, 1024));
-
+  dim3 block(std::min(
+      vocab_size,
+      1024));  // TODO:
+               // 一个线程处理batch中的一个prompt,那么不应该设置为max(vocab_size,1024)?
+               // 1024这个超参数设定有什么技巧吗？
+  //
   DISPATCH_FLOATING_TYPES(logits.scalar_type(), "softmax_kernel", [&] {
     softmax_kernel<scalar_t>
         <<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(

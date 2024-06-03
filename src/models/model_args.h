@@ -103,6 +103,16 @@ struct ModelArgs {
 
   // Stop token ids for decoding.
   DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
+
+  // The number of experts per tok in MoE used in topk
+  DEFINE_ARG(int, n_experts_per_tok);
+
+  // The number of experts in MoE
+  DEFINE_ARG(int64_t, n_local_experts);
+
+  DEFINE_ARG(bool, out_router_logits);
+
+  DEFINE_ARG(float, router_aux_loss_coef);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
@@ -134,6 +144,10 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", linear_bias: " << args.linear_bias();
   os << ", qkv_bias: " << args.qkv_bias();
   os << ", residual_post_layernorm: " << args.residual_post_layernorm();
+  os << ", n_experts_per_tok: " << args.n_experts_per_tok();
+  os << ", n_local_experts: " << args.n_local_experts();
+  os << ", out_router_logits: " << args.out_router_logits();
+  os << ", router_aux_loss_coef: " << args.router_aux_loss_coef();
   os << "]";
   return os;
 }

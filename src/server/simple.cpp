@@ -21,7 +21,7 @@ namespace py = pybind11;
 static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
 DEFINE_string(model_name_or_path,
-              "THUDM/chatglm3-6b",
+              "mistralai/Mixtral-8x7B-v0.1",
               "hf model name or path to the model file.");
 
 DEFINE_string(draft_model_name_or_path,
@@ -33,7 +33,7 @@ DEFINE_string(model_allow_patterns,
               "Allow patterns for model files.");
 
 DEFINE_string(device,
-              "cuda",
+              "cuda:0,cuda:1,cuda:2,cuda:3",
               "Device to run the model on, e.g. cpu, cuda:0, cuda:0,cuda:1, or "
               "auto to use all available gpus.");
 
@@ -120,6 +120,7 @@ std::unique_ptr<Engine> create_engine(const std::string& model_path,
 }
 
 int main(int argc, char* argv[]) {
+  std::cout << "=======test========" << std::flush;
   // initialize glog and gflags
   google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);

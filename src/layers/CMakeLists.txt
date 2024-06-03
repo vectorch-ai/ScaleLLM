@@ -3,76 +3,78 @@ include(cc_test)
 
 cc_library(
   NAME
-    linear 
+  linear
   HDRS
-    linear.h
-    qkv_linear.h
-    linear_impl.h
+  linear.h
+  qkv_linear.h
+  linear_impl.h
   SRCS
-    linear.cpp
-    qkv_linear.cpp
-    linear_impl.cpp
+  linear.cpp
+  qkv_linear.cpp
+  linear_impl.cpp
   DEPS
-    :state_dict
-    :model_parallel
-    :quantization
-    :kernels
-    glog::glog
-    gflags::gflags
-    torch
+  :state_dict
+  :model_parallel
+  :quantization
+  :kernels
+  glog::glog
+  gflags::gflags
+  torch
 )
 
 cc_library(
-  NAME 
-    pos_embedding
-  HDRS 
-    pos_embedding.h
-  SRCS 
-    pos_embedding.cpp
+  NAME
+  pos_embedding
+  HDRS
+  pos_embedding.h
+  SRCS
+  pos_embedding.cpp
   DEPS
-    :state_dict
-    :memory
-    :kernels
-    glog::glog
-    gflags::gflags
-    torch
+  :state_dict
+  :memory
+  :kernels
+  glog::glog
+  gflags::gflags
+  torch
 )
 
 cc_library(
-  NAME 
-    layers
-  HDRS 
-    normalization.h
-    embedding.h
-    activation.h
-  SRCS 
-    activation.cpp
+  NAME
+  layers
+  HDRS
+  normalization.h
+  embedding.h
+  activation.h
+  fused_moe.h
+  SRCS
+  activation.cpp
+  fused_moe.cpp
   DEPS
-    :state_dict
-    :memory
-    :linear
-    :pos_embedding
-    :attention
-    :kernels
-    :flash_attn.kernels
-    glog::glog
-    gflags::gflags
-    torch
+  :state_dict
+  :memory
+  :linear
+  :pos_embedding
+  :attention
+  :kernels
+  :flash_attn.kernels
+  glog::glog
+  gflags::gflags
+  torch
 )
 
 cc_test(
   NAME
-    layers_test
+  layers_test
   SRCS
-    activation_test.cpp
-    layers_test.cpp
-    pos_embedding_test.cpp
-    normalization_test.cpp
+  activation_test.cpp
+  layers_test.cpp
+  pos_embedding_test.cpp
+  normalization_test.cpp
   DEPS
-    :layers
-    :state_dict
-    absl::random_random
-    GTest::gtest_main
+  :layers
+  :state_dict
+  absl::random_random
+  GTest::gtest_main
 )
 
 add_subdirectory(attention)
