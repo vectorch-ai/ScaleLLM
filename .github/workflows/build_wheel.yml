@@ -19,6 +19,10 @@ jobs:
         cuda: ["11.8", "12.1"]
         torch: ["2.1", "2.2", "2.3"]
     runs-on: [self-hosted, linux, release]
+    env:
+      PYTHON_VERSION: ${{ matrix.python }}
+      CUDA_VERSION: ${{ matrix.cuda }}
+      TORCH_VERSION: ${{ matrix.torch }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,18 +36,18 @@ jobs:
       
       - name: Build wheel
         run: |
-          docker pull vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }}
+          docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
           docker run --rm -t \
               -v "$CI_CACHE_DIR":/ci_cache \
               -v "$GITHUB_WORKSPACE":/ScaleLLM \
-              -e PYTHON_VERSION=${{ matrix.python }} \
-              -e CUDA_VERSION=${{ matrix.cuda }} \
-              -e TORCH_VERSION=${{ matrix.torch }} \
-              -e RENAME_WHL=true \
+              -e PYTHON_VERSION=${PYTHON_VERSION} \
+              -e CUDA_VERSION=${CUDA_VERSION} \
+              -e TORCH_VERSION=${TORCH_VERSION} \
+              -e SCALELLM_VERSION_SUFFIX="+cu${CUDA_VERSION//./}torch${TORCH_VERSION}" \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
               -u $(id -u):$(id -g) \
-              vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }} \
+              vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
               bash /ScaleLLM/scripts/build_wheel.sh
         timeout-minutes: 60
 
@@ -52,7 +56,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+          name: wheel-cuda${CUDA_VERSION}-torch${TORCH_VERSION}-python${PYTHON_VERSION}
           path: python/dist/*
 
   create_release:
@@ -79,7 +83,7 @@ jobs:
           draft: true
           prerelease: true
   
-  publish_whl_index:
+  commit_whl_index:
     needs: build_wheel
     runs-on: ubuntu-latest
     steps:
@@ -99,12 +103,12 @@ jobs:
         env:
           WHL_TOKEN: ${{ secrets.WHL_TOKEN }}
 
-      - name: Update whl index
+      - name: Append new whls into whl index
         run: |
           cd whl
           python ./publish_whl.py --whl_path=../dist
 
-      - name: Publish whl index
+      - name: Commit whl index change
         run: |
           cd whl
           git config --global user.name "github-actions[bot]"

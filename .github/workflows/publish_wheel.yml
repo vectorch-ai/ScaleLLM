@@ -20,6 +20,10 @@ jobs:
         cuda: ["12.1"]
         torch: ["2.3"]
     runs-on: [self-hosted, linux, release]
+    env:
+      PYTHON_VERSION: ${{ matrix.python }}
+      CUDA_VERSION: ${{ matrix.cuda }}
+      TORCH_VERSION: ${{ matrix.torch }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,17 +37,17 @@ jobs:
 
       - name: Build wheel
         run: |
-          docker pull vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }}
+          docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
           docker run --rm -t \
               -v "$CI_CACHE_DIR":/ci_cache \
               -v "$GITHUB_WORKSPACE":/ScaleLLM \
-              -e PYTHON_VERSION=${{ matrix.python }} \
-              -e CUDA_VERSION=${{ matrix.cuda }} \
-              -e TORCH_VERSION=${{ matrix.torch }} \
+              -e PYTHON_VERSION=${PYTHON_VERSION} \
+              -e CUDA_VERSION=${CUDA_VERSION} \
+              -e TORCH_VERSION=${TORCH_VERSION} \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
               -u $(id -u):$(id -g) \
-              vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }} \
+              vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
               bash /ScaleLLM/scripts/build_wheel.sh
         timeout-minutes: 60
 
@@ -64,7 +68,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+          name: wheel-cuda${CUDA_VERSION}-torch${TORCH_VERSION}-python${PYTHON_VERSION}
           path: python/dist/*
 
   publish_wheel:
