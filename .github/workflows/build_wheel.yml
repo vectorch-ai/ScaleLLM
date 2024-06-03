@@ -83,7 +83,7 @@ jobs:
           draft: true
           prerelease: true
   
-  publish_whl_index:
+  commit_whl_index:
     needs: build_wheel
     runs-on: ubuntu-latest
     steps:
@@ -103,12 +103,12 @@ jobs:
         env:
           WHL_TOKEN: ${{ secrets.WHL_TOKEN }}
 
-      - name: Update whl index
+      - name: Append new whls into whl index
         run: |
           cd whl
           python ./publish_whl.py --whl_path=../dist
 
-      - name: Publish whl index
+      - name: Commit whl index change
         run: |
           cd whl
           git config --global user.name "github-actions[bot]"
