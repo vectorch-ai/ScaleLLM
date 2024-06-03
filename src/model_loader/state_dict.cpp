@@ -217,7 +217,7 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string& tensor_name,
   }
   // chunk tensor along the dim
   const int64_t dim_size = tensor.size(dim);
-  if (dim_size <= num_ranks_per_shard) {
+  if (dim_size < num_ranks_per_shard) {
     // too small to shard, return the whole tensor instead
     return tensor;
   }
