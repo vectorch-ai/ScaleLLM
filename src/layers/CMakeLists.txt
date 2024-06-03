@@ -65,9 +65,10 @@ cc_test(
     layers_test
   SRCS
     activation_test.cpp
-    layers_test.cpp
     pos_embedding_test.cpp
     normalization_test.cpp
+    linear_test.cpp
+    qkv_linear_test.cpp
   DEPS
     :layers
     :state_dict

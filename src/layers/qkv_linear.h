@@ -41,7 +41,11 @@ class QKVColumnParallelLinearImpl : public torch::nn::Module {
   ColumnParallelLinear parallel_linear_{nullptr};
 
   // replication ratio of kv heads for MQA/GQA cases
-  int64_t kv_replication_ratio_ = 1;
+  int64_t kv_replication_ratio_ = 0;
+
+  int64_t n_kv_heads_ = 0;
+
+  int64_t head_dim_ = 0;
 };
 TORCH_MODULE(QKVColumnParallelLinear);
 
