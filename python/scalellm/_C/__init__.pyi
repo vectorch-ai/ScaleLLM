@@ -74,6 +74,7 @@ class SequenceOutput:
 
 class RequestOutput:
     def __init__(self) -> None: ...
+    prompt: str
     status: Optional[Status]
     outputs: List[SequenceOutput]
     usage: Optional[Usage]

@@ -88,6 +88,9 @@ class LLM:
 
         outputs = [None] * len(prompts)
 
+        for i in range(len(outputs)):
+            outputs[i].prompt = prompts[i]
+
         def callback(index: int, output: RequestOutput) -> bool:
             outputs[index] = output
             return True
