@@ -14,6 +14,9 @@ jobs:
         os: [ubuntu-22.04]
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
+    defaults:
+      run:
+        shell: bash -l {0}
     
     runs-on: [self-hosted, linux, x64, build]
     
