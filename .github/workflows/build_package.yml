@@ -14,9 +14,6 @@ jobs:
         os: [ubuntu-22.04]
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
-    defaults:
-      run:
-        shell: bash -l {0}
     
     runs-on: [self-hosted, linux, x64, build]
     
@@ -65,6 +62,7 @@ jobs:
       run: du -h dist/*
 
     - name: Install the package and run pytest
+      shell: bash -l {0}
       run: |
         # Create a new conda environment
         if conda info --envs | grep -q pkg_test; then echo "pkg_test already exists"; else conda create -y -n pkg_test; fi
@@ -74,3 +72,4 @@ jobs:
         pip install pytest
         # Run pytest
         pytest
+        conda deactivate || true
