@@ -52,6 +52,9 @@ struct RequestOutput {
 
   RequestOutput(Status&& _status) : status(std::move(_status)) {}
 
+  // the prompt text for the request.
+  std::optional<std::string> prompt;
+
   // the status of the request.
   std::optional<Status> status;
 

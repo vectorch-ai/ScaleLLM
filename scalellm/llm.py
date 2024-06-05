@@ -101,9 +101,11 @@ class LLM:
         self._handler.run_until_complete()
 
         # throw an exception if there is any error
-        for output in outputs:
+        for index, output in enumerate(outputs):
             if output is None:
                 raise RuntimeError("Request failed, no output received")
             if output.status is not None and not output.status.ok:
                 raise ValidationError(output.status.code, output.status.message)
+            # carry over the prompt to the output
+            output.prompt = prompts[index]
         return outputs

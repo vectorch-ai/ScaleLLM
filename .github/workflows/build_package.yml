@@ -7,6 +7,28 @@ on:
   schedule:
     - cron: '0 0 * * *'  
 
+  push:
+    paths:
+      - "scalellm/**"
+      - "tests/**"
+      - "examples/**"
+      - "setup.py"
+      - "requirements.txt"
+      - ".github/workflows/build_package.yml"
+    branches: 
+      - main
+
+  pull_request:
+    paths:
+      - "scalellm/**"
+      - "tests/**"
+      - "examples/**"
+      - "setup.py"
+      - "requirements.txt"
+      - ".github/workflows/build_package.yml"
+    branches:
+      - main
+
 jobs:
   linux-gcc:
     strategy:
@@ -61,9 +83,22 @@ jobs:
     - name: Show whl package size
       run: du -h dist/*
 
-    - name: Install the package
+    - name: Install the package and run pytest
+      shell: bash -l {0}
       run: |
-        pip install dist/*.whl --force-reinstall
+        source ~/anaconda3/etc/profile.d/conda.sh
+        # Create a new conda environment
+        if conda info --envs | grep -q pkg_test; then echo "pkg_test already exists"; else conda create -y -n pkg_test; fi
+        conda init --all && source ~/.bashrc 
 
-    - name: Run pytest
-      run: pytest
+        conda activate pkg_test
+        # Install the package and pytest
+        pip install dist/*.whl
+        pip install pytest
+        
+        # Run pytest
+        printf "\n\nRunning pytest\n\n"
+        pytest
+        printf "\n\n"
+
+        conda deactivate || true

@@ -112,6 +112,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
 
   py::class_<RequestOutput>(m, "RequestOutput")
       .def(py::init())
+      .def_readwrite("prompt", &RequestOutput::prompt)
       .def_readwrite("status", &RequestOutput::status)
       .def_readwrite("outputs", &RequestOutput::outputs)
       .def_readwrite("usage", &RequestOutput::usage)
