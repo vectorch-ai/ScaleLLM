@@ -52,12 +52,12 @@ jobs:
         timeout-minutes: 60
 
       - name: show wheel size
-        run: du -h python/dist/*
+        run: du -h dist/*
 
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-cuda${CUDA_VERSION}-torch${TORCH_VERSION}-python${PYTHON_VERSION}
-          path: python/dist/*
+          path: dist/*
 
   create_release:
     needs: build_wheel
@@ -68,17 +68,17 @@ jobs:
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          path: python/dist
+          path: dist
           merge-multiple: true
           pattern: wheel-*
 
       - name: Show wheels
-        run: ls -lha python/dist
+        run: ls -lha dist
 
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
-          files: python/dist/scalellm-*.whl
+          files: dist/scalellm-*.whl
           tag_name: ${{ inputs.tag }}
           draft: true
           prerelease: true

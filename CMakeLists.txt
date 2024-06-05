@@ -265,6 +265,6 @@ list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
 # add subdirectories
 add_subdirectory(proto)
-add_subdirectory(python)
 add_subdirectory(src)
 add_subdirectory(third_party)
+add_subdirectory(scalellm)

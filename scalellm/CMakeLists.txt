@@ -6,7 +6,7 @@ pybind_extension(
   COPTS
     -DPY_MODULE_NAME=_C
   SRCS
-    module.cpp
+    csrc/module.cpp
   DEPS
     :llm_handler
     torch

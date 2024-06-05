@@ -15,6 +15,7 @@ from typing import Optional
 import fastapi
 import uvicorn
 from fastapi.responses import JSONResponse, Response
+
 from scalellm import AsyncLLMEngine, ValidationError, get_metrics
 from scalellm.serve.api_protocol import (ChatCompletionRequest,
                                          CompletionRequest, ErrorResponse,

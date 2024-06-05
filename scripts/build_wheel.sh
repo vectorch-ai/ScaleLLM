@@ -34,7 +34,7 @@ pip install --upgrade setuptools wheel
 # zero out ccache if ccache is installed
 command -v ccache >/dev/null && ccache -z
 
-cd "$PROJECT_ROOT/python"
+cd "$PROJECT_ROOT"
 python setup.py bdist_wheel
 
 # show ccache statistics
@@ -42,7 +42,7 @@ command -v ccache >/dev/null && ccache -vs
 
 # bundle external shared libraries into wheel
 # pip install auditwheel
-# cd "$PROJECT_ROOT/python"
+# cd "$PROJECT_ROOT"
 # for whl in dist/*.whl; do
 #     auditwheel repair "$whl" --plat manylinux1_x86_64 -w dist/
 # done

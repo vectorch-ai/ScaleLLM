@@ -1,6 +1,7 @@
 import time
 
 import shortuuid
+
 from scalellm import AsyncLLMEngine, SamplingParams
 from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
                                          CompletionResponseChoice,
