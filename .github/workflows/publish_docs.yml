@@ -5,12 +5,14 @@ on:
   push:
     paths:
       - "docs/**"
+      - ".github/workflows/publish_docs.yml"
     branches:
       - main
 
   pull_request:
     paths:
       - "docs/**"
+      - ".github/workflows/publish_docs.yml"
     branches:
       - main
 
