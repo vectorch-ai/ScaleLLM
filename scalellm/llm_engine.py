@@ -173,6 +173,7 @@ class AsyncLLMEngine:
         output_stream = OutputAsyncStream()
 
         def callback(output: RequestOutput) -> bool:
+            output.prompt = prompt
             return output_stream.put(output)
 
         # use default sampling parameters if not provided
@@ -211,6 +212,7 @@ class AsyncLLMEngine:
         output_stream = OutputStream()
 
         def callback(output: RequestOutput) -> bool:
+            output.prompt = prompt
             return output_stream.put(output)
 
         # use default sampling parameters if not provided

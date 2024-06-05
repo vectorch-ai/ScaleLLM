@@ -93,6 +93,7 @@ jobs:
 
         conda activate pkg_test
         # Install the package and pytest
+        pip uninstall -y scalellm
         pip install dist/*.whl
         pip install pytest
         

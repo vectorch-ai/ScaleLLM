@@ -9,7 +9,7 @@ prompts = [
 ]
 
 # Create a sampling params object.
-sampling_params = SamplingParams(temperature=0.8, top_p=0.95, echo=True)
+sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
 
 # Create an LLM.
 llm = LLM(model="gpt2", devices="cpu")
@@ -18,5 +18,6 @@ llm = LLM(model="gpt2", devices="cpu")
 outputs = llm.generate(prompts, sampling_params)
 # Print the outputs.
 for i, output in enumerate(outputs):
+    prompt = output.prompt
     generated_text = output.outputs[0].text
-    print(f"Generated text: {generated_text!r}")
+    print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
