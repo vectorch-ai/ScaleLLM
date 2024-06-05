@@ -89,10 +89,10 @@ jobs:
         # Create a new conda environment
         if conda info --envs | grep -q pkg_test; then echo "pkg_test already exists"; else conda create -y -n pkg_test; fi
         conda init bash && source ~/.bashrc 
-        conda activate pkg_test >> /dev/null
+        conda activate pkg_test >> /dev/null || true
         # Install the package and pytest
         pip install dist/*.whl
         pip install pytest
         # Run pytest
         pytest
-        conda deactivate >> /dev/null
+        conda deactivate >> /dev/null || true
