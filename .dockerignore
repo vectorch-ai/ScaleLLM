@@ -4,11 +4,8 @@
 # vcpkg
 /.vcpkg*
 
-# clangd cache
-/.cache*
-
-# ccache
-/.ccache*
+# cache
+/.*cache
 
 # github workflows
 /.github*
@@ -26,8 +23,7 @@
 /dist/*
 
 # python
-/python/build/
-/python/*.egg-info/
-/python/scalellm/*.pyd
-/python/scalellm/*.so
+/*.egg-info/
+/scalellm/*.pyd
+/scalellm/*.so
 **/__pycache__/*

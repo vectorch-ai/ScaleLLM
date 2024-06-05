@@ -2,6 +2,7 @@ import time
 from typing import List
 
 import shortuuid
+
 from scalellm import AsyncLLMEngine, Message, SamplingParams
 from scalellm.serve.api_protocol import (ChatCompletionMessage,
                                          ChatCompletionRequest,

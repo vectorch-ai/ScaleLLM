@@ -18,15 +18,15 @@ class LLM:
         devices: Optional[str] = None,
         draft_devices: Optional[str] = None,
         block_size: int = 16,
-        max_cache_size: int = 10 * 1024 * 1024 * 1024,
+        max_cache_size: int = 20 * 1024 * 1024 * 1024,
         max_memory_utilization: float = 0.9,
         enable_prefix_cache: bool = True,
         enable_cuda_graph: bool = True,
         cuda_graph_max_seq_len: int = 2048,
         cuda_graph_batch_sizes: Optional[List[int]] = None,
         draft_cuda_graph_batch_sizes: Optional[List[int]] = None,
-        max_tokens_per_batch: int = 512,
-        max_seqs_per_batch: int = 128,
+        max_tokens_per_batch: int = 409600, # a big number to disable chunked prefill
+        max_seqs_per_batch: int = 2048, # a big number for better throughput
         num_speculative_tokens: int = 0,
         num_handling_threads: int = 4,
     ) -> None:

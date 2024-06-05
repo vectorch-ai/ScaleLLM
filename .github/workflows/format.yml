@@ -54,7 +54,7 @@ jobs:
           pip install ruff==0.4.2 isort==5.13.2
       - name: Run ruff check
         run: |
-          ruff check python/
+          ruff check scalellm/ tests/ examples/
       - name: Run isort check
         run: |
-          isort --check-only python/
+          isort --check-only scalellm/ tests/ examples/

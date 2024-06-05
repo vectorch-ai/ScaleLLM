@@ -42,7 +42,7 @@ def get_nccl_root():
 
 
 def get_base_dir():
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+    return os.path.abspath(os.path.dirname(__file__))
 
 
 def join_path(*paths):
@@ -59,7 +59,7 @@ def extract_version(file_path):
 
 
 def get_scalellm_version():
-    init_file = join_path("python", "scalellm", "__init__.py")
+    init_file = join_path("scalellm", "__init__.py")
     version = extract_version(init_file)
     version_suffix = os.getenv("SCALELLM_VERSION_SUFFIX")
     if version_suffix:
@@ -86,7 +86,7 @@ def get_cmake_dir():
     plat_name = sysconfig.get_platform()
     python_version = sysconfig.get_python_version().replace(".", "")
     dir_name = f"cmake.{plat_name}-{sys.implementation.name}-{python_version}"
-    cmake_dir = Path(get_base_dir()) / "python" / "build" / dir_name
+    cmake_dir = Path(get_base_dir()) / "build" / dir_name
     cmake_dir.mkdir(parents=True, exist_ok=True)
     return cmake_dir
 
@@ -183,8 +183,9 @@ class CMakeBuild(build_ext):
 
         env = os.environ.copy()
         LIBTORCH_ROOT = get_torch_root()
-        if LIBTORCH_ROOT is not None:
-            env["LIBTORCH_ROOT"] = LIBTORCH_ROOT
+        if LIBTORCH_ROOT is None:
+            raise RuntimeError("Please install requirements first, pip install -r requirements.txt")
+        env["LIBTORCH_ROOT"] = LIBTORCH_ROOT
 
         NCCL_ROOT = get_nccl_root()
         if NCCL_ROOT is not None:
@@ -232,7 +233,7 @@ setup(
         "Operating System :: POSIX",
         "License :: OSI Approved :: Apache Software License",
     ],
-    packages=["scalellm", "scalellm/serve", "scalellm/examples"],
+    packages=["scalellm", "scalellm/serve", "examples"],
     ext_modules=[CMakeExtension("_C", "scalellm/")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,

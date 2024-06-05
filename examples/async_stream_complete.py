@@ -3,7 +3,7 @@ from scalellm import AsyncLLMEngine, SamplingParams
 
 def main():
     # Create an LLM engine.
-    engine = AsyncLLMEngine(model="google/gemma-2b")
+    engine = AsyncLLMEngine(model="google/gemma-2b", devices="cuda")
     # start the engine loop
     engine.start()
 

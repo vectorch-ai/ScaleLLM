@@ -52,11 +52,11 @@ jobs:
         timeout-minutes: 60
 
       - name: show wheels
-        run: ls -lh python/dist
+        run: ls -lh dist
 
       - name: rename wheel to manylinux
         run: |
-          for whl in python/dist/scalellm-*.whl; do
+          for whl in dist/scalellm-*.whl; do
             new_whl=${whl//"-linux_"/"-manylinux1_"}
             if [ "$whl" != "$new_whl" ]; then
               mv $whl $new_whl
@@ -64,12 +64,12 @@ jobs:
           done
 
       - name: show wheels
-        run: ls -lh python/dist
+        run: ls -lh dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-cuda${CUDA_VERSION}-torch${TORCH_VERSION}-python${PYTHON_VERSION}
-          path: python/dist/*
+          path: dist/*
 
   publish_wheel:
     needs: build_wheel
@@ -80,17 +80,17 @@ jobs:
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          path: python/dist
+          path: dist
           merge-multiple: true
           pattern: wheel-*
 
       - name: Show wheels
-        run: ls -lh python/dist
+        run: ls -lh dist
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1.8
         with:
-          packages-dir: python/dist/
+          packages-dir: dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
           verbose: true
