@@ -412,37 +412,64 @@ REGISTER_DEFAULT_CHAT_TEMPLATE(Yi, YiChatTemplate);
 REGISTER_MODEL_ARGS(llama, [&] {
   LOAD_ARG_OR(model_type, "model_type", "llama");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
-  LOAD_ARG_OR(vocab_size, "vocab_size", 128256);
-  LOAD_ARG_OR(hidden_size, "hidden_size", 8192);
-  LOAD_ARG_OR(n_layers, "num_hidden_layers", 80);
-  LOAD_ARG_OR(n_heads, "num_attention_heads", 64);
   LOAD_ARG(n_kv_heads, "num_key_value_heads");
-  LOAD_ARG_OR(intermediate_size, "intermediate_size", 28672);
   LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
-  LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
-  LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
-  LOAD_ARG_OR(bos_token_id, "bos_token_id", 128000);
-  LOAD_ARG_OR(eos_token_id, "eos_token_id", 128001);
-  LOAD_ARG_OR(rope_theta, "rope_theta", 500000.0f);
-  LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
-
-  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
-    return args->hidden_size() / args->n_heads();
-  });
 
   // decide model type based on vocab size
   if (args->vocab_size() == 128256) {
     // choose the right chat template
     SET_ARG(model_type, "llama3");
+
+    LOAD_ARG_OR(vocab_size, "vocab_size", 128256);
+    LOAD_ARG_OR(hidden_size, "hidden_size", 8192);
+    LOAD_ARG_OR(n_layers, "num_hidden_layers", 80);
+    LOAD_ARG_OR(n_heads, "num_attention_heads", 64);
+    LOAD_ARG_OR(intermediate_size, "intermediate_size", 28672);
+    LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
+    LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
+    LOAD_ARG_OR(bos_token_id, "bos_token_id", 128000);
+    LOAD_ARG_OR(eos_token_id, "eos_token_id", 128001);
+    LOAD_ARG_OR(rope_theta, "rope_theta", 500000.0f);
+    LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+
     // stop token ids: "<|end_of_text|>", "<|eot_id|>"
     SET_ARG(stop_token_ids, std::unordered_set<int32_t>({128001, 128009}));
   } else if (args->vocab_size() == 64000) {
     // choose the right chat template
     SET_ARG(model_type, "Yi");
+    LOAD_ARG_OR(vocab_size, "vocab_size", 64000);
+    LOAD_ARG_OR(hidden_size, "hidden_size", 7168);
+    LOAD_ARG_OR(n_layers, "num_hidden_layers", 60);
+    LOAD_ARG_OR(n_heads, "num_attention_heads", 56);
+    LOAD_ARG_OR(intermediate_size, "intermediate_size", 20480);
+    LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 4096);
+    LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
+    LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
+    LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
+    LOAD_ARG_OR(rope_theta, "rope_theta", 5000000.0f);
+    LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+
     // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>",
     // "<|im_sep|>"
     SET_ARG(stop_token_ids, std::unordered_set<int32_t>({2, 6, 7, 8}));
+  } else {
+    // llama 2
+    LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
+    LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
+    LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
+    LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
+    LOAD_ARG_OR(intermediate_size, "intermediate_size", 11008);
+    LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 2048);
+    LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
+    LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
+    LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
+    LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
+    LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
   }
+
+  LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
+    return args->hidden_size() / args->n_heads();
+  });
 });
 
 // Register tokenizer args since Yi is using sentencepiece tokenizer.
