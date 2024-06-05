@@ -5,13 +5,19 @@ option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
 option(USE_CXX11_ABI "Use the new C++-11 ABI, which is not backwards compatible." ON)
 option(USE_MANYLINUX "Build for manylinux" OFF)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_MESSAGE_LOG_LEVEL STATUS)
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 if(POLICY CMP0135)
   # CMP0135: ExternalProject ignores timestamps in archives by default for the URL download method.
   cmake_policy(SET CMP0135 NEW)
 endif()
-
 
 function(parse_make_options options prefix)
   foreach(option ${options})
@@ -136,10 +142,6 @@ find_package(Rust REQUIRED)
 include(static_analyzers)
 # TODO: can't use sanitizers with CUDA for now.
 # include(sanitizers)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(UNIX)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og")
