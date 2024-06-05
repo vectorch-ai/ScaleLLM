@@ -12,7 +12,7 @@ on:
   pull_request:
     paths:
       - "docs/**"
-      - "scalellm/**.py"
+      - "scalellm/**/*.py"
     branches:
       - main
 
