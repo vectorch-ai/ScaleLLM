@@ -5,12 +5,14 @@ on:
   push:
     paths:
       - "docs/**"
+      - "scalellm/**/*.py"
     branches:
       - main
 
   pull_request:
     paths:
       - "docs/**"
+      - "scalellm/**/*.py"
     branches:
       - main
 
@@ -50,6 +52,8 @@ jobs:
 
   # Deployment job
   deploy:
+    # only deploy on new commits
+    if: github.event_name == 'push'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -57,7 +61,5 @@ jobs:
     needs: build
     steps:
       - name: Deploy to GitHub Pages
-        # only deploy on new commits to main branch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: deployment
         uses: actions/deploy-pages@v4
