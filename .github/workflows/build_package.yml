@@ -74,4 +74,3 @@ jobs:
         pip install pytest
         # Run pytest
         pytest
-        conda deactivate
