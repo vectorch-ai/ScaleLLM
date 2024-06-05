@@ -109,6 +109,7 @@ class AsyncLLMEngine:
         draft_revision: Optional[str] = None,
         allow_patterns: Optional[str] = None,
         cache_dir: Optional[str] = None,
+        convert_to_safetensors: bool = False,
         devices: Optional[str] = None,
         draft_devices: Optional[str] = None,
         block_size: int = 16,
@@ -132,6 +133,7 @@ class AsyncLLMEngine:
                 revision=revision,
                 allow_patterns=allow_patterns,
                 cache_dir=cache_dir,
+                convert_to_safetensors=convert_to_safetensors,
             )
         draft_model_path = draft_model
         if draft_model_path is not None and not os.path.exists(draft_model_path):
@@ -140,6 +142,7 @@ class AsyncLLMEngine:
                 revision=draft_revision,
                 allow_patterns=allow_patterns,
                 cache_dir=cache_dir,
+                convert_to_safetensors=convert_to_safetensors,
             )
 
         options = LLMHandler.Options()

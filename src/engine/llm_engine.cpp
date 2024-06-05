@@ -28,19 +28,21 @@ const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph =
 torch::ScalarType parse_dtype(const std::string& dtype_str,
                               const torch::Device& device) {
   if (device.is_cpu()) {
+    // cpu only supports float32 for now
     return torch::kFloat32;
   }
 
   if (boost::iequals(dtype_str, "half") ||
       boost::iequals(dtype_str, "float16")) {
-    return torch::kHalf;
+    return torch::kFloat16;
   }
   if (boost::iequals(dtype_str, "bfloat16")) {
     return torch::kBFloat16;
   }
   if ((boost::iequals(dtype_str, "float") ||
        boost::iequals(dtype_str, "float32"))) {
-    return torch::kFloat32;
+    // cuda only supports float16 and bfloat16 for now
+    return torch::kFloat16;
   }
 
   if (dtype_str.empty() || boost::iequals(dtype_str, "auto")) {

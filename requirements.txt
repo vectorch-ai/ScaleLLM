@@ -2,3 +2,4 @@ torch >= 2.1.0
 fastapi >= 0.110.0
 huggingface_hub
 shortuuid
+safetensors

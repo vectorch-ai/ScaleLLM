@@ -95,7 +95,8 @@ jobs:
         # Install the package and pytest
         pip uninstall -y scalellm
         pip install dist/*.whl
-        pip install pytest
+
+        pip install -r requirements-test.txt
         
         # Run pytest
         printf "\n\nRunning pytest\n\n"
