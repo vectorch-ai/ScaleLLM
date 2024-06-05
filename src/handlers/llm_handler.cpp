@@ -307,7 +307,7 @@ void LLMHandler::schedule_chat_batch_async(
 
   const size_t num_requests = conversations.size();
   scheduler_->inc_pending_requests(num_requests);
-  for (size_t i = 0; i < conversations.size(); ++i) {
+  for (size_t i = 0; i < num_requests; ++i) {
     schedule(std::move(conversations[i]),
              // the sampling parameter may be shared
              sps.size() == 1 ? sps[0] : std::move(sps[i]),
@@ -447,7 +447,10 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
                                                     Priority priority,
                                                     bool stream,
                                                     OutputCallback callback) {
-  CHECK(!prompt.empty()) << "Prompt should not be empty";
+  if (prompt.empty()) {
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT, "Prompt is empty");
+    return nullptr;
+  }
 
   // encode the prompt
   Timer timer;

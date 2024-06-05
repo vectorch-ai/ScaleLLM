@@ -149,19 +149,15 @@ class CMakeBuild(build_ext):
         build_type = "Debug" if debug else "Release"
 
         # python directories
-        python_include_dir = sysconfig.get_path("platinclude")
         cuda_architectures = "80;89;90"
         cmake_args = [
             "-G",
             "Ninja",  # Ninja is much faster than make
-            "-DUSE_CCACHE=ON",  # use ccache if available
             f"-DCMAKE_MAKE_PROGRAM={ninja_dir}",  # pass in the ninja build path
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
-            "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
-            "-DUSE_MANYLINUX:BOOL=ON",
+            "-DUSE_CCACHE=ON",  # use ccache if available
+            "-DUSE_MANYLINUX:BOOL=ON",  # use manylinux settings
             f"-DPython_EXECUTABLE:FILEPATH={sys.executable}",
-            f"-DPYTHON_INCLUDE_DIRS={python_include_dir}",
             f"-DCMAKE_CUDA_ARCHITECTURES={cuda_architectures}",
             f"-DCMAKE_BUILD_TYPE={build_type}",  # not used on MSVC, but no harm
         ]
@@ -184,7 +180,9 @@ class CMakeBuild(build_ext):
         env = os.environ.copy()
         LIBTORCH_ROOT = get_torch_root()
         if LIBTORCH_ROOT is None:
-            raise RuntimeError("Please install requirements first, pip install -r requirements.txt")
+            raise RuntimeError(
+                "Please install requirements first, pip install -r requirements.txt"
+            )
         env["LIBTORCH_ROOT"] = LIBTORCH_ROOT
 
         NCCL_ROOT = get_nccl_root()
