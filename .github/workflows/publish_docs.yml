@@ -5,12 +5,14 @@ on:
   push:
     paths:
       - "docs/**"
+      - "scalellm/**/*.py"
     branches:
       - main
 
   pull_request:
     paths:
       - "docs/**"
+      - "scalellm/**/*.py"
     branches:
       - main
 

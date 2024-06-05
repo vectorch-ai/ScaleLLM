@@ -3,9 +3,10 @@ name: Build and test scalellm package
 on:
   workflow_dispatch:
 
-  # Schedule the workflow to run at 00:00 (UTC) every day.
+  # Schedule the workflow to run at 08:00 (UTC) every day.
   schedule:
-    - cron: '0 0 * * *'  
+    # Minute[0,59] Hour[0,23] Day of month[1,31] Month[1,12] Day of week[0,6] (Sunday=0)
+    - cron: '0 8 * * *'  
 
   push:
     paths:
