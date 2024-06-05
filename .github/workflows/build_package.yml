@@ -61,9 +61,11 @@ jobs:
     - name: Show whl package size
       run: du -h dist/*
 
-    - name: Install the package
+    - name: Install the package and run pytest
       run: |
+        if conda info --envs | grep -q pkg_test; then echo "pkg_test already exists"; else conda create -y -n pkg_test; fi
+        conda activate pkg_test
         pip install dist/*.whl --force-reinstall
-
-    - name: Run pytest
-      run: pytest
+        pip install pytest
+        pytest
+        conda deactivate
