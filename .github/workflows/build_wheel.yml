@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-cuda${CUDA_VERSION}-torch${TORCH_VERSION}-python${PYTHON_VERSION}
+          name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
           path: dist/*
 
   create_release:
