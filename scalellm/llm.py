@@ -1,7 +1,7 @@
 import os
 from typing import List, Optional, Union
 
-from scalellm._C import LLMHandler, Priority, RequestOutput, SamplingParams
+from scalellm._C import LLMHandler, Priority, RequestOutput, SamplingParams, Message
 from scalellm.downloader import download_hf_model
 from scalellm.errors import ValidationError
 
@@ -26,8 +26,8 @@ class LLM:
         cuda_graph_max_seq_len: int = 2048,
         cuda_graph_batch_sizes: Optional[List[int]] = None,
         draft_cuda_graph_batch_sizes: Optional[List[int]] = None,
-        max_tokens_per_batch: int = 409600, # a big number to disable chunked prefill
-        max_seqs_per_batch: int = 2048, # a big number for better throughput
+        max_tokens_per_batch: int = 409600,  # a big number to disable chunked prefill
+        max_seqs_per_batch: int = 2048,  # a big number for better throughput
         num_speculative_tokens: int = 0,
         num_handling_threads: int = 4,
     ) -> None:
@@ -112,3 +112,24 @@ class LLM:
             # carry over the prompt to the output
             output.prompt = prompts[index]
         return outputs
+
+    def apply_chat_template(self, messages: List[Message]) -> Optional[str]:
+        return self._handler.apply_chat_template(messages)
+
+    def encode(self, text: str) -> List[int]:
+        return self._handler.encode(text)
+
+    def decode(
+        self, tokens: List[int], skip_special_tokens: bool = True
+    ) -> Optional[str]:
+        return self._handler.decode(tokens, skip_special_tokens)
+
+    def __del__(self):
+        self._handler.reset()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.__del__()
+        return False

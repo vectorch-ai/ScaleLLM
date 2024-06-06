@@ -3,8 +3,7 @@ import os
 import queue
 from typing import List, Optional
 
-from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
-                         SamplingParams)
+from scalellm._C import LLMHandler, Message, Priority, RequestOutput, SamplingParams
 from scalellm.downloader import download_hf_model
 from scalellm.errors import ValidationError
 
@@ -251,3 +250,26 @@ class AsyncLLMEngine:
     # stop the engine, non-blocking
     def stop(self) -> None:
         return self._handler.stop()
+
+    def apply_chat_template(self, messages: List[Message]) -> Optional[str]:
+        return self._handler.apply_chat_template(messages)
+
+    def encode(self, text: str) -> List[int]:
+        return self._handler.encode(text)
+
+    def decode(
+        self, tokens: List[int], skip_special_tokens: bool = True
+    ) -> Optional[str]:
+        return self._handler.decode(tokens, skip_special_tokens)
+
+    def __del__(self):
+        self._handler.reset()
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *args):
+        self.stop()
+        self.__del__()
+        return False

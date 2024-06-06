@@ -219,19 +219,7 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
   }
 }
 
-LLMHandler::~LLMHandler() {
-  stop();
-
-  // stop all handling threads
-  // push nullptr to the queue to signal threads to exit
-  for (size_t i = 0; i < handling_threads_.size(); ++i) {
-    queue_.push(nullptr);
-  }
-  // wait for all threads to finish
-  for (auto& thread : handling_threads_) {
-    thread.join();
-  }
-}
+LLMHandler::~LLMHandler() { reset(); }
 
 void LLMHandler::schedule_async(std::string prompt,
                                 SamplingParams sp,
@@ -565,6 +553,50 @@ std::unique_ptr<Request> LLMHandler::create_chat_request(
 
   return create_request(
       tid, std::move(prompt.value()), sp, priority, stream, callback);
+}
+
+std::optional<std::string> LLMHandler::apply_chat_template(
+    const std::vector<Message>& conversation) {
+  // without chat template, return nullopt
+  if (chat_template_ == nullptr) {
+    return std::nullopt;
+  }
+  return chat_template_->apply(conversation);
+}
+
+std::vector<int32_t> LLMHandler::encode(const std::string& text) {
+  std::vector<int> tokens;
+  engine_->tokenizer()->encode(text, &tokens);
+  return tokens;
+}
+
+std::string LLMHandler::decode(const std::vector<int32_t>& tokens,
+                               bool skip_special_tokens) {
+  return engine_->tokenizer()->decode(tokens, skip_special_tokens);
+}
+
+void LLMHandler::reset() {
+  stop();
+
+  // stop all handling threads
+  // push nullptr to the queue to signal threads to exit
+  for (size_t i = 0; i < handling_threads_.size(); ++i) {
+    queue_.push(nullptr);
+  }
+  // wait for all threads to finish
+  for (auto& thread : handling_threads_) {
+    thread.join();
+  }
+  handling_threads_.clear();
+
+  // release all underlying resources
+  scheduler_.reset();
+  engine_.reset();
+  tokenizers_.clear();
+  chat_template_.reset();
+
+  // torch::cuda::empty_cache();
+  c10::cuda::CUDACachingAllocator::emptyCache();
 }
 
 }  // namespace llm

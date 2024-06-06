@@ -141,6 +141,18 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
                py::call_guard<py::gil_scoped_release>())
           .def("run_until_complete",
                &LLMHandler::run_until_complete,
+               py::call_guard<py::gil_scoped_release>())
+          .def("apply_chat_template",
+               &LLMHandler::apply_chat_template,
+               py::call_guard<py::gil_scoped_release>())
+          .def("encode",
+               &LLMHandler::encode,
+               py::call_guard<py::gil_scoped_release>())
+          .def("decode",
+               &LLMHandler::decode,
+               py::call_guard<py::gil_scoped_release>())
+          .def("release",
+               &LLMHandler::reset,
                py::call_guard<py::gil_scoped_release>());
 
   // LLMHandler::Options
