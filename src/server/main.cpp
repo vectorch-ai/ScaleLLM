@@ -80,12 +80,9 @@ DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 // NOLINTNEXTLINE
 static std::atomic<uint32_t> signal_received{0};
 void shutdown_handler(int signal) {
-  // force exit after receiving second signal
-  if (signal_received.fetch_add(1, std::memory_order_relaxed) >= 1) {
-    LOG(ERROR) << "Received signal again, force aborting...";
-    exit(1);
-  }
+  // TODO: gracefully shutdown the server
   LOG(WARNING) << "Received signal " << signal << ", stopping server...";
+  exit(1);
 }
 
 std::optional<std::vector<uint32_t>> parse_batch_sizes(

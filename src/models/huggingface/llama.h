@@ -416,11 +416,11 @@ REGISTER_MODEL_ARGS(llama, [&] {
   LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
 
   // decide model type based on vocab size
+  LOAD_ARG_OR(vocab_size, "vocab_size", 128256);
   if (args->vocab_size() == 128256) {
     // choose the right chat template
     SET_ARG(model_type, "llama3");
 
-    LOAD_ARG_OR(vocab_size, "vocab_size", 128256);
     LOAD_ARG_OR(hidden_size, "hidden_size", 8192);
     LOAD_ARG_OR(n_layers, "num_hidden_layers", 80);
     LOAD_ARG_OR(n_heads, "num_attention_heads", 64);
@@ -437,7 +437,6 @@ REGISTER_MODEL_ARGS(llama, [&] {
   } else if (args->vocab_size() == 64000) {
     // choose the right chat template
     SET_ARG(model_type, "Yi");
-    LOAD_ARG_OR(vocab_size, "vocab_size", 64000);
     LOAD_ARG_OR(hidden_size, "hidden_size", 7168);
     LOAD_ARG_OR(n_layers, "num_hidden_layers", 60);
     LOAD_ARG_OR(n_heads, "num_attention_heads", 56);
@@ -454,7 +453,6 @@ REGISTER_MODEL_ARGS(llama, [&] {
     SET_ARG(stop_token_ids, std::unordered_set<int32_t>({2, 6, 7, 8}));
   } else {
     // llama 2
-    LOAD_ARG_OR(vocab_size, "vocab_size", 32000);
     LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
     LOAD_ARG_OR(n_layers, "num_hidden_layers", 32);
     LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
