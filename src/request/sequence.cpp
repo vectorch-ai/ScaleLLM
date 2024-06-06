@@ -47,6 +47,9 @@ void Sequence::append_token(int32_t token_id) {
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
   CHECK(!is_prefill_stage()) << "cannot append token to a prefill sequence";
 
+  // check if the token is the first token after the prompt
+  was_first_token_ = num_tokens_ == num_prompt_tokens_;
+
   // append the token id and update the token count
   token_ids_[num_tokens_++] = token_id;
   token_to_count_map_[token_id]++;
@@ -65,6 +68,10 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
 
   // validate the accepted tokens with draft tokens, stop at the first mismatch
   const size_t start_idx = num_tokens_ - len;
+
+  // check if the token is the first token after the prompt
+  was_first_token_ = start_idx == num_prompt_tokens_;
+
   bool mismatch = false;
   size_t num_accpeted = 0;
   for (size_t i = 0; i < len; ++i) {
@@ -121,7 +128,6 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(const Slice<int32_t>& token_ids,
                                         const Tokenizer& tokenizer) {
-  no_delta_text_decoded_ = false;
   return decoder_.decode(token_ids, tokenizer);
 }
 

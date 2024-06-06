@@ -10,6 +10,7 @@
 #include "engine/batch.h"
 #include "memory/block_manager.h"
 #include "request/request.h"
+#include "request/sequence.h"
 #include "response_handler.h"
 #include "scheduler.h"
 
@@ -99,6 +100,12 @@ class ContinuousScheduler final : public Scheduler {
 
   // a batch of requests in running state, sorted by priority from high to low.
   std::vector<Request*> running_requests_;
+
+  // a batch of sequences that scheduled to run, sorted by priority from high to
+  std::vector<Sequence*> running_sequences_;
+
+  // token budget for each running sequence
+  std::vector<size_t> running_sequences_budgets_;
 
   // preemptable requests that hold cache slots, sorted by priority from high to
   // low.
