@@ -133,7 +133,7 @@ std::string Sequence::decode_delta_text(const Slice<int32_t>& token_ids,
 
 // decode the sequence to get text using the tokenizer
 std::string Sequence::decode_text(const Tokenizer& tokenizer) {
-  auto ids = token_ids();
+  const auto ids = token_ids();
   // leave 6 tokens for potential unfinished byte sequence from byte fallback
   // tokenization
   size_t start_idx = std::max(num_prompt_tokens_ + 1, ids.size() - 7);
