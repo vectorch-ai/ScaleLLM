@@ -423,7 +423,7 @@ void ContinuousScheduler::process_batch_output() {
   // update token latency metrics
   const auto now = absl::Now();
   for (Sequence* sequence : running_sequences_) {
-    if (sequence->was_first_token()) {
+    if (sequence->is_first_token()) {
       HISTOGRAM_OBSERVE(time_to_first_token_latency_seconds,
                         sequence->inter_token_latency(now));
     } else {

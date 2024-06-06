@@ -48,7 +48,7 @@ void Sequence::append_token(int32_t token_id) {
   CHECK(!is_prefill_stage()) << "cannot append token to a prefill sequence";
 
   // check if the token is the first token after the prompt
-  was_first_token_ = num_tokens_ == num_prompt_tokens_;
+  is_first_token_ = num_tokens_ == num_prompt_tokens_;
 
   // append the token id and update the token count
   token_ids_[num_tokens_++] = token_id;
@@ -70,7 +70,7 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
   const size_t start_idx = num_tokens_ - len;
 
   // check if the token is the first token after the prompt
-  was_first_token_ = start_idx == num_prompt_tokens_;
+  is_first_token_ = start_idx == num_prompt_tokens_;
 
   bool mismatch = false;
   size_t num_accpeted = 0;

@@ -132,8 +132,8 @@ class Sequence final {
   // returns the number of accepted tokens, including the resampled token
   size_t validate_tokens(const Slice<int64_t>& accpeted_token_ids);
 
-  // whether the new added token was the first token
-  bool was_first_token() const { return was_first_token_; }
+  // whether the new added token is the first token
+  bool is_first_token() const { return is_first_token_; }
 
   // add new cache blocks
   void append_block(const Block& new_block) {
@@ -205,8 +205,8 @@ class Sequence final {
   // last token generation time
   absl::Time last_token_time_;
 
-  // whether the added token was the first generated token
-  bool was_first_token_ = false;
+  // whether the added token is the first generated token
+  bool is_first_token_ = false;
 
   // the index of the sequence in the request
   size_t index_ = 0;
