@@ -74,7 +74,7 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
         const auto finish_reason = seq.finish_reason();
         // generate the final output
         AUTO_COUNTER(non_stream_decode_latency_seconds);
-        auto output = seq.decode_delta_text(seq.token_ids(), *tokenizer);
+        auto output = seq.decode_text(*tokenizer);
         outputs.push_back({i, std::move(output), to_string(finish_reason)});
       }
     }

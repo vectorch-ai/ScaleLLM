@@ -161,8 +161,11 @@ class Sequence final {
   std::string decode_delta_text(const Slice<int32_t>& token_ids,
                                 const Tokenizer& tokenizer);
 
+  // decode the full sequence to get text using the tokenizer
+  std::string decode_text(const Tokenizer& tokenizer);
+
   // get the offset of output tokens
-  size_t output_offset() const { return decoder_.output_offset(); }
+  size_t output_offset() const { return incremental_decoder_.output_offset(); }
 
   // check finish status, use cached value if not invalidated
   bool is_finished() const;
@@ -215,7 +218,7 @@ class Sequence final {
   Options options_;
 
   // incremental decoder to decode the tokens
-  IncrementalDecoder decoder_;
+  IncrementalDecoder incremental_decoder_;
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
