@@ -3,5 +3,7 @@ fastapi >= 0.110.0
 huggingface_hub
 shortuuid
 safetensors
+numpy
 setuptools
+wheel
 pytest

@@ -8,9 +8,23 @@ def convert_pickle_to_safetensors(path):
     for filename in os.listdir(path):
         if filename.endswith(".bin") or filename.endswith(".pth"):
             file_path = os.path.join(path, filename)
-            state_dict = torch.load(file_path)
+            # Replace the extension with .safetensors
+            st_file = os.path.splitext(filename)[0] + ".safetensors"
+            st_file_path = os.path.join(path, st_file)
+            if os.path.exists(st_file_path):
+                # already converted
+                continue
+            
+            # load the model
+            model = torch.load(file_path, map_location="cpu")
+            if hasattr(model, "state_dict"):
+                state_dict = model.state_dict()
+            else:
+                state_dict = model
+            
             if not isinstance(state_dict, dict):
                 continue
+            
             is_pickle_with_tensors = all(isinstance(state_dict[key], torch.Tensor) for key in state_dict)
             if is_pickle_with_tensors:
                 # Clone the tensors to avoid shared tensors
@@ -20,6 +34,8 @@ def convert_pickle_to_safetensors(path):
                 st_file_path = os.path.join(path, st_file)
                 save_file(state_dict, st_file_path)
                 print(f"Converted {filename} to {st_file}")
+            else:
+                print(f"Ignore non-tensor pickle file: {filename}")
     
 
 def download_hf_model(repo_id, revision=None, allow_patterns=None, cache_dir=None, convert_to_safetensors=False):

@@ -3,7 +3,8 @@ include CMakeLists.txt
 include LICENSE
 include .gitmodules
 recursive-include src *.*
-recursive-include src/python *.py
+recursive-include scalellm *.py
+recursive-include examples *.py
 recursive-include third_party *
 recursive-include docs *.*
 recursive-include tools *.*
