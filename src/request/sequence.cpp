@@ -140,7 +140,7 @@ std::string Sequence::decode_text(const Tokenizer& tokenizer) {
   std::stringstream ss;
   // output leading tokens first
   ss << incremental_decoder_.decode(ids.slice(0, start_idx), tokenizer);
-  // then decode one by one to avoid potential unfinished byte sequence
+  // then decode one by one to avoid potential unfinished bytes
   for (size_t i = start_idx; i < ids.size(); ++i) {
     ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
   }
