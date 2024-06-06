@@ -1,7 +1,8 @@
 import os
 from typing import List, Optional, Union
 
-from scalellm._C import LLMHandler, Priority, RequestOutput, SamplingParams, Message
+from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
+                         SamplingParams)
 from scalellm.downloader import download_hf_model
 from scalellm.errors import ValidationError
 
