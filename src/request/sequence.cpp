@@ -24,10 +24,10 @@ Sequence::Sequence(const std::string_view& prompt,
     : id_(next_id_.fetch_add(1)),
       last_token_time_(created_time),
       options_(option),
-      decoder_(prompt,
-               prompt_token_ids.size(),
-               option.echo,
-               option.skip_special_tokens),
+      incremental_decoder_(prompt,
+                           prompt_token_ids.size(),
+                           option.echo,
+                           option.skip_special_tokens),
       num_kv_cache_tokens_(static_cast<size_t>(EngineType::COUNT), 0) {
   CHECK(!prompt_token_ids.empty()) << "empty prompt token ids";
   CHECK_GT(capacity, prompt_token_ids.size()) << "capacity too small";
@@ -128,7 +128,23 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
 // decode the sequence to get delta text using the tokenizer
 std::string Sequence::decode_delta_text(const Slice<int32_t>& token_ids,
                                         const Tokenizer& tokenizer) {
-  return decoder_.decode(token_ids, tokenizer);
+  return incremental_decoder_.decode(token_ids, tokenizer);
+}
+
+// decode the sequence to get text using the tokenizer
+std::string Sequence::decode_text(const Tokenizer& tokenizer) {
+  const auto ids = token_ids();
+  // leave 6 tokens for potential unfinished byte sequence from byte fallback
+  // tokenization
+  size_t start_idx = std::max(num_prompt_tokens_ + 1, ids.size() - 7);
+  std::stringstream ss;
+  // output leading tokens first
+  ss << incremental_decoder_.decode(ids.slice(0, start_idx), tokenizer);
+  // then decode one by one to avoid potential unfinished bytes
+  for (size_t i = start_idx; i < ids.size(); ++i) {
+    ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
+  }
+  return ss.str();
 }
 
 void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
