@@ -22,6 +22,8 @@ DEFINE_GAUGE(num_waiting_requests, "Number of waiting requests in scheduler");
 DEFINE_GAUGE(num_preempted_requests,
              "Number of preempted requests in scheduler");
 
+DEFINE_GAUGE(num_running_sequences, "Number of running sequences");
+
 DEFINE_GAUGE(kv_cache_utilization_perc,
              "Utilization of the kv cache in percentage");
 DEFINE_GAUGE(num_blocks_in_prefix_cache,
@@ -39,6 +41,17 @@ DEFINE_COUNTER_INSTANCE(num_prompt_tokens_total,
 DEFINE_COUNTER_INSTANCE(num_generated_tokens_total,
                         num_processing_tokens_total,
                         {{"type", "generated"}});
+
+// ttft latency histogram
+DEFINE_HISTOGRAM(
+    time_to_first_token_latency_seconds,
+    "Histogram of time to first token latency in seconds",
+    std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
+// inter token latency histogram
+DEFINE_HISTOGRAM(
+    inter_token_latency_seconds,
+    "Histogram of inter token latency in seconds",
+    std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
 
 namespace llm {
 
@@ -142,12 +155,9 @@ Batch ContinuousScheduler::build_sequence_batch() {
   }
   running_requests_.clear();
 
-  struct SequenceData {
-    Sequence* sequence = nullptr;
-    // tokens to process in this iteration
-    size_t token_budget = 0;
-  };
-  std::vector<SequenceData> new_batch;
+  // clear previous batch
+  running_sequences_.clear();
+  running_sequences_budgets_.clear();
 
   // at least one sequence per batch
   const size_t max_seqs_per_batch = std::max(options_.max_seqs_per_batch(), 1);
@@ -165,6 +175,9 @@ Batch ContinuousScheduler::build_sequence_batch() {
   size_t remaining_seq_budget = max_seqs_per_batch;
 
   size_t num_preempted_requests = 0;
+
+  std::vector<Sequence*> candidate_sequences;
+  std::vector<size_t> candidate_token_budgets;
   // schedule the requests in the priority queue until budgets are exhausted
   while (!priority_queue_.empty() &&
          remaining_token_budget > options_.num_speculative_tokens() &&
@@ -172,8 +185,11 @@ Batch ContinuousScheduler::build_sequence_batch() {
     Request* request = priority_queue_.top();
     // TODO: check if request is timeout
 
-    std::vector<SequenceData> candidates;
-    candidates.reserve(request->sequences.size());
+    const size_t num_sequences = request->sequences.size();
+    candidate_sequences.clear();
+    candidate_token_budgets.clear();
+    candidate_sequences.reserve(num_sequences);
+    candidate_token_budgets.reserve(num_sequences);
 
     bool has_enough_blocks = true;
     size_t allocated_tokens = 0;
@@ -202,7 +218,8 @@ Batch ContinuousScheduler::build_sequence_batch() {
       // update the allocated tokens for the sequence
       allocated_tokens += actual_tokens;
       allocated_seqs += 1;
-      candidates.push_back({&sequence, actual_tokens});
+      candidate_sequences.push_back(&sequence);
+      candidate_token_budgets.push_back(actual_tokens);
     }
     CHECK(allocated_tokens <= remaining_token_budget);
     CHECK(allocated_seqs <= remaining_seq_budget);
@@ -213,7 +230,12 @@ Batch ContinuousScheduler::build_sequence_batch() {
       priority_queue_.pop();
       // add the request to the batch
       running_requests_.push_back(request);
-      new_batch.insert(new_batch.end(), candidates.begin(), candidates.end());
+      running_sequences_.insert(running_sequences_.end(),
+                                candidate_sequences.begin(),
+                                candidate_sequences.end());
+      running_sequences_budgets_.insert(running_sequences_budgets_.end(),
+                                        candidate_token_budgets.begin(),
+                                        candidate_token_budgets.end());
       remaining_token_budget -= allocated_tokens;
       remaining_seq_budget -= allocated_seqs;
 
@@ -239,10 +261,15 @@ Batch ContinuousScheduler::build_sequence_batch() {
     }
 
     // no requests left to preempt, partially schedule the request
-    if (!candidates.empty()) {
+    if (!candidate_sequences.empty()) {
       priority_queue_.pop();
       running_requests_.push_back(request);
-      new_batch.insert(new_batch.end(), candidates.begin(), candidates.end());
+      running_sequences_.insert(running_sequences_.end(),
+                                candidate_sequences.begin(),
+                                candidate_sequences.end());
+      running_sequences_budgets_.insert(running_sequences_budgets_.end(),
+                                        candidate_token_budgets.begin(),
+                                        candidate_token_budgets.end());
       remaining_token_budget -= allocated_tokens;
       remaining_seq_budget -= allocated_seqs;
     }
@@ -251,17 +278,20 @@ Batch ContinuousScheduler::build_sequence_batch() {
 
   // adjust the token number for each sequence if still have token budget left
   if (remaining_token_budget > 0) {
-    for (SequenceData& seq_data : new_batch) {
+    for (size_t i = 0; i < running_sequences_.size(); ++i) {
+      Sequence* sequence = running_sequences_[i];
+      size_t& token_budget = running_sequences_budgets_[i];
+
       // add previous allocated tokens back
-      remaining_token_budget += seq_data.token_budget;
+      remaining_token_budget += token_budget;
       size_t actual_tokens = 0;
       // no memory left
       if (!allocate_blocks_for(
-              seq_data.sequence, remaining_token_budget, &actual_tokens)) {
+              sequence, remaining_token_budget, &actual_tokens)) {
         break;
       }
       // update the allocated tokens for the sequence
-      seq_data.token_budget = actual_tokens;
+      token_budget = actual_tokens;
       CHECK(remaining_token_budget >= actual_tokens);
       remaining_token_budget -= actual_tokens;
 
@@ -272,7 +302,7 @@ Batch ContinuousScheduler::build_sequence_batch() {
     }
   }
 
-  if (new_batch.empty() && !priority_queue_.empty()) {
+  if (running_sequences_.empty() && !priority_queue_.empty()) {
     LOG(ERROR) << "No enough memory to schedule single sequence";
     // no enough memory to schedule single sequence, just finish the request
     Request* request = priority_queue_.top();
@@ -286,9 +316,9 @@ Batch ContinuousScheduler::build_sequence_batch() {
   size_t num_prompt_tokens = 0;
   size_t num_generated_tokens = 0;
   Batch batch;
-  for (const SequenceData& seq_data : new_batch) {
-    const size_t token_budget = seq_data.token_budget;
-    auto* sequence = seq_data.sequence;
+  for (size_t i = 0; i < running_sequences_.size(); ++i) {
+    auto* sequence = running_sequences_[i];
+    const size_t token_budget = running_sequences_budgets_[i];
 
     const size_t remaining_prompt_tokens =
         sequence->num_prompt_tokens() > sequence->num_kv_cache_tokens()
@@ -317,6 +347,8 @@ Batch ContinuousScheduler::build_sequence_batch() {
   GAUGE_SET(num_running_requests, running_requests_.size());
   GAUGE_SET(num_waiting_requests, priority_queue_.size());
   GAUGE_SET(num_preempted_requests, num_preempted_requests);
+
+  GAUGE_SET(num_running_sequences, running_sequences_.size());
 
   GAUGE_SET(kv_cache_utilization_perc, block_manager_->kv_cache_utilization());
   GAUGE_SET(num_blocks_in_prefix_cache,
@@ -388,6 +420,18 @@ void ContinuousScheduler::run_until_complete() {
 }
 
 void ContinuousScheduler::process_batch_output() {
+  // update token latency metrics
+  const auto now = absl::Now();
+  for (Sequence* sequence : running_sequences_) {
+    if (sequence->is_first_token()) {
+      HISTOGRAM_OBSERVE(time_to_first_token_latency_seconds,
+                        sequence->inter_token_latency(now));
+    } else {
+      HISTOGRAM_OBSERVE(inter_token_latency_seconds,
+                        sequence->inter_token_latency(now));
+    }
+  }
+
   // process request output in batch
   for (Request* request : running_requests_) {
     if (request->is_streaming()) {

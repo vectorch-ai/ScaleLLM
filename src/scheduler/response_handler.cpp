@@ -41,17 +41,6 @@ DEFINE_HISTOGRAM(
     "Histogram of end to end latency in seconds",
     std::vector<double>{0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 60.0});
 
-// ttft latency histogram
-DEFINE_HISTOGRAM(
-    time_to_first_token_latency_seconds,
-    "Histogram of time to first token latency in seconds",
-    std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
-// inter token latency histogram
-DEFINE_HISTOGRAM(
-    inter_token_latency_seconds,
-    "Histogram of inter token latency in seconds",
-    std::vector<double>{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0});
-
 namespace llm {
 
 ResponseHandler::ResponseHandler(const Tokenizer* tokenizer)
@@ -132,13 +121,6 @@ void ResponseHandler::on_request_stream(Request* request) {
     for (size_t i = 0; i < indexes.size(); ++i) {
       const size_t index = indexes[i];
       Sequence& seq = request->sequences[index];
-      if (seq.no_delta_text_decoded()) {
-        HISTOGRAM_OBSERVE(time_to_first_token_latency_seconds,
-                          seq.inter_token_latency(absl::Now()));
-      } else {
-        HISTOGRAM_OBSERVE(inter_token_latency_seconds,
-                          seq.inter_token_latency(absl::Now()));
-      }
       const auto finish_reason = seq.finish_reason();
       AUTO_COUNTER(stream_decode_latency_seconds);
       auto delta = seq.decode_delta_text(token_ids[i], *tokenizer);

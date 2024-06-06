@@ -132,6 +132,9 @@ class Sequence final {
   // returns the number of accepted tokens, including the resampled token
   size_t validate_tokens(const Slice<int64_t>& accpeted_token_ids);
 
+  // whether the new added token is the first token
+  bool is_first_token() const { return is_first_token_; }
+
   // add new cache blocks
   void append_block(const Block& new_block) {
     return append_blocks({new_block});
@@ -157,9 +160,6 @@ class Sequence final {
   // not thread safe
   std::string decode_delta_text(const Slice<int32_t>& token_ids,
                                 const Tokenizer& tokenizer);
-
-  // whether the delta text is decoded
-  bool no_delta_text_decoded() const { return no_delta_text_decoded_; }
 
   // get the offset of output tokens
   size_t output_offset() const { return decoder_.output_offset(); }
@@ -205,8 +205,8 @@ class Sequence final {
   // last token generation time
   absl::Time last_token_time_;
 
-  // whether the delta text is decoded
-  bool no_delta_text_decoded_ = true;
+  // whether the added token is the first generated token
+  bool is_first_token_ = false;
 
   // the index of the sequence in the request
   size_t index_ = 0;
