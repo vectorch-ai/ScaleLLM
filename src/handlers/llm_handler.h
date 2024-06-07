@@ -114,6 +114,19 @@ class LLMHandler {
   // run until complete, blocking call
   void run_until_complete();
 
+  // helper functions exposed for in python
+  // apply the chat template to the conversation and return the result
+  std::optional<std::string> apply_chat_template(
+      const std::vector<Message>& conversation);
+
+  std::vector<int32_t> encode(const std::string& text);
+
+  std::string decode(const std::vector<int32_t>& tokens,
+                     bool skip_special_tokens);
+
+  // release underlying resources
+  void reset();
+
  private:
   using Task = std::function<void(size_t tid)>;
   std::unique_ptr<Request> create_request(size_t tid,
