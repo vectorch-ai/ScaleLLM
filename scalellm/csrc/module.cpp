@@ -151,7 +151,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
           .def("decode",
                &LLMHandler::decode,
                py::call_guard<py::gil_scoped_release>())
-          .def("release",
+          .def("reset",
                &LLMHandler::reset,
                py::call_guard<py::gil_scoped_release>());
 
