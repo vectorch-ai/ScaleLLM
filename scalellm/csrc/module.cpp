@@ -6,6 +6,7 @@
 #include "common/metrics.h"
 #include "handlers/llm_handler.h"
 #include "handlers/sampling_params.h"
+#include "request/output.h"
 #include "request/status.h"
 
 namespace llm::csrc {
@@ -104,11 +105,22 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_property_readonly("message", &Status::message)
       .def_property_readonly("ok", &Status::ok);
 
+  auto logprob = py::class_<LogProb>(m, "LogProb")
+      .def(py::init())
+      .def_readwrite("token", &LogProb::token)
+      .def_readwrite("token_id", &LogProb::token_id)
+      .def_readwrite("logprob", &LogProb::logprob);
+
+  py::class_<LogProbContent>(logprob, "LogProbContent")
+      .def(py::init())
+      .def_readwrite("top_logprobs", &LogProbContent::top_logprobs);
+
   py::class_<SequenceOutput>(m, "SequenceOutput")
       .def(py::init())
       .def_readwrite("index", &SequenceOutput::index)
       .def_readwrite("text", &SequenceOutput::text)
-      .def_readwrite("finish_reason", &SequenceOutput::finish_reason);
+      .def_readwrite("finish_reason", &SequenceOutput::finish_reason)
+      .def_readwrite("logprobs", &SequenceOutput::logprobs);
 
   py::class_<RequestOutput>(m, "RequestOutput")
       .def(py::init())

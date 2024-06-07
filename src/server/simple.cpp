@@ -184,7 +184,7 @@ int main(int argc, char* argv[]) {
     options.stopping_criteria = stopping_criteria;
     options.echo = true;
 
-    Sequence sequence(input, prompt_tokens, absl::Now(), capacity, options);
+    Sequence sequence(input, prompt_tokens, capacity, options);
 
     // allocate all slots for the sequence
     CHECK(block_manager->allocate_blocks_for(&sequence, capacity));

@@ -18,6 +18,8 @@ struct SamplingParameter {
   float temperature = 0.7;
   float top_p = 1.0;
   int64_t top_k = -1;
+  bool logprobs = false;
+  int64_t top_logprobs = 0;
 
   // ############### following parameters are used for sampling ###############
   bool do_sample = false;
@@ -105,6 +107,13 @@ struct SamplingParameters {
   // whether to sample for each sequence.
   // [num_seqs] BoolTensor
   torch::Tensor do_sample;
+
+  // whether to output logprobs for each generated token.
+  bool logprobs = false;
+
+  // the number of top logprobs to output for each generated token.
+  // only used when logprobs is true.
+  int64_t top_logprobs = 0;
 };
 
 struct SampleOutput {
@@ -116,6 +125,11 @@ struct SampleOutput {
 
   // [num_seq] FloatTensor
   torch::Tensor logprobs;
+
+  // [num_seq, top_k] FloatTensor
+  torch::Tensor top_logprobs;
+  // [num_seq, top_k] LongTensor
+  torch::Tensor top_tokens;
 };
 
 }  // namespace llm

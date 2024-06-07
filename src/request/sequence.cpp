@@ -1,6 +1,7 @@
 #include "sequence.h"
 
 #include <absl/strings/match.h>
+#include <absl/time/clock.h>
 #include <absl/time/time.h>
 
 #include <atomic>
@@ -16,12 +17,14 @@ namespace llm {
 // NOLINTNEXTLINE
 std::atomic<int64_t> Sequence::next_id_{1};
 
-Sequence::Sequence(const std::string_view& prompt,
+Sequence::Sequence(size_t index,
+                   const std::string_view& prompt,
                    const std::vector<int32_t>& prompt_token_ids,
                    const absl::Time& created_time,
                    size_t capacity,
                    const Options& option)
     : id_(next_id_.fetch_add(1)),
+      index_(index),
       last_token_time_(created_time),
       options_(option),
       incremental_decoder_(prompt,
@@ -32,16 +35,32 @@ Sequence::Sequence(const std::string_view& prompt,
   CHECK(!prompt_token_ids.empty()) << "empty prompt token ids";
   CHECK_GT(capacity, prompt_token_ids.size()) << "capacity too small";
 
-  // allocate space for the token ids and add the prompt tokens
   num_prompt_tokens_ = prompt_token_ids.size();
+  // allocate space for token ids, logprobs, top tokens and top logprobs
   token_ids_.resize(capacity);
+  logprobs_.resize(capacity);
+  top_tokens_.resize(capacity);
+  top_logprobs_.resize(capacity);
+
+  // add the prompt tokens
   for (const auto token_id : prompt_token_ids) {
     token_ids_[num_tokens_++] = token_id;
     token_to_count_map_[token_id]++;
   }
 }
 
-void Sequence::append_token(int32_t token_id) {
+Sequence::Sequence(const std::string_view& prompt,
+                   const std::vector<int32_t>& prompt_token_ids,
+                   size_t capacity,
+                   const Options& option)
+    : Sequence(0, prompt, prompt_token_ids, absl::Now(), capacity, option) {}
+
+Sequence::Sequence(const std::vector<int32_t>& prompt_token_ids,
+                   size_t capacity,
+                   const Options& option)
+    : Sequence("", prompt_token_ids, capacity, option) {}
+
+void Sequence::append_token(const TokenInfo& token_info) {
   CHECK(num_tokens_ < token_ids_.size())
       << "exceed the token capacity of the sequence";
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
@@ -51,7 +70,13 @@ void Sequence::append_token(int32_t token_id) {
   is_first_token_ = num_tokens_ == num_prompt_tokens_;
 
   // append the token id and update the token count
-  token_ids_[num_tokens_++] = token_id;
+  const auto cur_idx = num_tokens_++;
+  const int32_t token_id = token_info.token_id;
+  token_ids_[cur_idx] = token_id;
+  logprobs_[cur_idx] = token_info.logprob;
+  top_tokens_[cur_idx] = token_info.top_tokens;
+  top_logprobs_[cur_idx] = token_info.top_logprobs;
+
   token_to_count_map_[token_id]++;
 
   // invalidate the finish status once a new token is appended
@@ -145,6 +170,75 @@ std::string Sequence::decode_text(const Tokenizer& tokenizer) {
     ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
   }
   return ss.str();
+}
+
+std::optional<SequenceOutput> Sequence::get_delta_output_until(
+    size_t num_tokens,
+    const Tokenizer& tokenizer) {
+  CHECK_LE(num_tokens, num_tokens_);
+  const auto ids = Slice<int32_t>(token_ids_, num_tokens);
+
+  // record the start index of token ids
+  const size_t start_idx = incremental_decoder_.output_offset();
+  auto delta = incremental_decoder_.decode(ids, tokenizer);
+  if (delta.empty() && finish_reason_ == FinishReason::NONE) {
+    // no delta text and not finished
+    return std::nullopt;
+  }
+
+  // std::optional<std::vector<LogProbContent>> logprobs;
+  SequenceOutput output;
+  output.index = index_;
+  output.text = incremental_decoder_.decode(ids, tokenizer);
+  if (finish_reason_ != FinishReason::NONE) {
+    output.finish_reason = to_string(finish_reason_);
+  }
+
+  // prepare logprobs and top tokens if available
+  const size_t end_idx = incremental_decoder_.output_offset();
+  // output logprobs for tokens [start_idx, end_idx)
+  if (start_idx < end_idx) {
+    std::vector<LogProbContent> logprob_contents;
+    for (size_t i = start_idx; i < end_idx; ++i) {
+      if (logprobs_[i].has_value()) {
+        const int32_t token_id = token_ids_[i];
+        LogProbContent logprob_content;
+
+        // add token and logprob
+        // TODO: use IdToToken function
+        logprob_content.token = tokenizer.decode(std::vector<int32_t>{token_id},
+                                                 options_.skip_special_tokens);
+        logprob_content.token_id = token_id;
+        logprob_content.logprob = logprobs_[i].value();
+
+        // add top logprobs if available
+        if (!top_tokens_[i].empty()) {
+          const auto& top_tokens = top_tokens_[i];
+          const auto& top_logprobs = top_logprobs_[i];
+          DCHECK_EQ(top_tokens.size(), top_logprobs.size());
+          std::vector<LogProb> logprobs;
+          for (size_t j = 0; j < top_tokens.size(); ++j) {
+            LogProb logprob;
+            const int32_t top_token_id = top_tokens[j];
+            const float top_logprob = top_logprobs[j];
+
+            logprob.token = tokenizer.decode(std::vector<int32_t>{top_token_id},
+                                             options_.skip_special_tokens);
+            logprob.token_id = top_token_id;
+            logprob.logprob = top_logprob;
+            logprobs.push_back(std::move(logprob));
+          }
+          logprob_content.top_logprobs = std::move(logprobs);
+        }
+        logprob_contents.push_back(std::move(logprob_content));
+      }
+    }
+
+    if (!logprob_contents.empty()) {
+      output.logprobs = std::move(logprob_contents);
+    }
+  }
+  return output;
 }
 
 void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
