@@ -23,6 +23,7 @@ class RejectionSampler final {
   torch::Tensor forward(const torch::Tensor& draft_token_ids,
                         const torch::Tensor& draft_probs,
                         const torch::Tensor& target_probs,
+                        const torch::Tensor& target_logprobs,
                         const torch::Tensor& bonus_token_ids,
                         bool mask_out_rejected_tokens = false) const;
 

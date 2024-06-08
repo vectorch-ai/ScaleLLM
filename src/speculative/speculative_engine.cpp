@@ -204,6 +204,8 @@ void SpeculativeEngine::validate(Batch& batch,
       {batch_size, num_speculative_tokens + /*bonus_tokens*/ 1, vocab_size});
   auto target_probs =
       torch::softmax(target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
+  auto target_logprobs =
+      torch::log_softmax(target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
   // filter out probs for bonus tokens
   target_probs = target_probs.slice(
       /*dim=*/1, /*start=*/0, /*end=*/num_speculative_tokens);
@@ -234,6 +236,7 @@ void SpeculativeEngine::validate(Batch& batch,
       rejection_sampler->forward(draft_token_ids,
                                  draft_probs,
                                  target_probs,
+                                 target_logprobs,
                                  bonus_token_ids,
                                  /*mask_out_rejected_tokens=*/true);
 
