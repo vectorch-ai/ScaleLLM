@@ -1,6 +1,6 @@
 # Adapted from https://github.com/lm-sys/FastChat
 import time
-from typing import List, Literal, Optional, Union, Dict
+from typing import Dict, List, Literal, Optional, Union
 
 import shortuuid
 from pydantic import BaseModel, Field

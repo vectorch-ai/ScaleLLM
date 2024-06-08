@@ -4,18 +4,15 @@ from typing import List
 import shortuuid
 
 from scalellm import AsyncLLMEngine, Message, SamplingParams
-from scalellm.serve.api_protocol import (
-    ChatCompletionMessage,
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    ChatCompletionResponseChoice,
-    ChatCompletionResponseStreamChoice,
-    ChatCompletionStreamResponse,
-    ChatMessage,
-    DeltaMessage,
-    UsageInfo,
-)
-from scalellm.serve.common import jsonify_model, to_api_chat_logprobs, to_priority
+from scalellm.serve.api_protocol import (ChatCompletionMessage,
+                                         ChatCompletionRequest,
+                                         ChatCompletionResponse,
+                                         ChatCompletionResponseChoice,
+                                         ChatCompletionResponseStreamChoice,
+                                         ChatCompletionStreamResponse,
+                                         ChatMessage, DeltaMessage, UsageInfo)
+from scalellm.serve.common import (jsonify_model, to_api_chat_logprobs,
+                                   to_priority)
 from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
