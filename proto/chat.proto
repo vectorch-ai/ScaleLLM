@@ -19,7 +19,7 @@ message ChatMessage {
   // FunctionCall function_call = 4;
 }
 
-// Next Id: 21
+// Next Id: 23
 message ChatRequest {
 
   // ID of the model to use. You can use the ListModels endpoint to list available models.
@@ -70,6 +70,12 @@ message ChatRequest {
 
   // top_k sampling cutoff, default = -1 (no cutoff)
   optional int64 top_k = 18;
+
+  // whether to include the log probabilities of output tokens in the response. default = false
+  optional bool logprobs = 21;
+
+  // the number of log probabilities to include in the response, between [0, 20]. default = 0
+  optional int32 top_logprobs = 22;
 
   // TODO: logit_bias
   // modify the likelihood of specified tokens appearing in the completion.
