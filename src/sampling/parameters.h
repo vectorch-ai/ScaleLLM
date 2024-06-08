@@ -60,6 +60,8 @@ struct SamplingParameters {
 
     params.sample_idxes = safe_to(sample_idxes, device);
     params.do_sample = safe_to(do_sample, device);
+    params.logprobs = logprobs;
+    params.top_logprobs = top_logprobs;
 
     return params;
   }

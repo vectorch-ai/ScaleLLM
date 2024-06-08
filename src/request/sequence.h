@@ -193,11 +193,14 @@ class Sequence final {
   // check finish status, use cached value if not invalidated
   bool is_finished() const;
 
-  // get the output of the sequence until the specified number of tokens
+  // get the output of the sequence until the specified number of tokens,
   // returns nullopt if no delta text and not finished
-  std::optional<SequenceOutput> get_delta_output_until(
-      size_t num_tokens,
+  std::optional<SequenceOutput> build_delta_output_until(
+      size_t end_idx,
       const Tokenizer& tokenizer);
+
+  // get the full output of the sequence
+  std::optional<SequenceOutput> build_output(const Tokenizer& tokenizer);
 
   // set engine type this sequence is used for
   void set_engine_type(EngineType engine_type) {
@@ -231,6 +234,11 @@ class Sequence final {
   double inter_token_latency(const absl::Time& now);
 
  private:
+  // build log probabilities for the tokens in the range [start_idx, end_idx)
+  std::vector<LogProbContent> build_logprobs(size_t start_idx,
+                                             size_t end_idx,
+                                             const Tokenizer& tokenizer);
+
   // global unique id for the sequence
   // NOLINTNEXTLINE
   const int64_t id_;

@@ -16,6 +16,8 @@ class SamplingParams:
         temperature: float = 1.0,
         top_p: float = 1.0,
         top_k: int = -1,
+        logprobs: bool = False,
+        top_logprobs: int = 0,
         skip_special_tokens: bool = True,
         ignore_eos: bool = False,
         stop: Optional[List[str]] = None,
@@ -39,6 +41,10 @@ class SamplingParams:
     top_p: float
     # top_k sampling cutoff. default = 0 to disable.
     top_k: int
+    # Whether to return log probabilities of the output tokens or not.
+    logprobs: bool
+    # An integer between 0 and 20 specifying the number of most likely tokens to return at each token position.
+    top_logprobs: int
     #  ############ stopping criterias. ############
     # whether to skip special tokens in the output text. default = true.
     skip_special_tokens: bool
@@ -66,11 +72,22 @@ class Usage:
     num_generated_tokens: int
     num_total_tokens: int
 
+class LogProb:
+    def __init__(self) -> None: ...
+    token: str
+    logprob: float
+    bytes: Optional[List[int]]
+
+class LogProbContent(LogProb):
+    def __init__(self) -> None: ...
+    top_logprobs: Optional[List[LogProb]]
+
 class SequenceOutput:
     def __init__(self) -> None: ...
     index: int
     text: str
     finish_reason: Optional[str]
+    logprobs: Optional[List[LogProbContent]]
 
 class RequestOutput:
     def __init__(self) -> None: ...

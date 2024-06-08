@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -172,21 +173,20 @@ std::string Sequence::decode_text(const Tokenizer& tokenizer) {
   return ss.str();
 }
 
-std::optional<SequenceOutput> Sequence::get_delta_output_until(
-    size_t num_tokens,
+std::optional<SequenceOutput> Sequence::build_delta_output_until(
+    size_t end_idx,
     const Tokenizer& tokenizer) {
-  CHECK_LE(num_tokens, num_tokens_);
-  const auto ids = Slice<int32_t>(token_ids_, num_tokens);
+  CHECK_LE(end_idx, num_tokens_);
+  const auto ids = Slice<int32_t>(token_ids_, end_idx);
 
   // record the start index of token ids
-  const size_t start_idx = incremental_decoder_.output_offset();
+  const size_t start = incremental_decoder_.output_offset();
   auto delta = incremental_decoder_.decode(ids, tokenizer);
   if (delta.empty() && finish_reason_ == FinishReason::NONE) {
     // no delta text and not finished
     return std::nullopt;
   }
 
-  // std::optional<std::vector<LogProbContent>> logprobs;
   SequenceOutput output;
   output.index = index_;
   output.text = incremental_decoder_.decode(ids, tokenizer);
@@ -195,50 +195,89 @@ std::optional<SequenceOutput> Sequence::get_delta_output_until(
   }
 
   // prepare logprobs and top tokens if available
-  const size_t end_idx = incremental_decoder_.output_offset();
+  const size_t end = incremental_decoder_.output_offset();
   // output logprobs for tokens [start_idx, end_idx)
-  if (start_idx < end_idx) {
-    std::vector<LogProbContent> logprob_contents;
-    for (size_t i = start_idx; i < end_idx; ++i) {
-      if (logprobs_[i].has_value()) {
-        const int32_t token_id = token_ids_[i];
-        LogProbContent logprob_content;
-
-        // add token and logprob
-        // TODO: use IdToToken function
-        logprob_content.token = tokenizer.decode(std::vector<int32_t>{token_id},
-                                                 options_.skip_special_tokens);
-        logprob_content.token_id = token_id;
-        logprob_content.logprob = logprobs_[i].value();
-
-        // add top logprobs if available
-        if (!top_tokens_[i].empty()) {
-          const auto& top_tokens = top_tokens_[i];
-          const auto& top_logprobs = top_logprobs_[i];
-          DCHECK_EQ(top_tokens.size(), top_logprobs.size());
-          std::vector<LogProb> logprobs;
-          for (size_t j = 0; j < top_tokens.size(); ++j) {
-            LogProb logprob;
-            const int32_t top_token_id = top_tokens[j];
-            const float top_logprob = top_logprobs[j];
-
-            logprob.token = tokenizer.decode(std::vector<int32_t>{top_token_id},
-                                             options_.skip_special_tokens);
-            logprob.token_id = top_token_id;
-            logprob.logprob = top_logprob;
-            logprobs.push_back(std::move(logprob));
-          }
-          logprob_content.top_logprobs = std::move(logprobs);
-        }
-        logprob_contents.push_back(std::move(logprob_content));
-      }
-    }
-
+  if (start < end) {
+    std::vector<LogProbContent> logprob_contents =
+        build_logprobs(start, end, tokenizer);
     if (!logprob_contents.empty()) {
       output.logprobs = std::move(logprob_contents);
     }
   }
   return output;
+}
+
+std::optional<SequenceOutput> Sequence::build_output(
+    const Tokenizer& tokenizer) {
+  const auto ids = token_ids();
+  const size_t size = ids.size();
+  // leave 6 tokens for potential unfinished byte sequence from byte fallback
+  // tokenization
+  size_t start_idx = std::max(num_prompt_tokens_ + 1, size - 7);
+  std::stringstream ss;
+  // output leading tokens first
+  ss << incremental_decoder_.decode(ids.slice(0, start_idx), tokenizer);
+  // then decode one by one to avoid potential unfinished bytes
+  for (size_t i = start_idx; i < size; ++i) {
+    ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
+  }
+
+  SequenceOutput output;
+  output.index = index_;
+  output.text = ss.str();
+  if (finish_reason_ != FinishReason::NONE) {
+    output.finish_reason = to_string(finish_reason_);
+  }
+  // TODO: support logprobs for the entire sequence?
+  // build logprobs for generated tokens
+  auto logprob_contents = build_logprobs(num_prompt_tokens_, size, tokenizer);
+  if (!logprob_contents.empty()) {
+    output.logprobs = std::move(logprob_contents);
+  }
+
+  return output;
+}
+
+std::vector<LogProbContent> Sequence::build_logprobs(
+    size_t start_idx,
+    size_t end_idx,
+    const Tokenizer& tokenizer) {
+  std::vector<LogProbContent> logprob_contents;
+  for (size_t i = start_idx; i < end_idx; ++i) {
+    if (logprobs_[i].has_value()) {
+      const int32_t token_id = token_ids_[i];
+      LogProbContent logprob_content;
+
+      // add token and logprob
+      // TODO: use IdToToken function
+      logprob_content.token = tokenizer.decode(std::vector<int32_t>{token_id},
+                                               options_.skip_special_tokens);
+      logprob_content.token_id = token_id;
+      logprob_content.logprob = logprobs_[i].value();
+
+      // add top logprobs if available
+      if (!top_tokens_[i].empty()) {
+        const auto& top_tokens = top_tokens_[i];
+        const auto& top_logprobs = top_logprobs_[i];
+        DCHECK_EQ(top_tokens.size(), top_logprobs.size());
+        std::vector<LogProb> logprobs;
+        for (size_t j = 0; j < top_tokens.size(); ++j) {
+          LogProb logprob;
+          const int32_t top_token_id = top_tokens[j];
+          const float top_logprob = top_logprobs[j];
+
+          logprob.token = tokenizer.decode(std::vector<int32_t>{top_token_id},
+                                           options_.skip_special_tokens);
+          logprob.token_id = top_token_id;
+          logprob.logprob = top_logprob;
+          logprobs.push_back(std::move(logprob));
+        }
+        logprob_content.top_logprobs = std::move(logprobs);
+      }
+      logprob_contents.push_back(std::move(logprob_content));
+    }
+  }
+  return logprob_contents;
 }
 
 void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
