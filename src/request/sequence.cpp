@@ -255,6 +255,10 @@ std::vector<LogProb> Sequence::build_logprobs(size_t start_idx,
         continue;
       }
 
+      if (absl::EndsWith(token, "�")) {
+        // TODO: handle unfinished byte sequence, ending with "�"
+      }
+
       LogProb logprob_content;
       // add token and logprob
       logprob_content.token = std::move(token);

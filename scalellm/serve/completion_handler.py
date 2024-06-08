@@ -7,7 +7,8 @@ from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
                                          CompletionResponseChoice,
                                          CompletionResponseStreamChoice,
                                          CompletionStreamResponse, UsageInfo)
-from scalellm.serve.common import jsonify_model, to_priority
+from scalellm.serve.common import (jsonify_model, to_api_completion_logprobs,
+                                   to_priority)
 from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
@@ -22,6 +23,9 @@ def to_sampling_params(request: CompletionRequest) -> SamplingParams:
     sp.temperature = request.temperature
     sp.top_p = request.top_p
     sp.top_k = request.top_k
+    if request.logprobs:
+        sp.logprobs = True
+        sp.top_logprobs = request.logprobs
     sp.skip_special_tokens = request.skip_special_tokens
     sp.stop = request.stop
     sp.ignore_eos = request.ignore_eos
@@ -57,11 +61,13 @@ async def generate_completion_response(
             completion_tokens=output.usage.num_generated_tokens,
         )
     choices = []
+    prompt_len = len(request.prompt)
     for seq_output in output.outputs:
         choices.append(
             CompletionResponseChoice(
                 index=seq_output.index,
                 text=seq_output.text,
+                logprobs=to_api_completion_logprobs(seq_output.logprobs, prompt_len),
                 finish_reason=seq_output.finish_reason,
             )
         )
@@ -95,8 +101,12 @@ async def generate_completion_stream_response(
     )
 
     async def generate_stream_content():
+        prompt_len = len(request.prompt)
+        offsets = {}
         async for output in output_stream:
             for seq_output in output.outputs:
+                cur_offset = offsets.setdefault(seq_output.index, prompt_len)
+                offsets[seq_output.index] += len(seq_output.text)
                 # send chunk with delta message
                 response = CompletionStreamResponse(
                     id=request_id,
@@ -107,7 +117,9 @@ async def generate_completion_stream_response(
                         CompletionResponseStreamChoice(
                             index=seq_output.index,
                             text=seq_output.text,
-                            logprobs=None,
+                            logprobs=to_api_completion_logprobs(
+                                seq_output.logprobs, cur_offset
+                            ),
                             finish_reason=None,
                         )
                     ],
