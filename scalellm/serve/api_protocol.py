@@ -1,6 +1,6 @@
 # Adapted from https://github.com/lm-sys/FastChat
 import time
-from typing import Dict, List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 
 import shortuuid
 from pydantic import BaseModel, Field
@@ -47,11 +47,19 @@ class UsageInfo(BaseModel):
     completion_tokens: Optional[int] = 0
 
 
-class LogProbs(BaseModel):
-    text_offset: List[int] = Field(default_factory=list)
-    token_logprobs: List[Optional[float]] = Field(default_factory=list)
-    tokens: List[str] = Field(default_factory=list)
-    top_logprobs: List[Optional[Dict[str, float]]] = Field(default_factory=list)
+class ChatCompletionLogProbData(BaseModel):
+    token: str
+    token_id: int
+    logprob: float
+    bytes: Optional[List[int]] = None
+
+
+class ChatCompletionLogProb(ChatCompletionLogProbData):
+    top_logprobs: Optional[List[ChatCompletionLogProbData]] = None
+
+
+class ChatCompletionLogProbs(BaseModel):
+    content: Optional[List[ChatCompletionLogProb]] = None
 
 
 class ChatCompletionMessage(BaseModel):
@@ -64,6 +72,7 @@ class ChatCompletionRequest(BaseModel):
     messages: List[ChatCompletionMessage]
     priority: Optional[Literal["default", "low", "normal", "high"]] = None
     n: Optional[int] = 1
+    # best_of: Optional[int] = None
     max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
     temperature: Optional[float] = 0.7
@@ -72,11 +81,14 @@ class ChatCompletionRequest(BaseModel):
     repetition_penalty: Optional[float] = 1.0
     top_p: Optional[float] = 1.0
     top_k: Optional[int] = -1
+    logprobs: Optional[bool] = False
+    top_logprobs: Optional[int] = Field(0, ge=0, le=20)
     # user: Optional[str] = None
     skip_special_tokens: Optional[bool] = True
     ignore_eos: Optional[bool] = False
     stop: Optional[Union[str, List[str]]] = None
     stop_token_ids: Optional[List[int]] = None
+    # seed: Optional[int] = None
 
 
 class ChatMessage(BaseModel):
@@ -87,6 +99,7 @@ class ChatMessage(BaseModel):
 class ChatCompletionResponseChoice(BaseModel):
     index: int
     message: ChatMessage
+    logprobs: Optional[ChatCompletionLogProbs] = None
     finish_reason: Optional[Literal["stop", "length"]] = None
 
 
@@ -107,7 +120,7 @@ class DeltaMessage(BaseModel):
 class ChatCompletionResponseStreamChoice(BaseModel):
     index: int
     delta: DeltaMessage
-    logprobs: Optional[LogProbs] = None
+    logprobs: Optional[ChatCompletionLogProbs] = None
     finish_reason: Optional[Literal["stop", "length"]] = None
 
 
@@ -126,6 +139,7 @@ class CompletionRequest(BaseModel):
     priority: Optional[Literal["default", "low", "normal", "high"]] = None
     # suffix: Optional[str] = None
     n: Optional[int] = 1
+    # best_of: Optional[int] = None
     max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
     # logprobs: Optional[int] = None
@@ -141,14 +155,13 @@ class CompletionRequest(BaseModel):
     ignore_eos: Optional[bool] = False
     stop: Optional[Union[str, List[str]]] = None
     stop_token_ids: Optional[List[int]] = None
-    # use_beam_search: Optional[bool] = False
-    # best_of: Optional[int] = None
+    # seed: Optional[int] = None
 
 
 class CompletionResponseChoice(BaseModel):
     index: int
     text: str
-    logprobs: Optional[LogProbs] = None
+    # logprobs: Optional[ChatCompletionLogProbs] = None
     finish_reason: Optional[Literal["stop", "length"]] = None
 
 
@@ -164,7 +177,7 @@ class CompletionResponse(BaseModel):
 class CompletionResponseStreamChoice(BaseModel):
     index: int
     text: str
-    logprobs: Optional[LogProbs] = None
+    # logprobs: Optional[ChatCompletionLogProbs] = None
     finish_reason: Optional[Literal["stop", "length"]] = None
 
 

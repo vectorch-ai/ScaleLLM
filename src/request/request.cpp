@@ -28,7 +28,9 @@ void Request::add_sequence() {
   options.sampling_param = this->sampling_param;
   options.stopping_criteria = this->stopping_criteria;
 
-  sequences.emplace_back(this->prompt,
+  const size_t index = sequences.size();
+  sequences.emplace_back(index,
+                         this->prompt,
                          this->prompt_tokens,
                          this->created_time,
                          this->seq_capacity,

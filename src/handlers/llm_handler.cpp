@@ -480,6 +480,8 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   sampling_param.temperature = sp.temperature;
   sampling_param.top_p = sp.top_p;
   sampling_param.top_k = sp.top_k;
+  sampling_param.logprobs = sp.logprobs;
+  sampling_param.top_logprobs = sp.top_logprobs;
   // sampling_param.do_sample = sp.do_sample;
   // sampling_param.seed = sp.seed;
 

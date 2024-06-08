@@ -4,18 +4,12 @@
 #include <absl/time/clock.h>
 #include <glog/logging.h>
 
-#include <cstdint>
 #include <memory>
 
 #include "common/metrics.h"
 #include "request/request.h"
 #include "request/sequence.h"
 #include "request/status.h"
-
-// gflags
-DEFINE_int32(streaming_token_buffer_size,
-             1,
-             "number of tokens to buffer before streaming to client");
 
 // metrics
 DEFINE_COUNTER_FAMILY(detokenization_latency_seconds,
@@ -69,13 +63,13 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
     if (!request->is_streaming()) {
       auto& outputs = req_output.outputs;
       outputs.reserve(request->sequences.size());
-      for (size_t i = 0; i < request->sequences.size(); ++i) {
-        Sequence& seq = request->sequences[i];
-        const auto finish_reason = seq.finish_reason();
+      for (auto& seq : request->sequences) {
         // generate the final output
         AUTO_COUNTER(non_stream_decode_latency_seconds);
-        auto output = seq.decode_text(*tokenizer);
-        outputs.push_back({i, std::move(output), to_string(finish_reason)});
+        auto seq_output = seq.build_output(*tokenizer);
+        if (seq_output.has_value()) {
+          outputs.push_back(std::move(seq_output.value()));
+        }
       }
     }
     req_output.status = Status(StatusCode::OK);
@@ -88,7 +82,7 @@ void ResponseHandler::on_request_stream(Request* request) {
   CHECK(request->is_streaming()) << "request is not a streaming request";
 
   std::vector<size_t> indexes;
-  std::vector<Slice<int32_t>> token_ids;
+  std::vector<size_t> num_tokens;
   for (size_t i = 0; i < request->sequences.size(); ++i) {
     Sequence& seq = request->sequences[i];
     if (seq.is_closed()) {
@@ -97,11 +91,9 @@ void ResponseHandler::on_request_stream(Request* request) {
     }
 
     // check if the sequence has enough tokens to output
-    const auto ids = seq.token_ids();
-    if (seq.is_finished() ||
-        ids.size() - seq.output_offset() >= FLAGS_streaming_token_buffer_size) {
+    if (seq.has_pending_tokens() || seq.is_finished()) {
       indexes.push_back(i);
-      token_ids.push_back(ids);
+      num_tokens.push_back(seq.num_tokens());
     }
 
     // close the sequence after sending finish reason
@@ -113,20 +105,20 @@ void ResponseHandler::on_request_stream(Request* request) {
   // output the delta text til the end of the sequence to the client
   response_threadpool_.schedule([request,
                                  indexes = std::move(indexes),
-                                 token_ids = std::move(token_ids),
+                                 num_tokens = std::move(num_tokens),
                                  tokenizer = tokenizer_.get()]() {
     AUTO_COUNTER(stream_responsing_latency_seconds);
 
     RequestOutput req_output;
     for (size_t i = 0; i < indexes.size(); ++i) {
       const size_t index = indexes[i];
+      const size_t size = num_tokens[i];
       Sequence& seq = request->sequences[index];
-      const auto finish_reason = seq.finish_reason();
+
       AUTO_COUNTER(stream_decode_latency_seconds);
-      auto delta = seq.decode_delta_text(token_ids[i], *tokenizer);
-      if (!delta.empty() || finish_reason != FinishReason::NONE) {
-        req_output.outputs.push_back(
-            {index, std::move(delta), to_string(finish_reason)});
+      auto seq_output = seq.build_delta_output_until(size, *tokenizer);
+      if (seq_output.has_value()) {
+        req_output.outputs.push_back(std::move(seq_output.value()));
       }
     }
 

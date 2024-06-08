@@ -142,9 +142,7 @@ TEST(SequenceTest, DiscardTokenIds) {
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   Sequence::Options options;
   options.stopping_criteria.max_tokens = max_tokens;
-  Sequence sequence(/*prompt=*/"",
-                    prompt_tokens,
-                    absl::Now(),
+  Sequence sequence(prompt_tokens,
                     /*capacity=*/200,
                     options);
   EXPECT_EQ(sequence.num_prompt_tokens(), 3);
@@ -181,9 +179,7 @@ TEST(SequenceTest, SpeculativeBasic) {
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   Sequence::Options options;
   options.stopping_criteria.max_tokens = 100;
-  Sequence sequence(/*prompt=*/"",
-                    prompt_tokens,
-                    absl::Now(),
+  Sequence sequence(prompt_tokens,
                     /*capacity=*/200,
                     options);
 
@@ -211,9 +207,7 @@ TEST(SequenceTest, SpeculativeFullMatch) {
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   Sequence::Options options;
   options.stopping_criteria.max_tokens = 100;
-  Sequence sequence(/*prompt=*/"",
-                    prompt_tokens,
-                    absl::Now(),
+  Sequence sequence(prompt_tokens,
                     /*capacity=*/200,
                     options);
 
@@ -255,9 +249,7 @@ TEST(SequenceTest, SpeculativeNoMatch) {
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   Sequence::Options options;
   options.stopping_criteria.max_tokens = 100;
-  Sequence sequence(/*prompt=*/"",
-                    prompt_tokens,
-                    absl::Now(),
+  Sequence sequence(prompt_tokens,
                     /*capacity=*/200,
                     options);
 
@@ -299,9 +291,7 @@ TEST(SequenceTest, SpeculativePartiallyMatch) {
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   Sequence::Options options;
   options.stopping_criteria.max_tokens = 100;
-  Sequence sequence(/*prompt=*/"",
-                    prompt_tokens,
-                    absl::Now(),
+  Sequence sequence(prompt_tokens,
                     /*capacity=*/200,
                     options);
 
@@ -342,9 +332,7 @@ TEST(SequenceTest, SpeculativeStopMaxTokens) {
   std::vector<int32_t> prompt_tokens = {1, 2, 4};
   Sequence::Options options;
   options.stopping_criteria.max_tokens = 2;
-  Sequence sequence(/*prompt=*/"",
-                    prompt_tokens,
-                    absl::Now(),
+  Sequence sequence(prompt_tokens,
                     /*capacity=*/200,
                     options);
 
@@ -378,9 +366,7 @@ TEST(SequenceTest, SpeculativeStopEosTokenId) {
   options.stopping_criteria.ignore_eos = false;
   options.stopping_criteria.eos_token_id = eos_token_id;
 
-  Sequence sequence(/*prompt=*/"",
-                    prompt_tokens,
-                    absl::Now(),
+  Sequence sequence(prompt_tokens,
                     /*capacity=*/200,
                     options);
 

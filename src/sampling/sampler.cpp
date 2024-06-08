@@ -6,7 +6,10 @@
 #include "sampling/parameters.h"
 namespace llm {
 
-Sampler::Sampler(const torch::Tensor& do_sample) {
+Sampler::Sampler(const torch::Tensor& do_sample,
+                 bool logprobs,
+                 int64_t top_logprobs)
+    : logprobs_(logprobs), top_logprobs_(top_logprobs) {
   CHECK(do_sample.defined());
   do_sample_ = do_sample;
   all_random_sample_ = do_sample.all().item<bool>();
@@ -20,22 +23,36 @@ SampleOutput Sampler::forward(const torch::Tensor& logits) const {
   // use float32 for probabilities and log probabilities
   const auto probs =
       torch::softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
-  const auto logprobs =
-      torch::log_softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
 
   SampleOutput output;
   output.probs = probs;
-  output.logprobs = logprobs;
 
+  torch::Tensor samples;
   if (all_random_sample_) {
-    output.next_tokens = random_sample(probs);
+    samples = random_sample(probs);
   } else if (all_greedy_sample_) {
-    output.next_tokens = greedy_sample(probs);
+    samples = greedy_sample(probs);
   } else {
     // mixed sample, sample both then choose based on do_sample_
     auto random = random_sample(probs);
     auto greedy = greedy_sample(probs);
-    output.next_tokens = torch::where(do_sample_, random, greedy);
+    samples = torch::where(do_sample_, random, greedy);
+  }
+  output.next_tokens = samples;
+
+  if (logprobs_) {
+    // log_softmax is equivalent to log(softmax) but more numerically stable
+    const auto logprobs =
+        torch::log_softmax(logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
+    // select the logprobs for each sequence
+    auto selected_logprobs = logprobs.gather(/*dim=*/-1, samples.view({-1, 1}));
+    output.logprobs = selected_logprobs.view({-1});
+
+    if (top_logprobs_ > 0) {
+      auto [values, indices] = logprobs.topk(top_logprobs_, /*dim=*/-1);
+      output.top_logprobs = values;
+      output.top_tokens = indices;
+    }
   }
 
   return output;

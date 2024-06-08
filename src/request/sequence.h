@@ -4,7 +4,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -31,6 +30,15 @@ enum class EngineType : int8_t {
   COUNT = 2,
 };
 
+struct TokenInfo {
+  explicit TokenInfo(int32_t token_id) : token_id(token_id) {}
+
+  int32_t token_id = 0;
+  std::optional<float> logprob;
+  Slice<int64_t> top_tokens;
+  Slice<float> top_logprobs;
+};
+
 // The sequence encapsulates all the necessary
 // information for a sequence, including the prompt, the token ids, and the
 // current position in generating tokens, etc.
@@ -50,9 +58,20 @@ class Sequence final {
     bool echo = false;
   };
 
-  Sequence(const std::string_view& prompt,
+  Sequence(size_t index,
+           const std::string_view& prompt,
            const std::vector<int32_t>& prompt_token_ids,
            const absl::Time& created_time,
+           size_t capacity,
+           const Options& option);
+
+  // simple constructor for testing
+  Sequence(const std::string_view& prompt,
+           const std::vector<int32_t>& prompt_token_ids,
+           size_t capacity,
+           const Options& option);
+
+  Sequence(const std::vector<int32_t>& prompt_token_ids,
            size_t capacity,
            const Options& option);
 
@@ -125,7 +144,9 @@ class Sequence final {
 
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
-  void append_token(int32_t token_id);
+  void append_token(const TokenInfo& token_info);
+
+  void append_token(int32_t token_id) { append_token(TokenInfo(token_id)); }
 
   // validate draft tokens with accepted tokens for speculative decoding
   // N.B. take int64_t as input to be compatible with torch::Tensor
@@ -156,19 +177,22 @@ class Sequence final {
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
 
-  // decode the tokens till end to get delta text using the tokenizer
-  // not thread safe
-  std::string decode_delta_text(const Slice<int32_t>& token_ids,
-                                const Tokenizer& tokenizer);
-
-  // decode the full sequence to get text using the tokenizer
-  std::string decode_text(const Tokenizer& tokenizer);
-
-  // get the offset of output tokens
-  size_t output_offset() const { return incremental_decoder_.output_offset(); }
+  // whether has pending tokens to output
+  bool has_pending_tokens() const {
+    return num_tokens_ > incremental_decoder_.output_offset();
+  }
 
   // check finish status, use cached value if not invalidated
   bool is_finished() const;
+
+  // get the output of the sequence until the specified number of tokens,
+  // returns nullopt if no delta text and not finished
+  std::optional<SequenceOutput> build_delta_output_until(
+      size_t end_idx,
+      const Tokenizer& tokenizer);
+
+  // get the full output of the sequence
+  std::optional<SequenceOutput> build_output(const Tokenizer& tokenizer);
 
   // set engine type this sequence is used for
   void set_engine_type(EngineType engine_type) {
@@ -202,17 +226,23 @@ class Sequence final {
   double inter_token_latency(const absl::Time& now);
 
  private:
+  // build log probabilities for the tokens in the range [start_idx, end_idx)
+  std::vector<LogProb> build_logprobs(size_t start_idx,
+                                      size_t end_idx,
+                                      const Tokenizer& tokenizer);
+
   // global unique id for the sequence
+  // NOLINTNEXTLINE
   const int64_t id_;
+
+  // the index of the sequence in the request
+  size_t index_ = 0;
 
   // last token generation time
   absl::Time last_token_time_;
 
   // whether the added token is the first generated token
   bool is_first_token_ = false;
-
-  // the index of the sequence in the request
-  size_t index_ = 0;
 
   // options for the sequence
   Options options_;
@@ -222,6 +252,13 @@ class Sequence final {
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
+
+  // log probabilities of the sequence
+  std::vector<std::optional<float>> logprobs_;
+
+  // top k log probabilities of the sequence
+  std::vector<std::vector<int64_t>> top_tokens_;
+  std::vector<std::vector<float>> top_logprobs_;
 
   // number of tokens in the sequence
   size_t num_tokens_ = 0;

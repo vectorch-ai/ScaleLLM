@@ -26,10 +26,10 @@ inline torch::Tensor create_2d_tensor(const std::vector<std::vector<T>>& vec,
   return tensor;
 };
 
-inline torch::Tensor safe_to(const torch::Tensor& t,
-                             const torch::Device& device) {
-  return t.defined() ? t.to(device) : t;
-};
+// inline torch::Tensor safe_to(const torch::Tensor& t,
+//                              const torch::Device& device) {
+//   return t.defined() ? t.to(device) : t;
+// };
 
 inline torch::Tensor safe_to(const torch::Tensor& t,
                              const torch::TensorOptions& options) {

@@ -20,6 +20,8 @@ struct SamplingParams {
                  float temperature,
                  float top_p,
                  int64_t top_k,
+                 bool logprobs,
+                 int64_t top_logprobs,
                  bool skip_special_tokens,
                  bool ignore_eos,
                  std::optional<std::vector<std::string>> stop,
@@ -33,6 +35,8 @@ struct SamplingParams {
         temperature(temperature),
         top_p(top_p),
         top_k(top_k),
+        logprobs(logprobs),
+        top_logprobs(top_logprobs),
         skip_special_tokens(skip_special_tokens),
         ignore_eos(ignore_eos),
         stop(stop),
@@ -72,6 +76,12 @@ struct SamplingParams {
 
   // top_k sampling cutoff. default = -1 to disable.
   int64_t top_k = -1;
+
+  // whether to return the log probabilities of the tokens. default = false.
+  bool logprobs = false;
+
+  // number of top log probabilities to return. default = 0.
+  int64_t top_logprobs = 0;
 
   // whether to skip special tokens in the output text. default = true.
   bool skip_special_tokens = true;

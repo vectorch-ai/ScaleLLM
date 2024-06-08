@@ -31,8 +31,6 @@ struct ModelOutput {
 
   // logits for selected indices
   torch::Tensor logits;
-
-  // torch::Tensor logprob;
 };
 
 }  // namespace llm

@@ -35,6 +35,20 @@ struct Usage {
   size_t num_total_tokens = 0;
 };
 
+struct LogProbData {
+  // the text of the token.
+  std::string token;
+  // the token id.
+  int32_t token_id;
+  // the log probability of the token.
+  float logprob;
+};
+
+struct LogProb : public LogProbData {
+  // the top log probabilities.
+  std::optional<std::vector<LogProbData>> top_logprobs;
+};
+
 struct SequenceOutput {
   // the index of the sequence in the request.
   size_t index;
@@ -45,6 +59,9 @@ struct SequenceOutput {
 
   // the reason the sequence finished.
   std::optional<std::string> finish_reason;
+
+  // log probabilities of the generated tokens.
+  std::optional<std::vector<LogProb>> logprobs;
 };
 
 struct RequestOutput {

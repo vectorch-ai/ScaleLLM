@@ -6,6 +6,7 @@
 #include "common/metrics.h"
 #include "handlers/llm_handler.h"
 #include "handlers/sampling_params.h"
+#include "request/output.h"
 #include "request/status.h"
 
 namespace llm::csrc {
@@ -23,19 +24,21 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
 
   // class SamplingParameter
   py::class_<SamplingParams>(m, "SamplingParams")
-      .def(py::init<uint32_t,
-                    uint32_t,
-                    bool,
-                    float,
-                    float,
-                    float,
-                    float,
-                    float,
-                    int64_t,
-                    bool,
-                    bool,
-                    std::optional<std::vector<std::string>>,
-                    std::optional<std::vector<int32_t>>>(),
+      .def(py::init<uint32_t, /*max_tokens*/
+                    uint32_t, /*n*/
+                    bool,     /*echo*/
+                    float,    /*frequency_penalty*/
+                    float,    /*presence_penalty*/
+                    float,    /*repetition_penalty*/
+                    float,    /*temperature*/
+                    float,    /*top_p*/
+                    int64_t,  /*top_k*/
+                    bool,     /*logprobs*/
+                    int64_t,  /*top_logprobs*/
+                    bool,     /*skip_special_tokens*/
+                    bool,     /*ignore_eos*/
+                    std::optional<std::vector<std::string>>, /*stop*/
+                    std::optional<std::vector<int32_t>>>(),  /*stop_token_ids*/
            py::arg("max_tokens") = 16,
            py::arg("n") = 1,
            py::arg("echo") = false,
@@ -45,6 +48,8 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
            py::arg("temperature") = 1.0,
            py::arg("top_p") = 1.0,
            py::arg("top_k") = -1,
+           py::arg("logprobs") = false,
+           py::arg("top_logprobs") = 0,
            py::arg("skip_special_tokens") = true,
            py::arg("ignore_eos") = false,
            py::arg("stop") = std::nullopt,
@@ -58,6 +63,8 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_readwrite("temperature", &SamplingParams::temperature)
       .def_readwrite("top_p", &SamplingParams::top_p)
       .def_readwrite("top_k", &SamplingParams::top_k)
+      .def_readwrite("logprobs", &SamplingParams::logprobs)
+      .def_readwrite("top_logprobs", &SamplingParams::top_logprobs)
       .def_readwrite("skip_special_tokens",
                      &SamplingParams::skip_special_tokens)
       .def_readwrite("ignore_eos", &SamplingParams::ignore_eos)
@@ -104,11 +111,25 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_property_readonly("message", &Status::message)
       .def_property_readonly("ok", &Status::ok);
 
+  py::class_<LogProbData>(m, "LogProbData")
+      .def(py::init())
+      .def_readwrite("token", &LogProbData::token)
+      .def_readwrite("token_id", &LogProbData::token_id)
+      .def_readwrite("logprob", &LogProbData::logprob);
+
+  py::class_<LogProb>(m, "LogProb")
+      .def(py::init())
+      .def_readwrite("token", &LogProbData::token)
+      .def_readwrite("token_id", &LogProbData::token_id)
+      .def_readwrite("logprob", &LogProbData::logprob)
+      .def_readwrite("top_logprobs", &LogProb::top_logprobs);
+
   py::class_<SequenceOutput>(m, "SequenceOutput")
       .def(py::init())
       .def_readwrite("index", &SequenceOutput::index)
       .def_readwrite("text", &SequenceOutput::text)
-      .def_readwrite("finish_reason", &SequenceOutput::finish_reason);
+      .def_readwrite("finish_reason", &SequenceOutput::finish_reason)
+      .def_readwrite("logprobs", &SequenceOutput::logprobs);
 
   py::class_<RequestOutput>(m, "RequestOutput")
       .def(py::init())
