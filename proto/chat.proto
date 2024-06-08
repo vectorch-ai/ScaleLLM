@@ -94,6 +94,39 @@ message ChatRequest {
   optional Priority priority = 15;
 }
 
+message ChatLogProbData {
+  // token
+  optional string token = 1;
+
+  // the token id.
+  optional int32 token_id = 2 [json_name="token_id"];
+
+  // the log probability of the token.
+  optional float logprob = 3;
+
+  // repeated int32 bytes = 4;
+}
+
+message ChatLogProb {
+  // token
+  optional string token = 1;
+
+  // the token id.
+  optional int32 token_id = 2 [json_name="token_id"];
+
+  // the log probability of the token.
+  optional float logprob = 3;
+
+  // repeated int32 bytes = 4;
+
+  // the log probability of top tokens.
+  repeated ChatLogProbData top_logprobs = 5 [json_name="top_logprobs"];
+}
+
+message ChatLogProbs {
+  repeated ChatLogProb content = 1;
+}
+
 message ChatChoice {
   // the index of the choice in the list of choices.
   optional uint32 index = 1;
@@ -109,6 +142,9 @@ message ChatChoice {
   // "length" - the maximum number of tokens specified in the request was reached.
   // "function_call" - the model called a function.
   optional string finish_reason = 4 [json_name="finish_reason"];
+
+  // the log probabilities of output tokens.
+  optional ChatLogProbs logprobs = 5;
 }
 
 message ChatResponse {

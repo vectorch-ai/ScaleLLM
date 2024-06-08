@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string>
 
+#include "completion.pb.h"
 #include "request/output.h"
 #include "utils.h"
 #include "uuid.h"
@@ -19,6 +20,31 @@ namespace {
 // NOLINTNEXTLINE
 thread_local ShortUUID short_uuid;
 std::string generate_request_id() { return "cmpl-" + short_uuid.random(); }
+
+void set_logprobs(proto::Choice* choice,
+                  const std::optional<std::vector<LogProb>>& logprobs,
+                  int32_t offset) {
+  if (!logprobs.has_value() || logprobs.value().empty()) {
+    return;
+  }
+
+  auto* proto_logprobs = choice->mutable_logprobs();
+  for (const auto& logprob : logprobs.value()) {
+    proto_logprobs->add_text_offset(offset);
+    offset += logprob.token.size();
+    proto_logprobs->add_tokens(logprob.token);
+    proto_logprobs->add_token_ids(logprob.token_id);
+    proto_logprobs->add_token_logprobs(logprob.logprob);
+
+    if (logprob.top_logprobs.has_value()) {
+      auto* top_logprobs = proto_logprobs->add_top_logprobs();
+      auto* map = top_logprobs->mutable_map();
+      for (const auto& top_logprob : logprob.top_logprobs.value()) {
+        (*map)[top_logprob.token] = top_logprob.logprob;
+      }
+    }
+  }
+}
 
 bool send_delta_to_client(CompletionCallData* call_data,
                           const std::string& request_id,
@@ -35,6 +61,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
       auto* choice = response.add_choices();
       choice->set_index(seq_output.index);
       choice->set_text(seq_output.text);
+      set_logprobs(choice, seq_output.logprobs, 0);
       if (!call_data->write(std::move(response))) {
         return false;
       }
@@ -75,7 +102,7 @@ bool send_result_to_client(CompletionCallData* call_data,
     auto* choice = response.add_choices();
     choice->set_index(output.index);
     choice->set_text(output.text);
-    // choice->set_logprobs(0);
+    set_logprobs(choice, output.logprobs, 0);
     if (output.finish_reason.has_value()) {
       choice->set_finish_reason(output.finish_reason.value());
     }
@@ -124,6 +151,10 @@ SamplingParams grpc_request_to_sampling_params(
   }
   if (request.has_top_k()) {
     sampling_params.top_k = request.top_k();
+  }
+  if (request.has_logprobs()) {
+    sampling_params.logprobs = true;
+    sampling_params.top_logprobs = request.logprobs();
   }
   if (request.has_skip_special_tokens()) {
     sampling_params.skip_special_tokens = request.skip_special_tokens();
