@@ -119,11 +119,18 @@ bool verify_params(const SamplingParams& sp, OutputCallback callback) {
     return false;
   }
 
-  // logprobs <= 5
-  // if (sp.logprobs > 5) {
-  //   CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
-  //                                 "logprobs must be between 0 and 5");
-  // }
+  if (sp.logprobs) {
+    if (sp.echo) {
+      CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                          "logprobs is not supported with echo");
+      return false;
+    }
+    if (sp.top_logprobs > 20) {
+      CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                          "logprobs must be between 0 and 20");
+      return false;
+    }
+  }
 
   // presence_penalty between [-2.0, 2.0]
   if (sp.presence_penalty < -2.0 || sp.presence_penalty > 2.0) {

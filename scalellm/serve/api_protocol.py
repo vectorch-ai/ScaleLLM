@@ -1,6 +1,6 @@
 # Adapted from https://github.com/lm-sys/FastChat
 import time
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union, Dict
 
 import shortuuid
 from pydantic import BaseModel, Field
@@ -142,7 +142,7 @@ class CompletionRequest(BaseModel):
     # best_of: Optional[int] = None
     max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
-    # logprobs: Optional[int] = None
+    logprobs: Optional[int] = None
     echo: Optional[bool] = False
     temperature: Optional[float] = 0.7
     presence_penalty: Optional[float] = 0.0
@@ -158,10 +158,18 @@ class CompletionRequest(BaseModel):
     # seed: Optional[int] = None
 
 
+class CompletionLogProbs(BaseModel):
+    text_offset: List[int] = Field(default_factory=list)
+    token_logprobs: List[Optional[float]] = Field(default_factory=list)
+    tokens: List[str] = Field(default_factory=list)
+    token_ids: List[int] = Field(default_factory=list)
+    top_logprobs: Optional[List[Optional[Dict[str, float]]]] = None
+
+
 class CompletionResponseChoice(BaseModel):
     index: int
     text: str
-    # logprobs: Optional[ChatCompletionLogProbs] = None
+    logprobs: Optional[CompletionLogProbs] = None
     finish_reason: Optional[Literal["stop", "length"]] = None
 
 
@@ -177,7 +185,7 @@ class CompletionResponse(BaseModel):
 class CompletionResponseStreamChoice(BaseModel):
     index: int
     text: str
-    # logprobs: Optional[ChatCompletionLogProbs] = None
+    logprobs: Optional[CompletionLogProbs] = None
     finish_reason: Optional[Literal["stop", "length"]] = None
 
 
