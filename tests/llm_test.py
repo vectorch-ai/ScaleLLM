@@ -27,6 +27,8 @@ def test_context_manager():
         temperature=0,
         max_tokens=100,
         ignore_eos=True,
+        logprobs=True,
+        top_logprobs=10,
     )
     with LLM(model="gpt2", devices="cpu") as llm:
         outputs = llm.generate(["who is messi"], sampling_params)
@@ -38,3 +40,14 @@ def test_context_manager():
         assert output.finished
         assert output.prompt == "who is messi"
         assert output.usage
+        
+        # Check logprobs
+        generated_tokens = output.usage.num_generated_tokens
+        logprobs = output.outputs[0].logprobs
+        assert generated_tokens == len(logprobs)
+        for logprob in logprobs:
+            top_logprobs = logprob.top_logprobs
+            assert len(top_logprobs) == 10
+            assert logprob.token == top_logprobs[0].token
+            assert logprob.token_id == top_logprobs[0].token_id
+            assert logprob.logprob == top_logprobs[0].logprob

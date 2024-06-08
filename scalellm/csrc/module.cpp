@@ -111,14 +111,17 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def_property_readonly("message", &Status::message)
       .def_property_readonly("ok", &Status::ok);
 
-  auto logprob = py::class_<LogProb>(m, "LogProb")
-                     .def(py::init())
-                     .def_readwrite("token", &LogProb::token)
-                     .def_readwrite("token_id", &LogProb::token_id)
-                     .def_readwrite("logprob", &LogProb::logprob);
-
-  py::class_<LogProbContent>(logprob, "LogProbContent")
+  py::class_<LogProb>(m, "LogProb")
       .def(py::init())
+      .def_readwrite("token", &LogProb::token)
+      .def_readwrite("token_id", &LogProb::token_id)
+      .def_readwrite("logprob", &LogProb::logprob);
+
+  py::class_<LogProbContent>(m, "LogProbContent")
+      .def(py::init())
+      .def_readwrite("token", &LogProb::token)
+      .def_readwrite("token_id", &LogProb::token_id)
+      .def_readwrite("logprob", &LogProb::logprob)
       .def_readwrite("top_logprobs", &LogProbContent::top_logprobs);
 
   py::class_<SequenceOutput>(m, "SequenceOutput")

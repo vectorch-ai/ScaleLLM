@@ -189,7 +189,7 @@ std::optional<SequenceOutput> Sequence::build_delta_output_until(
 
   SequenceOutput output;
   output.index = index_;
-  output.text = incremental_decoder_.decode(ids, tokenizer);
+  output.text = std::move(delta);
   if (finish_reason_ != FinishReason::NONE) {
     output.finish_reason = to_string(finish_reason_);
   }
@@ -198,8 +198,7 @@ std::optional<SequenceOutput> Sequence::build_delta_output_until(
   const size_t end = incremental_decoder_.output_offset();
   // output logprobs for tokens [start_idx, end_idx)
   if (start < end) {
-    std::vector<LogProbContent> logprob_contents =
-        build_logprobs(start, end, tokenizer);
+    auto logprob_contents = build_logprobs(start, end, tokenizer);
     if (!logprob_contents.empty()) {
       output.logprobs = std::move(logprob_contents);
     }
@@ -213,11 +212,16 @@ std::optional<SequenceOutput> Sequence::build_output(
   const size_t size = ids.size();
   // leave 6 tokens for potential unfinished byte sequence from byte fallback
   // tokenization
-  size_t start_idx = std::max(num_prompt_tokens_ + 1, size - 7);
+  size_t start_idx = size <= 7 ? 0 : size - 7;
+  // at least start from the first generated token
+  if (start_idx < num_prompt_tokens_) {
+    start_idx = num_prompt_tokens_;
+  }
   std::stringstream ss;
-  // output leading tokens first
+  // first output leading tokens
   ss << incremental_decoder_.decode(ids.slice(0, start_idx), tokenizer);
   // then decode one by one to avoid potential unfinished bytes
+  // incrementally decode tokens [start_idx, size)
   for (size_t i = start_idx; i < size; ++i) {
     ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
   }
@@ -228,9 +232,9 @@ std::optional<SequenceOutput> Sequence::build_output(
   if (finish_reason_ != FinishReason::NONE) {
     output.finish_reason = to_string(finish_reason_);
   }
-  // TODO: support logprobs for the entire sequence?
+
   // build logprobs for generated tokens
-  auto logprob_contents = build_logprobs(num_prompt_tokens_, size, tokenizer);
+  auto logprob_contents = build_logprobs(0, size, tokenizer);
   if (!logprob_contents.empty()) {
     output.logprobs = std::move(logprob_contents);
   }
@@ -242,6 +246,11 @@ std::vector<LogProbContent> Sequence::build_logprobs(
     size_t start_idx,
     size_t end_idx,
     const Tokenizer& tokenizer) {
+  // TODO: support logprobs for the entire sequence?
+  if (start_idx < num_prompt_tokens_) {
+    start_idx = num_prompt_tokens_;
+  }
+
   std::vector<LogProbContent> logprob_contents;
   for (size_t i = start_idx; i < end_idx; ++i) {
     if (logprobs_[i].has_value()) {
@@ -249,7 +258,6 @@ std::vector<LogProbContent> Sequence::build_logprobs(
       LogProbContent logprob_content;
 
       // add token and logprob
-      // TODO: use IdToToken function
       logprob_content.token = tokenizer.decode(std::vector<int32_t>{token_id},
                                                options_.skip_special_tokens);
       logprob_content.token_id = token_id;

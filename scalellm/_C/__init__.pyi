@@ -78,8 +78,11 @@ class LogProb:
     logprob: float
     bytes: Optional[List[int]]
 
-class LogProbContent(LogProb):
+class LogProbContent:
     def __init__(self) -> None: ...
+    token: str
+    logprob: float
+    bytes: Optional[List[int]]
     top_logprobs: Optional[List[LogProb]]
 
 class SequenceOutput:

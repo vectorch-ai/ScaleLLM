@@ -4,18 +4,12 @@
 #include <absl/time/clock.h>
 #include <glog/logging.h>
 
-#include <cstdint>
 #include <memory>
 
 #include "common/metrics.h"
 #include "request/request.h"
 #include "request/sequence.h"
 #include "request/status.h"
-
-// gflags
-DEFINE_int32(streaming_token_buffer_size,
-             1,
-             "number of tokens to buffer before streaming to client");
 
 // metrics
 DEFINE_COUNTER_FAMILY(detokenization_latency_seconds,
