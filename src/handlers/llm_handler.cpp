@@ -125,7 +125,7 @@ bool verify_params(const SamplingParams& sp, OutputCallback callback) {
                           "logprobs is not supported with echo");
       return false;
     }
-    if (sp.top_logprobs > 20) {
+    if (sp.top_logprobs < 0 || sp.top_logprobs > 20) {
       CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
                           "logprobs must be between 0 and 20");
       return false;
