@@ -5,7 +5,6 @@ on:
   push:
     paths:
       - "docs/**"
-      - "scalellm/**/*.py"
       - ".github/workflows/publish_docs.yml"
     branches:
       - main
@@ -13,7 +12,6 @@ on:
   pull_request:
     paths:
       - "docs/**"
-      - "scalellm/**/*.py"
       - ".github/workflows/publish_docs.yml"
     branches:
       - main
