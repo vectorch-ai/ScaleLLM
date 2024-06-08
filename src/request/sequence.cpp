@@ -74,7 +74,7 @@ void Sequence::append_token(const TokenInfo& token_info) {
   const auto cur_idx = num_tokens_++;
   const int32_t token_id = token_info.token_id;
   token_ids_[cur_idx] = token_id;
-  
+
   // update logprobs if needed
   if (options_.sampling_param.logprobs) {
     logprobs_[cur_idx] = token_info.logprob;
