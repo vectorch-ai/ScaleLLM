@@ -201,8 +201,11 @@ int main(int argc, char* argv[]) {
       }
 
       // decode the output and print delta
-      std::cout << sequence.decode_delta_text(sequence.token_ids(), *tokenizer)
-                << std::flush;
+      auto output =
+          sequence.build_delta_output_until(sequence.num_tokens(), *tokenizer);
+      if (output.has_value()) {
+        std::cout << output.value().text << std::flush;
+      }
     }
 
     // release the slots for the sequence

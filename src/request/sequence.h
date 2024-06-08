@@ -177,16 +177,10 @@ class Sequence final {
   // get the reason why the sequence is finished
   FinishReason finish_reason() const { return finish_reason_; }
 
-  // decode the tokens till end to get delta text using the tokenizer
-  // not thread safe
-  std::string decode_delta_text(const Slice<int32_t>& token_ids,
-                                const Tokenizer& tokenizer);
-
-  // decode the full sequence to get text using the tokenizer
-  std::string decode_text(const Tokenizer& tokenizer);
-
-  // get the offset of output tokens
-  size_t output_offset() const { return incremental_decoder_.output_offset(); }
+  // whether has pending tokens to output
+  bool has_pending_tokens() const {
+    return num_tokens_ > incremental_decoder_.output_offset();
+  }
 
   // check finish status, use cached value if not invalidated
   bool is_finished() const;

@@ -91,10 +91,9 @@ void ResponseHandler::on_request_stream(Request* request) {
     }
 
     // check if the sequence has enough tokens to output
-    const auto size = seq.num_tokens();
-    if (seq.is_finished() || size > seq.output_offset()) {
+    if (seq.has_pending_tokens() || seq.is_finished()) {
       indexes.push_back(i);
-      num_tokens.push_back(size);
+      num_tokens.push_back(seq.num_tokens());
     }
 
     // close the sequence after sending finish reason

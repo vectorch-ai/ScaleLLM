@@ -74,9 +74,25 @@ void Sequence::append_token(const TokenInfo& token_info) {
   const auto cur_idx = num_tokens_++;
   const int32_t token_id = token_info.token_id;
   token_ids_[cur_idx] = token_id;
-  logprobs_[cur_idx] = token_info.logprob;
-  top_tokens_[cur_idx] = token_info.top_tokens;
-  top_logprobs_[cur_idx] = token_info.top_logprobs;
+  
+  // update logprobs if needed
+  if (options_.sampling_param.logprobs) {
+    logprobs_[cur_idx] = token_info.logprob;
+  }
+
+  // update top tokens and top logprobs if needed
+  const auto num_top_tokens = options_.sampling_param.top_logprobs;
+  DCHECK_EQ(token_info.top_tokens.size(), token_info.top_logprobs.size());
+  if (num_top_tokens > 0) {
+    if (token_info.top_tokens.size() > num_top_tokens) {
+      top_tokens_[cur_idx] = token_info.top_tokens.slice(0, num_top_tokens);
+      top_logprobs_[cur_idx] = token_info.top_logprobs.slice(0, num_top_tokens);
+    } else {
+      DCHECK_EQ(token_info.top_tokens.size(), num_top_tokens);
+      top_tokens_[cur_idx] = token_info.top_tokens;
+      top_logprobs_[cur_idx] = token_info.top_logprobs;
+    }
+  }
 
   token_to_count_map_[token_id]++;
 
@@ -149,28 +165,6 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
   // the finish status is valid after the validation
   finish_status_invalidated_ = false;
   return num_accpeted;
-}
-
-// decode the sequence to get delta text using the tokenizer
-std::string Sequence::decode_delta_text(const Slice<int32_t>& token_ids,
-                                        const Tokenizer& tokenizer) {
-  return incremental_decoder_.decode(token_ids, tokenizer);
-}
-
-// decode the sequence to get text using the tokenizer
-std::string Sequence::decode_text(const Tokenizer& tokenizer) {
-  const auto ids = token_ids();
-  // leave 6 tokens for potential unfinished byte sequence from byte fallback
-  // tokenization
-  size_t start_idx = std::max(num_prompt_tokens_ + 1, ids.size() - 7);
-  std::stringstream ss;
-  // output leading tokens first
-  ss << incremental_decoder_.decode(ids.slice(0, start_idx), tokenizer);
-  // then decode one by one to avoid potential unfinished bytes
-  for (size_t i = start_idx; i < ids.size(); ++i) {
-    ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
-  }
-  return ss.str();
 }
 
 std::optional<SequenceOutput> Sequence::build_delta_output_until(

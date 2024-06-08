@@ -304,7 +304,7 @@ void Batch::process_sample_output(const SampleOutput& sample_output) {
       if (top_tokens.defined() && top_logprobs.defined()) {
         auto topk_tokens = top_tokens[curr_idx];
         auto topk_logprobs = top_logprobs[curr_idx];
-        const size_t topk = top_tokens.numel();
+        const size_t topk = topk_tokens.numel();
         token_info.top_tokens = {topk_tokens.const_data_ptr<int64_t>(), topk};
         token_info.top_logprobs = {topk_logprobs.const_data_ptr<float>(), topk};
       }
