@@ -11,7 +11,7 @@ from scalellm.serve.api_protocol import (ChatCompletionMessage,
                                          ChatCompletionResponseStreamChoice,
                                          ChatCompletionStreamResponse,
                                          ChatMessage, DeltaMessage, UsageInfo)
-from scalellm.serve.common import jsonify_model, to_priority
+from scalellm.serve.common import jsonify_model, to_api_logprobs, to_priority
 from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
@@ -27,6 +27,8 @@ def to_sampling_params(request: ChatCompletionRequest) -> SamplingParams:
     sp.temperature = request.temperature
     sp.top_p = request.top_p
     sp.top_k = request.top_k
+    sp.logprobs = request.logprobs
+    sp.top_logprobs = request.top_logprobs
     sp.skip_special_tokens = request.skip_special_tokens
     sp.stop = request.stop
     sp.ignore_eos = request.ignore_eos
@@ -70,6 +72,7 @@ async def generate_chat_response(
             ChatCompletionResponseChoice(
                 index=seq_output.index,
                 message=ChatMessage(role="assistant", content=seq_output.text),
+                logprobs=to_api_logprobs(seq_output.logprobs),
                 finish_reason=seq_output.finish_reason,
             )
         )
@@ -118,7 +121,7 @@ async def generate_chat_stream_response(
                             ChatCompletionResponseStreamChoice(
                                 index=index,
                                 delta=DeltaMessage(role="assistant", content=""),
-                                logprobs=None,
+                                logprobs=to_api_logprobs(seq_output.logprobs),
                                 finish_reason=None,
                             )
                         ],
@@ -135,7 +138,7 @@ async def generate_chat_stream_response(
                         ChatCompletionResponseStreamChoice(
                             index=index,
                             delta=DeltaMessage(content=seq_output.text),
-                            logprobs=None,
+                            logprobs=to_api_logprobs(seq_output.logprobs),
                             finish_reason=None,
                         )
                     ],
@@ -152,7 +155,7 @@ async def generate_chat_stream_response(
                             ChatCompletionResponseStreamChoice(
                                 index=index,
                                 delta=DeltaMessage(),
-                                logprobs=None,
+                                logprobs=to_api_logprobs(seq_output.logprobs),
                                 finish_reason=seq_output.finish_reason,
                             )
                         ],

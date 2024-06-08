@@ -72,25 +72,25 @@ class Usage:
     num_generated_tokens: int
     num_total_tokens: int
 
+class LogProbData:
+    def __init__(self) -> None: ...
+    token: str
+    token_id: int
+    logprob: float
+
 class LogProb:
     def __init__(self) -> None: ...
     token: str
+    token_id: int
     logprob: float
-    bytes: Optional[List[int]]
-
-class LogProbContent:
-    def __init__(self) -> None: ...
-    token: str
-    logprob: float
-    bytes: Optional[List[int]]
-    top_logprobs: Optional[List[LogProb]]
+    top_logprobs: Optional[List[LogProbData]]
 
 class SequenceOutput:
     def __init__(self) -> None: ...
     index: int
     text: str
     finish_reason: Optional[str]
-    logprobs: Optional[List[LogProbContent]]
+    logprobs: Optional[List[LogProb]]
 
 class RequestOutput:
     def __init__(self) -> None: ...

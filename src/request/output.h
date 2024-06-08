@@ -35,7 +35,7 @@ struct Usage {
   size_t num_total_tokens = 0;
 };
 
-struct LogProb {
+struct LogProbData {
   // the text of the token.
   std::string token;
   // the token id.
@@ -44,9 +44,9 @@ struct LogProb {
   float logprob;
 };
 
-struct LogProbContent : public LogProb {
+struct LogProb : public LogProbData {
   // the top log probabilities.
-  std::optional<std::vector<LogProb>> top_logprobs;
+  std::optional<std::vector<LogProbData>> top_logprobs;
 };
 
 struct SequenceOutput {
@@ -61,7 +61,7 @@ struct SequenceOutput {
   std::optional<std::string> finish_reason;
 
   // log probabilities of the generated tokens.
-  std::optional<std::vector<LogProbContent>> logprobs;
+  std::optional<std::vector<LogProb>> logprobs;
 };
 
 struct RequestOutput {

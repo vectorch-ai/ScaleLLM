@@ -53,10 +53,6 @@ SampleOutput Sampler::forward(const torch::Tensor& logits) const {
       output.top_logprobs = values;
       output.top_tokens = indices;
     }
-
-    LOG(ERROR) << "logprobs: " << output.logprobs;
-    LOG(ERROR) << "top_logprobs: " << output.top_logprobs;
-    LOG(ERROR) << "top_tokens: " << output.top_tokens;
   }
 
   return output;

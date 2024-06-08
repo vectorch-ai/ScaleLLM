@@ -4,8 +4,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
-#include <limits>
 #include <string>
 #include <vector>
 
@@ -235,9 +233,9 @@ class Sequence final {
 
  private:
   // build log probabilities for the tokens in the range [start_idx, end_idx)
-  std::vector<LogProbContent> build_logprobs(size_t start_idx,
-                                             size_t end_idx,
-                                             const Tokenizer& tokenizer);
+  std::vector<LogProb> build_logprobs(size_t start_idx,
+                                      size_t end_idx,
+                                      const Tokenizer& tokenizer);
 
   // global unique id for the sequence
   // NOLINTNEXTLINE

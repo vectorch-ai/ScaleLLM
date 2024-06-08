@@ -47,18 +47,19 @@ class UsageInfo(BaseModel):
     completion_tokens: Optional[int] = 0
 
 
-class ChatCompletionLogProb(BaseModel):
+class ChatCompletionLogProbData(BaseModel):
     token: str
+    token_id: int
     logprob: float
     bytes: Optional[List[int]] = None
 
 
-class ChatCompletionLogProbContent(ChatCompletionLogProb):
-    top_logprobs: Optional[List[ChatCompletionLogProb]] = None
+class ChatCompletionLogProb(ChatCompletionLogProbData):
+    top_logprobs: Optional[List[ChatCompletionLogProbData]] = None
 
 
 class ChatCompletionLogProbs(BaseModel):
-    content: Optional[List[ChatCompletionLogProbContent]] = None
+    content: Optional[List[ChatCompletionLogProb]] = None
 
 
 class ChatCompletionMessage(BaseModel):
@@ -81,7 +82,7 @@ class ChatCompletionRequest(BaseModel):
     top_p: Optional[float] = 1.0
     top_k: Optional[int] = -1
     logprobs: Optional[bool] = False
-    top_logprobs: Optional[int] = Field(None, ge=0, le=20)
+    top_logprobs: Optional[int] = Field(0, ge=0, le=20)
     # user: Optional[str] = None
     skip_special_tokens: Optional[bool] = True
     ignore_eos: Optional[bool] = False
