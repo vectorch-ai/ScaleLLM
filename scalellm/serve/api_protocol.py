@@ -72,7 +72,7 @@ class ChatCompletionRequest(BaseModel):
     messages: List[ChatCompletionMessage]
     priority: Optional[Literal["default", "low", "normal", "high"]] = None
     n: Optional[int] = 1
-    # best_of: Optional[int] = None
+    best_of: Optional[int] = None
     max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
     temperature: Optional[float] = 0.7
@@ -139,7 +139,7 @@ class CompletionRequest(BaseModel):
     priority: Optional[Literal["default", "low", "normal", "high"]] = None
     # suffix: Optional[str] = None
     n: Optional[int] = 1
-    # best_of: Optional[int] = None
+    best_of: Optional[int] = None
     max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
     logprobs: Optional[int] = None

@@ -380,4 +380,16 @@ double Sequence::inter_token_latency(const absl::Time& now) {
   return latency;
 }
 
+float Sequence::sequence_logprob() const {
+  CHECK_GT(num_tokens_, num_prompt_tokens_);
+
+  double sum = 0.0;
+  for (size_t i = num_prompt_tokens_; i < num_tokens_; ++i) {
+    if (logprobs_[i].has_value()) {
+      sum += logprobs_[i].value();
+    }
+  }
+  return static_cast<float>(sum / (num_tokens_ - num_prompt_tokens_));
+}
+
 }  // namespace llm

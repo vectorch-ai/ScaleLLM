@@ -225,6 +225,9 @@ class Sequence final {
   // get the inter-token latency
   double inter_token_latency(const absl::Time& now);
 
+  // get the average log probability of the sequence (generated tokens only)
+  float sequence_logprob() const;
+
  private:
   // build log probabilities for the tokens in the range [start_idx, end_idx)
   std::vector<LogProb> build_logprobs(size_t start_idx,

@@ -11,7 +11,6 @@
 #include "output.h"
 #include "sampling/parameters.h"
 #include "sequence.h"
-#include "status.h"
 #include "stopping_criteria.h"
 
 namespace llm {
@@ -30,7 +29,8 @@ struct Request final {
   Request(std::string prompt,
           std::vector<int32_t> prompt_tokens,
           size_t seq_capacity,
-          size_t num_seqs);
+          size_t n,
+          size_t best_of);
 
   void add_sequence();
 
@@ -55,6 +55,8 @@ struct Request final {
     return absl::ToDoubleSeconds(absl::Now() - created_time);
   }
 
+  RequestOutput build_output(const Tokenizer& tokenizer);
+
   // Scheduled time of the request.
   // NOLINTNEXTLINE
   const absl::Time created_time;
@@ -69,7 +71,11 @@ struct Request final {
 
   // the number of sequences to generate completions for the prompt.
   // NOLINTNEXTLINE
-  const size_t num_seqs;
+  const size_t n;
+
+  // the number of sequences to generate for each prompt and select the best
+  // among.
+  const size_t best_of;
 
   // max number of tokens per sequence.
   // NOLINTNEXTLINE

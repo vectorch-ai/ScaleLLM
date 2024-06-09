@@ -98,7 +98,25 @@ void log_request_status(StatusCode code) {
   }
 }
 
-bool verify_params(const SamplingParams& sp, OutputCallback callback) {
+bool verify_params(bool stream,
+                   const SamplingParams& sp,
+                   OutputCallback callback) {
+  if (sp.n == 0) {
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                        "n should be greater than 0");
+    return false;
+  }
+  if (sp.n > sp.best_of) {
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                        "n should be less than or equal to best_of");
+    return false;
+  }
+  if (stream && sp.best_of > 1) {
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                        "stream is not supported with best_of > 1");
+    return false;
+  }
+
   // up to 4 stop sequences
   if (sp.stop.has_value() && sp.stop.value().size() > 4) {
     CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT, "stop size is too large");
@@ -335,7 +353,7 @@ void LLMHandler::schedule(std::string prompt,
 
     Timer timer;
     // verify the prompt
-    if (!verify_params(sp, callback)) {
+    if (!verify_params(stream, sp, callback)) {
       return;
     }
 
@@ -371,7 +389,7 @@ void LLMHandler::schedule(std::vector<Message> messages,
     SCOPE_GUARD([this] { scheduler_->dec_pending_requests(); });
 
     // verify the prompt
-    if (!verify_params(sp, callback)) {
+    if (!verify_params(stream, sp, callback)) {
       return;
     }
 
@@ -471,13 +489,12 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
     max_tokens = kDefaultMaxTokens;
   }
 
-  const uint32_t num_seqs = std::max<uint32_t>(1, sp.n);
   // allocate enough capacity for prompt tokens, max tokens, and speculative
   // tokens
   const size_t capacity = prompt_tokens.size() + max_tokens +
                           options_.num_speculative_tokens() + /*bouns_token*/ 1;
   auto request = std::make_unique<Request>(
-      std::move(prompt), std::move(prompt_tokens), capacity, num_seqs);
+      std::move(prompt), std::move(prompt_tokens), capacity, sp.n, sp.best_of);
 
   // sampling parameters
   auto& sampling_param = request->sampling_param;

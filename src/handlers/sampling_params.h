@@ -13,6 +13,7 @@ struct SamplingParams {
   SamplingParams() = default;
   SamplingParams(uint32_t max_tokens,
                  uint32_t n,
+                 uint32_t best_of,
                  bool echo,
                  float frequency_penalty,
                  float presence_penalty,
@@ -28,6 +29,7 @@ struct SamplingParams {
                  std::optional<std::vector<int32_t>> stop_token_ids)
       : max_tokens(max_tokens),
         n(n),
+        best_of(best_of),
         echo(echo),
         frequency_penalty(frequency_penalty),
         presence_penalty(presence_penalty),
@@ -47,6 +49,9 @@ struct SamplingParams {
 
   // number of sequences to generate for each prompt.
   uint32_t n = 1;
+
+  // number of sequences to generate for each prompt and select the best among
+  uint32_t best_of = 1;
 
   // whether to include the original prompt in the completion response.
   bool echo = false;
