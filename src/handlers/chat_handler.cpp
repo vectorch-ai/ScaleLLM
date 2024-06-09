@@ -25,6 +25,30 @@ thread_local ShortUUID short_uuid;
 
 std::string generate_request_id() { return "chatcmpl-" + short_uuid.random(); }
 
+void set_logprobs(proto::ChatChoice* choice,
+                  const std::optional<std::vector<LogProb>>& logprobs) {
+  if (!logprobs.has_value() || logprobs.value().empty()) {
+    return;
+  }
+
+  auto* proto_logprobs = choice->mutable_logprobs();
+  for (const auto& logprob : logprobs.value()) {
+    auto* logprob_proto = proto_logprobs->add_content();
+    logprob_proto->set_token(logprob.token);
+    logprob_proto->set_token_id(logprob.token_id);
+    logprob_proto->set_logprob(logprob.logprob);
+
+    if (logprob.top_logprobs.has_value()) {
+      for (const auto& top_logprob : logprob.top_logprobs.value()) {
+        auto* top_logprob_proto = logprob_proto->add_top_logprobs();
+        top_logprob_proto->set_token(top_logprob.token);
+        top_logprob_proto->set_token_id(top_logprob.token_id);
+        top_logprob_proto->set_logprob(top_logprob.logprob);
+      }
+    }
+  }
+}
+
 bool send_delta_to_client(ChatCallData* call_data,
                           std::unordered_set<size_t>* first_message_sent,
                           const std::string& request_id,
@@ -62,6 +86,7 @@ bool send_delta_to_client(ChatCallData* call_data,
       response.set_model(model);
       auto* choice = response.add_choices();
       choice->set_index(index);
+      set_logprobs(choice, seq_output.logprobs);
       auto* message = choice->mutable_delta();
       message->set_content(seq_output.text);
       if (!call_data->write(std::move(response))) {
@@ -102,6 +127,7 @@ bool send_result_to_client(ChatCallData* call_data,
     // add choices into response
     auto* choice = response.add_choices();
     choice->set_index(output.index);
+    set_logprobs(choice, output.logprobs);
     auto* message = choice->mutable_message();
     message->set_role("assistant");
     message->set_content(output.text);
@@ -150,6 +176,12 @@ SamplingParams grpc_request_to_sampling_params(
   }
   if (request.has_top_k()) {
     sampling_params.top_k = request.top_k();
+  }
+  if (request.has_logprobs()) {
+    sampling_params.logprobs = request.logprobs();
+  }
+  if (request.has_top_logprobs()) {
+    sampling_params.top_logprobs = request.top_logprobs();
   }
   if (request.has_skip_special_tokens()) {
     sampling_params.skip_special_tokens = request.skip_special_tokens();

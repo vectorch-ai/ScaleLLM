@@ -81,12 +81,22 @@ message CompletionRequest {
   optional Priority priority = 17;
 }
 
+message LogProbs {
+  repeated float token_logprobs = 1 [json_name="token_logprobs"];
+  
+  repeated string tokens = 2;
+  
+  repeated int32 token_ids = 3 [json_name="token_ids"];
+  
+  // grpc doesn't allow: repeated map<string, float> top_logprobs = 4;
+}
+
 message Choice {
   // the generated completion
   optional string text = 1;
 
-  // the log probability of the completion
-  optional float logprobs = 2;
+  // the log probability of of output tokens.
+  optional LogProbs logprobs = 2;
 
   // the index of the generated completion
   optional uint32 index = 3;
