@@ -14,8 +14,11 @@ message CompletionRequest {
   // the prompt to generate completions for. (required)
   string prompt = 2;
 
-  // TODO: the suffix that comes after a completion of inserted text. default = null
-  // string suffix = 3;
+  // the number of sequence to generate server-side and returns the "best". default = None
+  // Results can't be streamed.
+  // when used with n, best_of controls the number of candidate completions and n specifies
+  // how many to return. best_of must be greater than or equal to n.
+  optional uint32 best_of = 3;
 
   // number of tokens to generate
   // the prompt token count + max_tokens can't exceed the model's max context length.

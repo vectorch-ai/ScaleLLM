@@ -16,6 +16,7 @@ def to_sampling_params(request: CompletionRequest) -> SamplingParams:
     sp = SamplingParams()
     sp.max_tokens = request.max_tokens
     sp.n = request.n
+    sp.best_of = request.best_of
     sp.echo = request.echo
     sp.frequency_penalty = request.frequency_penalty
     sp.presence_penalty = request.presence_penalty

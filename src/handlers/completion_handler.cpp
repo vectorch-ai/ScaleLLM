@@ -120,6 +120,9 @@ SamplingParams grpc_request_to_sampling_params(
   if (request.has_n()) {
     sampling_params.n = request.n();
   }
+  if (request.has_best_of()) {
+    sampling_params.best_of = request.best_of();
+  }
   if (request.has_echo()) {
     sampling_params.echo = request.echo();
   }

@@ -106,15 +106,17 @@ bool verify_params(bool stream,
                         "n should be greater than 0");
     return false;
   }
-  if (sp.n > sp.best_of) {
-    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
-                        "n should be less than or equal to best_of");
-    return false;
-  }
-  if (stream && sp.best_of > 1) {
-    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
-                        "stream is not supported with best_of > 1");
-    return false;
+  if (sp.best_of.has_value()) {
+    if (sp.n > sp.best_of.value()) {
+      CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                          "n should be less than or equal to best_of");
+      return false;
+    }
+    if (stream && sp.best_of.value() > 1) {
+      CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                          "stream is not supported with best_of > 1");
+      return false;
+    }
   }
 
   // up to 4 stop sequences
@@ -493,11 +495,12 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   // tokens
   const size_t capacity = prompt_tokens.size() + max_tokens +
                           options_.num_speculative_tokens() + /*bouns_token*/ 1;
+  const size_t best_of = sp.best_of.has_value() ? sp.best_of.value() : sp.n;
   auto request = std::make_unique<Request>(std::move(prompt),
                                            std::move(prompt_tokens),
                                            capacity,
                                            sp.n,
-                                           sp.best_of,
+                                           best_of,
                                            sp.logprobs);
 
   // sampling parameters
@@ -510,7 +513,7 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   sampling_param.top_k = sp.top_k;
   sampling_param.logprobs = sp.logprobs;
   sampling_param.top_logprobs = sp.top_logprobs;
-  if (sp.best_of > sp.n) {
+  if (best_of > sp.n) {
     // enable logprobs for best_of to generate sequence logprob
     sampling_param.logprobs = true;
   }
