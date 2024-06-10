@@ -9,7 +9,7 @@ prompts = [
 ]
 
 # Create a sampling params object.
-sampling_params = SamplingParams(temperature=0.8, top_p=0.95, best_of=2, n=1)
+sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
 
 # Create an LLM.
 llm = LLM(model="gpt2", devices="cuda")
