@@ -10,8 +10,18 @@
 #include <string>
 #include <vector>
 
+#include "common/metrics.h"
 #include "common/slice.h"
 #include "tokenizer/tokenizer.h"
+
+DEFINE_COUNTER_FAMILY(detokenization_latency_seconds,
+                      "Latency of detokenization in seconds");
+DEFINE_COUNTER_INSTANCE(stream_decode_latency_seconds,
+                        detokenization_latency_seconds,
+                        {{"mode", "stream"}});
+DEFINE_COUNTER_INSTANCE(non_stream_decode_latency_seconds,
+                        detokenization_latency_seconds,
+                        {{"mode", "non-stream"}});
 
 namespace llm {
 
@@ -171,6 +181,8 @@ std::optional<SequenceOutput> Sequence::build_delta_output_until(
     size_t end_idx,
     const Tokenizer& tokenizer) {
   CHECK_LE(end_idx, num_tokens_);
+  AUTO_COUNTER(stream_decode_latency_seconds);
+
   const auto ids = Slice<int32_t>(token_ids_, end_idx);
 
   // record the start index of token ids
@@ -190,8 +202,8 @@ std::optional<SequenceOutput> Sequence::build_delta_output_until(
 
   // prepare logprobs and top tokens if available
   const size_t end = incremental_decoder_.output_offset();
-  // output logprobs for tokens [start_idx, end_idx)
-  if (start < end) {
+  if (options_.logprobs && start < end) {
+    // output logprobs for tokens [start_idx, end_idx)
     auto logprob_contents = build_logprobs(start, end, tokenizer);
     if (!logprob_contents.empty()) {
       output.logprobs = std::move(logprob_contents);
@@ -200,8 +212,9 @@ std::optional<SequenceOutput> Sequence::build_delta_output_until(
   return output;
 }
 
-std::optional<SequenceOutput> Sequence::build_output(
-    const Tokenizer& tokenizer) {
+SequenceOutput Sequence::build_output(const Tokenizer& tokenizer) {
+  AUTO_COUNTER(non_stream_decode_latency_seconds);
+
   const auto ids = token_ids();
   const size_t size = ids.size();
   // leave 6 tokens for potential unfinished byte sequence from byte fallback
@@ -228,9 +241,11 @@ std::optional<SequenceOutput> Sequence::build_output(
   }
 
   // build logprobs for generated tokens
-  auto logprob_contents = build_logprobs(0, size, tokenizer);
-  if (!logprob_contents.empty()) {
-    output.logprobs = std::move(logprob_contents);
+  if (options_.logprobs) {
+    auto logprob_contents = build_logprobs(0, size, tokenizer);
+    if (!logprob_contents.empty()) {
+      output.logprobs = std::move(logprob_contents);
+    }
   }
 
   return output;
@@ -380,8 +395,11 @@ double Sequence::inter_token_latency(const absl::Time& now) {
   return latency;
 }
 
-float Sequence::sequence_logprob() const {
-  CHECK_GT(num_tokens_, num_prompt_tokens_);
+float Sequence::logprob() const {
+  if (num_tokens_ <= num_prompt_tokens_) {
+    // return a small value for empty sequence
+    return -9999.0;
+  }
 
   double sum = 0.0;
   for (size_t i = num_prompt_tokens_; i < num_tokens_; ++i) {

@@ -9,17 +9,8 @@
 #include "common/metrics.h"
 #include "request/request.h"
 #include "request/sequence.h"
-#include "request/status.h"
 
 // metrics
-DEFINE_COUNTER_FAMILY(detokenization_latency_seconds,
-                      "Latency of detokenization in seconds");
-DEFINE_COUNTER_INSTANCE(stream_decode_latency_seconds,
-                        detokenization_latency_seconds,
-                        {{"mode", "stream"}});
-DEFINE_COUNTER_INSTANCE(non_stream_decode_latency_seconds,
-                        detokenization_latency_seconds,
-                        {{"mode", "non-stream"}});
 
 DEFINE_COUNTER_FAMILY(responsing_latency_seconds,
                       "Latency of responding in seconds");
@@ -49,9 +40,7 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
     // update the metrics for the request
     HISTOGRAM_OBSERVE(end_2_end_latency_seconds, request->elapsed_seconds());
 
-    // AUTO_COUNTER(non_stream_decode_latency_seconds);
-    auto output = request->build_output(*tokenizer);
-    request->on_output(output);
+    request->on_output(request->build_output(*tokenizer));
   });
 }
 
@@ -92,7 +81,6 @@ void ResponseHandler::on_request_stream(Request* request) {
       const size_t size = num_tokens[i];
       Sequence& seq = request->sequences[index];
 
-      AUTO_COUNTER(stream_decode_latency_seconds);
       auto seq_output = seq.build_delta_output_until(size, *tokenizer);
       if (seq_output.has_value()) {
         req_output.outputs.push_back(std::move(seq_output.value()));

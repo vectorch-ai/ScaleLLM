@@ -30,7 +30,8 @@ struct Request final {
           std::vector<int32_t> prompt_tokens,
           size_t seq_capacity,
           size_t n,
-          size_t best_of);
+          size_t best_of,
+          bool logprobs);
 
   void add_sequence();
 
@@ -38,7 +39,7 @@ struct Request final {
 
   bool is_streaming() const { return stream; }
 
-  size_t num_prompt_tokens() const { return prompt_tokens.size(); }
+  // size_t num_prompt_tokens() const { return prompt_tokens.size(); }
 
   bool should_expand_sequences() const;
 
@@ -76,6 +77,9 @@ struct Request final {
   // the number of sequences to generate for each prompt and select the best
   // among.
   const size_t best_of;
+
+  // whether to return log probabilities for output token.
+  const bool logprobs;
 
   // max number of tokens per sequence.
   // NOLINTNEXTLINE

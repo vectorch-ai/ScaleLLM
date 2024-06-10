@@ -41,7 +41,7 @@ struct LogProbData {
   // the token id.
   int32_t token_id;
   // the log probability of the token.
-  float logprob;
+  float logprob = -9999.0f;
 };
 
 struct LogProb : public LogProbData {

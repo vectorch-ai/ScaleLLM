@@ -493,8 +493,12 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   // tokens
   const size_t capacity = prompt_tokens.size() + max_tokens +
                           options_.num_speculative_tokens() + /*bouns_token*/ 1;
-  auto request = std::make_unique<Request>(
-      std::move(prompt), std::move(prompt_tokens), capacity, sp.n, sp.best_of);
+  auto request = std::make_unique<Request>(std::move(prompt),
+                                           std::move(prompt_tokens),
+                                           capacity,
+                                           sp.n,
+                                           sp.best_of,
+                                           sp.logprobs);
 
   // sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -506,6 +510,10 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   sampling_param.top_k = sp.top_k;
   sampling_param.logprobs = sp.logprobs;
   sampling_param.top_logprobs = sp.top_logprobs;
+  if (sp.best_of > sp.n) {
+    // enable logprobs for best_of to generate sequence logprob
+    sampling_param.logprobs = true;
+  }
   // sampling_param.do_sample = sp.do_sample;
   // sampling_param.seed = sp.seed;
 
