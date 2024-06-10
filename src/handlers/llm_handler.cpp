@@ -495,7 +495,7 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   // tokens
   const size_t capacity = prompt_tokens.size() + max_tokens +
                           options_.num_speculative_tokens() + /*bouns_token*/ 1;
-  const size_t best_of = sp.best_of.has_value() ? sp.best_of.value() : sp.n;
+  const size_t best_of = sp.best_of.value_or(sp.n);
   auto request = std::make_unique<Request>(std::move(prompt),
                                            std::move(prompt_tokens),
                                            capacity,
