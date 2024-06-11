@@ -221,7 +221,7 @@ SequenceOutput Sequence::build_output(const Tokenizer& tokenizer) {
   const size_t size = ids.size();
 
   // record the start index of token ids
-  const size_t output_start = incremental_decoder_.output_offset();
+  const size_t start = incremental_decoder_.output_offset();
 
   // decide which position to start incremental decoding
   // leave 6 tokens for potential unfinished byte sequence
@@ -244,12 +244,12 @@ SequenceOutput Sequence::build_output(const Tokenizer& tokenizer) {
     output.finish_reason = to_string(finish_reason_);
   }
 
-  const size_t output_end = incremental_decoder_.output_offset();
-  output.token_ids = ids.slice(output_start, output_end);
+  const size_t end = incremental_decoder_.output_offset();
+  output.token_ids = ids.slice(start, end);
 
   // build logprobs for generated tokens
   if (options_.logprobs) {
-    auto logprob_contents = build_logprobs(output_start, output_end, tokenizer);
+    auto logprob_contents = build_logprobs(start, end, tokenizer);
     if (!logprob_contents.empty()) {
       output.logprobs = std::move(logprob_contents);
     }

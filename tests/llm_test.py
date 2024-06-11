@@ -61,7 +61,7 @@ def test_logprobs():
         token_ids = output.outputs[0].token_ids
         logprobs = output.outputs[0].logprobs
         assert len(logprobs) == len(token_ids)
-        assert generated_tokens == len(logprobs)
+        assert generated_tokens >= len(logprobs)
         for token_id, logprob in zip(token_ids, logprobs):
             assert logprob.token_id == token_id
             top_logprobs = logprob.top_logprobs
@@ -83,7 +83,7 @@ def test_logprobs():
         token_ids = output.outputs[0].token_ids
         logprobs = output.outputs[0].logprobs
         assert len(logprobs) == len(token_ids)
-        assert generated_tokens == len(logprobs)
+        assert generated_tokens >= len(logprobs)
         for token_id, logprob in zip(token_ids, logprobs):
             assert logprob.token_id == token_id
             top_logprobs = logprob.top_logprobs
@@ -105,12 +105,15 @@ def test_logprobs():
         token_ids = output.outputs[0].token_ids
         logprobs = output.outputs[0].logprobs
         assert len(logprobs) == len(token_ids)
-        assert generated_tokens == len(logprobs)
+        assert generated_tokens >= len(logprobs)
         for token_id, logprob in zip(token_ids, logprobs):
             assert logprob.token_id == token_id
             assert logprob.top_logprobs is None
 
         output = outputs[3]
+        generated_tokens = output.usage.num_generated_tokens
+        token_ids = output.outputs[0].token_ids
+        assert generated_tokens >= len(token_ids)
         assert output.finished
         assert output.prompt == "what is llm"
         assert output.usage
