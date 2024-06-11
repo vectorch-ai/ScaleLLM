@@ -11,9 +11,11 @@ def test_stream_output():
             stream=True,
         )
         stream_output_text = ""
+        stream_output_token_ids = []
         for output in output_stream:
             if len(output.outputs) > 0:
                 stream_output_text += output.outputs[0].text
+                stream_output_token_ids.extend(output.outputs[0].token_ids)
 
         output_stream = engine.schedule(
             prompt="hello",
@@ -21,10 +23,13 @@ def test_stream_output():
             stream=False,
         )
         output_text = None
+        output_token_ids = None
         output = output_stream.__next__()
         if len(output.outputs) > 0:
             output_text = output.outputs[0].text
+            output_token_ids = output.outputs[0].token_ids
         assert stream_output_text == output_text
+        assert stream_output_token_ids == output_token_ids
 
 
 def test_context_manager():

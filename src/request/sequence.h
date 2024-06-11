@@ -191,7 +191,7 @@ class Sequence final {
   // get the output of the sequence until the specified number of tokens,
   // returns nullopt if no delta text and not finished
   std::optional<SequenceOutput> build_delta_output_until(
-      size_t end_idx,
+      size_t size,
       const Tokenizer& tokenizer);
 
   // get the full output of the sequence

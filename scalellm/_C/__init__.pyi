@@ -90,6 +90,7 @@ class SequenceOutput:
     def __init__(self) -> None: ...
     index: int
     text: str
+    token_ids: List[int]
     finish_reason: Optional[str]
     logprobs: Optional[List[LogProb]]
 
