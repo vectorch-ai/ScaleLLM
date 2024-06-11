@@ -51,7 +51,7 @@ struct SamplingParams {
   uint32_t n = 1;
 
   // number of sequences to generate for each prompt and select n best among.
-  std::optional<uint32_t> best_of = 1;
+  std::optional<uint32_t> best_of;
 
   // whether to include the original prompt in the completion response.
   bool echo = false;

@@ -17,22 +17,13 @@ import uvicorn
 from fastapi.responses import JSONResponse, Response
 
 from scalellm import AsyncLLMEngine, ValidationError, get_metrics
-from scalellm.serve.api_protocol import (
-    ChatCompletionRequest,
-    CompletionRequest,
-    ErrorResponse,
-    ModelCard,
-    ModelList,
-    ModelPermission,
-)
-from scalellm.serve.chat_handler import (
-    generate_chat_response,
-    generate_chat_stream_response,
-)
+from scalellm.serve.api_protocol import (ChatCompletionRequest,
+                                         CompletionRequest, ErrorResponse,
+                                         ModelCard, ModelList, ModelPermission)
+from scalellm.serve.chat_handler import (generate_chat_response,
+                                         generate_chat_stream_response)
 from scalellm.serve.completion_handler import (
-    generate_completion_response,
-    generate_completion_stream_response,
-)
+    generate_completion_response, generate_completion_stream_response)
 from scalellm.serve.server_args import parse_args
 
 app = fastapi.FastAPI()
