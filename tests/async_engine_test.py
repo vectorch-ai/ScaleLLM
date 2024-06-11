@@ -6,7 +6,7 @@ def test_stream_output():
         sampling_params = SamplingParams(temperature=0, max_tokens=100, echo=True)
 
         output_stream = engine.schedule(
-            prompt="hello",
+            prompt="今天真的很热",
             sampling_params=sampling_params,
             stream=True,
         )
@@ -18,7 +18,7 @@ def test_stream_output():
                 stream_output_token_ids.extend(output.outputs[0].token_ids)
 
         output_stream = engine.schedule(
-            prompt="hello",
+            prompt="今天真的很热",
             sampling_params=sampling_params,
             stream=False,
         )

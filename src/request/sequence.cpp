@@ -219,39 +219,37 @@ SequenceOutput Sequence::build_output(const Tokenizer& tokenizer) {
 
   const auto ids = token_ids();
   const size_t size = ids.size();
-  // leave 6 tokens for potential unfinished byte sequence from byte fallback
-  // tokenization
-  size_t incremental_start_idx = size <= 7 ? 0 : size - 7;
-  // at least start from the first generated token
-  if (incremental_start_idx < num_prompt_tokens_) {
-    incremental_start_idx = num_prompt_tokens_;
-  }
 
-  const size_t start = incremental_decoder_.output_offset();
+  // record the start index of token ids
+  const size_t output_start = incremental_decoder_.output_offset();
+
+  // decide which position to start incremental decoding
+  // leave 6 tokens for potential unfinished byte sequence
+  size_t incremental_start = size <= 6 ? 0 : size - 6;
+  // at least start from the first generated token
+  if (incremental_start < num_prompt_tokens_) {
+    incremental_start = num_prompt_tokens_;
+  }
+  // incrementally decode tokens between [incremental_start, size)
   std::stringstream ss;
-  // first output leading tokens
-  ss << incremental_decoder_.decode(ids.slice(0, incremental_start_idx),
-                                    tokenizer);
-  // then decode one by one to avoid potential unfinished bytes
-  // incrementally decode tokens [start_idx, size)
-  for (size_t i = incremental_start_idx; i < size; ++i) {
-    ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
+  for (size_t end = incremental_start; end <= size; ++end) {
+    ss << incremental_decoder_.decode(ids.slice(0, end), tokenizer);
   }
 
   SequenceOutput output;
   output.index = index_;
   output.text = ss.str();
 
-  const size_t end = incremental_decoder_.output_offset();
-  output.token_ids = ids.slice(start, end);
-
   if (finish_reason_ != FinishReason::NONE) {
     output.finish_reason = to_string(finish_reason_);
   }
 
+  const size_t output_end = incremental_decoder_.output_offset();
+  output.token_ids = ids.slice(output_start, output_end);
+
   // build logprobs for generated tokens
   if (options_.logprobs) {
-    auto logprob_contents = build_logprobs(0, size, tokenizer);
+    auto logprob_contents = build_logprobs(output_start, output_end, tokenizer);
     if (!logprob_contents.empty()) {
       output.logprobs = std::move(logprob_contents);
     }

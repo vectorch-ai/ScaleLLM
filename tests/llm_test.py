@@ -25,7 +25,7 @@ def test_llm_generate():
 def test_logprobs():
     with LLM(model="gpt2", devices="cpu") as llm:
         outputs = llm.generate(
-            ["who is messi", "how to use pytest", "hello,", "what is llm"],
+            ["who is messi", "how to use pytest", "你好,", "what is llm"],
             [
                 SamplingParams(
                     temperature=0,
@@ -94,7 +94,7 @@ def test_logprobs():
 
         output = outputs[2]
         assert output.finished
-        assert output.prompt == "hello,"
+        assert output.prompt == "你好,"
         assert output.usage
         assert output.outputs[0].text
         assert output.outputs[0].index == 0
