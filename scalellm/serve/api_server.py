@@ -17,13 +17,22 @@ import uvicorn
 from fastapi.responses import JSONResponse, Response
 
 from scalellm import AsyncLLMEngine, ValidationError, get_metrics
-from scalellm.serve.api_protocol import (ChatCompletionRequest,
-                                         CompletionRequest, ErrorResponse,
-                                         ModelCard, ModelList, ModelPermission)
-from scalellm.serve.chat_handler import (generate_chat_response,
-                                         generate_chat_stream_response)
+from scalellm.serve.api_protocol import (
+    ChatCompletionRequest,
+    CompletionRequest,
+    ErrorResponse,
+    ModelCard,
+    ModelList,
+    ModelPermission,
+)
+from scalellm.serve.chat_handler import (
+    generate_chat_response,
+    generate_chat_stream_response,
+)
 from scalellm.serve.completion_handler import (
-    generate_completion_response, generate_completion_stream_response)
+    generate_completion_response,
+    generate_completion_stream_response,
+)
 from scalellm.serve.server_args import parse_args
 
 app = fastapi.FastAPI()
@@ -91,7 +100,12 @@ async def create_completion(request: CompletionRequest):
     if error_response is not None:
         return error_response
 
-    if request.stream:
+    # results cannot be streamed when best_of != n
+    stream = request.stream and (
+        request.best_of is None or request.n == request.best_of
+    )
+
+    if stream:
         return await generate_completion_stream_response(request, llm_engine)
     return await generate_completion_response(request, llm_engine)
 

@@ -3,12 +3,15 @@ import time
 import shortuuid
 
 from scalellm import AsyncLLMEngine, SamplingParams
-from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
-                                         CompletionResponseChoice,
-                                         CompletionResponseStreamChoice,
-                                         CompletionStreamResponse, UsageInfo)
-from scalellm.serve.common import (jsonify_model, to_api_completion_logprobs,
-                                   to_priority)
+from scalellm.serve.api_protocol import (
+    CompletionRequest,
+    CompletionResponse,
+    CompletionResponseChoice,
+    CompletionResponseStreamChoice,
+    CompletionStreamResponse,
+    UsageInfo,
+)
+from scalellm.serve.common import jsonify_model, to_api_completion_logprobs, to_priority
 from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
@@ -37,8 +40,6 @@ def to_sampling_params(request: CompletionRequest) -> SamplingParams:
 async def generate_completion_response(
     request: CompletionRequest, engine: AsyncLLMEngine
 ) -> CompletionResponse:
-    assert not request.stream, "streaming request is not supported"
-
     request_id = f"cmpl-{shortuuid.random()}"
     created_time = int(time.time())
     model = request.model
@@ -49,7 +50,7 @@ async def generate_completion_response(
         request.prompt,
         sampling_params=sampling_params,
         priority=priority,
-        stream=request.stream,
+        stream=False,
     )
 
     # only one output is expected for non-streaming request

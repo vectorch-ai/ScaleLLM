@@ -98,9 +98,7 @@ void log_request_status(StatusCode code) {
   }
 }
 
-bool verify_params(bool stream,
-                   const SamplingParams& sp,
-                   OutputCallback callback) {
+bool verify_params(const SamplingParams& sp, OutputCallback callback) {
   if (sp.n == 0) {
     CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
                         "n should be greater than 0");
@@ -110,11 +108,6 @@ bool verify_params(bool stream,
     if (sp.n > sp.best_of.value()) {
       CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
                           "n should be less than or equal to best_of");
-      return false;
-    }
-    if (stream && sp.best_of.value() > 1) {
-      CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
-                          "stream is not supported with best_of > 1");
       return false;
     }
   }
@@ -355,7 +348,7 @@ void LLMHandler::schedule(std::string prompt,
 
     Timer timer;
     // verify the prompt
-    if (!verify_params(stream, sp, callback)) {
+    if (!verify_params(sp, callback)) {
       return;
     }
 
@@ -391,7 +384,7 @@ void LLMHandler::schedule(std::vector<Message> messages,
     SCOPE_GUARD([this] { scheduler_->dec_pending_requests(); });
 
     // verify the prompt
-    if (!verify_params(stream, sp, callback)) {
+    if (!verify_params(sp, callback)) {
       return;
     }
 
@@ -548,6 +541,11 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
       }
       stopping_criteria.stop_sequences.push_back(std::move(stop_tokens));
     }
+  }
+
+  // results cannot be streamed when best_of != n
+  if (best_of != sp.n) {
+    stream = false;
   }
   request->stream = stream;
   request->priority = priority;
