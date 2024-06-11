@@ -127,7 +127,9 @@ def test_best_of():
         assert output.outputs[0].text
         assert output.outputs[0].index == 0
         assert output.outputs[0].finish_reason == "length"
+        assert output.outputs[0].logprobs is None
 
         assert output.outputs[1].text
         assert output.outputs[1].index == 1
         assert output.outputs[1].finish_reason == "length"
+        assert output.outputs[1].logprobs is None
