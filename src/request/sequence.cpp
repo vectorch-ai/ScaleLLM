@@ -178,12 +178,12 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
 }
 
 std::optional<SequenceOutput> Sequence::build_delta_output_until(
-    size_t end_idx,
+    size_t size,
     const Tokenizer& tokenizer) {
-  CHECK_LE(end_idx, num_tokens_);
+  CHECK_LE(size, num_tokens_);
   AUTO_COUNTER(stream_decode_latency_seconds);
 
-  const auto ids = Slice<int32_t>(token_ids_, end_idx);
+  const auto ids = Slice<int32_t>(token_ids_, size);
 
   // record the start index of token ids
   const size_t start = incremental_decoder_.output_offset();
@@ -200,8 +200,10 @@ std::optional<SequenceOutput> Sequence::build_delta_output_until(
     output.finish_reason = to_string(finish_reason_);
   }
 
-  // prepare logprobs and top tokens if available
   const size_t end = incremental_decoder_.output_offset();
+  output.token_ids = ids.slice(start, end);
+
+  // prepare logprobs and top tokens if available
   if (options_.logprobs && start < end) {
     // output logprobs for tokens [start_idx, end_idx)
     auto logprob_contents = build_logprobs(start, end, tokenizer);
@@ -217,32 +219,37 @@ SequenceOutput Sequence::build_output(const Tokenizer& tokenizer) {
 
   const auto ids = token_ids();
   const size_t size = ids.size();
-  // leave 6 tokens for potential unfinished byte sequence from byte fallback
-  // tokenization
-  size_t start_idx = size <= 7 ? 0 : size - 7;
+
+  // record the start index of token ids
+  const size_t start = incremental_decoder_.output_offset();
+
+  // decide which position to start incremental decoding
+  // leave 6 tokens for potential unfinished byte sequence
+  size_t incremental_start = size <= 6 ? 0 : size - 6;
   // at least start from the first generated token
-  if (start_idx < num_prompt_tokens_) {
-    start_idx = num_prompt_tokens_;
+  if (incremental_start < num_prompt_tokens_) {
+    incremental_start = num_prompt_tokens_;
   }
+  // incrementally decode tokens between [incremental_start, size)
   std::stringstream ss;
-  // first output leading tokens
-  ss << incremental_decoder_.decode(ids.slice(0, start_idx), tokenizer);
-  // then decode one by one to avoid potential unfinished bytes
-  // incrementally decode tokens [start_idx, size)
-  for (size_t i = start_idx; i < size; ++i) {
-    ss << incremental_decoder_.decode(ids.slice(0, i + 1), tokenizer);
+  for (size_t end = incremental_start; end <= size; ++end) {
+    ss << incremental_decoder_.decode(ids.slice(0, end), tokenizer);
   }
 
   SequenceOutput output;
   output.index = index_;
   output.text = ss.str();
+
   if (finish_reason_ != FinishReason::NONE) {
     output.finish_reason = to_string(finish_reason_);
   }
 
+  const size_t end = incremental_decoder_.output_offset();
+  output.token_ids = ids.slice(start, end);
+
   // build logprobs for generated tokens
   if (options_.logprobs) {
-    auto logprob_contents = build_logprobs(0, size, tokenizer);
+    auto logprob_contents = build_logprobs(start, end, tokenizer);
     if (!logprob_contents.empty()) {
       output.logprobs = std::move(logprob_contents);
     }

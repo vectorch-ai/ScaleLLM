@@ -57,6 +57,9 @@ struct SequenceOutput {
   // delta text is the text generated since the last response for streaming.
   std::string text;
 
+  // the token ids of the generated text.
+  std::vector<int32_t> token_ids;
+
   // the reason the sequence finished.
   std::optional<std::string> finish_reason;
 

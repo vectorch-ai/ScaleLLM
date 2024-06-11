@@ -25,7 +25,7 @@ def test_llm_generate():
 def test_logprobs():
     with LLM(model="gpt2", devices="cpu") as llm:
         outputs = llm.generate(
-            ["who is messi", "how to use pytest", "hello,", "what is llm"],
+            ["who is messi", "how to use pytest", "你好,", "what is llm"],
             [
                 SamplingParams(
                     temperature=0,
@@ -58,9 +58,12 @@ def test_logprobs():
 
         # Check logprobs
         generated_tokens = output.usage.num_generated_tokens
+        token_ids = output.outputs[0].token_ids
         logprobs = output.outputs[0].logprobs
-        assert generated_tokens == len(logprobs)
-        for logprob in logprobs:
+        assert len(logprobs) == len(token_ids)
+        assert generated_tokens >= len(logprobs)
+        for token_id, logprob in zip(token_ids, logprobs):
+            assert logprob.token_id == token_id
             top_logprobs = logprob.top_logprobs
             assert len(top_logprobs) == 10
             assert logprob.token == top_logprobs[0].token
@@ -77,9 +80,12 @@ def test_logprobs():
 
         # Check logprobs
         generated_tokens = output.usage.num_generated_tokens
+        token_ids = output.outputs[0].token_ids
         logprobs = output.outputs[0].logprobs
-        assert generated_tokens == len(logprobs)
-        for logprob in logprobs:
+        assert len(logprobs) == len(token_ids)
+        assert generated_tokens >= len(logprobs)
+        for token_id, logprob in zip(token_ids, logprobs):
+            assert logprob.token_id == token_id
             top_logprobs = logprob.top_logprobs
             assert len(top_logprobs) == 20
             assert logprob.token == top_logprobs[0].token
@@ -88,7 +94,7 @@ def test_logprobs():
 
         output = outputs[2]
         assert output.finished
-        assert output.prompt == "hello,"
+        assert output.prompt == "你好,"
         assert output.usage
         assert output.outputs[0].text
         assert output.outputs[0].index == 0
@@ -96,12 +102,18 @@ def test_logprobs():
 
         # Check logprobs
         generated_tokens = output.usage.num_generated_tokens
+        token_ids = output.outputs[0].token_ids
         logprobs = output.outputs[0].logprobs
-        assert generated_tokens == len(logprobs)
-        for logprob in logprobs:
+        assert len(logprobs) == len(token_ids)
+        assert generated_tokens >= len(logprobs)
+        for token_id, logprob in zip(token_ids, logprobs):
+            assert logprob.token_id == token_id
             assert logprob.top_logprobs is None
 
         output = outputs[3]
+        generated_tokens = output.usage.num_generated_tokens
+        token_ids = output.outputs[0].token_ids
+        assert generated_tokens >= len(token_ids)
         assert output.finished
         assert output.prompt == "what is llm"
         assert output.usage
