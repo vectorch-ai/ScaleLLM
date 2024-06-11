@@ -42,52 +42,12 @@ TEST(RejectionSamplerTest, Basic) {
   // uniform_rand:           [0.4785  0.6589  0.9399]
   // accepted:               [  1        1       0  ]
   auto uniform_rand = torch::tensor({{0.4785, 0.6589, 0.9399}}, options);
-
-  auto bonus_token_ids = torch::tensor({{5}}, options.dtype(torch::kInt64));
-  auto output = RejectionSampler::random_sample(draft_token_ids,
-                                                draft_probs,
-                                                target_probs,
-                                                uniform_rand,
-                                                bonus_token_ids,
-                                                false);
+  auto output = RejectionSampler::random_sample(
+      draft_token_ids, draft_probs, target_probs, uniform_rand);
   auto desired_output =
-      torch::tensor({{1, 2, 2, 5}}, options.dtype(torch::kInt64));
+      torch::tensor({{1, 2, 2}}, options.dtype(torch::kInt64));
 
   EXPECT_TRUE(torch::allclose(output, desired_output));
-
-  auto masked_output = RejectionSampler::random_sample(draft_token_ids,
-                                                       draft_probs,
-                                                       target_probs,
-                                                       uniform_rand,
-                                                       bonus_token_ids,
-                                                       true);
-  auto desired_masked_output =
-      torch::tensor({{1, 2, 2, -1}}, options.dtype(torch::kInt64));
-  EXPECT_TRUE(torch::allclose(masked_output, desired_masked_output));
-}
-
-TEST(RejectionSamplerTest, Mask) {
-  // test accepted mask
-  torch::ScalarType dtype(torch::kBool);
-  torch::Device device(torch::kCPU);
-  const auto options = torch::dtype(dtype).device(device);
-
-  // clang-format off
-  auto accepted = torch::tensor({
-        {0, 1, 0, 1}, 
-        {1, 0, 1, 1}, 
-        {1, 1, 0, 1}, 
-        {1, 1, 1, 1}},
-        options);
-  auto desired_mask = torch::tensor({
-        {1, 0, 0, 0, 0},
-        {1, 1, 0, 0, 0},
-        {1, 1, 1, 0, 0},
-        {1, 1, 1, 1, 1}}, 
-        options);
-  // clang-format on
-  auto mask = RejectionSampler::build_accepted_mask(accepted);
-  EXPECT_TRUE(torch::allclose(mask, desired_mask));
 }
 
 TEST(RejectionSamplerTest, Greedy) {
@@ -116,21 +76,11 @@ TEST(RejectionSamplerTest, Greedy) {
                      {batch_size, n_bonus_tokens},
                      torch::dtype(torch::kInt64).device(device));
 
-  auto output =
-      RejectionSampler::greedy_sample(draft_token_ids,
-                                      target_probs,
-                                      bonus_token_ids,
-                                      /*mask_out_rejected_tokens=*/false);
+  auto output = RejectionSampler::greedy_sample(target_probs);
   const auto desired_output = target_probs.argmax(/*dim=*/-1);
 
   // check target tokens
-  EXPECT_TRUE(torch::allclose(
-      output.slice(/*dim=*/-1, /*start=*/0, /*end=*/n_speculative_tokens),
-      desired_output));
-  // check bonus tokens
-  EXPECT_TRUE(
-      torch::allclose(output.slice(/*dim=*/-1, /*start=*/n_speculative_tokens),
-                      bonus_token_ids));
+  EXPECT_TRUE(torch::equal(output, desired_output));
 }
 
 TEST(RejectionSamplerTest, Random) {
@@ -152,17 +102,11 @@ TEST(RejectionSamplerTest, Random) {
       torch::randn({num_samples, 1, vocab_size}, options).softmax(/*dim=*/-1);
   auto draft_token_ids = Sampler::random_sample(draft_probs);
 
-  // not used
-  auto bonus_token_ids =
-      torch::ones({num_samples, 1}, options.dtype(torch::kInt64));
-
   auto uniform_rand = torch::rand(draft_token_ids.sizes(), options);
   auto output = RejectionSampler::random_sample(draft_token_ids,
                                                 draft_probs,
                                                 target_probs,
-                                                uniform_rand,
-                                                bonus_token_ids,
-                                                false);
+                                                uniform_rand);
 
   // remove bonus token
   auto token_ids = output.slice(/*dim=*/-1, /*start=*/0, /*end=*/-1).flatten();

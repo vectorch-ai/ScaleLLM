@@ -199,16 +199,9 @@ void SpeculativeEngine::validate(Batch& batch,
   const int64_t num_speculative_tokens =
       static_cast<int64_t>(draft_outputs.size());
 
-  // [batch_size, n_speculative_tokens, vocab_size]
+  // [..., vocab_size] => [batch_size, n_speculative_tokens + 1, vocab_size]
   auto target_logits = target_output.logits.view(
       {batch_size, num_speculative_tokens + /*bonus_tokens*/ 1, vocab_size});
-  auto target_probs =
-      torch::softmax(target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
-  auto target_logprobs =
-      torch::log_softmax(target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
-  // filter out probs for bonus tokens
-  target_probs = target_probs.slice(
-      /*dim=*/1, /*start=*/0, /*end=*/num_speculative_tokens);
 
   // prepare input for rejection sampling
   std::vector<torch::Tensor> draft_token_ids_vec;
@@ -226,22 +219,17 @@ void SpeculativeEngine::validate(Batch& batch,
   const auto draft_token_ids =
       torch::cat(draft_token_ids_vec, /*dim=*/1).to(bonus_token_ids);
   const auto draft_probs =
-      torch::cat(draft_probs_vec, /*dim=*/1).to(target_probs);
+      torch::cat(draft_probs_vec, /*dim=*/1).to(target_logits.device());
 
   auto rejection_sampler =
       std::make_unique<RejectionSampler>(target_output.do_sample);
 
   // get the accepted tokens
-  auto accepted_tokens =
-      rejection_sampler->forward(draft_token_ids,
-                                 draft_probs,
-                                 target_probs,
-                                 target_logprobs,
-                                 bonus_token_ids,
-                                 /*mask_out_rejected_tokens=*/true);
+  const auto sample_output = rejection_sampler->forward(
+      draft_token_ids, draft_probs, target_logits, bonus_token_ids);
 
   // update the batch with the accpeted tokens
-  batch.process_validate_output(accepted_tokens);
+  // batch.process_validate_output(accepted_tokens);
 }
 
 int64_t SpeculativeEngine::calculate_kv_cache_blocks(

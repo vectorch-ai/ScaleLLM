@@ -84,27 +84,27 @@ void Sequence::append_token(const TokenInfo& token_info) {
   const auto cur_idx = num_tokens_++;
   const int32_t token_id = token_info.token_id;
   token_ids_[cur_idx] = token_id;
+  token_to_count_map_[token_id]++;
 
   // update logprobs if needed
   if (options_.sampling_param.logprobs) {
     logprobs_[cur_idx] = token_info.logprob;
-  }
 
-  // update top tokens and top logprobs if needed
-  const auto num_top_tokens = options_.sampling_param.top_logprobs;
-  DCHECK_EQ(token_info.top_tokens.size(), token_info.top_logprobs.size());
-  if (num_top_tokens > 0) {
-    if (token_info.top_tokens.size() > num_top_tokens) {
-      top_tokens_[cur_idx] = token_info.top_tokens.slice(0, num_top_tokens);
-      top_logprobs_[cur_idx] = token_info.top_logprobs.slice(0, num_top_tokens);
-    } else {
-      DCHECK_EQ(token_info.top_tokens.size(), num_top_tokens);
-      top_tokens_[cur_idx] = token_info.top_tokens;
-      top_logprobs_[cur_idx] = token_info.top_logprobs;
+    // update top tokens and top logprobs if needed
+    const auto num_top_tokens = options_.sampling_param.top_logprobs;
+    DCHECK_EQ(token_info.top_tokens.size(), token_info.top_logprobs.size());
+    if (num_top_tokens > 0) {
+      if (token_info.top_tokens.size() > num_top_tokens) {
+        top_tokens_[cur_idx] = token_info.top_tokens.slice(0, num_top_tokens);
+        top_logprobs_[cur_idx] =
+            token_info.top_logprobs.slice(0, num_top_tokens);
+      } else {
+        DCHECK_EQ(token_info.top_tokens.size(), num_top_tokens);
+        top_tokens_[cur_idx] = token_info.top_tokens;
+        top_logprobs_[cur_idx] = token_info.top_logprobs;
+      }
     }
   }
-
-  token_to_count_map_[token_id]++;
 
   // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
@@ -145,6 +145,26 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
       --token_to_count_map_[draft_token_id];
       ++token_to_count_map_[target_token_id];
     }
+
+    // update logprobs if needed
+    // if (options_.sampling_param.logprobs) {
+    //   logprobs_[cur_idx] = token_info.logprob;
+
+    //   // update top tokens and top logprobs if needed
+    //   const auto num_top_tokens = options_.sampling_param.top_logprobs;
+    //   DCHECK_EQ(token_info.top_tokens.size(), token_info.top_logprobs.size());
+    //   if (num_top_tokens > 0) {
+    //     if (token_info.top_tokens.size() > num_top_tokens) {
+    //       top_tokens_[cur_idx] = token_info.top_tokens.slice(0, num_top_tokens);
+    //       top_logprobs_[cur_idx] =
+    //           token_info.top_logprobs.slice(0, num_top_tokens);
+    //     } else {
+    //       DCHECK_EQ(token_info.top_tokens.size(), num_top_tokens);
+    //       top_tokens_[cur_idx] = token_info.top_tokens;
+    //       top_logprobs_[cur_idx] = token_info.top_logprobs;
+    //     }
+    //   }
+    // }
 
     // check if sequence is finished
     const Slice<int32_t> token_ids(token_ids_, cur_idx + 1);

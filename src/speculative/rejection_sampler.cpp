@@ -4,6 +4,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "sampling/parameters.h"
 #include "sampling/sampler.h"
 
 namespace llm {
@@ -30,79 +31,69 @@ RejectionSampler::RejectionSampler(const torch::Tensor& do_sample) {
 // target_probs: [batch_size, n_speculative_tokens, vocab_size]
 // bonus_token_ids: [batch_size, 1]
 // returns accepted tokens. [batch_size, n_speculative_tokens + 1]
-torch::Tensor RejectionSampler::forward(const torch::Tensor& draft_token_ids,
-                                        const torch::Tensor& draft_probs,
-                                        const torch::Tensor& target_probs,
-                                        const torch::Tensor& target_logprobs,
-                                        const torch::Tensor& bonus_token_ids,
-                                        bool mask_out_rejected_tokens) const {
+SampleOutput RejectionSampler::forward(const torch::Tensor& draft_token_ids,
+                                       const torch::Tensor& draft_probs,
+                                       const torch::Tensor& target_logits,
+                                       const torch::Tensor& bonus_token_ids) const {
   CHECK_EQ(draft_token_ids.size(0), do_sample_.size(0))
       << "batch size mismatch";
   DCHECK_EQ(draft_token_ids.size(1), draft_probs.size(1));
-  DCHECK_EQ(draft_probs.sizes(), target_probs.sizes());
+  // DCHECK_EQ(draft_probs.sizes(), target_probs.sizes());
 
+  auto target_probs =
+      torch::softmax(target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
+  // filter out probs for bonus tokens
+  target_probs = target_probs.slice(
+      /*dim=*/1, /*start=*/0, /*end=*/target_probs.size(1) - 1);
+
+  torch::Tensor target_token_ids;
   if (all_greedy_sample_) {
-    return greedy_sample(draft_token_ids,
-                         target_probs,
-                         bonus_token_ids,
-                         mask_out_rejected_tokens);
+    target_token_ids = greedy_sample(target_probs);
+  } else if (all_random_sample_) {
+    const auto uniform_rand =
+        torch::rand(draft_token_ids.sizes(), draft_probs.options());
+    target_token_ids =
+        random_sample(draft_token_ids, draft_probs, target_probs, uniform_rand);
+  } else {
+    const auto uniform_rand =
+        torch::rand(draft_token_ids.sizes(), draft_probs.options());
+    // mixed sample, sample both then choose based on do_sample_
+    auto random =
+        random_sample(draft_token_ids, draft_probs, target_probs, uniform_rand);
+    auto greedy = greedy_sample(target_probs);
+    target_token_ids = torch::where(do_sample_, random, greedy);
   }
 
-  auto uniform_rand =
-      torch::rand(draft_token_ids.sizes(), draft_probs.options());
-  if (all_random_sample_) {
-    return random_sample(draft_token_ids,
-                         draft_probs,
-                         target_probs,
-                         uniform_rand,
-                         bonus_token_ids,
-                         mask_out_rejected_tokens);
-  }
+  SampleOutput output;
 
-  // mixed sample, sample both then choose based on do_sample_
-  auto random = random_sample(draft_token_ids,
-                              draft_probs,
-                              target_probs,
-                              uniform_rand,
-                              bonus_token_ids,
-                              mask_out_rejected_tokens);
-  auto greedy = greedy_sample(
-      draft_token_ids, target_probs, bonus_token_ids, mask_out_rejected_tokens);
-  return torch::where(do_sample_, random, greedy);
-}
-
-// build mask from accepted matrix
-// for example: [[1, 1, 0, 1],   ->   [[1, 1, 1, 0, 0],
-//               [1, 0, 0, 0]]         [1, 1, 0, 0, 0]]
-torch::Tensor RejectionSampler::build_accepted_mask(
-    const torch::Tensor& accepted) {
-  // build the mask for the first rejected token
-  const auto batch_size = accepted.size(0);
-  const auto n_tokens = accepted.size(1);
-
-  // use LongTensor since argmax does not support bool
-  auto accepted_int64 = accepted.to(torch::kInt64);
-  auto bonus_mask = torch::zeros({batch_size, 1}, accepted_int64.options());
-  auto combined_mask = torch::cat({accepted_int64, bonus_mask}, /*dim=*/-1);
-  // [batch_size, 1]
-  auto first_rejected_mask =
-      (1 - combined_mask).argmax(/*dim=*/1, /*keepdim=*/true);
-
-  // [1, n_speculative_tokens + 1]
-  auto indices =
-      torch::arange(n_tokens + 1, accepted.device()).unsqueeze(/*dim=*/0);
   // [batch_size, n_speculative_tokens + 1]
-  auto accepted_mask = indices <= first_rejected_mask;
-  return accepted_mask;
+  const auto accepted_token_ids =
+      torch::cat({target_token_ids, bonus_token_ids}, /*dim=*/-1);
+  output.next_tokens = accepted_token_ids;
+  bool logprobs_ = true;
+  int64_t top_logprobs_ = 2;
+  if (logprobs_) {
+    // log_softmax is equivalent to log(softmax) but more numerically stable
+    auto target_logprobs = torch::log_softmax(
+        target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
+    
+    // select the logprobs for each sequence
+    output.logprobs = target_logprobs.gather(/*dim=*/-1, accepted_token_ids);
+
+    if (top_logprobs_ > 0) {
+      auto [values, indices] = target_logprobs.topk(top_logprobs_, /*dim=*/-1);
+      output.top_logprobs = values;
+      output.top_tokens = indices;
+    }
+  }
+  return output;
 }
 
 torch::Tensor RejectionSampler::random_sample(
     const torch::Tensor& draft_token_ids,
     const torch::Tensor& draft_probs,
     const torch::Tensor& target_probs,
-    const torch::Tensor& uniform_rand,
-    const torch::Tensor& bonus_token_ids,
-    bool mask_out_rejected_tokens) {
+    const torch::Tensor& uniform_rand) {
   auto selected_draft_probs =
       index_select_2d(draft_probs, /*dim=*/-1, draft_token_ids);
   auto selected_target_probs =
@@ -121,45 +112,12 @@ torch::Tensor RejectionSampler::random_sample(
 
   // resample on the recovered probs
   torch::Tensor recovered_token_ids = Sampler::random_sample(recovered_probs);
-
-  auto combined = torch::where(accepted, draft_token_ids, recovered_token_ids);
-  // [batch_size, n_speculative_tokens + 1]
-  auto accepted_token_ids = torch::cat({combined, bonus_token_ids}, /*dim=*/-1);
-
-  if (mask_out_rejected_tokens) {
-    // build the mask for the first rejected token
-    auto accepted_mask = build_accepted_mask(accepted);
-    // mask out the rejected tokens with -1
-    accepted_token_ids = torch::where(accepted_mask,
-                                      accepted_token_ids,
-                                      -torch::ones_like(accepted_token_ids));
-  }
-
-  return accepted_token_ids;
+  return torch::where(accepted, draft_token_ids, recovered_token_ids);
 }
 
 torch::Tensor RejectionSampler::greedy_sample(
-    const torch::Tensor& draft_token_ids,
-    const torch::Tensor& target_probs,
-    const torch::Tensor& bonus_token_ids,
-    bool mask_out_rejected_tokens) {
-  auto target_token_ids = Sampler::greedy_sample(target_probs);
-
-  // mask out the rejected tokens with -1
-  // [batch_size, n_speculative_tokens + 1]
-  auto accepted_token_ids =
-      torch::cat({target_token_ids, bonus_token_ids}, /*dim=*/-1);
-
-  if (mask_out_rejected_tokens) {
-    // [batch_size, n_speculative_tokens + 1]
-    auto accepted = (target_token_ids == draft_token_ids);
-    auto accepted_mask = build_accepted_mask(accepted);
-    // mask out the rejected tokens with -1
-    accepted_token_ids = torch::where(accepted_mask,
-                                      accepted_token_ids,
-                                      -torch::ones_like(accepted_token_ids));
-  }
-  return accepted_token_ids;
+    const torch::Tensor& target_probs) {
+  return Sampler::greedy_sample(target_probs);
 }
 
 }  // namespace llm

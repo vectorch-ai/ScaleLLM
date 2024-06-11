@@ -119,18 +119,18 @@ struct SamplingParameters {
 };
 
 struct SampleOutput {
-  // [num_seq] LongTensor
+  // [num_seq, ...] LongTensor
   torch::Tensor next_tokens;
 
-  // [num_seq] FloatTensor
+  // [num_seq, ...] FloatTensor
   torch::Tensor probs;
 
-  // [num_seq] FloatTensor
+  // [num_seq, ...] FloatTensor
   torch::Tensor logprobs;
 
-  // [num_seq, top_k] FloatTensor
+  // [num_seq, ..., top_k] FloatTensor
   torch::Tensor top_logprobs;
-  // [num_seq, top_k] LongTensor
+  // [num_seq, ..., top_k] LongTensor
   torch::Tensor top_tokens;
 };
 
