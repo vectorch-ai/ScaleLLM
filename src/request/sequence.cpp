@@ -230,7 +230,8 @@ SequenceOutput Sequence::build_output(const Tokenizer& tokenizer) {
   const size_t start = incremental_decoder_.output_offset();
   std::stringstream ss;
   // first output leading tokens
-  ss << incremental_decoder_.decode(ids.slice(0, incremental_start_idx), tokenizer);
+  ss << incremental_decoder_.decode(ids.slice(0, incremental_start_idx),
+                                    tokenizer);
   // then decode one by one to avoid potential unfinished bytes
   // incrementally decode tokens [start_idx, size)
   for (size_t i = incremental_start_idx; i < size; ++i) {
