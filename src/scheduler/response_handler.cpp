@@ -9,17 +9,8 @@
 #include "common/metrics.h"
 #include "request/request.h"
 #include "request/sequence.h"
-#include "request/status.h"
 
 // metrics
-DEFINE_COUNTER_FAMILY(detokenization_latency_seconds,
-                      "Latency of detokenization in seconds");
-DEFINE_COUNTER_INSTANCE(stream_decode_latency_seconds,
-                        detokenization_latency_seconds,
-                        {{"mode", "stream"}});
-DEFINE_COUNTER_INSTANCE(non_stream_decode_latency_seconds,
-                        detokenization_latency_seconds,
-                        {{"mode", "non-stream"}});
 
 DEFINE_COUNTER_FAMILY(responsing_latency_seconds,
                       "Latency of responding in seconds");
@@ -46,35 +37,10 @@ void ResponseHandler::on_request_finish(std::unique_ptr<Request> request) {
                                  request = std::move(request)]() {
     AUTO_COUNTER(non_stream_responsing_latency_seconds);
 
-    RequestOutput req_output;
-    // summarize statistics for all sequences
-    Usage usage;
-    usage.num_prompt_tokens = request->num_prompt_tokens();
-    for (const Sequence& seq : request->sequences) {
-      usage.num_generated_tokens += seq.num_generated_tokens();
-    }
-    usage.num_total_tokens =
-        usage.num_prompt_tokens + usage.num_generated_tokens;
-    req_output.usage = usage;
-
     // update the metrics for the request
     HISTOGRAM_OBSERVE(end_2_end_latency_seconds, request->elapsed_seconds());
 
-    if (!request->is_streaming()) {
-      auto& outputs = req_output.outputs;
-      outputs.reserve(request->sequences.size());
-      for (auto& seq : request->sequences) {
-        // generate the final output
-        AUTO_COUNTER(non_stream_decode_latency_seconds);
-        auto seq_output = seq.build_output(*tokenizer);
-        if (seq_output.has_value()) {
-          outputs.push_back(std::move(seq_output.value()));
-        }
-      }
-    }
-    req_output.status = Status(StatusCode::OK);
-    req_output.finished = true;
-    request->on_output(req_output);
+    request->on_output(request->build_output(*tokenizer));
   });
 }
 
@@ -115,7 +81,6 @@ void ResponseHandler::on_request_stream(Request* request) {
       const size_t size = num_tokens[i];
       Sequence& seq = request->sequences[index];
 
-      AUTO_COUNTER(stream_decode_latency_seconds);
       auto seq_output = seq.build_delta_output_until(size, *tokenizer);
       if (seq_output.has_value()) {
         req_output.outputs.push_back(std::move(seq_output.value()));

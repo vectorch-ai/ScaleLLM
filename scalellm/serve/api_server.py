@@ -91,7 +91,12 @@ async def create_completion(request: CompletionRequest):
     if error_response is not None:
         return error_response
 
-    if request.stream:
+    # results cannot be streamed when best_of != n
+    stream = request.stream and (
+        request.best_of is None or request.n == request.best_of
+    )
+
+    if stream:
         return await generate_completion_stream_response(request, llm_engine)
     return await generate_completion_response(request, llm_engine)
 

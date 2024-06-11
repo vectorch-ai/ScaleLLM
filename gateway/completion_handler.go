@@ -33,7 +33,13 @@ func SendCompleteRequest(ctx context.Context, marshaler gw.Marshaler, client sca
 	if err != nil {
 		return nil, false, err
 	}
-	isStream := protoReq.Stream != nil && *protoReq.Stream
+
+	var nCompletions uint32 = 1
+	if protoReq.N != nil {
+		nCompletions = *protoReq.N
+	}
+	// results cannot be streamed when best_of != n
+	isStream := protoReq.Stream != nil && *protoReq.Stream && (protoReq.BestOf == nil || *protoReq.BestOf == nCompletions)
 	return stream, isStream, nil
 
 }

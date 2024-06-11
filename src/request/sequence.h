@@ -56,6 +56,9 @@ class Sequence final {
 
     // whether to echo the prompt tokens back
     bool echo = false;
+
+    // whether to output log probabilities for output tokens
+    bool logprobs = false;
   };
 
   Sequence(size_t index,
@@ -192,7 +195,7 @@ class Sequence final {
       const Tokenizer& tokenizer);
 
   // get the full output of the sequence
-  std::optional<SequenceOutput> build_output(const Tokenizer& tokenizer);
+  SequenceOutput build_output(const Tokenizer& tokenizer);
 
   // set engine type this sequence is used for
   void set_engine_type(EngineType engine_type) {
@@ -224,6 +227,9 @@ class Sequence final {
 
   // get the inter-token latency
   double inter_token_latency(const absl::Time& now);
+
+  // get the average log probability of the sequence (generated tokens only)
+  float logprob() const;
 
  private:
   // build log probabilities for the tokens in the range [start_idx, end_idx)

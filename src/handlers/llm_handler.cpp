@@ -99,6 +99,19 @@ void log_request_status(StatusCode code) {
 }
 
 bool verify_params(const SamplingParams& sp, OutputCallback callback) {
+  if (sp.n == 0) {
+    CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                        "n should be greater than 0");
+    return false;
+  }
+  if (sp.best_of.has_value()) {
+    if (sp.n > sp.best_of.value()) {
+      CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT,
+                          "n should be less than or equal to best_of");
+      return false;
+    }
+  }
+
   // up to 4 stop sequences
   if (sp.stop.has_value() && sp.stop.value().size() > 4) {
     CALLBACK_WITH_ERROR(StatusCode::INVALID_ARGUMENT, "stop size is too large");
@@ -471,13 +484,17 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
     max_tokens = kDefaultMaxTokens;
   }
 
-  const uint32_t num_seqs = std::max<uint32_t>(1, sp.n);
   // allocate enough capacity for prompt tokens, max tokens, and speculative
   // tokens
   const size_t capacity = prompt_tokens.size() + max_tokens +
                           options_.num_speculative_tokens() + /*bouns_token*/ 1;
-  auto request = std::make_unique<Request>(
-      std::move(prompt), std::move(prompt_tokens), capacity, num_seqs);
+  const size_t best_of = sp.best_of.value_or(sp.n);
+  auto request = std::make_unique<Request>(std::move(prompt),
+                                           std::move(prompt_tokens),
+                                           capacity,
+                                           sp.n,
+                                           best_of,
+                                           sp.logprobs);
 
   // sampling parameters
   auto& sampling_param = request->sampling_param;
@@ -489,6 +506,10 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
   sampling_param.top_k = sp.top_k;
   sampling_param.logprobs = sp.logprobs;
   sampling_param.top_logprobs = sp.top_logprobs;
+  if (best_of > sp.n) {
+    // enable logprobs for best_of to generate sequence logprob
+    sampling_param.logprobs = true;
+  }
   // sampling_param.do_sample = sp.do_sample;
   // sampling_param.seed = sp.seed;
 
@@ -520,6 +541,11 @@ std::unique_ptr<Request> LLMHandler::create_request(size_t tid,
       }
       stopping_criteria.stop_sequences.push_back(std::move(stop_tokens));
     }
+  }
+
+  // results cannot be streamed when best_of != n
+  if (best_of != sp.n) {
+    stream = false;
   }
   request->stream = stream;
   request->priority = priority;

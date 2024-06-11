@@ -120,6 +120,9 @@ SamplingParams grpc_request_to_sampling_params(
   if (request.has_n()) {
     sampling_params.n = request.n();
   }
+  if (request.has_best_of()) {
+    sampling_params.best_of = request.best_of();
+  }
   if (request.has_echo()) {
     sampling_params.echo = request.echo();
   }
@@ -183,7 +186,9 @@ void CompletionHandler::complete_async(CompletionCallData* call_data) {
 
   auto sp = grpc_request_to_sampling_params(grpc_request);
   auto priority = to_priority(grpc_request.priority());
-  auto stream = grpc_request.stream();
+  const size_t best_of = sp.best_of.value_or(sp.n);
+  // results cannot be streamed when best_of != n
+  auto stream = grpc_request.stream() && best_of == sp.n;
 
   // schedule the request
   llm_handler_->schedule_async(

@@ -3,6 +3,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <optional>
+
 #include "common/metrics.h"
 #include "handlers/llm_handler.h"
 #include "handlers/sampling_params.h"
@@ -24,23 +26,25 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
 
   // class SamplingParameter
   py::class_<SamplingParams>(m, "SamplingParams")
-      .def(py::init<uint32_t, /*max_tokens*/
-                    uint32_t, /*n*/
-                    bool,     /*echo*/
-                    float,    /*frequency_penalty*/
-                    float,    /*presence_penalty*/
-                    float,    /*repetition_penalty*/
-                    float,    /*temperature*/
-                    float,    /*top_p*/
-                    int64_t,  /*top_k*/
-                    bool,     /*logprobs*/
-                    int64_t,  /*top_logprobs*/
-                    bool,     /*skip_special_tokens*/
-                    bool,     /*ignore_eos*/
+      .def(py::init<uint32_t,                /*max_tokens*/
+                    uint32_t,                /*n*/
+                    std::optional<uint32_t>, /*best_of*/
+                    bool,                    /*echo*/
+                    float,                   /*frequency_penalty*/
+                    float,                   /*presence_penalty*/
+                    float,                   /*repetition_penalty*/
+                    float,                   /*temperature*/
+                    float,                   /*top_p*/
+                    int64_t,                 /*top_k*/
+                    bool,                    /*logprobs*/
+                    int64_t,                 /*top_logprobs*/
+                    bool,                    /*skip_special_tokens*/
+                    bool,                    /*ignore_eos*/
                     std::optional<std::vector<std::string>>, /*stop*/
                     std::optional<std::vector<int32_t>>>(),  /*stop_token_ids*/
            py::arg("max_tokens") = 16,
            py::arg("n") = 1,
+           py::arg("best_of") = std::nullopt,
            py::arg("echo") = false,
            py::arg("frequency_penalty") = 0.0,
            py::arg("presence_penalty") = 0.0,
@@ -56,6 +60,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
            py::arg("stop_token_ids") = std::nullopt)
       .def_readwrite("max_tokens", &SamplingParams::max_tokens)
       .def_readwrite("n", &SamplingParams::n)
+      .def_readwrite("best_of", &SamplingParams::best_of)
       .def_readwrite("echo", &SamplingParams::echo)
       .def_readwrite("frequency_penalty", &SamplingParams::frequency_penalty)
       .def_readwrite("presence_penalty", &SamplingParams::presence_penalty)

@@ -16,6 +16,7 @@ def to_sampling_params(request: CompletionRequest) -> SamplingParams:
     sp = SamplingParams()
     sp.max_tokens = request.max_tokens
     sp.n = request.n
+    sp.best_of = request.best_of
     sp.echo = request.echo
     sp.frequency_penalty = request.frequency_penalty
     sp.presence_penalty = request.presence_penalty
@@ -36,8 +37,6 @@ def to_sampling_params(request: CompletionRequest) -> SamplingParams:
 async def generate_completion_response(
     request: CompletionRequest, engine: AsyncLLMEngine
 ) -> CompletionResponse:
-    assert not request.stream, "streaming request is not supported"
-
     request_id = f"cmpl-{shortuuid.random()}"
     created_time = int(time.time())
     model = request.model
@@ -48,7 +47,7 @@ async def generate_completion_response(
         request.prompt,
         sampling_params=sampling_params,
         priority=priority,
-        stream=request.stream,
+        stream=False,
     )
 
     # only one output is expected for non-streaming request

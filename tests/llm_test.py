@@ -66,7 +66,7 @@ def test_logprobs():
             assert logprob.token == top_logprobs[0].token
             assert logprob.token_id == top_logprobs[0].token_id
             assert logprob.logprob == top_logprobs[0].logprob
-            
+
         output = outputs[1]
         assert output.finished
         assert output.prompt == "how to use pytest"
@@ -109,3 +109,27 @@ def test_logprobs():
         assert output.outputs[0].index == 0
         assert output.outputs[0].finish_reason == "length"
         assert output.outputs[0].logprobs is None
+
+
+def test_best_of():
+    with LLM(model="gpt2", devices="cpu") as llm:
+        outputs = llm.generate(
+            ["hello,"],
+            SamplingParams(
+                temperature=0.5, max_tokens=35, ignore_eos=True, n=2, best_of=4
+            ),
+        )
+
+        assert len(outputs) == 1
+        output = outputs[0]
+        assert len(output.outputs) == 2
+
+        assert output.outputs[0].text
+        assert output.outputs[0].index == 0
+        assert output.outputs[0].finish_reason == "length"
+        assert output.outputs[0].logprobs is None
+
+        assert output.outputs[1].text
+        assert output.outputs[1].index == 1
+        assert output.outputs[1].finish_reason == "length"
+        assert output.outputs[1].logprobs is None

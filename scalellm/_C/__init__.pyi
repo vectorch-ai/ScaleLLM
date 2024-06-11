@@ -9,6 +9,7 @@ class SamplingParams:
         self,
         max_tokens: int = 16,
         n: int = 1,
+        best_of: Optional[int] = None,
         echo: bool = False,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
