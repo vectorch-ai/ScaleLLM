@@ -327,7 +327,8 @@ void Batch::process_validate_output(const SampleOutput& sample_output) {
       CHECK_LT(output_idx, num_seqs);
       const auto curr_idx = output_idx++;
       const auto curr_next_tokens = next_tokens[curr_idx];
-      const auto curr_logprobs = logprobs.defined() ? logprobs[curr_idx] : logprobs;
+      const auto curr_logprobs =
+          logprobs.defined() ? logprobs[curr_idx] : logprobs;
       const auto curr_top_tokens =
           top_tokens.defined() ? top_tokens[curr_idx] : top_tokens;
       const auto curr_top_logprobs =

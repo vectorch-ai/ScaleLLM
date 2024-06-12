@@ -26,16 +26,13 @@ TEST(RejectionSamplerTest, Basic) {
   // shape: [1, 3, 5]
   auto draft_probs = torch::tensor({{0.2104, 0.2163, 0.1912, 0.1937, 0.1884},
                                     {0.2100, 0.1803, 0.2398, 0.2088, 0.1610},
-                                    {0.1838, 0.2079, 0.2270, 0.2451,
-                                    0.1362}},
+                                    {0.1838, 0.2079, 0.2270, 0.2451, 0.1362}},
                                    options)
                          .reshape({1, 3, 5});
   // shape: [1, 3, 5]
-  auto target_probs = torch::tensor({{0.1299, 0.2462, 0.1821, 0.1354,
-  0.3064},
-                                     {0.1159, 0.2839, 0.1603, 0.2451,
-                                     0.1949}, {0.0002, 0.0433, 0.6629,
-                                     0.1469, 0.1467}},
+  auto target_probs = torch::tensor({{0.1299, 0.2462, 0.1821, 0.1354, 0.3064},
+                                     {0.1159, 0.2839, 0.1603, 0.2451, 0.1949},
+                                     {0.0002, 0.0433, 0.6629, 0.1469, 0.1467}},
                                     options)
                           .reshape({1, 3, 5});
 
@@ -127,10 +124,9 @@ TEST(RejectionSamplerTest, Greedy) {
       output.slice(/*dim=*/-1, /*start=*/0, /*end=*/n_speculative_tokens),
       desired_output));
   // check bonus tokens
-  EXPECT_TRUE(
-      torch::allclose(output.slice(/*dim=*/-1,
-      /*start=*/n_speculative_tokens),
-                      bonus_token_ids));
+  EXPECT_TRUE(torch::allclose(output.slice(/*dim=*/-1,
+                                           /*start=*/n_speculative_tokens),
+                              bonus_token_ids));
 }
 
 TEST(RejectionSamplerTest, Random) {
@@ -149,8 +145,7 @@ TEST(RejectionSamplerTest, Random) {
       target_prob.reshape({1, 1, -1}).repeat({num_samples, 1, 1});
 
   auto draft_probs =
-      torch::randn({num_samples, 1, vocab_size},
-      options).softmax(/*dim=*/-1);
+      torch::randn({num_samples, 1, vocab_size}, options).softmax(/*dim=*/-1);
   auto draft_token_ids = Sampler::random_sample(draft_probs);
 
   // not used
@@ -168,18 +163,21 @@ TEST(RejectionSamplerTest, Random) {
   EXPECT_FALSE(masked_output.defined());
 
   // remove bonus token
-  auto token_ids = output.slice(/*dim=*/-1, /*start=*/0,
-  /*end=*/-1).flatten();
+  auto token_ids = output
+                       .slice(/*dim=*/-1,
+                              /*start=*/0,
+                              /*end=*/-1)
+                       .flatten();
 
   // calculate the probability of each sampled token
-  auto bincount =
-      token_ids.bincount(/*weights=*/torch::nullopt,
-      /*minlength=*/vocab_size);
+  auto bincount = token_ids.bincount(/*weights=*/torch::nullopt,
+                                     /*minlength=*/vocab_size);
   auto sample_prob = bincount.to(torch::kFloat) / num_samples;
 
-  EXPECT_TRUE(
-      torch::allclose(target_prob, sample_prob, /*rtol=*/1e-2,
-      /*atol=*/1e-3));
+  EXPECT_TRUE(torch::allclose(target_prob,
+                              sample_prob,
+                              /*rtol=*/1e-2,
+                              /*atol=*/1e-3));
 }
 
 TEST(RejectionSamplerTest, LogProbs) {
@@ -212,7 +210,6 @@ TEST(RejectionSamplerTest, LogProbs) {
 
   auto output = sampler.forward(
       draft_token_ids, draft_probs, target_logits, bonus_token_ids);
-
 
   //   auto output = RejectionSampler::greedy_sample(target_probs);
   //   const auto desired_output = target_probs.argmax(/*dim=*/-1);
