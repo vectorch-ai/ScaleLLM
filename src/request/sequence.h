@@ -30,10 +30,10 @@ enum class EngineType : int8_t {
   COUNT = 2,
 };
 
-struct TokenInfo {
-  explicit TokenInfo(int32_t token_id) : token_id(token_id) {}
+struct Token {
+  explicit Token(int32_t id) : id(id) {}
 
-  int32_t token_id = 0;
+  int32_t id = 0;
   std::optional<float> logprob;
   Slice<int64_t> top_tokens;
   Slice<float> top_logprobs;
@@ -147,14 +147,13 @@ class Sequence final {
 
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
-  void append_token(const TokenInfo& token_info);
-
-  void append_token(int32_t token_id) { append_token(TokenInfo(token_id)); }
+  void append_token(const Token& token);
+  void append_token(int32_t token_id) { append_token(Token(token_id)); }
 
   // validate draft tokens with accepted tokens for speculative decoding
   // N.B. take int64_t as input to be compatible with torch::Tensor
   // returns the number of accepted tokens, including the resampled token
-  size_t validate_tokens(const Slice<int64_t>& accpeted_token_ids);
+  size_t validate_tokens(const std::vector<Token>& tokens);
 
   // whether the new added token is the first token
   bool is_first_token() const { return is_first_token_; }
@@ -236,6 +235,8 @@ class Sequence final {
   std::vector<LogProb> build_logprobs(size_t start_idx,
                                       size_t end_idx,
                                       const Tokenizer& tokenizer);
+
+  void update_logprobs(size_t index, const Token& token);
 
   // global unique id for the sequence
   // NOLINTNEXTLINE

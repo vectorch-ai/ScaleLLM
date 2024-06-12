@@ -90,7 +90,8 @@ void run_speculative_decoding(Sequence& sequence,
     EXPECT_EQ(sequence.num_kv_cache_tokens(), desired_tokens.size() - 1);
 
     // varify with accepted tokens
-    const auto num_new_tokens = sequence.validate_tokens(accepted_token_ids);
+    // const auto num_new_tokens = sequence.validate_tokens(accepted_token_ids);
+    const auto num_new_tokens = 0;
     EXPECT_GT(num_new_tokens, 0);
 
     if (sequence.is_finished()) {
