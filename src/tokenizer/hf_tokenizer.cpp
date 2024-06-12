@@ -61,7 +61,7 @@ std::optional<int32_t> HFTokenizer::token_to_id(
   return id;
 }
 
-std::string HFTokenizer::id_to_token(int32_t id) const { 
+std::string HFTokenizer::id_to_token(int32_t id) const {
   const char* data = nullptr;
   size_t len = 0;
   tokenizer_id_to_token(handle_, id, &data, &len);

@@ -3,12 +3,10 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from scalellm import LogProb, LogProbData, Priority
-from scalellm.serve.api_protocol import (
-    ChatCompletionLogProb,
-    ChatCompletionLogProbData,
-    ChatCompletionLogProbs,
-    CompletionLogProbs,
-)
+from scalellm.serve.api_protocol import (ChatCompletionLogProb,
+                                         ChatCompletionLogProbData,
+                                         ChatCompletionLogProbs,
+                                         CompletionLogProbs)
 
 
 def jsonify_model(obj: BaseModel):
