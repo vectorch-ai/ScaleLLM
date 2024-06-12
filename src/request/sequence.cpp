@@ -4,7 +4,6 @@
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
 
-#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -25,17 +24,13 @@ DEFINE_COUNTER_INSTANCE(non_stream_decode_latency_seconds,
 
 namespace llm {
 
-// NOLINTNEXTLINE
-std::atomic<int64_t> Sequence::next_id_{1};
-
 Sequence::Sequence(size_t index,
                    const std::string_view& prompt,
                    const std::vector<int32_t>& prompt_token_ids,
                    const absl::Time& created_time,
                    size_t capacity,
                    const Options& option)
-    : id_(next_id_.fetch_add(1)),
-      index_(index),
+    : index_(index),
       last_token_time_(created_time),
       options_(option),
       incremental_decoder_(prompt,
@@ -82,10 +77,13 @@ void Sequence::append_token(const Token& token) {
 
   // append the token id and update the token count
   const auto cur_idx = num_tokens_++;
-  const int32_t token_id = token.id;
+  const int32_t token_id = static_cast<int32_t>(token.id);
   token_ids_[cur_idx] = token_id;
   token_to_count_map_[token_id]++;
-  update_logprobs(cur_idx, token);
+  // update logprobs if needed
+  if (options_.sampling_param.logprobs) {
+    update_logprobs(cur_idx, token);
+  }
 
   // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
@@ -127,7 +125,10 @@ size_t Sequence::validate_tokens(const std::vector<Token>& tokens) {
       --token_to_count_map_[draft_token_id];
       ++token_to_count_map_[target_token_id];
     }
-    update_logprobs(cur_idx, token);
+    // update logprobs if needed
+    if (options_.sampling_param.logprobs) {
+      update_logprobs(cur_idx, token);
+    }
 
     // check if sequence is finished
     const Slice<int32_t> token_ids(token_ids_, cur_idx + 1);
@@ -158,6 +159,15 @@ size_t Sequence::validate_tokens(const std::vector<Token>& tokens) {
   // the finish status is valid after the validation
   finish_status_invalidated_ = false;
   return num_accpeted;
+}
+
+size_t Sequence::validate_tokens(const std::vector<int64_t>& token_ids) {
+  std::vector<Token> tokens;
+  tokens.reserve(token_ids.size());
+  for (int64_t token_id : token_ids) {
+    tokens.emplace_back(token_id);
+  }
+  return validate_tokens(tokens);
 }
 
 std::optional<SequenceOutput> Sequence::build_delta_output_until(
@@ -408,10 +418,7 @@ std::vector<LogProb> Sequence::build_logprobs(size_t start_idx,
 }
 
 void Sequence::update_logprobs(size_t index, const Token& token) {
-  // update logprobs if needed
-  if (options_.sampling_param.logprobs) {
-    logprobs_[index] = token.logprob;
-  }
+  logprobs_[index] = token.logprob;
 
   // update top tokens and top logprobs if needed
   const auto num_top_tokens = options_.sampling_param.top_logprobs;

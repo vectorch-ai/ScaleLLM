@@ -225,11 +225,12 @@ void SpeculativeEngine::validate(Batch& batch,
       std::make_unique<RejectionSampler>(target_output.do_sample);
 
   // get the accepted tokens
-  const auto output = rejection_sampler->forward(draft_token_ids,
-                                           draft_probs,
-                                           target_logits,
-                                           bonus_token_ids,
-                                           /*mask_out_rejected_tokens=*/true);
+  const auto output =
+      rejection_sampler->forward(draft_token_ids,
+                                 draft_probs,
+                                 target_logits,
+                                 bonus_token_ids,
+                                 /*mask_out_rejected_tokens=*/true);
 
   // update the batch with the accpeted tokens
   batch.process_validate_output(output);

@@ -58,11 +58,11 @@ class Batch {
   void set_engine_type(EngineType engine_type);
 
  private:
-  Token build_token_info(int64_t index,
-                         torch::Tensor token_ids,
-                         torch::Tensor logprobs,
-                         torch::Tensor top_tokens,
-                         torch::Tensor top_logprobs);
+  static Token build_token(int64_t index,
+                           torch::Tensor token_ids,
+                           torch::Tensor logprobs,
+                           torch::Tensor top_tokens,
+                           torch::Tensor top_logprobs);
   // sequences in the batch
   std::vector<Sequence*> sequences_;
 

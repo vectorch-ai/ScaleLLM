@@ -2,9 +2,7 @@
 
 #include <absl/time/time.h>
 
-#include <atomic>
 #include <cstdint>
-#include <string>
 #include <vector>
 
 #include "common/slice.h"
@@ -31,9 +29,9 @@ enum class EngineType : int8_t {
 };
 
 struct Token {
-  explicit Token(int32_t id) : id(id) {}
+  explicit Token(int64_t id) : id(id) {}
 
-  int32_t id = 0;
+  int64_t id = 0;
   std::optional<float> logprob;
   Slice<int64_t> top_tokens;
   Slice<float> top_logprobs;
@@ -77,9 +75,6 @@ class Sequence final {
   Sequence(const std::vector<int32_t>& prompt_token_ids,
            size_t capacity,
            const Options& option);
-
-  // get the id of the sequence
-  int64_t id() const { return id_; }
 
   // get the index of the sequence in the request
   size_t index() const { return index_; }
@@ -148,12 +143,13 @@ class Sequence final {
   // add a new token id to the sequence and update the count
   // the token would be discarded if the sequence is still in prefill stage
   void append_token(const Token& token);
-  void append_token(int32_t token_id) { append_token(Token(token_id)); }
+  void append_token(int64_t token_id) { append_token(Token(token_id)); }
 
   // validate draft tokens with accepted tokens for speculative decoding
   // N.B. take int64_t as input to be compatible with torch::Tensor
   // returns the number of accepted tokens, including the resampled token
   size_t validate_tokens(const std::vector<Token>& tokens);
+  size_t validate_tokens(const std::vector<int64_t>& token_ids);
 
   // whether the new added token is the first token
   bool is_first_token() const { return is_first_token_; }
@@ -238,10 +234,6 @@ class Sequence final {
 
   void update_logprobs(size_t index, const Token& token);
 
-  // global unique id for the sequence
-  // NOLINTNEXTLINE
-  const int64_t id_;
-
   // the index of the sequence in the request
   size_t index_ = 0;
 
@@ -295,10 +287,6 @@ class Sequence final {
 
   // is the sequence closed.
   bool closed_ = false;
-
-  // id allocator for sequences
-  // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-  static std::atomic<int64_t> next_id_;
 };
 
 }  // namespace llm
