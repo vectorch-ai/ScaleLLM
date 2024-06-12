@@ -6,6 +6,9 @@ pybind_extension(
   COPTS
     -DPY_MODULE_NAME=_C
   SRCS
+    csrc/sampling_params.cpp
+    csrc/output.cpp
+    csrc/llm_handler.cpp
     csrc/module.cpp
   DEPS
     :llm_handler
