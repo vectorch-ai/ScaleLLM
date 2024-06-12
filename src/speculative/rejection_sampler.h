@@ -8,7 +8,9 @@ namespace llm {
 
 class RejectionSampler final {
  public:
-  RejectionSampler(const torch::Tensor& do_sample);
+  RejectionSampler(const torch::Tensor& do_sample,
+                   bool logprobs,
+                   int64_t max_top_logprobs);
 
   // operator() allows us to use the module as a function.
   template <typename... Args>
@@ -47,6 +49,12 @@ class RejectionSampler final {
       bool mask_out_rejected_tokens);
 
  private:
+  // whether to return logprobs
+  bool logprobs_ = false;
+
+  // max number of top logprobs in the batch
+  int64_t max_top_logprobs_ = 0;
+
   // [batch_size]
   torch::Tensor do_sample_;
   bool all_random_sample_ = true;

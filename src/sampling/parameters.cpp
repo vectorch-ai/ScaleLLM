@@ -32,7 +32,7 @@ void SamplingParameters::init(
   std::vector<float> top_p;
   std::vector<int64_t> top_k;
   bool logprobs = false;
-  int64_t top_logprobs = 0;
+  int64_t max_top_logprobs = 0;
   for (const auto* p : sampling_params) {
     frequency_penalties.push_back(p->frequency_penalty);
     presence_penalties.push_back(p->presence_penalty);
@@ -41,7 +41,7 @@ void SamplingParameters::init(
     top_p.push_back(p->top_p);
     top_k.push_back(p->top_k);
     logprobs = logprobs || p->logprobs;
-    top_logprobs = std::max(top_logprobs, p->top_logprobs);
+    max_top_logprobs = std::max(max_top_logprobs, p->top_logprobs);
   }
 
   bool need_token_stats = false;
@@ -102,7 +102,7 @@ void SamplingParameters::init(
   this->sample_idxes = torch::tensor(sample_idxes, torch::kInt);
   this->do_sample = torch::tensor(do_sample, torch::kBool);
   this->logprobs = logprobs;
-  this->top_logprobs = top_logprobs;
+  this->max_top_logprobs = max_top_logprobs;
 }
 
 }  // namespace llm

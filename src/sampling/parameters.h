@@ -61,7 +61,7 @@ struct SamplingParameters {
     params.sample_idxes = safe_to(sample_idxes, device);
     params.do_sample = safe_to(do_sample, device);
     params.logprobs = logprobs;
-    params.top_logprobs = top_logprobs;
+    params.max_top_logprobs = max_top_logprobs;
 
     return params;
   }
@@ -113,9 +113,9 @@ struct SamplingParameters {
   // whether to output logprobs for each generated token.
   bool logprobs = false;
 
-  // the number of top logprobs to output for each generated token.
+  // max number of top logprobs in the batch.
   // only used when logprobs is true.
-  int64_t top_logprobs = 0;
+  int64_t max_top_logprobs = 0;
 };
 
 struct SampleOutput {

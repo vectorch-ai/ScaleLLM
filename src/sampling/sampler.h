@@ -9,7 +9,9 @@ namespace llm {
 
 class Sampler final {
  public:
-  Sampler(const torch::Tensor& do_sample, bool logprobs, int64_t top_logprobs);
+  Sampler(const torch::Tensor& do_sample,
+          bool logprobs,
+          int64_t max_top_logprobs);
 
   // operator() allows us to use the module as a function.
   template <typename... Args>
@@ -28,8 +30,11 @@ class Sampler final {
   static torch::Tensor random_sample(const torch::Tensor& probs);
 
  private:
+  // whether to return logprobs
   bool logprobs_ = false;
-  int64_t top_logprobs_ = 0;
+
+  // max number of top logprobs in the batch
+  int64_t max_top_logprobs_ = 0;
 
   // [batch_size]
   torch::Tensor do_sample_;

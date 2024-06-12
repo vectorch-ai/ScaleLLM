@@ -222,7 +222,9 @@ void SpeculativeEngine::validate(Batch& batch,
       torch::cat(draft_probs_vec, /*dim=*/1).to(target_logits.device());
 
   auto rejection_sampler =
-      std::make_unique<RejectionSampler>(target_output.do_sample);
+      std::make_unique<RejectionSampler>(target_output.do_sample,
+                                         target_output.logprobs,
+                                         target_output.max_top_logprobs);
 
   // get the accepted tokens
   const auto output =

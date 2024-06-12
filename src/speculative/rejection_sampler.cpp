@@ -19,7 +19,10 @@ torch::Tensor index_select_2d(const torch::Tensor& input,
 
 }  // namespace
 
-RejectionSampler::RejectionSampler(const torch::Tensor& do_sample) {
+RejectionSampler::RejectionSampler(const torch::Tensor& do_sample,
+                                   bool logprobs,
+                                   int64_t max_top_logprobs)
+    : logprobs_(logprobs), max_top_logprobs_(max_top_logprobs) {
   // [batch_size, 1]
   do_sample_ = do_sample.unsqueeze_(/*dim=*/-1);
   all_random_sample_ = do_sample.all().item<bool>();
@@ -41,12 +44,14 @@ SampleOutput RejectionSampler::forward(const torch::Tensor& draft_token_ids,
   DCHECK_EQ(draft_token_ids.size(1), draft_probs.size(1));
   // DCHECK_EQ(draft_probs.sizes(), target_probs.sizes());
 
+  // [batch_size, n_speculative_tokens + 1, vocab_size] FloatTensor
   auto target_probs =
       torch::softmax(target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
   // filter out probs for bonus tokens
   target_probs = target_probs.slice(
       /*dim=*/1, /*start=*/0, /*end=*/target_probs.size(1) - 1);
 
+  // [batch_size, n_speculative_tokens + 1]
   torch::Tensor accepted_token_ids;
   torch::Tensor masked_accepted_token_ids;
   if (all_greedy_sample_) {
@@ -89,27 +94,22 @@ SampleOutput RejectionSampler::forward(const torch::Tensor& draft_token_ids,
   SampleOutput output;
   output.next_tokens =
       mask_out_rejected_tokens ? masked_accepted_token_ids : accepted_token_ids;
-  bool logprobs_ = true;
-  int64_t top_logprobs_ = 2;
+
   if (logprobs_) {
     // log_softmax is equivalent to log(softmax) but more numerically stable
+    // [batch_size, n_speculative_tokens + 1, vocab_size]
     auto target_logprobs = torch::log_softmax(
         target_logits, /*dim=*/-1, /*dtype=*/torch::kFloat32);
-
-    LOG(ERROR) << "accepted_token_ids: " << accepted_token_ids;
-    LOG(ERROR) << "target_logprobs: " << target_logprobs;
 
     // select the logprobs for each sequence
     const auto selected_logprobs =
         index_select_2d(target_logprobs, /*dim=*/-1, accepted_token_ids);
-    LOG(ERROR) << "selected_logprobs: " << selected_logprobs;
     // output.probs = selected_probs;
     output.logprobs = selected_logprobs;
 
-    if (top_logprobs_ > 0) {
-      auto [values, indices] = target_logprobs.topk(top_logprobs_, /*dim=*/-1);
-      LOG(ERROR) << "Topk values: " << values;
-      LOG(ERROR) << "Topk indices: " << indices;
+    if (max_top_logprobs_ > 0) {
+      auto [values, indices] =
+          target_logprobs.topk(max_top_logprobs_, /*dim=*/-1);
       output.top_logprobs = values;
       output.top_tokens = indices;
     }
