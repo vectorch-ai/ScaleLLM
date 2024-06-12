@@ -52,8 +52,24 @@ std::string HFTokenizer::decode(const Slice<int32_t>& ids,
   return {data, len};
 }
 
+std::optional<int32_t> HFTokenizer::token_to_id(
+    const std::string_view& token) const {
+  int32_t id = tokenizer_token_to_id(handle_, token.data(), token.size());
+  if (id == -1) {
+    return std::nullopt;
+  }
+  return id;
+}
+
+std::string HFTokenizer::id_to_token(int32_t id) const {
+  const char* data = nullptr;
+  size_t len = 0;
+  tokenizer_id_to_token(handle_, id, &data, &len);
+  return {data, len};
+}
+
 size_t HFTokenizer::vocab_size() const {
-  return tokenizer_vocab_size(handle_, /*with_added_tokens=*/true);
+  return tokenizer_get_vocab_size(handle_, /*with_added_tokens=*/true);
 }
 
 }  // namespace llm

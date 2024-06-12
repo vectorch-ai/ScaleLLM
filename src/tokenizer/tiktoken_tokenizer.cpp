@@ -321,4 +321,19 @@ std::optional<int32_t> TiktokenTokenizer::token_to_id(
   return std::nullopt;
 }
 
+std::string TiktokenTokenizer::id_to_token(int32_t id) const {
+  // encode special token
+  const auto sit = special_token_decoder_.find(id);
+  if (sit != special_token_decoder_.end()) {
+    return sit->second;
+  }
+
+  // encode token
+  const auto it = decoder_.find(id);
+  if (it != decoder_.end()) {
+    return it->second;
+  }
+  return "";
+}
+
 }  // namespace llm

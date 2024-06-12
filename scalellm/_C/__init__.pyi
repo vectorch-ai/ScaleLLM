@@ -78,12 +78,14 @@ class LogProbData:
     token: str
     token_id: int
     logprob: float
+    finished_token: bool
 
 class LogProb:
     def __init__(self) -> None: ...
     token: str
     token_id: int
     logprob: float
+    finished_token: bool
     top_logprobs: Optional[List[LogProbData]]
 
 class SequenceOutput:

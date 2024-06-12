@@ -426,6 +426,8 @@ pub struct TokenizerWrapper {
     encode_ids: Vec<u32>,
     // Holds the decoded string to avoid dropping it
     decode_str: String,
+    // Holds the result of the token_to_id function
+    id_to_token_result: String,
 }
 
 impl TokenizerWrapper {
@@ -461,6 +463,7 @@ extern "C" fn tokenizer_from_file(path: *const c_char) -> *mut TokenizerWrapper 
         tokenizer: Tokenizer::from_file(path_str).unwrap().into(),
         encode_ids: Vec::new(),
         decode_str: String::new(),
+        id_to_token_result: String::new(),
     });
 
     Box::into_raw(boxed)
@@ -524,7 +527,42 @@ extern "C" fn tokenizer_free(wrapper: *mut TokenizerWrapper) {
 }
 
 #[no_mangle]
-extern "C" fn tokenizer_vocab_size(
+extern "C" fn tokenizer_token_to_id(
+    handle: *mut TokenizerWrapper,
+    token: *const u8,
+    len: usize
+) {
+    unsafe {
+        let token: &str = std::str::from_utf8(std::slice::from_raw_parts(token, len)).unwrap();
+        let id = (*handle).tokenizer.token_to_id(token);
+        match id {
+            Some(id) => id as i32,
+            None => -1,
+        };
+    }
+}
+
+#[no_mangle]
+extern "C" fn tokenizer_id_to_token(
+    handle: *mut TokenizerWrapper,
+    id: u32,
+    out_cstr: *mut *mut u8,
+    out_len: *mut usize,
+) {
+    unsafe {
+        let str = (*handle).tokenizer.id_to_token(id);
+        (*handle).id_to_token_result = match str {
+            Some(s) => s,
+            None => String::from(""),
+        };
+
+        *out_cstr = (*handle).id_to_token_result.as_mut_ptr();
+        *out_len = (*handle).id_to_token_result.len();
+    }
+}
+
+#[no_mangle]
+extern "C" fn tokenizer_get_vocab_size(
     handle: *mut TokenizerWrapper, 
     with_added_tokens: bool) -> usize {
     unsafe {
