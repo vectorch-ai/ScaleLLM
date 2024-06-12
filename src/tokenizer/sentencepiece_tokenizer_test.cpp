@@ -105,5 +105,12 @@ TEST(SentencePieceTokenizerTest, SpecialTokenTest) {
     const auto text = tokenizer.decode(ids, /*skip_special_tokens=*/true);
     EXPECT_EQ(text, " Hello world  Hello ");
   }
+
+  // test id token conversion
+  for (int32_t id = 1; id < tokenizer.vocab_size(); ++id) {
+    const auto token = tokenizer.id_to_token(id);
+    const auto decoded_id = tokenizer.token_to_id(token);
+    EXPECT_EQ(decoded_id, id);
+  }
 }
 }  // namespace llm

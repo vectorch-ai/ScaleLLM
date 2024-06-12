@@ -213,10 +213,21 @@ std::optional<int32_t> SentencePieceTokenizer::token_to_id(
   // encode token
   const auto token_id = sp_processor_.PieceToId(token_view);
   if (sp_processor_.IsUnknown(token_id)) {
-    LOG(ERROR) << "Failed to find token for token: " << token;
+    LOG(ERROR) << "Failed to find id for token: " << token;
     return std::nullopt;
   }
   return token_id;
+}
+
+std::string SentencePieceTokenizer::id_to_token(int32_t id) const {
+  // decode special token
+  const auto sit = special_token_decoder_.find(id);
+  if (sit != special_token_decoder_.end()) {
+    return sit->second;
+  }
+
+  // decode token
+  return sp_processor_.IdToPiece(id);
 }
 
 size_t SentencePieceTokenizer::vocab_size() const {

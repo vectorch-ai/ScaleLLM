@@ -42,6 +42,8 @@ struct LogProbData {
   int32_t token_id;
   // the log probability of the token.
   float logprob = -9999.0f;
+  // whether the token is finished.
+  bool finished_token = true;
 };
 
 struct LogProb : public LogProbData {

@@ -3,10 +3,12 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from scalellm import LogProb, LogProbData, Priority
-from scalellm.serve.api_protocol import (ChatCompletionLogProb,
-                                         ChatCompletionLogProbData,
-                                         ChatCompletionLogProbs,
-                                         CompletionLogProbs)
+from scalellm.serve.api_protocol import (
+    ChatCompletionLogProb,
+    ChatCompletionLogProbData,
+    ChatCompletionLogProbs,
+    CompletionLogProbs,
+)
 
 
 def jsonify_model(obj: BaseModel):
@@ -23,9 +25,19 @@ def to_priority(priority: str) -> Priority:
     return Priority.DEFAULT
 
 
+def get_printable_token(logprob) -> str:
+    return (
+        logprob.token
+        if logprob.finished_token
+        else "".join(
+            f"\\x{byte:02x}" for byte in logprob.token.encode("utf-8", errors="replace")
+        )
+    )
+
+
 def to_api_chat_logprobdata(logprobdata: LogProbData) -> ChatCompletionLogProbData:
     return ChatCompletionLogProbData(
-        token=logprobdata.token,
+        token=get_printable_token(logprobdata),
         token_id=logprobdata.token_id,
         logprob=logprobdata.logprob,
         bytes=list(logprobdata.token.encode("utf-8", errors="replace")),
@@ -37,7 +49,7 @@ def to_api_chat_logprob(logprob: LogProb) -> ChatCompletionLogProb:
     if logprob.top_logprobs:
         top_logprobs = [to_api_chat_logprobdata(d) for d in logprob.top_logprobs]
     return ChatCompletionLogProb(
-        token=logprob.token,
+        token=get_printable_token(logprob),
         token_id=logprob.token_id,
         logprob=logprob.logprob,
         bytes=list(logprob.token.encode("utf-8", errors="replace")),
@@ -67,13 +79,13 @@ def to_api_completion_logprobs(
     for logprob in logprobs:
         text_offset.append(offset)
         offset += len(logprob.token)
-        tokens.append(logprob.token)
+        tokens.append(get_printable_token(logprob))
         token_ids.append(logprob.token_id)
         token_logprobs.append(logprob.logprob)
 
         if logprob.top_logprobs:
             top_logprobs.append(
-                {top.token: top.logprob for top in logprob.top_logprobs}
+                {get_printable_token(top): top.logprob for top in logprob.top_logprobs}
             )
         else:
             top_logprobs.append(None)

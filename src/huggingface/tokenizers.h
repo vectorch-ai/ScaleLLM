@@ -33,9 +33,19 @@ void tokenizer_get_encode_ids(TokenizerHandle handle,
                               const uint32_t** id_data,
                               size_t* len);
 
+void tokenizer_id_to_token(TokenizerHandle handle,
+                           uint32_t id,
+                           const char** data,
+                           size_t* len);
+
+// -1 if token is not in vocab
+int32_t tokenizer_token_to_id(TokenizerHandle handle,
+                              const char* token,
+                              size_t len);
+
 void tokenizer_free(TokenizerHandle handle);
 
-size_t tokenizer_vocab_size(TokenizerHandle handle, bool with_added_tokens);
+size_t tokenizer_get_vocab_size(TokenizerHandle handle, bool with_added_tokens);
 
 #ifdef __cplusplus
 }

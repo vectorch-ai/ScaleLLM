@@ -120,13 +120,15 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
       .def(py::init())
       .def_readwrite("token", &LogProbData::token)
       .def_readwrite("token_id", &LogProbData::token_id)
-      .def_readwrite("logprob", &LogProbData::logprob);
+      .def_readwrite("logprob", &LogProbData::logprob)
+      .def_readwrite("finished_token", &LogProbData::finished_token);
 
   py::class_<LogProb>(m, "LogProb")
       .def(py::init())
       .def_readwrite("token", &LogProbData::token)
       .def_readwrite("token_id", &LogProbData::token_id)
       .def_readwrite("logprob", &LogProbData::logprob)
+      .def_readwrite("finished_token", &LogProbData::finished_token)
       .def_readwrite("top_logprobs", &LogProb::top_logprobs);
 
   py::class_<SequenceOutput>(m, "SequenceOutput")

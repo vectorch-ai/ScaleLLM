@@ -23,6 +23,11 @@ class TiktokenTokenizer : public Tokenizer {
   std::string decode(const Slice<int32_t>& ids,
                      bool skip_special_tokens) const override;
 
+  std::optional<int32_t> token_to_id(
+      const std::string_view& token) const override;
+
+  std::string id_to_token(int32_t id) const override;
+
   size_t vocab_size() const override;
 
   std::unique_ptr<Tokenizer> clone() const override;
@@ -37,8 +42,6 @@ class TiktokenTokenizer : public Tokenizer {
 
   void byte_pair_encode(const std::string_view& piece,
                         std::vector<int32_t>* ids) const;
-
-  std::optional<int32_t> token_to_id(const std::string_view& token) const;
 
   std::string dir_path_;
 

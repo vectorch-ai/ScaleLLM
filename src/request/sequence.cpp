@@ -277,11 +277,12 @@ std::vector<LogProb> Sequence::build_logprobs(size_t start_idx,
         continue;
       }
 
+      LogProb logprob_content;
       if (absl::EndsWith(token, "�")) {
-        // TODO: handle unfinished byte sequence, ending with "�"
+        token = tokenizer.id_to_token(token_id);
+        logprob_content.finished_token = false;
       }
 
-      LogProb logprob_content;
       // add token and logprob
       logprob_content.token = std::move(token);
       logprob_content.token_id = token_id;
@@ -298,8 +299,14 @@ std::vector<LogProb> Sequence::build_logprobs(size_t start_idx,
           const int32_t top_token_id = top_tokens[j];
           const float top_logprob = top_logprobs[j];
 
-          logprob.token = tokenizer.decode(std::vector<int32_t>{top_token_id},
-                                           options_.skip_special_tokens);
+          auto top_token = tokenizer.decode(std::vector<int32_t>{top_token_id},
+                                            options_.skip_special_tokens);
+          if (absl::EndsWith(top_token, "�")) {
+            top_token = tokenizer.id_to_token(top_token_id);
+            logprob.finished_token = false;
+          }
+
+          logprob.token = top_token;
           logprob.token_id = top_token_id;
           logprob.logprob = top_logprob;
           logprobs.push_back(std::move(logprob));
