@@ -21,6 +21,7 @@ class SamplingParams:
         stop: Optional[List[str]] = None,
         stop_token_ids: Optional[List[int]] = None,
     ) -> None: ...
+    def __repr__(self) -> str: ...
     # number of tokens to generate. truncted to model's max context length.
     max_tokens: int
     # number of sequences to generate for each prompt.

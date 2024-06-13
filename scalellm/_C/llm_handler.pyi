@@ -7,6 +7,7 @@ from scalellm._C.sampling_params import SamplingParams
 # Defined in csrc/llm_handler.cpp
 class Message:
     def __init__(self, role: str, content: str) -> None: ...
+    def __repr__(self) -> str: ...
     role: str
     content: str
 
@@ -27,6 +28,7 @@ class BatchFuture:
 class LLMHandler:
     class Options:
         def __init__(self) -> None: ...
+        def __repr__(self) -> str: ...
         model_path: str
         devices: Optional[str]
         draft_model_path: Optional[str]
@@ -45,6 +47,7 @@ class LLMHandler:
         num_handling_threads: int
 
     def __init__(self, options: Options) -> None: ...
+    def __repr__(self) -> str: ...
     def schedule_async(
         self,
         prompt: str,

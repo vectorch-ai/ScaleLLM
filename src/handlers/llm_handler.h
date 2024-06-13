@@ -157,6 +157,8 @@ class LLMHandler {
   // release underlying resources
   void reset();
 
+  const Options& options() const { return options_; }
+
  private:
   using Task = folly::Function<void(size_t tid)>;
   std::unique_ptr<Request> create_request(size_t tid,

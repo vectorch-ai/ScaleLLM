@@ -7,6 +7,7 @@
 
 namespace llm::csrc {
 namespace py = pybind11;
+using namespace pybind11::literals;
 
 void init_llm_handler(py::module_& m) {
   py::class_<Message>(m, "Message")
@@ -14,7 +15,10 @@ void init_llm_handler(py::module_& m) {
            py::arg("role"),
            py::arg("content"))
       .def_readwrite("role", &Message::role)
-      .def_readwrite("content", &Message::content);
+      .def_readwrite("content", &Message::content)
+      .def("__repr__", [](const Message& self) {
+        return "Message({}: {!r})"_s.format(self.role, self.content);
+      });
 
   py::enum_<Priority>(m, "Priority")
       .value("DEFAULT", Priority::NORMAL)
@@ -70,7 +74,10 @@ void init_llm_handler(py::module_& m) {
                py::call_guard<py::gil_scoped_release>())
           .def("reset",
                &LLMHandler::reset,
-               py::call_guard<py::gil_scoped_release>());
+               py::call_guard<py::gil_scoped_release>())
+          .def("__repr__", [](const LLMHandler& self) {
+            return "LLMHandler({})"_s.format(self.options());
+          });
 
   // LLMHandler::Options
   py::class_<LLMHandler::Options>(llm_handler, "Options")
@@ -101,7 +108,32 @@ void init_llm_handler(py::module_& m) {
       .def_readwrite("num_speculative_tokens",
                      &LLMHandler::Options::num_speculative_tokens_)
       .def_readwrite("num_handling_threads",
-                     &LLMHandler::Options::num_handling_threads_);
+                     &LLMHandler::Options::num_handling_threads_)
+      .def("__repr__", [](const LLMHandler::Options& self) {
+        return "Options(model_path={}, devices={}, draft_model_path={}, "
+               "draft_devices={}, block_size={}, max_cache_size={}, "
+               "max_memory_utilization={}, enable_prefix_cache={}, "
+               "enable_cuda_graph={}, cuda_graph_max_seq_len={}, "
+               "cuda_graph_batch_sizes={}, draft_cuda_graph_batch_sizes={}, "
+               "max_tokens_per_batch={}, max_seqs_per_batch={}, "
+               "num_speculative_tokens={}, num_handling_threads={})"_s.format(
+                   self.model_path_,
+                   self.devices_,
+                   self.draft_model_path_,
+                   self.draft_devices_,
+                   self.block_size_,
+                   self.max_cache_size_,
+                   self.max_memory_utilization_,
+                   self.enable_prefix_cache_,
+                   self.enable_cuda_graph_,
+                   self.cuda_graph_max_seq_len_,
+                   self.cuda_graph_batch_sizes_,
+                   self.draft_cuda_graph_batch_sizes_,
+                   self.max_tokens_per_batch_,
+                   self.max_seqs_per_batch_,
+                   self.num_speculative_tokens_,
+                   self.num_handling_threads_);
+      });
 }
 
 }  // namespace llm::csrc

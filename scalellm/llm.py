@@ -33,6 +33,8 @@ class LLM:
         num_handling_threads: int = 4,
     ) -> None:
         # download hf model if it does not exist
+        self._model = model
+        self._draft_model = draft_model
         model_path = model
         if not os.path.exists(model_path):
             model_path = download_hf_model(
@@ -139,3 +141,8 @@ class LLM:
     def __exit__(self, *args):
         self.__del__()
         return False
+    
+    def __repr__(self) -> str:
+        if self._draft_model:
+            return f"LLM(model={self._model}, draft_model={self._draft_model})"
+        return f"LLM(model={self._model})"
