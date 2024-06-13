@@ -5,6 +5,7 @@
 
 namespace llm::csrc {
 namespace py = pybind11;
+using namespace pybind11::literals;
 
 void init_sampling_params(py::module_& m) {
   // class SamplingParameter
@@ -57,7 +58,30 @@ void init_sampling_params(py::module_& m) {
                      &SamplingParams::skip_special_tokens)
       .def_readwrite("ignore_eos", &SamplingParams::ignore_eos)
       .def_readwrite("stop", &SamplingParams::stop)
-      .def_readwrite("stop_token_ids", &SamplingParams::stop_token_ids);
+      .def_readwrite("stop_token_ids", &SamplingParams::stop_token_ids)
+      .def("__repr__", [](const SamplingParams& self) {
+        return "SamplingParams(max_tokens={}, n={}, best_of={}, echo={}, "
+               "frequency_penalty={}, presence_penalty={}, "
+               "repetition_penalty={}, temperature={}, top_p={}, top_k={}, "
+               "logprobs={}, top_logprobs={}, skip_special_tokens={}, "
+               "ignore_eos={}, stop={}, stop_token_ids={})"_s.format(
+                   self.max_tokens,
+                   self.n,
+                   self.best_of,
+                   self.echo,
+                   self.frequency_penalty,
+                   self.presence_penalty,
+                   self.repetition_penalty,
+                   self.temperature,
+                   self.top_p,
+                   self.top_k,
+                   self.logprobs,
+                   self.top_logprobs,
+                   self.skip_special_tokens,
+                   self.ignore_eos,
+                   self.stop,
+                   self.stop_token_ids);
+      });
 }
 
 }  // namespace llm::csrc

@@ -4,12 +4,14 @@ from typing import List, Optional
 # Defined in csrc/output.cpp
 class Usage:
     def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
     num_prompt_tokens: int
     num_generated_tokens: int
     num_total_tokens: int
 
 class LogProbData:
     def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
     token: str
     token_id: int
     logprob: float
@@ -17,6 +19,7 @@ class LogProbData:
 
 class LogProb:
     def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
     token: str
     token_id: int
     logprob: float
@@ -25,6 +28,7 @@ class LogProb:
 
 class SequenceOutput:
     def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
     index: int
     text: str
     token_ids: List[int]
@@ -33,6 +37,7 @@ class SequenceOutput:
 
 class RequestOutput:
     def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
     prompt: Optional[str]
     status: Optional[Status]
     outputs: List[SequenceOutput]
@@ -52,6 +57,7 @@ class StatusCode(Enum):
 
 class Status:
     def __init__(self, code: StatusCode, message: str) -> None: ...
+    def __repr__(self) -> str: ...
     @property
     def code(self) -> StatusCode: ...
     @property
