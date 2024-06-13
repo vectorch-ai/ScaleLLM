@@ -3,6 +3,7 @@
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
 
 namespace llm::csrc {
 namespace py = pybind11;
@@ -21,6 +22,18 @@ void init_llm_handler(py::module_& m) {
       .value("NORMAL", Priority::NORMAL)
       .value("HIGH", Priority::HIGH)
       .export_values();
+
+  py::class_<std::future<bool>>(m, "Future")
+      .def("wait",
+           &std::future<bool>::wait,
+           py::call_guard<py::gil_scoped_release>())
+      .def("get",
+           &std::future<bool>::get,
+           py::call_guard<py::gil_scoped_release>());
+
+  py::class_<BatchFuture>(m, "BatchFuture")
+      .def("wait", &BatchFuture::wait, py::call_guard<py::gil_scoped_release>())
+      .def("get", &BatchFuture::get, py::call_guard<py::gil_scoped_release>());
 
   auto llm_handler =
       py::class_<LLMHandler>(m, "LLMHandler")

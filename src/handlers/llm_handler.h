@@ -1,9 +1,13 @@
 #pragma once
 
+#include <folly/Function.h>
+
 #include <functional>
+#include <future>
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "chat_template/chat_template.h"
 #include "common/concurrent_queue.h"
@@ -19,6 +23,32 @@ using OutputCallback = std::function<bool(RequestOutput output)>;
 
 using BatchOutputCallback =
     std::function<bool(size_t index, RequestOutput output)>;
+
+class BatchFuture {
+ public:
+  BatchFuture(std::unique_ptr<std::vector<std::future<bool>>> futures)
+      : futures_(std::move(futures)) {}
+
+  void wait() {
+    for (const auto& future : *futures_) {
+      future.wait();
+    }
+  }
+
+  std::vector<bool> get() {
+    std::vector<bool> results;
+    results.reserve(futures_->size());
+    for (auto& future : *futures_) {
+      results.push_back(future.get());
+    }
+    return results;
+  }
+
+ private:
+  // use unique_ptr to avoid static assertion failed:
+  //  'result type must be constructible from input type'
+  std::unique_ptr<std::vector<std::future<bool>>> futures_;
+};
 
 // NOLINTNEXTLINE
 class LLMHandler {
@@ -79,26 +109,26 @@ class LLMHandler {
   // and call the callback with output when the request is done
   // the callback will be called multiple times if the request is a streaming
   // request
-  void schedule_async(std::string prompt,
-                      SamplingParams sp,
-                      Priority priority,
-                      bool stream,
-                      OutputCallback callback);
+  std::future<bool> schedule_async(std::string prompt,
+                                   SamplingParams sp,
+                                   Priority priority,
+                                   bool stream,
+                                   OutputCallback callback);
 
-  void schedule_chat_async(std::vector<Message> messages,
-                           SamplingParams sp,
-                           Priority priority,
-                           bool stream,
-                           OutputCallback callback);
+  std::future<bool> schedule_chat_async(std::vector<Message> messages,
+                                        SamplingParams sp,
+                                        Priority priority,
+                                        bool stream,
+                                        OutputCallback callback);
 
   // batch version
-  void schedule_batch_async(std::vector<std::string> prompts,
-                            std::vector<SamplingParams> sp,
-                            Priority priority,
-                            bool stream,
-                            BatchOutputCallback callback);
+  BatchFuture schedule_batch_async(std::vector<std::string> prompts,
+                                   std::vector<SamplingParams> sp,
+                                   Priority priority,
+                                   bool stream,
+                                   BatchOutputCallback callback);
 
-  void schedule_chat_batch_async(
+  BatchFuture schedule_chat_batch_async(
       std::vector<std::vector<Message>> conversations,
       std::vector<SamplingParams> sp,
       Priority priority,
@@ -128,7 +158,7 @@ class LLMHandler {
   void reset();
 
  private:
-  using Task = std::function<void(size_t tid)>;
+  using Task = folly::Function<void(size_t tid)>;
   std::unique_ptr<Request> create_request(size_t tid,
                                           std::string prompt,
                                           const SamplingParams& sp,
@@ -144,17 +174,17 @@ class LLMHandler {
       bool stream,
       OutputCallback callback);
 
-  void schedule(std::string prompt,
-                SamplingParams sp,
-                Priority priority,
-                bool stream,
-                OutputCallback callback);
+  std::future<bool> schedule(std::string prompt,
+                             SamplingParams sp,
+                             Priority priority,
+                             bool stream,
+                             OutputCallback callback);
 
-  void schedule(std::vector<Message> messages,
-                SamplingParams sp,
-                Priority priority,
-                bool stream,
-                OutputCallback callback);
+  std::future<bool> schedule(std::vector<Message> messages,
+                             SamplingParams sp,
+                             Priority priority,
+                             bool stream,
+                             OutputCallback callback);
 
   void handling_loop(size_t tid);
 

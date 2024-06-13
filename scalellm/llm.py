@@ -77,6 +77,7 @@ class LLM:
         prompts: Union[str, List[str]],
         sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None,
         priority: Priority = Priority.NORMAL,
+        wait_for_schedule: bool = True,
     ) -> List[RequestOutput]:
         # use default sampling parameters if not provided
         if sampling_params is None:
@@ -97,9 +98,13 @@ class LLM:
             return True
 
         # schedule the batch requests
-        self._handler.schedule_batch_async(
+        future = self._handler.schedule_batch_async(
             prompts, sampling_params, priority, False, callback
         )
+
+        # wait for batch request to be scheduled
+        if wait_for_schedule:
+            future.wait()
 
         # run until all scheduled requsts complete
         self._handler.run_until_complete()

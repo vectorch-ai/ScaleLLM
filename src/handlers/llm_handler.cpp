@@ -3,9 +3,11 @@
 #include <glog/logging.h>
 
 #include <atomic>
+#include <future>
 #include <memory>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "common/metrics.h"
 #include "common/scope_guard.h"
@@ -241,70 +243,76 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
 
 LLMHandler::~LLMHandler() { reset(); }
 
-void LLMHandler::schedule_async(std::string prompt,
-                                SamplingParams sp,
-                                Priority priority,
-                                bool stream,
-                                OutputCallback callback) {
+std::future<bool> LLMHandler::schedule_async(std::string prompt,
+                                             SamplingParams sp,
+                                             Priority priority,
+                                             bool stream,
+                                             OutputCallback callback) {
   // add one pending request
   scheduler_->inc_pending_requests(1);
-  schedule(std::move(prompt),
-           std::move(sp),
-           priority,
-           stream,
-           [callback = std::move(callback)](const RequestOutput& output) {
-             if (output.status.has_value()) {
-               log_request_status(output.status.value().code());
-             }
-             return callback(output);
-           });
+  return schedule(
+      std::move(prompt),
+      std::move(sp),
+      priority,
+      stream,
+      [callback = std::move(callback)](const RequestOutput& output) {
+        if (output.status.has_value()) {
+          log_request_status(output.status.value().code());
+        }
+        return callback(output);
+      });
 }
 
-void LLMHandler::schedule_chat_async(std::vector<Message> messages,
-                                     SamplingParams sp,
-                                     Priority priority,
-                                     bool stream,
-                                     OutputCallback callback) {
+std::future<bool> LLMHandler::schedule_chat_async(std::vector<Message> messages,
+                                                  SamplingParams sp,
+                                                  Priority priority,
+                                                  bool stream,
+                                                  OutputCallback callback) {
   // add one pending request
   scheduler_->inc_pending_requests(1);
-  schedule(std::move(messages),
-           std::move(sp),
-           priority,
-           stream,
-           [callback = std::move(callback)](const RequestOutput& output) {
-             if (output.status.has_value()) {
-               log_request_status(output.status.value().code());
-             }
-             return callback(output);
-           });
+  return schedule(
+      std::move(messages),
+      std::move(sp),
+      priority,
+      stream,
+      [callback = std::move(callback)](const RequestOutput& output) {
+        if (output.status.has_value()) {
+          log_request_status(output.status.value().code());
+        }
+        return callback(output);
+      });
 }
 
-void LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
-                                      std::vector<SamplingParams> sps,
-                                      Priority priority,
-                                      bool stream,
-                                      BatchOutputCallback callback) {
+BatchFuture LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
+                                             std::vector<SamplingParams> sps,
+                                             Priority priority,
+                                             bool stream,
+                                             BatchOutputCallback callback) {
   CHECK(prompts.size() == sps.size() || sps.size() == 1)
       << "Number of prompts and sampling parameters should be the same";
 
   const size_t num_requests = prompts.size();
   scheduler_->inc_pending_requests(num_requests);
+  auto futures = std::make_unique<std::vector<std::future<bool>>>();
+  futures->reserve(num_requests);
   for (size_t i = 0; i < num_requests; ++i) {
-    schedule(std::move(prompts[i]),
-             // the sampling parameter may be shared
-             sps.size() == 1 ? sps[0] : std::move(sps[i]),
-             priority,
-             stream,
-             [i, callback](const RequestOutput& output) {
-               if (output.status.has_value()) {
-                 log_request_status(output.status.value().code());
-               }
-               return callback(i, output);
-             });
+    auto future = schedule(std::move(prompts[i]),
+                           // the sampling parameter may be shared
+                           sps.size() == 1 ? sps[0] : std::move(sps[i]),
+                           priority,
+                           stream,
+                           [i, callback](const RequestOutput& output) {
+                             if (output.status.has_value()) {
+                               log_request_status(output.status.value().code());
+                             }
+                             return callback(i, output);
+                           });
+    futures->emplace_back(std::move(future));
   }
+  return {std::move(futures)};
 }
 
-void LLMHandler::schedule_chat_batch_async(
+BatchFuture LLMHandler::schedule_chat_batch_async(
     std::vector<std::vector<Message>> conversations,
     std::vector<SamplingParams> sps,
     Priority priority,
@@ -315,27 +323,35 @@ void LLMHandler::schedule_chat_batch_async(
 
   const size_t num_requests = conversations.size();
   scheduler_->inc_pending_requests(num_requests);
+  auto futures = std::make_unique<std::vector<std::future<bool>>>();
+  futures->reserve(num_requests);
   for (size_t i = 0; i < num_requests; ++i) {
-    schedule(std::move(conversations[i]),
-             // the sampling parameter may be shared
-             sps.size() == 1 ? sps[0] : std::move(sps[i]),
-             priority,
-             stream,
-             [i, callback](const RequestOutput& output) {
-               if (output.status.has_value()) {
-                 log_request_status(output.status.value().code());
-               }
-               return callback(i, output);
-             });
+    auto future = schedule(std::move(conversations[i]),
+                           // the sampling parameter may be shared
+                           sps.size() == 1 ? sps[0] : std::move(sps[i]),
+                           priority,
+                           stream,
+                           [i, callback](const RequestOutput& output) {
+                             if (output.status.has_value()) {
+                               log_request_status(output.status.value().code());
+                             }
+                             return callback(i, output);
+                           });
+    futures->emplace_back(std::move(future));
   }
+  return {std::move(futures)};
 }
 
-void LLMHandler::schedule(std::string prompt,
-                          SamplingParams sp,
-                          Priority priority,
-                          bool stream,
-                          OutputCallback callback) {
-  auto task = [this,
+std::future<bool> LLMHandler::schedule(std::string prompt,
+                                       SamplingParams sp,
+                                       Priority priority,
+                                       bool stream,
+                                       OutputCallback callback) {
+  std::promise<bool> promise;
+  auto future = promise.get_future();
+  // add into the queue
+  queue_.push([this,
+               promise = std::move(promise),
                prompt = std::move(prompt),
                sp = std::move(sp),
                priority,
@@ -349,31 +365,38 @@ void LLMHandler::schedule(std::string prompt,
     Timer timer;
     // verify the prompt
     if (!verify_params(sp, callback)) {
+      promise.set_value(false);
       return;
     }
 
     auto request =
         create_request(tid, std::move(prompt), sp, priority, stream, callback);
     if (!request) {
+      promise.set_value(false);
       return;
     }
 
     if (!scheduler_->schedule(request)) {
       CALLBACK_WITH_ERROR(StatusCode::RESOURCE_EXHAUSTED,
                           "No available resources to schedule request");
+      promise.set_value(false);
       return;
     }
-  };
-  // add into the queue
-  queue_.push(std::move(task));
+    promise.set_value(true);
+  });
+  return future;
 }
 
-void LLMHandler::schedule(std::vector<Message> messages,
-                          SamplingParams sp,
-                          Priority priority,
-                          bool stream,
-                          OutputCallback callback) {
-  auto task = [this,
+std::future<bool> LLMHandler::schedule(std::vector<Message> messages,
+                                       SamplingParams sp,
+                                       Priority priority,
+                                       bool stream,
+                                       OutputCallback callback) {
+  std::promise<bool> promise;
+  auto future = promise.get_future();
+  // add into the queue
+  queue_.push([this,
+               promise = std::move(promise),
                messages = std::move(messages),
                sp = std::move(sp),
                priority,
@@ -385,23 +408,26 @@ void LLMHandler::schedule(std::vector<Message> messages,
 
     // verify the prompt
     if (!verify_params(sp, callback)) {
+      promise.set_value(false);
       return;
     }
 
     auto request =
         create_chat_request(tid, messages, sp, priority, stream, callback);
     if (!request) {
+      promise.set_value(false);
       return;
     }
 
     if (!scheduler_->schedule(request)) {
       CALLBACK_WITH_ERROR(StatusCode::RESOURCE_EXHAUSTED,
                           "No available resources to schedule request");
+      promise.set_value(false);
       return;
     }
-  };
-  // add into the queue
-  queue_.push(std::move(task));
+    promise.set_value(true);
+  });
+  return future;
 }
 
 void LLMHandler::handling_loop(size_t tid) {
