@@ -275,14 +275,18 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
 }
 
 void Batch::process_sample_output(const SampleOutput& sample_output) {
+  // [num_seq] LongTensor
   const auto& next_tokens = safe_to(sample_output.next_tokens, torch::kCPU);
   // it is possible that the model output is empty for prefill sequences
   if (next_tokens.defined()) {
+    // [num_seq] FloatTensor
     const auto& logprobs = safe_to(sample_output.logprobs, torch::kCPU);
+    // [num_seq, topk] LongTensor
     const auto& top_tokens = safe_to(sample_output.top_tokens, torch::kCPU);
+    // [num_seq, topk] FloatTensor
     const auto& top_logprobs = safe_to(sample_output.top_logprobs, torch::kCPU);
 
-    const int64_t num_seqs = next_tokens.numel();
+    const int64_t num_seqs = next_tokens.size(0);
     int64_t output_idx = 0;
     for (auto* seq : sequences_) {
       if (seq->is_prefill_stage()) {
@@ -291,49 +295,82 @@ void Batch::process_sample_output(const SampleOutput& sample_output) {
       }
       CHECK_LT(output_idx, num_seqs);
 
-      // add the next token to sequence
       const auto curr_idx = output_idx++;
+      const auto token = build_token(
+          curr_idx, next_tokens, logprobs, top_tokens, top_logprobs);
 
-      const int32_t next_token_id =
-          static_cast<int32_t>(next_tokens[curr_idx].item<int64_t>());
-
-      TokenInfo token_info(next_token_id);
-      if (logprobs.defined()) {
-        token_info.logprob = logprobs[curr_idx].item<float>();
-      }
-      if (top_tokens.defined() && top_logprobs.defined()) {
-        auto topk_tokens = top_tokens[curr_idx];
-        auto topk_logprobs = top_logprobs[curr_idx];
-        const size_t topk = topk_tokens.numel();
-        token_info.top_tokens = {topk_tokens.const_data_ptr<int64_t>(), topk};
-        token_info.top_logprobs = {topk_logprobs.const_data_ptr<float>(), topk};
-      }
-      seq->append_token(token_info);
+      // add the next token to sequence
+      seq->append_token(token);
     }
     CHECK_EQ(output_idx, num_seqs);
   }
 }
 
-void Batch::process_validate_output(const torch::Tensor& accepted_ids) {
-  const auto& token_ids = accepted_ids.cpu();
-  const int64_t num_seqs = accepted_ids.size(0);
-  int64_t output_idx = 0;
-  for (auto* seq : sequences_) {
-    if (seq->is_prefill_stage()) {
-      // no sampling for prefill sequences
-      continue;
+void Batch::process_validate_output(const SampleOutput& sample_output) {
+  // [num_seq, num_tokens] LongTensor
+  const auto& next_tokens = safe_to(sample_output.next_tokens, torch::kCPU);
+  // it is possible that the model output is empty for prefill sequences
+  if (next_tokens.defined()) {
+    // [num_seq, num_tokens] FloatTensor
+    const auto& logprobs = safe_to(sample_output.logprobs, torch::kCPU);
+    // [num_seq, num_tokens, topk] LongTensor
+    const auto& top_tokens = safe_to(sample_output.top_tokens, torch::kCPU);
+    // [num_seq, num_tokens, topk] FloatTensor
+    const auto& top_logprobs = safe_to(sample_output.top_logprobs, torch::kCPU);
+    const int64_t num_seqs = next_tokens.size(0);
+    int64_t output_idx = 0;
+    for (auto* seq : sequences_) {
+      if (seq->is_prefill_stage()) {
+        // no sampling for prefill sequences
+        continue;
+      }
+      CHECK_LT(output_idx, num_seqs);
+      const auto curr_idx = output_idx++;
+      const auto curr_next_tokens = next_tokens[curr_idx];
+      const auto curr_logprobs =
+          logprobs.defined() ? logprobs[curr_idx] : logprobs;
+      const auto curr_top_tokens =
+          top_tokens.defined() ? top_tokens[curr_idx] : top_tokens;
+      const auto curr_top_logprobs =
+          top_logprobs.defined() ? top_logprobs[curr_idx] : top_logprobs;
+
+      const int64_t num_tokens = curr_next_tokens.size(0);
+      std::vector<Token> tokens;
+      tokens.reserve(num_tokens);
+      for (int64_t i = 0; i < num_tokens; ++i) {
+        const auto token = build_token(i,
+                                       curr_next_tokens,
+                                       curr_logprobs,
+                                       curr_top_tokens,
+                                       curr_top_logprobs);
+        tokens.push_back(token);
+      }
+
+      // validate the draft tokens with accepted tokens
+      auto num_accepted_tokens = seq->validate_tokens(tokens);
+      COUNTER_ADD(num_accepted_tokens_total, num_accepted_tokens);
     }
-    CHECK_LT(output_idx, num_seqs);
-
-    const auto ids = token_ids[output_idx++];
-    const Slice<int64_t> accepted_token_ids = {
-        ids.data_ptr<int64_t>(), static_cast<size_t>(ids.numel())};
-
-    // validate the draft tokens with accepted tokens
-    auto num_accepted_tokens = seq->validate_tokens(accepted_token_ids);
-    COUNTER_ADD(num_accepted_tokens_total, num_accepted_tokens);
+    CHECK_EQ(output_idx, num_seqs);
   }
-  CHECK_EQ(output_idx, num_seqs);
+}
+
+Token Batch::build_token(int64_t index,
+                         torch::Tensor token_ids,
+                         torch::Tensor logprobs,
+                         torch::Tensor top_tokens,
+                         torch::Tensor top_logprobs) {
+  Token token(token_ids[index].item<int64_t>());
+  if (logprobs.defined()) {
+    token.logprob = logprobs[index].item<float>();
+    if (top_tokens.defined() && top_logprobs.defined()) {
+      auto topk_tokens = top_tokens[index];
+      auto topk_logprobs = top_logprobs[index];
+      const size_t size = topk_tokens.numel();
+      token.top_tokens = {topk_tokens.const_data_ptr<int64_t>(), size};
+      token.top_logprobs = {topk_logprobs.const_data_ptr<float>(), size};
+    }
+  }
+  return token;
 }
 
 }  // namespace llm

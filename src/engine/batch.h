@@ -52,12 +52,17 @@ class Batch {
   void process_sample_output(const SampleOutput& sample_output);
 
   // process the accepted output for each sequence
-  void process_validate_output(const torch::Tensor& accepted_ids);
+  void process_validate_output(const SampleOutput& sample_output);
 
   // set the engine type for the batch
   void set_engine_type(EngineType engine_type);
 
  private:
+  static Token build_token(int64_t index,
+                           torch::Tensor token_ids,
+                           torch::Tensor logprobs,
+                           torch::Tensor top_tokens,
+                           torch::Tensor top_logprobs);
   // sequences in the batch
   std::vector<Sequence*> sequences_;
 

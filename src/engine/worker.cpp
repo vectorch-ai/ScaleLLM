@@ -146,7 +146,7 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
     timer.reset();
     auto sampler = std::make_unique<Sampler>(sampling_params.do_sample,
                                              sampling_params.logprobs,
-                                             sampling_params.top_logprobs);
+                                             sampling_params.max_top_logprobs);
     // select sample logits
     auto sample_logits =
         logits.index_select(/*dim=*/0, sampling_params.sample_idxes);
@@ -158,6 +158,8 @@ ModelOutput Worker::execute_model(const ModelInput& inputs) {
 
     // carry over the sampling params
     output.do_sample = sampling_params.do_sample;
+    output.logprobs = sampling_params.logprobs;
+    output.max_top_logprobs = sampling_params.max_top_logprobs;
   }
   return output;
 }

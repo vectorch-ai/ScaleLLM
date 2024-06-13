@@ -4,7 +4,6 @@
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
 
-#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -25,17 +24,13 @@ DEFINE_COUNTER_INSTANCE(non_stream_decode_latency_seconds,
 
 namespace llm {
 
-// NOLINTNEXTLINE
-std::atomic<int64_t> Sequence::next_id_{1};
-
 Sequence::Sequence(size_t index,
                    const std::string_view& prompt,
                    const std::vector<int32_t>& prompt_token_ids,
                    const absl::Time& created_time,
                    size_t capacity,
                    const Options& option)
-    : id_(next_id_.fetch_add(1)),
-      index_(index),
+    : index_(index),
       last_token_time_(created_time),
       options_(option),
       incremental_decoder_(prompt,
@@ -71,7 +66,7 @@ Sequence::Sequence(const std::vector<int32_t>& prompt_token_ids,
                    const Options& option)
     : Sequence("", prompt_token_ids, capacity, option) {}
 
-void Sequence::append_token(const TokenInfo& token_info) {
+void Sequence::append_token(const Token& token) {
   CHECK(num_tokens_ < token_ids_.size())
       << "exceed the token capacity of the sequence";
   CHECK(!is_finished_) << "cannot append token to a finished sequence";
@@ -82,39 +77,23 @@ void Sequence::append_token(const TokenInfo& token_info) {
 
   // append the token id and update the token count
   const auto cur_idx = num_tokens_++;
-  const int32_t token_id = token_info.token_id;
+  const int32_t token_id = static_cast<int32_t>(token.id);
   token_ids_[cur_idx] = token_id;
-
+  token_to_count_map_[token_id]++;
   // update logprobs if needed
   if (options_.sampling_param.logprobs) {
-    logprobs_[cur_idx] = token_info.logprob;
+    update_logprobs(cur_idx, token);
   }
-
-  // update top tokens and top logprobs if needed
-  const auto num_top_tokens = options_.sampling_param.top_logprobs;
-  DCHECK_EQ(token_info.top_tokens.size(), token_info.top_logprobs.size());
-  if (num_top_tokens > 0) {
-    if (token_info.top_tokens.size() > num_top_tokens) {
-      top_tokens_[cur_idx] = token_info.top_tokens.slice(0, num_top_tokens);
-      top_logprobs_[cur_idx] = token_info.top_logprobs.slice(0, num_top_tokens);
-    } else {
-      DCHECK_EQ(token_info.top_tokens.size(), num_top_tokens);
-      top_tokens_[cur_idx] = token_info.top_tokens;
-      top_logprobs_[cur_idx] = token_info.top_logprobs;
-    }
-  }
-
-  token_to_count_map_[token_id]++;
 
   // invalidate the finish status once a new token is appended
   finish_status_invalidated_ = true;
 }
 
-size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
-  const size_t len = accpeted_token_ids.size();
+size_t Sequence::validate_tokens(const std::vector<Token>& tokens) {
+  const size_t len = tokens.size();
   CHECK_GT(len, 0) << "empty accepted token ids";
   CHECK_GT(num_tokens_, len) << "accepted tokens exceed the sequence length";
-  const auto bonus_token_id = accpeted_token_ids.back();
+  const auto bonus_token_id = tokens.back().id;
   CHECK(bonus_token_id == -1 || bonus_token_id == token_ids().back())
       << "bonus token mismatch with the last token";
 
@@ -127,9 +106,10 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
   bool mismatch = false;
   size_t num_accpeted = 0;
   for (size_t i = 0; i < len; ++i) {
+    const auto& token = tokens[i];
     const size_t cur_idx = start_idx + i;
     const int32_t draft_token_id = token_ids_[cur_idx];
-    const int32_t target_token_id = static_cast<int32_t>(accpeted_token_ids[i]);
+    const int32_t target_token_id = static_cast<int32_t>(token.id);
 
     // stop at first mismatch or rejected token
     if (mismatch || target_token_id == -1) {
@@ -144,6 +124,10 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
       // update the token count
       --token_to_count_map_[draft_token_id];
       ++token_to_count_map_[target_token_id];
+    }
+    // update logprobs if needed
+    if (options_.sampling_param.logprobs) {
+      update_logprobs(cur_idx, token);
     }
 
     // check if sequence is finished
@@ -175,6 +159,15 @@ size_t Sequence::validate_tokens(const Slice<int64_t>& accpeted_token_ids) {
   // the finish status is valid after the validation
   finish_status_invalidated_ = false;
   return num_accpeted;
+}
+
+size_t Sequence::validate_tokens(const std::vector<int64_t>& token_ids) {
+  std::vector<Token> tokens;
+  tokens.reserve(token_ids.size());
+  for (int64_t token_id : token_ids) {
+    tokens.emplace_back(token_id);
+  }
+  return validate_tokens(tokens);
 }
 
 std::optional<SequenceOutput> Sequence::build_delta_output_until(
@@ -256,67 +249,6 @@ SequenceOutput Sequence::build_output(const Tokenizer& tokenizer) {
   }
 
   return output;
-}
-
-std::vector<LogProb> Sequence::build_logprobs(size_t start_idx,
-                                              size_t end_idx,
-                                              const Tokenizer& tokenizer) {
-  // TODO: support logprobs for the entire sequence?
-  if (start_idx < num_prompt_tokens_) {
-    start_idx = num_prompt_tokens_;
-  }
-
-  std::vector<LogProb> logprob_contents;
-  for (size_t i = start_idx; i < end_idx; ++i) {
-    if (logprobs_[i].has_value()) {
-      const int32_t token_id = token_ids_[i];
-      auto token = tokenizer.decode(std::vector<int32_t>{token_id},
-                                    options_.skip_special_tokens);
-      // skip empty token
-      if (token.empty()) {
-        continue;
-      }
-
-      LogProb logprob_content;
-      if (absl::EndsWith(token, "�")) {
-        token = tokenizer.id_to_token(token_id);
-        logprob_content.finished_token = false;
-      }
-
-      // add token and logprob
-      logprob_content.token = std::move(token);
-      logprob_content.token_id = token_id;
-      logprob_content.logprob = logprobs_[i].value();
-
-      // add top logprobs if available
-      if (!top_tokens_[i].empty()) {
-        const auto& top_tokens = top_tokens_[i];
-        const auto& top_logprobs = top_logprobs_[i];
-        DCHECK_EQ(top_tokens.size(), top_logprobs.size());
-        std::vector<LogProbData> logprobs;
-        for (size_t j = 0; j < top_tokens.size(); ++j) {
-          LogProbData logprob;
-          const int32_t top_token_id = top_tokens[j];
-          const float top_logprob = top_logprobs[j];
-
-          auto top_token = tokenizer.decode(std::vector<int32_t>{top_token_id},
-                                            options_.skip_special_tokens);
-          if (absl::EndsWith(top_token, "�")) {
-            top_token = tokenizer.id_to_token(top_token_id);
-            logprob.finished_token = false;
-          }
-
-          logprob.token = top_token;
-          logprob.token_id = top_token_id;
-          logprob.logprob = top_logprob;
-          logprobs.push_back(std::move(logprob));
-        }
-        logprob_content.top_logprobs = std::move(logprobs);
-      }
-      logprob_contents.push_back(std::move(logprob_content));
-    }
-  }
-  return logprob_contents;
 }
 
 void Sequence::append_blocks(const std::vector<Block>& new_blocks) {
@@ -422,6 +354,85 @@ float Sequence::logprob() const {
     }
   }
   return static_cast<float>(sum / (num_tokens_ - num_prompt_tokens_));
+}
+
+std::vector<LogProb> Sequence::build_logprobs(size_t start_idx,
+                                              size_t end_idx,
+                                              const Tokenizer& tokenizer) {
+  // TODO: support logprobs for the entire sequence?
+  if (start_idx < num_prompt_tokens_) {
+    start_idx = num_prompt_tokens_;
+  }
+
+  std::vector<LogProb> logprob_contents;
+  for (size_t i = start_idx; i < end_idx; ++i) {
+    if (logprobs_[i].has_value()) {
+      const int32_t token_id = token_ids_[i];
+      auto token = tokenizer.decode(std::vector<int32_t>{token_id},
+                                    options_.skip_special_tokens);
+      // skip empty token
+      if (token.empty()) {
+        continue;
+      }
+
+      LogProb logprob_content;
+      if (absl::EndsWith(token, "�")) {
+        token = tokenizer.id_to_token(token_id);
+        logprob_content.finished_token = false;
+      }
+
+      // add token and logprob
+      logprob_content.token = std::move(token);
+      logprob_content.token_id = token_id;
+      logprob_content.logprob = logprobs_[i].value();
+
+      // add top logprobs if available
+      if (!top_tokens_[i].empty()) {
+        const auto& top_tokens = top_tokens_[i];
+        const auto& top_logprobs = top_logprobs_[i];
+        DCHECK_EQ(top_tokens.size(), top_logprobs.size());
+        std::vector<LogProbData> logprobs;
+        for (size_t j = 0; j < top_tokens.size(); ++j) {
+          LogProbData logprob;
+          const int32_t top_token_id = top_tokens[j];
+          const float top_logprob = top_logprobs[j];
+
+          auto top_token = tokenizer.decode(std::vector<int32_t>{top_token_id},
+                                            options_.skip_special_tokens);
+          if (absl::EndsWith(top_token, "�")) {
+            top_token = tokenizer.id_to_token(top_token_id);
+            logprob.finished_token = false;
+          }
+
+          logprob.token = top_token;
+          logprob.token_id = top_token_id;
+          logprob.logprob = top_logprob;
+          logprobs.push_back(std::move(logprob));
+        }
+        logprob_content.top_logprobs = std::move(logprobs);
+      }
+      logprob_contents.push_back(std::move(logprob_content));
+    }
+  }
+  return logprob_contents;
+}
+
+void Sequence::update_logprobs(size_t index, const Token& token) {
+  logprobs_[index] = token.logprob;
+
+  // update top tokens and top logprobs if needed
+  const auto num_top_tokens = options_.sampling_param.top_logprobs;
+  if (num_top_tokens > 0) {
+    DCHECK_EQ(token.top_tokens.size(), token.top_logprobs.size());
+    if (token.top_tokens.size() > num_top_tokens) {
+      top_tokens_[index] = token.top_tokens.slice(0, num_top_tokens);
+      top_logprobs_[index] = token.top_logprobs.slice(0, num_top_tokens);
+    } else {
+      DCHECK_EQ(token.top_tokens.size(), num_top_tokens);
+      top_tokens_[index] = token.top_tokens;
+      top_logprobs_[index] = token.top_logprobs;
+    }
+  }
 }
 
 }  // namespace llm

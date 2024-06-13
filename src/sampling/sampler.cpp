@@ -8,8 +8,8 @@ namespace llm {
 
 Sampler::Sampler(const torch::Tensor& do_sample,
                  bool logprobs,
-                 int64_t top_logprobs)
-    : logprobs_(logprobs), top_logprobs_(top_logprobs) {
+                 int64_t max_top_logprobs)
+    : logprobs_(logprobs), max_top_logprobs_(max_top_logprobs) {
   CHECK(do_sample.defined());
   do_sample_ = do_sample;
   all_random_sample_ = do_sample.all().item<bool>();
@@ -48,8 +48,8 @@ SampleOutput Sampler::forward(const torch::Tensor& logits) const {
     auto selected_logprobs = logprobs.gather(/*dim=*/-1, samples.view({-1, 1}));
     output.logprobs = selected_logprobs.view({-1});
 
-    if (top_logprobs_ > 0) {
-      auto [values, indices] = logprobs.topk(top_logprobs_, /*dim=*/-1);
+    if (max_top_logprobs_ > 0) {
+      auto [values, indices] = logprobs.topk(max_top_logprobs_, /*dim=*/-1);
       output.top_logprobs = values;
       output.top_tokens = indices;
     }
