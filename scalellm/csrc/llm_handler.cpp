@@ -23,18 +23,17 @@ void init_llm_handler(py::module_& m) {
       .value("HIGH", Priority::HIGH)
       .export_values();
 
-  py::class_<ScheduleTask>(m, "ScheduleTask")
-      .def(
-          "wait", &ScheduleTask::wait, py::call_guard<py::gil_scoped_release>())
-      .def("get", &ScheduleTask::get, py::call_guard<py::gil_scoped_release>());
-
-  py::class_<BatchScheduleTask>(m, "BatchScheduleTask")
+  py::class_<std::future<bool>>(m, "Future")
       .def("wait",
-           &BatchScheduleTask::wait,
+           &std::future<bool>::wait,
            py::call_guard<py::gil_scoped_release>())
       .def("get",
-           &BatchScheduleTask::get,
+           &std::future<bool>::get,
            py::call_guard<py::gil_scoped_release>());
+
+  py::class_<BatchFuture>(m, "BatchFuture")
+      .def("wait", &BatchFuture::wait, py::call_guard<py::gil_scoped_release>())
+      .def("get", &BatchFuture::get, py::call_guard<py::gil_scoped_release>());
 
   auto llm_handler =
       py::class_<LLMHandler>(m, "LLMHandler")

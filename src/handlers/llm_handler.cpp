@@ -243,54 +243,51 @@ LLMHandler::LLMHandler(const Options& options) : options_(options) {
 
 LLMHandler::~LLMHandler() { reset(); }
 
-ScheduleTask LLMHandler::schedule_async(std::string prompt,
-                                        SamplingParams sp,
-                                        Priority priority,
-                                        bool stream,
-                                        OutputCallback callback) {
-  // add one pending request
-  scheduler_->inc_pending_requests(1);
-  auto future =
-      schedule(std::move(prompt),
-               std::move(sp),
-               priority,
-               stream,
-               [callback = std::move(callback)](const RequestOutput& output) {
-                 if (output.status.has_value()) {
-                   log_request_status(output.status.value().code());
-                 }
-                 return callback(output);
-               });
-  return {std::move(future)};
-}
-
-ScheduleTask LLMHandler::schedule_chat_async(std::vector<Message> messages,
+std::future<bool> LLMHandler::schedule_async(std::string prompt,
                                              SamplingParams sp,
                                              Priority priority,
                                              bool stream,
                                              OutputCallback callback) {
   // add one pending request
   scheduler_->inc_pending_requests(1);
-  auto future =
-      schedule(std::move(messages),
-               std::move(sp),
-               priority,
-               stream,
-               [callback = std::move(callback)](const RequestOutput& output) {
-                 if (output.status.has_value()) {
-                   log_request_status(output.status.value().code());
-                 }
-                 return callback(output);
-               });
-  return {std::move(future)};
+  return schedule(
+      std::move(prompt),
+      std::move(sp),
+      priority,
+      stream,
+      [callback = std::move(callback)](const RequestOutput& output) {
+        if (output.status.has_value()) {
+          log_request_status(output.status.value().code());
+        }
+        return callback(output);
+      });
 }
 
-BatchScheduleTask LLMHandler::schedule_batch_async(
-    std::vector<std::string> prompts,
-    std::vector<SamplingParams> sps,
-    Priority priority,
-    bool stream,
-    BatchOutputCallback callback) {
+std::future<bool> LLMHandler::schedule_chat_async(std::vector<Message> messages,
+                                                  SamplingParams sp,
+                                                  Priority priority,
+                                                  bool stream,
+                                                  OutputCallback callback) {
+  // add one pending request
+  scheduler_->inc_pending_requests(1);
+  return schedule(
+      std::move(messages),
+      std::move(sp),
+      priority,
+      stream,
+      [callback = std::move(callback)](const RequestOutput& output) {
+        if (output.status.has_value()) {
+          log_request_status(output.status.value().code());
+        }
+        return callback(output);
+      });
+}
+
+BatchFuture LLMHandler::schedule_batch_async(std::vector<std::string> prompts,
+                                             std::vector<SamplingParams> sps,
+                                             Priority priority,
+                                             bool stream,
+                                             BatchOutputCallback callback) {
   CHECK(prompts.size() == sps.size() || sps.size() == 1)
       << "Number of prompts and sampling parameters should be the same";
 
@@ -315,7 +312,7 @@ BatchScheduleTask LLMHandler::schedule_batch_async(
   return {std::move(futures)};
 }
 
-BatchScheduleTask LLMHandler::schedule_chat_batch_async(
+BatchFuture LLMHandler::schedule_chat_batch_async(
     std::vector<std::vector<Message>> conversations,
     std::vector<SamplingParams> sps,
     Priority priority,

@@ -24,9 +24,9 @@ using OutputCallback = std::function<bool(RequestOutput output)>;
 using BatchOutputCallback =
     std::function<bool(size_t index, RequestOutput output)>;
 
-class BatchScheduleTask {
+class BatchFuture {
  public:
-  BatchScheduleTask(std::unique_ptr<std::vector<std::future<bool>>> futures)
+  BatchFuture(std::unique_ptr<std::vector<std::future<bool>>> futures)
       : futures_(std::move(futures)) {}
 
   void wait() {
@@ -45,8 +45,8 @@ class BatchScheduleTask {
   }
 
  private:
-  // use unique_ptr to workaround 'result type must be constructible from input
-  // type' error
+  // use unique_ptr to avoid static assertion failed:
+  //  'result type must be constructible from input type'
   std::unique_ptr<std::vector<std::future<bool>>> futures_;
 };
 
@@ -121,26 +121,26 @@ class LLMHandler {
   // and call the callback with output when the request is done
   // the callback will be called multiple times if the request is a streaming
   // request
-  ScheduleTask schedule_async(std::string prompt,
-                              SamplingParams sp,
-                              Priority priority,
-                              bool stream,
-                              OutputCallback callback);
-
-  ScheduleTask schedule_chat_async(std::vector<Message> messages,
+  std::future<bool> schedule_async(std::string prompt,
                                    SamplingParams sp,
                                    Priority priority,
                                    bool stream,
                                    OutputCallback callback);
 
-  // batch version
-  BatchScheduleTask schedule_batch_async(std::vector<std::string> prompts,
-                                         std::vector<SamplingParams> sp,
-                                         Priority priority,
-                                         bool stream,
-                                         BatchOutputCallback callback);
+  std::future<bool> schedule_chat_async(std::vector<Message> messages,
+                                        SamplingParams sp,
+                                        Priority priority,
+                                        bool stream,
+                                        OutputCallback callback);
 
-  BatchScheduleTask schedule_chat_batch_async(
+  // batch version
+  BatchFuture schedule_batch_async(std::vector<std::string> prompts,
+                                   std::vector<SamplingParams> sp,
+                                   Priority priority,
+                                   bool stream,
+                                   BatchOutputCallback callback);
+
+  BatchFuture schedule_chat_batch_async(
       std::vector<std::vector<Message>> conversations,
       std::vector<SamplingParams> sp,
       Priority priority,

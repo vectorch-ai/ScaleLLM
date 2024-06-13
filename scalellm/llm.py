@@ -1,7 +1,8 @@
 import os
 from typing import List, Optional, Union
 
-from scalellm._C import LLMHandler, Message, Priority, RequestOutput, SamplingParams
+from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
+                         SamplingParams)
 from scalellm.downloader import download_hf_model
 from scalellm.errors import ValidationError
 
@@ -97,13 +98,13 @@ class LLM:
             return True
 
         # schedule the batch requests
-        schedule = self._handler.schedule_batch_async(
+        future = self._handler.schedule_batch_async(
             prompts, sampling_params, priority, False, callback
         )
 
         # wait for batch request to be scheduled
         if wait_for_schedule:
-            schedule.wait()
+            future.wait()
 
         # run until all scheduled requsts complete
         self._handler.run_until_complete()
