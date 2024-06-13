@@ -50,18 +50,6 @@ class BatchFuture {
   std::unique_ptr<std::vector<std::future<bool>>> futures_;
 };
 
-class ScheduleTask {
- public:
-  ScheduleTask(std::future<bool> future) : future_(std::move(future)) {}
-
-  void wait() { future_.wait(); }
-
-  bool get() { return future_.get(); }
-
- private:
-  std::future<bool> future_;
-};
-
 // NOLINTNEXTLINE
 class LLMHandler {
  public:
