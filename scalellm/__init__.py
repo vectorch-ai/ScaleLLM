@@ -1,4 +1,4 @@
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 try:
     # torch needs to be imported first, otherwise it will segfault upon import.
     import torch  # noqa: F401
