@@ -22,7 +22,7 @@ class OpenAIServer:
         start = time.time()
         while True:
             try:
-                if requests.get("http://localhost:8080/health").status_code == 200:
+                if requests.get("http://0.0.0.0:8080/health").status_code == 200:
                     break
             except Exception as e:
                 # check if process is still running
