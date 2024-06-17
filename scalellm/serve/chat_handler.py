@@ -1,18 +1,22 @@
 import time
-from typing import List
+from typing import List, Optional
 
 import shortuuid
 
-from scalellm import AsyncLLMEngine, Message, SamplingParams
-from scalellm.serve.api_protocol import (ChatCompletionMessage,
+from scalellm import (AsyncLLMEngine, LogProb, LogProbData, Message,
+                      SamplingParams)
+from scalellm.serve.api_protocol import (ChatCompletionLogProb,
+                                         ChatCompletionLogProbData,
+                                         ChatCompletionLogProbs,
+                                         ChatCompletionMessage,
                                          ChatCompletionRequest,
                                          ChatCompletionResponse,
                                          ChatCompletionResponseChoice,
                                          ChatCompletionResponseStreamChoice,
                                          ChatCompletionStreamResponse,
-                                         ChatMessage, DeltaMessage, UsageInfo)
-from scalellm.serve.common import (jsonify_model, to_api_chat_logprobs,
-                                   to_priority)
+                                         ChatMessage, DeltaMessage)
+from scalellm.serve.common import (get_printable_token, jsonify_model,
+                                   to_api_usage, to_priority)
 from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
@@ -41,6 +45,38 @@ def to_messages(messages: List[ChatCompletionMessage]) -> List[Message]:
     return [Message(role=msg.role, content=msg.content) for msg in messages]
 
 
+def to_api_logprobdata(logprobdata: LogProbData) -> ChatCompletionLogProbData:
+    return ChatCompletionLogProbData(
+        token=get_printable_token(logprobdata),
+        token_id=logprobdata.token_id,
+        logprob=logprobdata.logprob,
+        bytes=list(logprobdata.token.encode("utf-8", errors="replace")),
+    )
+
+
+def to_api_logprob(logprob: LogProb) -> ChatCompletionLogProb:
+    top_logprobs = None
+    if logprob.top_logprobs:
+        top_logprobs = [to_api_logprobdata(d) for d in logprob.top_logprobs]
+    return ChatCompletionLogProb(
+        token=get_printable_token(logprob),
+        token_id=logprob.token_id,
+        logprob=logprob.logprob,
+        bytes=list(logprob.token.encode("utf-8", errors="replace")),
+        top_logprobs=top_logprobs,
+    )
+
+
+def to_api_logprobs(
+    logprobs: Optional[List[LogProb]],
+) -> Optional[ChatCompletionLogProbs]:
+    if logprobs is None:
+        return None
+    return ChatCompletionLogProbs(
+        content=[to_api_logprob(logprob) for logprob in logprobs]
+    )
+
+
 async def generate_chat_response(
     request: ChatCompletionRequest, engine: AsyncLLMEngine
 ) -> ChatCompletionResponse:
@@ -60,20 +96,13 @@ async def generate_chat_response(
 
     # only one output is expected for non-streaming request
     output = await output_stream.__anext__()
-    usage = None
-    if output.usage:
-        usage = UsageInfo(
-            prompt_tokens=output.usage.num_prompt_tokens,
-            total_tokens=output.usage.num_total_tokens,
-            completion_tokens=output.usage.num_generated_tokens,
-        )
     choices = []
     for seq_output in output.outputs:
         choices.append(
             ChatCompletionResponseChoice(
                 index=seq_output.index,
                 message=ChatMessage(role="assistant", content=seq_output.text),
-                logprobs=to_api_chat_logprobs(seq_output.logprobs),
+                logprobs=to_api_logprobs(seq_output.logprobs),
                 finish_reason=seq_output.finish_reason,
             )
         )
@@ -83,7 +112,7 @@ async def generate_chat_response(
         created=created_time,
         model=model,
         choices=choices,
-        usage=usage,
+        usage=to_api_usage(output.usage),
     )
 
 
@@ -105,6 +134,10 @@ async def generate_chat_stream_response(
         messages, sampling_params, priority, request.stream
     )
 
+    include_usage = False
+    if request.stream_options:
+        include_usage = request.stream_options.include_usage
+
     async def generate_stream_content():
         # to keep track of the first message sent
         first_message_sent = set()
@@ -122,11 +155,13 @@ async def generate_chat_stream_response(
                             ChatCompletionResponseStreamChoice(
                                 index=index,
                                 delta=DeltaMessage(role="assistant", content=""),
-                                logprobs=to_api_chat_logprobs(seq_output.logprobs),
+                                logprobs=to_api_logprobs(seq_output.logprobs),
                                 finish_reason=None,
                             )
                         ],
                     )
+                    if include_usage:
+                        response.usage = None
                     yield f"data: {jsonify_model(response)}\n\n"
                     first_message_sent.add(index)
                 # send chunk with delta message
@@ -139,43 +174,46 @@ async def generate_chat_stream_response(
                         ChatCompletionResponseStreamChoice(
                             index=index,
                             delta=DeltaMessage(content=seq_output.text),
-                            logprobs=to_api_chat_logprobs(seq_output.logprobs),
+                            logprobs=to_api_logprobs(seq_output.logprobs),
                             finish_reason=None,
                         )
                     ],
                 )
+                if include_usage:
+                    response.usage = None
                 yield f"data: {jsonify_model(response)}\n\n"
-                # send the final chunk with finish reason
-                if seq_output.finish_reason is not None:
-                    response = ChatCompletionStreamResponse(
-                        id=request_id,
-                        object=chunk_object_type,
-                        created=created_time,
-                        model=model,
-                        choices=[
-                            ChatCompletionResponseStreamChoice(
-                                index=index,
-                                delta=DeltaMessage(),
-                                logprobs=to_api_chat_logprobs(seq_output.logprobs),
-                                finish_reason=seq_output.finish_reason,
-                            )
-                        ],
-                    )
-                    yield f"data: {jsonify_model(response)}\n\n"
+
+                if seq_output.finish_reason is None:
+                    continue
+                
+                # send a seperate chunk with finish reason
+                response = ChatCompletionStreamResponse(
+                    id=request_id,
+                    object=chunk_object_type,
+                    created=created_time,
+                    model=model,
+                    choices=[
+                        ChatCompletionResponseStreamChoice(
+                            index=index,
+                            delta=DeltaMessage(),
+                            logprobs=to_api_logprobs(seq_output.logprobs),
+                            finish_reason=seq_output.finish_reason,
+                        )
+                    ],
+                )
+                if include_usage:
+                    response.usage = None
+                yield f"data: {jsonify_model(response)}\n\n"
 
             # send additional chunk for usage info
-            if output.usage:
+            if include_usage and output.usage:
                 response = ChatCompletionStreamResponse(
                     id=request_id,
                     object=chunk_object_type,
                     created=created_time,
                     model=model,
                     choices=[],
-                    usage=UsageInfo(
-                        prompt_tokens=output.usage.num_prompt_tokens,
-                        total_tokens=output.usage.num_total_tokens,
-                        completion_tokens=output.usage.num_generated_tokens,
-                    ),
+                    usage=to_api_usage(output.usage),
                 )
                 yield f"data: {jsonify_model(response)}\n\n"
         yield "data: [DONE]\n\n"

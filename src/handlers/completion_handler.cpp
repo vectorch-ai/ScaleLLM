@@ -36,11 +36,13 @@ void set_logprobs(proto::Choice* choice,
 }
 
 bool send_delta_to_client(CompletionCallData* call_data,
+                          bool include_usage,
                           const std::string& request_id,
                           int64_t created_time,
                           const std::string& model,
                           const RequestOutput& output) {
   for (const auto& seq_output : output.outputs) {
+    // send chunk with delta message
     if (!seq_output.text.empty()) {
       proto::CompletionResponse response;
       response.set_object("text_completion");
@@ -56,7 +58,7 @@ bool send_delta_to_client(CompletionCallData* call_data,
       }
     }
 
-    // send finish reason as a separate message
+    // send a separate chunk with finish reason
     if (seq_output.finish_reason.has_value()) {
       proto::CompletionResponse response;
       response.set_object("text_completion");
@@ -70,6 +72,25 @@ bool send_delta_to_client(CompletionCallData* call_data,
       if (!call_data->write(std::move(response))) {
         return false;
       }
+    }
+  }
+
+  // send additional chunk for usage statistics
+  if (include_usage && output.usage.has_value()) {
+    const auto& usage = output.usage.value();
+    proto::CompletionResponse response;
+    response.set_object("text_completion");
+    response.set_id(request_id);
+    response.set_created(created_time);
+    response.set_model(model);
+    auto* proto_usage = response.mutable_usage();
+    proto_usage->set_prompt_tokens(
+        static_cast<int32_t>(usage.num_prompt_tokens));
+    proto_usage->set_completion_tokens(
+        static_cast<int32_t>(usage.num_generated_tokens));
+    proto_usage->set_total_tokens(static_cast<int32_t>(usage.num_total_tokens));
+    if (!call_data->write(std::move(response))) {
+      return false;
     }
   }
   return true;
@@ -189,6 +210,10 @@ void CompletionHandler::complete_async(CompletionCallData* call_data) {
   const size_t best_of = sp.best_of.value_or(sp.n);
   // results cannot be streamed when best_of != n
   auto stream = grpc_request.stream() && best_of == sp.n;
+  bool include_usage = false;
+  if (grpc_request.has_stream_options()) {
+    include_usage = grpc_request.stream_options().include_usage();
+  }
 
   // schedule the request
   llm_handler_->schedule_async(
@@ -198,6 +223,8 @@ void CompletionHandler::complete_async(CompletionCallData* call_data) {
       stream,
       [call_data,
        model,
+       stream = stream,
+       include_usage = include_usage,
        request_id = generate_request_id(),
        created_time = absl::ToUnixSeconds(absl::Now())](
           const RequestOutput& req_output) -> bool {
@@ -209,12 +236,16 @@ void CompletionHandler::complete_async(CompletionCallData* call_data) {
           }
         }
 
-        if (req_output.finished) {
-          return send_result_to_client(
-              call_data, request_id, created_time, model, req_output);
+        if (stream) {
+          // send delta to client
+          return send_delta_to_client(call_data,
+                                      include_usage,
+                                      request_id,
+                                      created_time,
+                                      model,
+                                      req_output);
         }
-        // send delta to client
-        return send_delta_to_client(
+        return send_result_to_client(
             call_data, request_id, created_time, model, req_output);
       });
 }
