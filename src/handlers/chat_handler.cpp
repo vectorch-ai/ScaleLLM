@@ -105,6 +105,7 @@ bool send_delta_to_client(ChatCallData* call_data,
       response.set_model(model);
       auto* choice = response.add_choices();
       choice->set_index(index);
+      choice->mutable_delta();
       choice->set_finish_reason(seq_output.finish_reason.value());
       if (!call_data->write(std::move(response))) {
         return false;
@@ -129,6 +130,11 @@ bool send_delta_to_client(ChatCallData* call_data,
     if (!call_data->write(std::move(response))) {
       return false;
     }
+  }
+
+  if (output.finished) {
+    // TODO: convert status to grpc status code
+    return call_data->finish();
   }
   return true;
 }

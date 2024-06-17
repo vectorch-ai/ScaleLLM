@@ -93,6 +93,11 @@ bool send_delta_to_client(CompletionCallData* call_data,
       return false;
     }
   }
+
+  if (output.finished) {
+    // TODO: convert status to grpc status code
+    return call_data->finish();
+  }
   return true;
 }
 
