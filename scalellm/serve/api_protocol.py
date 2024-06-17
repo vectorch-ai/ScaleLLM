@@ -66,6 +66,8 @@ class ChatCompletionMessage(BaseModel):
     role: Literal["user", "system", "assistant"]
     content: str
 
+class StreamOptions(BaseModel):
+    include_usage: Optional[bool]
 
 class ChatCompletionRequest(BaseModel):
     model: str
@@ -74,6 +76,7 @@ class ChatCompletionRequest(BaseModel):
     n: Optional[int] = 1
     max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
+    stream_options: Optional[StreamOptions] = None
     temperature: Optional[float] = 0.7
     presence_penalty: Optional[float] = 0.0
     frequency_penalty: Optional[float] = 0.0
@@ -141,6 +144,7 @@ class CompletionRequest(BaseModel):
     best_of: Optional[int] = None
     max_tokens: Optional[int] = 16
     stream: Optional[bool] = False
+    stream_options: Optional[StreamOptions] = None
     logprobs: Optional[int] = None
     echo: Optional[bool] = False
     temperature: Optional[float] = 0.7

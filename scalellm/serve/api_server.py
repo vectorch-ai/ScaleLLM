@@ -129,6 +129,8 @@ if __name__ == "__main__":
         draft_model=args.draft_model,
         draft_revision=args.draft_revision,
         draft_devices=args.draft_devices,
+        cache_dir=args.cache_dir,
+        convert_to_safetensors=args.convert_to_safetensors,
         block_size=args.block_size,
         max_cache_size=args.max_cache_size,
         max_memory_utilization=args.max_memory_utilization,
@@ -142,11 +144,19 @@ if __name__ == "__main__":
         max_tokens_per_batch=args.max_tokens_per_batch,
         max_seqs_per_batch=args.max_seqs_per_batch,
         num_speculative_tokens=args.num_speculative_tokens,
+        num_handling_threads=args.num_handling_threads,
     )
 
     try:
         llm_engine.start()
-        uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            log_level=args.log_level,
+            ssl_keyfile=args.ssl_keyfile,
+            ssl_certfile=args.ssl_certfile,
+        )
     except KeyboardInterrupt:
         pass
     finally:

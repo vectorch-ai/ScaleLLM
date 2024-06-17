@@ -1,14 +1,16 @@
 import time
+from typing import List, Optional
 
 import shortuuid
 
-from scalellm import AsyncLLMEngine, SamplingParams
-from scalellm.serve.api_protocol import (CompletionRequest, CompletionResponse,
+from scalellm import AsyncLLMEngine, LogProb, SamplingParams
+from scalellm.serve.api_protocol import (CompletionLogProbs, CompletionRequest,
+                                         CompletionResponse,
                                          CompletionResponseChoice,
                                          CompletionResponseStreamChoice,
-                                         CompletionStreamResponse, UsageInfo)
-from scalellm.serve.common import (jsonify_model, to_api_completion_logprobs,
-                                   to_priority)
+                                         CompletionStreamResponse)
+from scalellm.serve.common import (get_printable_token, jsonify_model,
+                                   to_api_usage, to_priority)
 from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
@@ -34,6 +36,37 @@ def to_sampling_params(request: CompletionRequest) -> SamplingParams:
     return sp
 
 
+def to_api_logprobs(
+    logprobs: Optional[List[LogProb]],
+    offset: int,
+) -> Optional[CompletionLogProbs]:
+    if logprobs is None:
+        return None
+
+    text_offset, tokens, token_ids, token_logprobs, top_logprobs = [], [], [], [], []
+
+    for logprob in logprobs:
+        text_offset.append(offset)
+        offset += len(logprob.token)
+        tokens.append(get_printable_token(logprob))
+        token_ids.append(logprob.token_id)
+        token_logprobs.append(logprob.logprob)
+
+        if logprob.top_logprobs:
+            top_logprobs.append(
+                {get_printable_token(top): top.logprob for top in logprob.top_logprobs}
+            )
+        else:
+            top_logprobs.append(None)
+
+    return CompletionLogProbs(
+        text_offset=text_offset,
+        tokens=tokens,
+        token_ids=token_ids,
+        token_logprobs=token_logprobs,
+        top_logprobs=top_logprobs,
+    )
+
 async def generate_completion_response(
     request: CompletionRequest, engine: AsyncLLMEngine
 ) -> CompletionResponse:
@@ -52,13 +85,6 @@ async def generate_completion_response(
 
     # only one output is expected for non-streaming request
     output = await output_stream.__anext__()
-    usage = None
-    if output.usage:
-        usage = UsageInfo(
-            prompt_tokens=output.usage.num_prompt_tokens,
-            total_tokens=output.usage.num_total_tokens,
-            completion_tokens=output.usage.num_generated_tokens,
-        )
     choices = []
     prompt_len = len(request.prompt)
     for seq_output in output.outputs:
@@ -66,7 +92,7 @@ async def generate_completion_response(
             CompletionResponseChoice(
                 index=seq_output.index,
                 text=seq_output.text,
-                logprobs=to_api_completion_logprobs(seq_output.logprobs, prompt_len),
+                logprobs=to_api_logprobs(seq_output.logprobs, prompt_len),
                 finish_reason=seq_output.finish_reason,
             )
         )
@@ -76,7 +102,7 @@ async def generate_completion_response(
         created=created_time,
         model=model,
         choices=choices,
-        usage=usage,
+        usage=to_api_usage(output.usage),
     )
 
 
@@ -98,6 +124,10 @@ async def generate_completion_stream_response(
         priority=priority,
         stream=request.stream,
     )
+    
+    include_usage = False
+    if request.stream_options:
+        include_usage = request.stream_options.include_usage
 
     async def generate_stream_content():
         prompt_len = len(request.prompt)
@@ -116,46 +146,50 @@ async def generate_completion_stream_response(
                         CompletionResponseStreamChoice(
                             index=seq_output.index,
                             text=seq_output.text,
-                            logprobs=to_api_completion_logprobs(
+                            logprobs=to_api_logprobs(
                                 seq_output.logprobs, cur_offset
                             ),
                             finish_reason=None,
                         )
                     ],
                 )
+                if include_usage:
+                    response.usage = None
                 yield f"data: {jsonify_model(response)}\n\n"
-                # send the final chunk with finish reason
-                if seq_output.finish_reason is not None:
-                    response = CompletionStreamResponse(
-                        id=request_id,
-                        object=chunk_object_type,
-                        created=created_time,
-                        model=model,
-                        choices=[
-                            CompletionResponseStreamChoice(
-                                index=seq_output.index,
-                                text="",
-                                logprobs=None,
-                                finish_reason=seq_output.finish_reason,
-                            )
-                        ],
-                    )
-                    yield f"data: {jsonify_model(response)}\n\n"
-        # send additional chunk for usage info
-        if output.usage:
-            response = CompletionStreamResponse(
-                id=request_id,
-                object=chunk_object_type,
-                created=created_time,
-                model=model,
-                choices=[],
-                usage=UsageInfo(
-                    prompt_tokens=output.usage.num_prompt_tokens,
-                    total_tokens=output.usage.num_total_tokens,
-                    completion_tokens=output.usage.num_generated_tokens,
-                ),
-            )
-            yield f"data: {jsonify_model(response)}\n\n"
+
+                if seq_output.finish_reason is None:
+                    continue
+                
+                # send seperate chunk with finish reason
+                response = CompletionStreamResponse(
+                    id=request_id,
+                    object=chunk_object_type,
+                    created=created_time,
+                    model=model,
+                    choices=[
+                        CompletionResponseStreamChoice(
+                            index=seq_output.index,
+                            text="",
+                            logprobs=None,
+                            finish_reason=seq_output.finish_reason,
+                        )
+                    ],
+                )
+                if include_usage:
+                    response.usage = None
+                yield f"data: {jsonify_model(response)}\n\n"
+                
+            # send additional chunk for usage info
+            if include_usage and output.usage:
+                response = CompletionStreamResponse(
+                    id=request_id,
+                    object=chunk_object_type,
+                    created=created_time,
+                    model=model,
+                    choices=[],
+                    usage=to_api_usage(output.usage),
+                )
+                yield f"data: {jsonify_model(response)}\n\n"
         yield "data: [DONE]\n\n"
 
     return SafeStreamingResponse(

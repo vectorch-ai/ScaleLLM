@@ -50,6 +50,7 @@ void set_logprobs(proto::ChatChoice* choice,
 }
 
 bool send_delta_to_client(ChatCallData* call_data,
+                          bool include_usage,
                           std::unordered_set<size_t>* first_message_sent,
                           const std::string& request_id,
                           int64_t created_time,
@@ -59,7 +60,7 @@ bool send_delta_to_client(ChatCallData* call_data,
   for (const auto& seq_output : output.outputs) {
     const auto& index = seq_output.index;
 
-    // send role as a seperate message
+    // send first chunk with role as assistant
     if (first_message_sent->find(index) == first_message_sent->end()) {
       proto::ChatResponse response;
       response.set_object("chat.completion.chunk");
@@ -78,6 +79,7 @@ bool send_delta_to_client(ChatCallData* call_data,
       }
     }
 
+    // send chunk with delta message
     if (!seq_output.text.empty()) {
       proto::ChatResponse response;
       response.set_object("chat.completion.chunk");
@@ -94,7 +96,7 @@ bool send_delta_to_client(ChatCallData* call_data,
       }
     }
 
-    // send finish reason as a separate message
+    // send a separate chunk with finish reason
     if (seq_output.finish_reason.has_value()) {
       proto::ChatResponse response;
       response.set_object("chat.completion.chunk");
@@ -103,11 +105,36 @@ bool send_delta_to_client(ChatCallData* call_data,
       response.set_model(model);
       auto* choice = response.add_choices();
       choice->set_index(index);
+      choice->mutable_delta();
       choice->set_finish_reason(seq_output.finish_reason.value());
       if (!call_data->write(std::move(response))) {
         return false;
       }
     }
+  }
+
+  // send additional chunk for usage statistics
+  if (include_usage && output.usage.has_value()) {
+    const auto& usage = output.usage.value();
+    proto::ChatResponse response;
+    response.set_object("chat.completion.chunk");
+    response.set_id(request_id);
+    response.set_created(created_time);
+    response.set_model(model);
+    auto* proto_usage = response.mutable_usage();
+    proto_usage->set_prompt_tokens(
+        static_cast<int32_t>(usage.num_prompt_tokens));
+    proto_usage->set_completion_tokens(
+        static_cast<int32_t>(usage.num_generated_tokens));
+    proto_usage->set_total_tokens(static_cast<int32_t>(usage.num_total_tokens));
+    if (!call_data->write(std::move(response))) {
+      return false;
+    }
+  }
+
+  if (output.finished) {
+    // TODO: convert status to grpc status code
+    return call_data->finish();
   }
   return true;
 }
@@ -228,6 +255,10 @@ void ChatHandler::chat_async(ChatCallData* call_data) {
   for (const auto& message : grpc_request.messages()) {
     messages.emplace_back(message.role(), message.content());
   }
+  bool include_usage = false;
+  if (grpc_request.has_stream_options()) {
+    include_usage = grpc_request.stream_options().include_usage();
+  }
 
   // schedule the request
   llm_handler_->schedule_chat_async(
@@ -237,6 +268,8 @@ void ChatHandler::chat_async(ChatCallData* call_data) {
       stream,
       [call_data,
        model,
+       stream = stream,
+       include_usage = include_usage,
        first_message_sent = std::unordered_set<size_t>(),
        request_id = generate_request_id(),
        created_time = absl::ToUnixSeconds(absl::Now())](
@@ -249,17 +282,18 @@ void ChatHandler::chat_async(ChatCallData* call_data) {
           }
         }
 
-        if (req_output.finished) {
-          return send_result_to_client(
-              call_data, request_id, created_time, model, req_output);
+        if (stream) {
+          // send delta to client
+          return send_delta_to_client(call_data,
+                                      include_usage,
+                                      &first_message_sent,
+                                      request_id,
+                                      created_time,
+                                      model,
+                                      req_output);
         }
-        // send delta to client
-        return send_delta_to_client(call_data,
-                                    &first_message_sent,
-                                    request_id,
-                                    created_time,
-                                    model,
-                                    req_output);
+        return send_result_to_client(
+            call_data, request_id, created_time, model, req_output);
       });
 }
 

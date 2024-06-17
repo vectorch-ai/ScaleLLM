@@ -5,7 +5,7 @@ package llm.proto;
 
 import "common.proto";
 
-// Next ID: 21
+// Next ID: 22
 message CompletionRequest {
   // ID of the model to use. (required)
   // You can use the ListModels endpoint to list available models.
@@ -29,6 +29,9 @@ message CompletionRequest {
 
   // whether to stream partial completions back as they are generated. default = false
   optional bool stream = 8;
+
+  // options for streaming response. Only set this when you set stream: true
+  optional StreamOptions stream_options = 21;
 
   // include the log probabilities of the chosen tokens. the maximum value is 5.
   optional uint32 logprobs = 9;

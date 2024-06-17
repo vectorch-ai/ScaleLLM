@@ -23,3 +23,9 @@ enum Priority {
 
   LOW = 3;
 }
+
+// Options for streaming response.
+message StreamOptions{
+  // if set, an additional chunk with usage will be streamed before the data: [DONE] message.
+  optional bool include_usage = 1;
+}

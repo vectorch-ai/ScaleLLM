@@ -36,6 +36,12 @@ def parse_args():
         "--draft_revision", type=str, default=None, help="Revision of the draft model."
     )
     parser.add_argument(
+        "--cache_dir", type=str, default=None, help="HF Model cache directory."
+    )
+    parser.add_argument(
+        "--convert_to_safetensors", type=bool, default=False, help="Convert to SafeTensors."
+    )
+    parser.add_argument(
         "--draft_devices", type=str, default="auto", help="Draft devices to use."
     )
     parser.add_argument(
@@ -47,8 +53,8 @@ def parse_args():
     parser.add_argument(
         "--max_cache_size",
         type=int,
-        default=10 * 1024 * 1024 * 1024,
-        help="Max gpu memory size for kv cache. Default is 10GB.",
+        default=20 * 1024 * 1024 * 1024,
+        help="Max gpu memory size for kv cache. Default is 20GB.",
     )
     parser.add_argument(
         "--max_memory_utilization",
@@ -104,4 +110,18 @@ def parse_args():
         default=0,
         help="Number of speculative tokens.",
     )
+    parser.add_argument(
+        "--num_handling_threads",
+        type=int,
+        default=4,
+        help="Number of handling threads.",
+    )
+    parser.add_argument("--ssl-keyfile",
+                        type=str, 
+                        default=None,
+                        help="The file path to the SSL key file")
+    parser.add_argument("--ssl-certfile",
+                        type=str, 
+                        default=None,
+                        help="The file path to the SSL cert file")
     return parser.parse_args()

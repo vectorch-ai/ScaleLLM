@@ -19,7 +19,8 @@ message ChatMessage {
   // FunctionCall function_call = 4;
 }
 
-// Next Id: 23
+
+// Next Id: 24
 message ChatRequest {
 
   // ID of the model to use. You can use the ListModels endpoint to list available models.
@@ -36,6 +37,9 @@ message ChatRequest {
 
   // whether to stream partial completions back as they are generated. default = false
   optional bool stream = 8; 
+
+  // options for streaming response. Only set this when you set stream: true
+  optional StreamOptions stream_options = 23;
 
   // TODO: a list of functions the model may generate JSON inputs for.
   // repeated Function function = 3;
