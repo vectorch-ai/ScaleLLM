@@ -42,8 +42,6 @@ class OpenAIServer:
             self._proc.wait()
 
     def __enter__(self):
-        # wait up to 60 seconds for the server to start
-        self.wait_ready(60)
         return self
 
     def __exit__(self, *args):
@@ -52,4 +50,6 @@ class OpenAIServer:
 
 if __name__ == "__main__":
     with OpenAIServer(sys.argv[1:]) as server:
+        # wait up to 60 seconds for the server to start
+        server.wait_ready(60)
         input("Press Enter to stop server...")

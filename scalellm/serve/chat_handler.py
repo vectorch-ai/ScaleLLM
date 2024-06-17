@@ -155,7 +155,7 @@ async def generate_chat_stream_response(
                             ChatCompletionResponseStreamChoice(
                                 index=index,
                                 delta=DeltaMessage(role="assistant", content=""),
-                                logprobs=to_api_logprobs(seq_output.logprobs),
+                                logprobs=None,
                                 finish_reason=None,
                             )
                         ],
@@ -196,7 +196,7 @@ async def generate_chat_stream_response(
                         ChatCompletionResponseStreamChoice(
                             index=index,
                             delta=DeltaMessage(),
-                            logprobs=to_api_logprobs(seq_output.logprobs),
+                            logprobs=None,
                             finish_reason=seq_output.finish_reason,
                         )
                     ],

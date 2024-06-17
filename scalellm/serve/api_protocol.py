@@ -17,7 +17,7 @@ class ModelPermission(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     allow_create_engine: bool = False
     allow_sampling: bool = True
-    allow_logprobs: bool = False
+    allow_logprobs: bool = True
     allow_search_indices: bool = False
     allow_view: bool = True
     allow_fine_tuning: bool = False
