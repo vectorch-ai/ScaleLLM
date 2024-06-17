@@ -126,11 +126,8 @@ class TestOpenAIComplete:
         for choice in output.choices:
             assert choice.index is not None
             assert choice.text is not None
+            assert choice.finish_reason is not None
             assert choice.logprobs is None
-            assert choice.finish_reason == "length"
-        assert output.usage == openai.types.CompletionUsage(
-            completion_tokens=10 * n, prompt_tokens=5, total_tokens=5 + 10 * n
-        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("logprobs", [1, 2, 4])

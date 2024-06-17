@@ -103,6 +103,7 @@ jobs:
         
         # Run pytest
         printf "\n\nRunning pytest\n\n"
+        cd tests
         pytest
         printf "\n\n"
 
