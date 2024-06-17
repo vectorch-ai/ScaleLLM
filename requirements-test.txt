@@ -1,1 +1,10 @@
 pytest
+pytest-forked
+pytest-asyncio
+pytest-rerunfailures
+pytest-shard
+requests
+transformers
+accelerate
+anyio
+openai

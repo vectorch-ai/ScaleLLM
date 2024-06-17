@@ -266,7 +266,8 @@ class AsyncLLMEngine:
         return self._handler.decode(tokens, skip_special_tokens)
 
     def __del__(self):
-        self._handler.reset()
+        if hasattr(self, "_handler"):
+            self._handler.reset()
 
     def __enter__(self):
         self.start()
