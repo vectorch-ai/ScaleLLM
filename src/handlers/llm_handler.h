@@ -65,9 +65,9 @@ class LLMHandler {
     // the number of slots per block, default 16, value must be multiple of 16
     DEFINE_ARG(int32_t, block_size) = 16;
 
-    // the maximum cache size in bytes, default 10GB
-    DEFINE_ARG(int64_t, max_cache_size) = static_cast<int64_t>(10) * 1024 *
-                                          1024 * 1024;
+    // the maximum cache size in bytes, default is 0 which means cache size is
+    // caculated by available memory * max_memory_utilization
+    DEFINE_ARG(int64_t, max_cache_size) = 0;
 
     // maximum memory utilization allowed, default 0.9
     DEFINE_ARG(double, max_memory_utilization) = 0.9;

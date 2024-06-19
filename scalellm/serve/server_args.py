@@ -53,8 +53,8 @@ def parse_args():
     parser.add_argument(
         "--max_cache_size",
         type=int,
-        default=20 * 1024 * 1024 * 1024,
-        help="Max gpu memory size for kv cache. Default is 20GB.",
+        default=0,
+        help="Max gpu memory size for kv cache. Default is 0, which means cache size is caculated by available memory.",
     )
     parser.add_argument(
         "--max_memory_utilization",
