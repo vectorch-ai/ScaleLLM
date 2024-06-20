@@ -21,7 +21,7 @@ class SpeculativeEngine : public Engine {
     // the number of slots per block, default 16, value must be multiple of 16
     DEFINE_ARG(int32_t, block_size) = 16;
 
-    // the maximum cache size in bytes, default 10GB
+    // 0 means that cache size is caculated by available memory
     DEFINE_ARG(int64_t, max_cache_size) = 0;
 
     // maximum memory utilization allowed, default 0.9
