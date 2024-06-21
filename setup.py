@@ -50,7 +50,7 @@ def join_path(*paths):
     return os.path.join(get_base_dir(), *paths)
 
 
-def extract_version():
+def get_scalellm_version():
     # first read from environment variable
     version = os.getenv("SCALELLM_VERSION")
     if not version:
@@ -63,12 +63,8 @@ def extract_version():
         version = version[1:]
 
     if not version:
-        raise RuntimeError("Version is not set")
-    return version
-
-
-def get_scalellm_version():
-    version = extract_version()
+        raise RuntimeError("Unable to find version string.")
+    
     version_suffix = os.getenv("SCALELLM_VERSION_SUFFIX")
     if version_suffix:
         version += version_suffix
