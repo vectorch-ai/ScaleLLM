@@ -15,17 +15,19 @@ jobs:
     steps:
       - name: Extract version from tag
         id: version
-        run: echo "tag=$(echo ${{ github.ref }} | sed -n 's/refs\/tags\/v//p')" >> $GITHUB_OUTPUT
+        run: echo "tag=$(echo ${{ github.ref }} | sed -n 's/refs\/tags\///p')" >> $GITHUB_OUTPUT
   
   # Run tests on release
   release-test:
     uses: ./.github/workflows/release_test.yml
+    secrets: inherit
 
   # build wheel for release if tests pass
   build-wheel:
     uses: ./.github/workflows/build_wheel.yml
     with:
       tag: ${{ needs.version-tag.outputs.tag }}
+    secrets: inherit
     needs:
       - version-tag
       - release-test
@@ -35,6 +37,7 @@ jobs:
     uses: ./.github/workflows/publish_wheel.yml
     with:
       tag: ${{ needs.version-tag.outputs.tag }}
+    secrets: inherit
     needs:
       - version-tag
       - build-wheel
@@ -44,6 +47,7 @@ jobs:
     uses: ./.github/workflows/publish_cpp_image.yml
     with:
       tag: ${{ needs.version-tag.outputs.tag }}
+    secrets: inherit
     needs:
       - version-tag
       - publish-wheel
@@ -51,6 +55,7 @@ jobs:
   # publish docs to gh-pages for new release
   publish_docs:
     uses: ./.github/workflows/publish_docs.yml
+    secrets: inherit
     needs:
       - publish-wheel
   
