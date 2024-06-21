@@ -1,0 +1,59 @@
+name: ScaleLLM Release
+on:   
+# Release scalellm on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
+# Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
+  push:
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+*
+    branches:
+      - main
+
+jobs:
+  # extract version from tag
+  version-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "::set-output name=tag::$(echo ${{ github.ref }} | sed -n 's/refs\/tags\/v//p')"
+  
+  # Run tests on release
+  release-test:
+    uses: ./.github/workflows/release_test.yml
+
+  # build wheel for release if tests pass
+  build-wheel:
+    uses: ./.github/workflows/build_wheel.yml
+    with:
+      tag: ${{ needs.version-tag.outputs.tag }}
+    needs:
+      - version-tag
+      - release-test
+
+  # publish wheel to pypi if wheel builds successfully
+  publish-wheel:
+    uses: ./.github/workflows/publish_wheel.yml
+    with:
+      tag: ${{ needs.version-tag.outputs.tag }}
+    needs:
+      - version-tag
+      - build-wheel
+
+  # publish docker image to dockerhub
+  publish-cpp-image:
+    uses: ./.github/workflows/publish_cpp_image.yml
+    with:
+      tag: ${{ needs.version-tag.outputs.tag }}
+    needs:
+      - version-tag
+      - publish-wheel
+
+  # publish docs to gh-pages for new release
+  publish_docs:
+    uses: ./.github/workflows/publish_docs.yml
+    needs:
+      - publish-wheel
+  
+

@@ -1,6 +1,18 @@
 name: Publish wheel to PyPI
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and update whl index'
+        required: true
+        type: string
+
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to build and update whl index'
+        required: true
+        type: string
 
 # Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
 # Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
@@ -24,6 +36,7 @@ jobs:
       PYTHON_VERSION: ${{ matrix.python }}
       CUDA_VERSION: ${{ matrix.cuda }}
       TORCH_VERSION: ${{ matrix.torch }}
+      SCALELLM_VERSION: ${{ inputs.tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,6 +57,7 @@ jobs:
               -e PYTHON_VERSION=${PYTHON_VERSION} \
               -e CUDA_VERSION=${CUDA_VERSION} \
               -e TORCH_VERSION=${TORCH_VERSION} \
+              -e SCALELLM_VERSION=${SCALELLM_VERSION} \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
               -u $(id -u):$(id -g) \
@@ -68,7 +82,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+          name: manylinux1_wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
           path: dist/*
 
   publish_wheel:
@@ -82,7 +96,7 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-          pattern: wheel-*
+          pattern: manylinux1_wheel-*
 
       - name: Show wheels
         run: ls -lh dist

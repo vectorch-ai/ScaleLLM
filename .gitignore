@@ -37,4 +37,5 @@ MANIFEST
 *.egg-info/
 scalellm/*.pyd
 scalellm/*.so
+scalellm/version.py
 **/__pycache__/*

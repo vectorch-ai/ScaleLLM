@@ -1,0 +1,108 @@
+name: ScaleLLM package test
+
+on:
+  workflow_dispatch:
+
+  # Schedule the workflow to run at 08:00 (UTC) every day.
+  schedule:
+    # Minute[0,59] Hour[0,23] Day of month[1,31] Month[1,12] Day of week[0,6] (Sunday=0)
+    - cron: '0 8 * * *'  
+
+  push:
+    paths:
+      - "scalellm/**"
+      - "tests/**"
+      - "setup.py"
+      - "requirements.txt"
+      - "requirements-test.txt"
+      - ".github/workflows/package_test.yml"
+    branches: 
+      - main
+
+  pull_request:
+    paths:
+      - "scalellm/**"
+      - "tests/**"
+      - "setup.py"
+      - "requirements.txt"
+      - "requirements-test.txt"
+      - ".github/workflows/package_test.yml"
+    branches:
+      - main
+
+jobs:
+  linux-gcc:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
+        # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+        build_type: [Release]
+    
+    runs-on: [self-hosted, linux, x64, build]
+    
+    env:
+        BUILD_TYPE: ${{ matrix.build_type }}
+        # Tells vcpkg where binary packages are stored.
+        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincache
+        # Tells ccache where to store its cache.
+        CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache
+
+    steps:
+    - name: Install toolkits
+      run: |
+        sudo apt-get install -y build-essential ninja-build bison gcc-12 g++-12 libunwind-dev python3-dev libboost-all-dev ccache
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 10 --slave /usr/bin/g++ g++ /usr/bin/g++-12
+  
+    - name: Show gcc version
+      run: gcc --version
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install python requirements
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Create cache directory
+      run: |
+        mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
+        mkdir -p $CCACHE_DIR
+    
+    - name: Zero out ccache statistics
+      run: ccache -z
+
+    - name: Build whl package
+      run: |
+        python setup.py bdist_wheel
+
+    - name: Show ccache statistics
+      run: ccache -s
+
+    - name: Show whl package size
+      run: du -h dist/*
+
+    - name: Install the package and run pytest
+      shell: bash -l {0}
+      run: |
+        source ~/anaconda3/etc/profile.d/conda.sh
+        # Create a new conda environment
+        if conda info --envs | grep -q pkg_test; then echo "pkg_test already exists"; else conda create -y -n pkg_test; fi
+        conda init --all && source ~/.bashrc 
+
+        conda activate pkg_test
+        # Install the package and pytest
+        pip uninstall -y scalellm
+        pip install dist/*.whl
+
+        pip install -r requirements-test.txt
+        
+        # Run pytest
+        printf "\n\nRunning pytest\n\n"
+        cd tests
+        pytest
+        printf "\n\n"
+
+        conda deactivate || true
