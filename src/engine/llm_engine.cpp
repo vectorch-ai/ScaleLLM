@@ -104,8 +104,8 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
     for (auto& worker : workers_) {
       futures.emplace_back(worker->process_group_test_async());
     }
-    // wait up to 2 seconds for all futures to complete
-    folly::collectAll(futures).within(std::chrono::seconds(2)).get();
+    // wait up to 4 seconds for all futures to complete
+    folly::collectAll(futures).within(std::chrono::seconds(4)).get();
   }
 }
 
@@ -242,8 +242,8 @@ bool LLMEngine::capture_cuda_graphs() {
     for (auto& worker : workers_) {
       futures.emplace_back(worker->capture_cuda_graph_async(batch_size));
     }
-    // wait up to 2 seconds for all futures to complete
-    folly::collectAll(futures).within(std::chrono::seconds(2)).get();
+    // wait up to 4 seconds for all futures to complete
+    folly::collectAll(futures).within(std::chrono::seconds(4)).get();
   }
   return true;
 }
