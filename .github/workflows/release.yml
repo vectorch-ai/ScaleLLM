@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Extract version from tag
         id: version
-        run: echo "tag=$(echo ${{ github.ref }} | sed -n 's/refs\/tags\/v//p')" >> $GITHUB_OUTPUT
+        run: echo "tag=$(echo ${{ github.ref }} | sed -n 's/refs\/tags\///p')" >> $GITHUB_OUTPUT
   
   # Run tests on release
   release-test:
