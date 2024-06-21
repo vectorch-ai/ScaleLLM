@@ -1,4 +1,4 @@
-name: ScaleLLM package test
+name: Package test
 
 on:
   workflow_dispatch:

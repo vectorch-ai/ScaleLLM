@@ -1,12 +1,10 @@
-name: ScaleLLM Release
+name: Release
 on:   
 # Release scalellm on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
 # Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.
   push:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+*
-    branches:
-      - main
 
 jobs:
   # extract version from tag
@@ -17,7 +15,7 @@ jobs:
     steps:
       - name: Extract version from tag
         id: version
-        run: echo "::set-output name=tag::$(echo ${{ github.ref }} | sed -n 's/refs\/tags\/v//p')"
+        run: echo "name=tag::$(echo ${{ github.ref }} | sed -n 's/refs\/tags\/v//p')" >> $GITHUB_OUTPUT
   
   # Run tests on release
   release-test:
