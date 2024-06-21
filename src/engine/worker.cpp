@@ -9,6 +9,7 @@
 #include <torch/torch.h>
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "common/metrics.h"
@@ -17,6 +18,7 @@
 #include "memory/kv_cache.h"
 #include "memory/memory.h"
 #include "model_loader/state_dict.h"
+#include "model_parallel/model_parallel.h"
 #include "models/parameters.h"
 #include "sampling/logits_processor.h"
 #include "sampling/sampler.h"
@@ -41,7 +43,10 @@ Worker::Worker(const ParallelArgs& parallel_args,
                const ModelRunner::Options& runner_options)
     : parallel_args_(parallel_args),
       device_(device),
-      runner_options_(runner_options) {}
+      runner_options_(runner_options) {
+  // first worker is the driver
+  driver_ = parallel_args.rank() == 0;
+}
 
 bool Worker::init_model(torch::ScalarType dtype,
                         const ModelArgs& args,
@@ -104,32 +109,54 @@ std::tuple<int64_t, int64_t> Worker::profile_device_memory() {
   return {available_memory, total_memory};
 }
 
-ModelOutput Worker::execute_model(const ModelInput& inputs) {
+bool Worker::process_group_test() {
   torch::DeviceGuard device_guard(device_);
+  torch::cuda::synchronize();
+
+  // create random tensors
+  const auto options = torch::dtype(torch::kHalf).device(device_);
+  torch::Tensor tensor = torch::randn({10, 10}, options);
+  // call allreduce
+  reduce_from_model_parallel_region(tensor, parallel_args_);
+  // call allgather
+  gather_from_model_parallel_region(tensor, parallel_args_);
+
+  torch::cuda::synchronize();
+  return true;
+}
+
+std::optional<ModelOutput> Worker::execute_model(const ModelInput& inputs) {
+  torch::DeviceGuard device_guard(device_);
+  torch::cuda::synchronize();
 
   Timer timer;
 
   // all tensors should be on the same device as model
   auto flatten_tokens = inputs.token_ids.to(device_);
   auto flatten_positions = inputs.positions.to(device_);
-  InputParameters params = inputs.input_params.to(device_);
+  auto params = inputs.input_params.to(device_);
+  auto sampling_params = inputs.sampling_params.to(device_, dtype_);
 
   // call model runner forward to get hidden states
   auto hidden_states = model_runner_->forward(
       flatten_tokens, flatten_positions, kv_caches_, params);
-  // waits for all kernels in current streams to complete.
-  at::cuda::getCurrentCUDAStream().synchronize();
+
+  torch::Tensor logits;
+  if (sampling_params.selected_token_idxes.defined()) {
+    logits =
+        model_->logits(hidden_states, sampling_params.selected_token_idxes);
+  }
+
+  torch::cuda::synchronize();
   COUNTER_ADD(model_execution_latency_seconds, timer.elapsed_seconds());
 
-  // prepare model output
-  ModelOutput output;
-  if (inputs.sampling_params.selected_token_idxes.defined()) {
-    SamplingParameters sampling_params =
-        inputs.sampling_params.to(device_, dtype_);
-    // call model to get logits
-    torch::Tensor logits =
-        model_->logits(hidden_states, sampling_params.selected_token_idxes);
+  if (!driver_) {
+    return std::nullopt;
+  }
 
+  // driver prepare model output
+  ModelOutput output;
+  if (sampling_params.selected_token_idxes.defined()) {
     // create and call logits processors
     timer.reset();
     auto logits_processor = LogitsProcessor::create(sampling_params);
@@ -175,9 +202,9 @@ Worker::profile_device_memory_async() {
   return future;
 }
 
-folly::SemiFuture<ModelOutput> Worker::execute_model_async(
+folly::SemiFuture<std::optional<ModelOutput>> Worker::execute_model_async(
     const ModelInput& inputs) {
-  folly::Promise<ModelOutput> promise;
+  folly::Promise<std::optional<ModelOutput>> promise;
   auto future = promise.getSemiFuture();
   threadpool_.schedule(
       [this, inputs = inputs, promise = std::move(promise)]() mutable {
@@ -185,6 +212,15 @@ folly::SemiFuture<ModelOutput> Worker::execute_model_async(
         const auto output = this->execute_model(inputs);
         promise.setValue(output);
       });
+  return future;
+}
+
+folly::SemiFuture<bool> Worker::process_group_test_async() {
+  folly::Promise<bool> promise;
+  auto future = promise.getSemiFuture();
+  threadpool_.schedule([this, promise = std::move(promise)]() mutable {
+    promise.setValue(this->process_group_test());
+  });
   return future;
 }
 

@@ -105,6 +105,17 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
     workers_.emplace_back(
         std::make_unique<Worker>(parallel_args, devices[i], runner_options));
   }
+
+  if (world_size > 1) {
+    // test process group
+    std::vector<folly::SemiFuture<bool>> futures;
+    futures.reserve(workers_.size());
+    for (auto& worker : workers_) {
+      futures.emplace_back(worker->process_group_test_async());
+    }
+    // wait up to 2 seconds for all futures to complete
+    folly::collectAll(futures).within(std::chrono::seconds(2)).get();
+  }
 }
 
 bool LLMEngine::init(const std::string& model_weights_path) {
@@ -373,22 +384,23 @@ ModelOutput LLMEngine::execute_model(Batch& batch) {
   if (workers_.size() == 1) {
     // only one worker, call blocking forward
     auto model_output = workers_[0]->execute_model(model_inputs);
-    batch.process_sample_output(model_output.sample_output);
-    return model_output;
+    DCHECK(model_output.has_value()) << "Failed to execute model";
+    batch.process_sample_output(model_output.value().sample_output);
+    return model_output.value();
   }
 
-  // multiple workers, call async forward
-  std::vector<folly::SemiFuture<ModelOutput>> futures;
+  std::vector<folly::SemiFuture<std::optional<ModelOutput>>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->execute_model_async(model_inputs));
+    futures.emplace_back(worker->execute_model_async(model_inputs));
   }
   // wait for the all future to complete
   auto results = folly::collectAll(futures).get();
-  // return the result from the first worker
+  // return the result from the driver
   auto model_output = results.front().value();
-  batch.process_sample_output(model_output.sample_output);
-  return model_output;
+  DCHECK(model_output.has_value()) << "Failed to execute model";
+  batch.process_sample_output(model_output.value().sample_output);
+  return model_output.value();
 }
 
 int64_t LLMEngine::kv_cache_slot_size_in_bytes() const {
