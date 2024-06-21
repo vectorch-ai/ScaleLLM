@@ -250,7 +250,8 @@ folly::SemiFuture<bool> Worker::init_kv_cache_async(
   return future;
 }
 
-folly::SemiFuture<folly::Unit> Worker::capture_cuda_graph_async(uint32_t batch_size) {
+folly::SemiFuture<folly::Unit> Worker::capture_cuda_graph_async(
+    uint32_t batch_size) {
   folly::Promise<folly::Unit> promise;
   auto future = promise.getSemiFuture();
   threadpool_.schedule(
