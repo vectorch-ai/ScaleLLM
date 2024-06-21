@@ -54,8 +54,11 @@ jobs:
 
   # Deployment job
   deploy:
-    # only deploy on new commits
-    if: github.event_name == 'push'
+    # only deploy on new commits to main, or when triggered on-demand
+    if: |
+      github.event_name == 'push' || 
+      github.event_name == 'workflow_call' || 
+      github.event_name == 'workflow_dispatch'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
