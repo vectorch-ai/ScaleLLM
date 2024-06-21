@@ -13,7 +13,6 @@ on:
         description: 'Tag to build and push'
         required: true
         type: string
-
 env:
   # Tells where to store caches.
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
