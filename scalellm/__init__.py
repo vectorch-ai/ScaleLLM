@@ -1,4 +1,9 @@
-__version__ = "0.1.4"
+
+try:
+    from scalellm.version import __version__ as __version__
+except ImportError:
+    __version__ = "unknown"
+    
 try:
     # torch needs to be imported first, otherwise it will segfault upon import.
     import torch  # noqa: F401

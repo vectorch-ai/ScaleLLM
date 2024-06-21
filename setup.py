@@ -9,6 +9,7 @@ import sys
 import sysconfig
 from pathlib import Path
 from typing import List
+from jinja2 import Template
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -49,22 +50,40 @@ def join_path(*paths):
     return os.path.join(get_base_dir(), *paths)
 
 
-def extract_version(file_path):
-    with open(file_path, "r") as f:
-        for line in f:
-            match = re.match(r"^__version__ = ['\"]([^'\"]*)['\"]", line)
-            if match:
-                return match.group(1)
-    raise RuntimeError("Unable to find version string.")
-
-
 def get_scalellm_version():
-    init_file = join_path("scalellm", "__init__.py")
-    version = extract_version(init_file)
+    # first read from environment variable
+    version = os.getenv("SCALELLM_VERSION")
+    if not version:
+        # then read from version file
+        with open("version.txt", "r") as f:
+            version = f.read().strip()
+
+    # strip the leading 'v' if present
+    if version and version.startswith("v"):
+        version = version[1:]
+
+    if not version:
+        raise RuntimeError("Unable to find version string.")
+    
     version_suffix = os.getenv("SCALELLM_VERSION_SUFFIX")
     if version_suffix:
         version += version_suffix
     return version
+
+
+def gen_version_file(version):
+    # read the template file
+    with open("scalellm/version.py.jinja", "r") as fin:
+        template_str = fin.read()
+    # render the template
+    rendered = Template(template_str).render(
+        {
+            "VERSION": version,
+        }
+    )
+    # write the rendered content to version.py
+    with open("scalellm/version.py", "w") as fout:
+        fout.write(rendered)
 
 
 def read_readme() -> str:
@@ -206,38 +225,42 @@ class CMakeBuild(build_ext):
 
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
-
 scalellm_package_data = []
 
-setup(
-    name="scalellm",
-    version=get_scalellm_version(),
-    license="Apache 2.0",
-    author="ScaleLLM Team",
-    description="A high-performance inference system for large language models.",
-    long_description=read_readme(),
-    long_description_content_type="text/markdown",
-    url="https://github.com/vectorch-ai/ScaleLLM",
-    project_url={
-        "Homepage": "https://github.com/vectorch-ai/ScaleLLM",
-    },
-    classifiers=[
-        "Development Status :: 3 - Alpha",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Intended Audience :: Developers",
-        "Operating System :: POSIX",
-        "License :: OSI Approved :: Apache Software License",
-    ],
-    packages=["scalellm", "scalellm/serve", "scalellm/_C", "examples"],
-    ext_modules=[CMakeExtension("_C", "scalellm/")],
-    cmdclass={"build_ext": CMakeBuild},
-    zip_safe=False,
-    package_data={
-        "scalellm": scalellm_package_data,
-    },
-    python_requires=">=3.8",
-    install_requires=read_requirements(),
-)
+if __name__ == "__main__":
+    version = get_scalellm_version()
+    # generate version file
+    gen_version_file(version)
+
+    setup(
+        name="scalellm",
+        version=version,
+        license="Apache 2.0",
+        author="ScaleLLM Team",
+        description="A high-performance inference system for large language models.",
+        long_description=read_readme(),
+        long_description_content_type="text/markdown",
+        url="https://github.com/vectorch-ai/ScaleLLM",
+        project_url={
+            "Homepage": "https://github.com/vectorch-ai/ScaleLLM",
+        },
+        classifiers=[
+            "Development Status :: 3 - Alpha",
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
+            "Intended Audience :: Developers",
+            "Operating System :: POSIX",
+            "License :: OSI Approved :: Apache Software License",
+        ],
+        packages=["scalellm", "scalellm/serve", "scalellm/_C", "examples"],
+        ext_modules=[CMakeExtension("_C", "scalellm/")],
+        cmdclass={"build_ext": CMakeBuild},
+        zip_safe=False,
+        package_data={
+            "scalellm": scalellm_package_data,
+        },
+        python_requires=">=3.8",
+        install_requires=read_requirements(),
+    )

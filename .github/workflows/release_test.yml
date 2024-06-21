@@ -1,36 +1,9 @@
-name: Build and test scalellm package
+name: Release test
 
 on:
   workflow_dispatch:
 
-  # Schedule the workflow to run at 08:00 (UTC) every day.
-  schedule:
-    # Minute[0,59] Hour[0,23] Day of month[1,31] Month[1,12] Day of week[0,6] (Sunday=0)
-    - cron: '0 8 * * *'  
-
-  push:
-    paths:
-      - "scalellm/**"
-      - "tests/**"
-      - "examples/**"
-      - "setup.py"
-      - "requirements.txt"
-      - "requirements-test.txt"
-      - ".github/workflows/build_package.yml"
-    branches: 
-      - main
-
-  pull_request:
-    paths:
-      - "scalellm/**"
-      - "tests/**"
-      - "examples/**"
-      - "setup.py"
-      - "requirements.txt"
-      - "requirements-test.txt"
-      - ".github/workflows/build_package.yml"
-    branches:
-      - main
+  workflow_call:
 
 jobs:
   linux-gcc:
@@ -40,7 +13,7 @@ jobs:
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
     
-    runs-on: [self-hosted, linux, x64, build]
+    runs-on: [self-hosted, linux, x64, release]
     
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
