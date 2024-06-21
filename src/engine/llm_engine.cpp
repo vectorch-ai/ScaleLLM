@@ -19,11 +19,8 @@ DEFINE_COUNTER(prepare_input_latency_seconds,
 
 namespace llm {
 namespace {
-// clang-format off
 const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph =
-    {1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 
-     64, 72, 80, 88, 96, 104, 112, 120, 128};
-// clang-format on
+    {1, 2, 4, 8, 16, 24, 32, 48, 64};
 
 torch::ScalarType parse_dtype(const std::string& dtype_str,
                               const torch::Device& device) {
@@ -72,17 +69,9 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
   }
 
   // initialize process groups if there are multiple devices
-  const int32_t world_size = static_cast<int32_t>(devices.size());
-  if (world_size > 1) {
+  if (devices.size() > 1) {
     // create a process group for each device if there are multiple gpus
     process_groups_ = ProcessGroup::create_process_groups(devices);
-
-    // It is a known issue
-    // (https://github.com/vectorch-ai/ScaleLLM/issues/131)
-    // that CUDA graph capture may occasionally become stuck with multiple
-    // gpus.
-    // disable cuda graph for multi-gpus by default.
-    options_.enable_cuda_graph(false);
   }
 
   // sort cuda graph batch sizes
@@ -98,6 +87,8 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
       .num_decoding_tokens(options_.num_decoding_tokens())
       .cuda_graph_max_seq_len(options_.cuda_graph_max_seq_len())
       .cuda_graph_batch_sizes(batch_sizes_);
+
+  const int32_t world_size = static_cast<int32_t>(devices.size());
   for (size_t i = 0; i < devices.size(); ++i) {
     const int32_t rank = static_cast<int32_t>(i);
     ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
@@ -106,9 +97,9 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
         std::make_unique<Worker>(parallel_args, devices[i], runner_options));
   }
 
-  if (world_size > 1) {
+  if (workers_.size() > 1) {
     // test process group
-    std::vector<folly::SemiFuture<bool>> futures;
+    std::vector<folly::SemiFuture<folly::Unit>> futures;
     futures.reserve(workers_.size());
     for (auto& worker : workers_) {
       futures.emplace_back(worker->process_group_test_async());
@@ -241,30 +232,18 @@ bool LLMEngine::capture_cuda_graphs() {
     return true;
   }
 
-  if (workers_.size() == 1) {
-    // only one worker, call blocking forward
-    return workers_[0]->capture_cuda_graphs();
-  }
+  LOG(INFO) << "Capturing CUDA graphs: num_decoding_tokens: "
+            << options_.num_decoding_tokens()
+            << ", batch sizes: " << batch_sizes_;
 
-  LOG(WARNING)
-      << "It is a known issue "
-         "(https://github.com/vectorch-ai/ScaleLLM/issues/131) that CUDA "
-         "graph capture may occasionally become stuck when multiple workers "
-         "are in use. If you encounter this problem, please set "
-         "'cuda_graph_batch_sizes' to empty to workaround it.";
-
-  // multiple workers, call async forward
-  std::vector<folly::SemiFuture<bool>> futures;
-  futures.reserve(workers_.size());
-  for (auto& worker : workers_) {
-    futures.emplace_back(worker->capture_cuda_graphs_async());
-  }
-  // wait for the all future to complete
-  auto results = folly::collectAll(futures).get();
-  for (const auto& result : results) {
-    if (!result.value()) {
-      return false;
+  for (const auto batch_size : batch_sizes_) {
+    std::vector<folly::SemiFuture<folly::Unit>> futures;
+    futures.reserve(workers_.size());
+    for (auto& worker : workers_) {
+      futures.emplace_back(worker->capture_cuda_graph_async(batch_size));
     }
+    // wait up to 2 seconds for all futures to complete
+    folly::collectAll(futures).within(std::chrono::seconds(2)).get();
   }
   return true;
 }

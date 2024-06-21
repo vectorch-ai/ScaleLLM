@@ -81,12 +81,10 @@ bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
   return true;
 }
 
-bool Worker::capture_cuda_graphs() {
+void Worker::capture_cuda_graph(uint32_t batch_size) {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   CHECK(!kv_caches_.empty()) << "KV caches are not initialized.";
-  // capture graphs if needed
-  model_runner_->capture_cuda_graphs(kv_caches_);
-  return true;
+  return model_runner_->capture_cuda_graphs(batch_size, kv_caches_);
 }
 
 void Worker::load_state_dict(const StateDict& state_dict) {
@@ -109,7 +107,7 @@ std::tuple<int64_t, int64_t> Worker::profile_device_memory() {
   return {available_memory, total_memory};
 }
 
-bool Worker::process_group_test() {
+void Worker::process_group_test() {
   torch::DeviceGuard device_guard(device_);
   torch::cuda::synchronize();
 
@@ -120,14 +118,12 @@ bool Worker::process_group_test() {
   reduce_from_model_parallel_region(tensor, parallel_args_);
   // call allgather
   gather_from_model_parallel_region(tensor, parallel_args_);
-
   torch::cuda::synchronize();
-  return true;
 }
 
 std::optional<ModelOutput> Worker::execute_model(const ModelInput& inputs) {
   torch::DeviceGuard device_guard(device_);
-  torch::cuda::synchronize();
+  at::cuda::getCurrentCUDAStream().synchronize();
 
   Timer timer;
 
@@ -147,7 +143,7 @@ std::optional<ModelOutput> Worker::execute_model(const ModelInput& inputs) {
         model_->logits(hidden_states, sampling_params.selected_token_idxes);
   }
 
-  torch::cuda::synchronize();
+  at::cuda::getCurrentCUDAStream().synchronize();
   COUNTER_ADD(model_execution_latency_seconds, timer.elapsed_seconds());
 
   if (!driver_) {
@@ -215,11 +211,12 @@ folly::SemiFuture<std::optional<ModelOutput>> Worker::execute_model_async(
   return future;
 }
 
-folly::SemiFuture<bool> Worker::process_group_test_async() {
-  folly::Promise<bool> promise;
+folly::SemiFuture<folly::Unit> Worker::process_group_test_async() {
+  folly::Promise<folly::Unit> promise;
   auto future = promise.getSemiFuture();
   threadpool_.schedule([this, promise = std::move(promise)]() mutable {
-    promise.setValue(this->process_group_test());
+    this->process_group_test();
+    promise.setValue();
   });
   return future;
 }
@@ -253,13 +250,14 @@ folly::SemiFuture<bool> Worker::init_kv_cache_async(
   return future;
 }
 
-folly::SemiFuture<bool> Worker::capture_cuda_graphs_async() {
-  folly::Promise<bool> promise;
+folly::SemiFuture<folly::Unit> Worker::capture_cuda_graph_async(uint32_t batch_size) {
+  folly::Promise<folly::Unit> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule([this, promise = std::move(promise)]() mutable {
-    const bool success = this->capture_cuda_graphs();
-    promise.setValue(success);
-  });
+  threadpool_.schedule(
+      [this, batch_size = batch_size, promise = std::move(promise)]() mutable {
+        this->capture_cuda_graph(batch_size);
+        promise.setValue();
+      });
   return future;
 }
 

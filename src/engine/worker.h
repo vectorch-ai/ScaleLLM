@@ -45,7 +45,7 @@ class Worker final {
   std::optional<ModelOutput> execute_model(const ModelInput& inputs);
 
   // capture cuda graph for the model. blocking call
-  bool capture_cuda_graphs();
+  void capture_cuda_graph(uint32_t batch_size);
 
   // initialize model, cache manager. async call
   folly::SemiFuture<bool> init_model_async(torch::ScalarType dtype,
@@ -68,15 +68,15 @@ class Worker final {
   folly::SemiFuture<std::optional<ModelOutput>> execute_model_async(
       const ModelInput& inputs);
 
-  folly::SemiFuture<bool> process_group_test_async();
+  folly::SemiFuture<folly::Unit> process_group_test_async();
 
   // capture cuda graph for the model. async call
-  folly::SemiFuture<bool> capture_cuda_graphs_async();
+  folly::SemiFuture<folly::Unit> capture_cuda_graph_async(uint32_t batch_size);
 
   const torch::Device& device() const { return device_; }
 
  private:
-  bool process_group_test();
+  void process_group_test();
 
   // whether the worker is a driver, who takes care of the sampling
   bool driver_ = false;

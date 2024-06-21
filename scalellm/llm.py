@@ -1,6 +1,8 @@
 import os
 from typing import List, Optional, Union
 
+import torch
+
 from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
                          SamplingParams)
 from scalellm.downloader import download_hf_model
@@ -133,7 +135,9 @@ class LLM:
         return self._handler.decode(tokens, skip_special_tokens)
 
     def __del__(self):
-        self._handler.reset()
+        if hasattr(self, "_handler"):
+            self._handler.reset()
+        torch.cuda.empty_cache()
 
     def __enter__(self):
         return self

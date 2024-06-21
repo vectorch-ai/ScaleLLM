@@ -655,9 +655,6 @@ void LLMHandler::reset() {
   engine_.reset();
   tokenizers_.clear();
   chat_template_.reset();
-
-  // torch::cuda::empty_cache();
-  c10::cuda::CUDACachingAllocator::emptyCache();
 }
 
 }  // namespace llm

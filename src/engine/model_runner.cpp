@@ -22,91 +22,87 @@ DEFINE_COUNTER_INSTANCE(num_eager_execution_total,
 
 namespace llm {
 
-// capture graph with batch size list
-void ModelRunner::capture_cuda_graphs(std::vector<KVCache>& kv_cache) {
-  if (!device_.is_cuda()) {
-    // only capture CUDA graphs
-    return;
+ModelRunner::ModelRunner(CausalLM* model,
+                         const torch::Device& device,
+                         const Options& options)
+    : model_(model), device_(device), options_(options) {
+  if (device_.is_cuda() && !options_.cuda_graph_batch_sizes().empty()) {
+    // find the biggest batch size
+    max_batch_size_ =
+        *std::max_element(options_.cuda_graph_batch_sizes().begin(),
+                          options_.cuda_graph_batch_sizes().end());
+    const int64_t num_decoding_tokens = options_.num_decoding_tokens();
+
+    torch::DeviceGuard device_guard(device_);
+    // allocate tensors for sharing among graphs
+    auto tensor_options = torch::dtype(torch::kInt32).device(device_);
+    const int64_t max_num_tokens = num_decoding_tokens * max_batch_size_;
+    token_ids_ = torch::zeros({max_num_tokens}, tensor_options);
+    positions_ = torch::zeros({max_num_tokens}, tensor_options);
+    q_cu_seq_lens_ = torch::range(
+        /*start=*/0,
+        /*end=*/max_num_tokens + 1,
+        /*step=*/num_decoding_tokens,
+        tensor_options);
+    kv_cu_seq_lens_ = torch::range(
+        /*start=*/0,
+        /*end=*/max_num_tokens + 1,
+        /*step=*/num_decoding_tokens,
+        tensor_options);
+    new_cache_slots_ = torch::zeros({max_num_tokens}, tensor_options);
+
+    const auto max_seq_len = options_.cuda_graph_max_seq_len();
+    const auto block_size = options_.block_size();
+    // round up and add one additional block for speculative decoding
+    const int64_t max_block_table_len =
+        (max_seq_len + block_size - 1) / block_size + 1;
+    block_tables_ =
+        torch::zeros({max_batch_size_, max_block_table_len}, tensor_options);
+
+    mem_pool_ = at::cuda::graph_pool_handle();
   }
-  if (options_.cuda_graph_batch_sizes().empty()) {
+}
+
+// capture graph with batch size list
+void ModelRunner::capture_cuda_graphs(uint32_t batch_size,
+                                      std::vector<KVCache>& kv_cache) {
+  if (!device_.is_cuda() || options_.cuda_graph_batch_sizes().empty()) {
     // no batch sizes to capture CUDA graphs
     return;
   }
-
-  // sort batch_sizes in descending order
-  std::vector<uint32_t> sorted_batch_sizes = options_.cuda_graph_batch_sizes();
-  std::sort(
-      sorted_batch_sizes.begin(), sorted_batch_sizes.end(), std::greater<>());
+  CHECK_LE(batch_size, max_batch_size_) << "batch size too big";
 
   const int64_t num_decoding_tokens = options_.num_decoding_tokens();
-
-  torch::DeviceGuard device_guard(device_);
-  // allocate tensors for sharing among graphs
-  auto options = torch::dtype(torch::kInt32).device(device_);
-  const int64_t max_batch_size = sorted_batch_sizes.front();
-  const int64_t max_num_tokens = num_decoding_tokens * max_batch_size;
-  torch::Tensor token_ids = torch::zeros({max_num_tokens}, options);
-  torch::Tensor positions = torch::zeros({max_num_tokens}, options);
-  torch::Tensor q_cu_seq_lens = torch::range(
-      /*start=*/0,
-      /*end=*/max_num_tokens + 1,
-      /*step=*/num_decoding_tokens,
-      options);
-  torch::Tensor kv_cu_seq_lens = torch::range(
-      /*start=*/0,
-      /*end=*/max_num_tokens + 1,
-      /*step=*/num_decoding_tokens,
-      options);
-  torch::Tensor new_cache_slots = torch::zeros({max_num_tokens}, options);
-
   const auto max_seq_len = options_.cuda_graph_max_seq_len();
-  const auto block_size = options_.block_size();
-  // round up and add one additional block for speculative decoding
-  const int64_t max_block_table_len =
-      (max_seq_len + block_size - 1) / block_size + 1;
-  torch::Tensor block_tables =
-      torch::zeros({max_batch_size, max_block_table_len}, options);
+  const int64_t n_tokens = num_decoding_tokens * batch_size;
 
-  LOG(INFO) << "Capturing CUDA graphs on device: " << device_
-            << ", num_decoding_tokens: " << num_decoding_tokens
-            << ", batch sizes: " << sorted_batch_sizes;
-  const auto shared_mem_pool = at::cuda::graph_pool_handle();
-  for (auto batch_size : sorted_batch_sizes) {
-    const int64_t n_tokens = num_decoding_tokens * batch_size;
-    auto graph = std::make_unique<CudaGraph>();
+  // prepare input tensors for current batch size
+  auto flatten_tokens =
+      token_ids_.slice(/*dim=*/0, /*start=*/0, /*end=*/n_tokens);
+  auto flatten_positions =
+      positions_.slice(/*dim=*/0, /*start=*/0, /*end=*/n_tokens);
 
-    // slice tensors for current batch size
-    auto flatten_tokens =
-        token_ids.slice(/*dim=*/0, /*start=*/0, /*end=*/n_tokens);
-    auto flatten_positions =
-        positions.slice(/*dim=*/0, /*start=*/0, /*end=*/n_tokens);
+  InputParameters params;
+  params.empty_kv_cache = false;
+  params.num_sequences = static_cast<int32_t>(batch_size);
+  params.q_max_seq_len = static_cast<int32_t>(num_decoding_tokens);
+  params.kv_max_seq_len = static_cast<int32_t>(max_seq_len);
+  params.q_cu_seq_lens = q_cu_seq_lens_.slice(
+      /*dim=*/0, /*start=*/0, /*end=*/batch_size + 1);
+  params.kv_cu_seq_lens = kv_cu_seq_lens_.slice(
+      /*dim=*/0, /*start=*/0, /*end=*/batch_size + 1);
+  params.block_tables = block_tables_.slice(
+      /*dim=*/0, /*start=*/0, /*end=*/batch_size);
+  params.new_cache_slots = new_cache_slots_.slice(
+      /*dim=*/0, /*start=*/0, /*end=*/n_tokens);
 
-    InputParameters params;
-    params.empty_kv_cache = false;
-    params.num_sequences = static_cast<int32_t>(batch_size);
-    params.q_max_seq_len = static_cast<int32_t>(num_decoding_tokens);
-    params.kv_max_seq_len = static_cast<int32_t>(max_seq_len);
-    params.q_cu_seq_lens = q_cu_seq_lens.slice(
-        /*dim=*/0, /*start=*/0, /*end=*/batch_size + 1);
-    params.kv_cu_seq_lens = kv_cu_seq_lens.slice(
-        /*dim=*/0, /*start=*/0, /*end=*/batch_size + 1);
-    params.block_tables = block_tables.slice(
-        /*dim=*/0, /*start=*/0, /*end=*/batch_size);
-    params.new_cache_slots = new_cache_slots.slice(
-        /*dim=*/0, /*start=*/0, /*end=*/n_tokens);
+  // capture graph
+  auto graph = std::make_unique<CudaGraph>();
+  graph->capture(
+      mem_pool_, model_, flatten_tokens, flatten_positions, params, kv_cache);
 
-    // capture graph
-    graph->capture(shared_mem_pool,
-                   model_,
-                   flatten_tokens,
-                   flatten_positions,
-                   params,
-                   kv_cache);
-
-    // save the graph
-    graphs_[batch_size] = std::move(graph);
-  }
-  LOG(INFO) << "Finished capturing CUDA graphs";
+  // save the graph
+  graphs_[batch_size] = std::move(graph);
 }
 
 // tokens: [num_tokens]
@@ -163,21 +159,22 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
   q_cu_seq_lens_ = params.q_cu_seq_lens;
   kv_cu_seq_lens_ = params.kv_cu_seq_lens;
 
-  // create cuda graph and capture
-  at::cuda::CUDAStream capture_stream = at::cuda::getStreamFromPool();
-  at::cuda::CUDAStreamGuard stream_guard(capture_stream);
-
-  // run model once to avoid captured graph including initial benchmarking
+  // warm up model before capturing the graph
+  torch::cuda::synchronize();
   model->forward(flatten_tokens, flatten_positions, kv_cache, params);
-  capture_stream.synchronize();
+  torch::cuda::synchronize();
 
   // capture the graph
-  graph_ = std::make_unique<at::cuda::CUDAGraph>();
-  graph_->capture_begin(mem_pool, cudaStreamCaptureModeThreadLocal);
-  hidden_states_ =
-      model->forward(flatten_tokens, flatten_positions, kv_cache, params);
-  graph_->capture_end();
-  capture_stream.synchronize();
+  {
+    at::cuda::CUDAStream capture_stream = at::cuda::getStreamFromPool();
+    at::cuda::CUDAStreamGuard stream_guard(capture_stream);
+    graph_ = std::make_unique<at::cuda::CUDAGraph>();
+    graph_->capture_begin(mem_pool, cudaStreamCaptureModeThreadLocal);
+    hidden_states_ =
+        model->forward(flatten_tokens, flatten_positions, kv_cache, params);
+    graph_->capture_end();
+  }
+  torch::cuda::synchronize();
 }
 
 torch::Tensor ModelRunner::CudaGraph::replay(torch::Tensor flatten_tokens,

@@ -5,6 +5,7 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <torch/torch.h>
 
+#include <cstdint>
 #include <memory>
 
 #include "common/macros.h"
@@ -33,11 +34,10 @@ class ModelRunner final {
 
   ModelRunner(CausalLM* model,
               const torch::Device& device,
-              const Options& options)
-      : model_(model), device_(device), options_(options) {}
+              const Options& options);
 
-  // capture graph with batch size list
-  void capture_cuda_graphs(std::vector<KVCache>& kv_cache);
+  // capture graph for given batch size
+  void capture_cuda_graphs(uint32_t batch_size, std::vector<KVCache>& kv_cache);
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence
@@ -56,6 +56,18 @@ class ModelRunner final {
 
   // options
   Options options_;
+
+  // shared inputs and outputs for the model
+  uint32_t max_batch_size_ = 0;
+  torch::Tensor token_ids_;
+  torch::Tensor positions_;
+  torch::Tensor q_cu_seq_lens_;
+  torch::Tensor kv_cu_seq_lens_;
+  torch::Tensor new_cache_slots_;
+  torch::Tensor block_tables_;
+
+  // graph pool handler
+  at::cuda::MempoolId_t mem_pool_;
 
   class CudaGraph;
   // captured cuda graphs, mapping from batch size to graph
