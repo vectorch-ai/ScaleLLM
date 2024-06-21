@@ -13,6 +13,11 @@ on:
         description: 'Tag to build and push'
         required: true
         type: string
+    secrets:
+      DOCKER_HUB_USER:
+        required: true
+      DOCKER_HUB_TOKEN:
+        required: true
 env:
   # Tells where to store caches.
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache

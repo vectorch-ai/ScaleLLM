@@ -13,6 +13,9 @@ on:
         description: 'Tag to build and update whl index'
         required: true
         type: string
+    secrets:
+      PYPI_API_TOKEN:
+        required: true
 
 # Build & Push scalellm docker image on creation of tags to https://hub.docker.com/r/vectorchai/scalellm
 # Push events to matching v*, i.e. v1.0.0, v1.0.0-rc1, v20.15.10-rc5, etc.

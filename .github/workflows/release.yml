@@ -26,6 +26,8 @@ jobs:
     uses: ./.github/workflows/build_wheel.yml
     with:
       tag: ${{ needs.version-tag.outputs.tag }}
+    secrets:
+      WHL_TOKEN: ${{ secrets.WHL_TOKEN }}
     needs:
       - version-tag
       - release-test
@@ -35,6 +37,8 @@ jobs:
     uses: ./.github/workflows/publish_wheel.yml
     with:
       tag: ${{ needs.version-tag.outputs.tag }}
+    secrets:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     needs:
       - version-tag
       - build-wheel
@@ -44,6 +48,9 @@ jobs:
     uses: ./.github/workflows/publish_cpp_image.yml
     with:
       tag: ${{ needs.version-tag.outputs.tag }}
+    secrets:
+      DOCKER_HUB_USER: ${{ secrets.DOCKER_HUB_USER }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     needs:
       - version-tag
       - publish-wheel
