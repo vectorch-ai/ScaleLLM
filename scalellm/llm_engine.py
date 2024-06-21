@@ -3,6 +3,8 @@ import os
 import queue
 from typing import List, Optional
 
+import torch
+
 from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
                          SamplingParams)
 from scalellm.downloader import download_hf_model
@@ -268,6 +270,7 @@ class AsyncLLMEngine:
     def __del__(self):
         if hasattr(self, "_handler"):
             self._handler.reset()
+        torch.cuda.empty_cache()
 
     def __enter__(self):
         self.start()
