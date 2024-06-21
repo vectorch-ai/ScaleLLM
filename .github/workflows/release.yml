@@ -20,6 +20,7 @@ jobs:
   # Run tests on release
   release-test:
     uses: ./.github/workflows/release_test.yml
+    secrets: inherit
 
   # build wheel for release if tests pass
   build-wheel:
@@ -54,6 +55,7 @@ jobs:
   # publish docs to gh-pages for new release
   publish_docs:
     uses: ./.github/workflows/publish_docs.yml
+    secrets: inherit
     needs:
       - publish-wheel
   
