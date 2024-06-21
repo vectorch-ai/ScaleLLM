@@ -42,7 +42,7 @@ class Worker final {
   bool init_kv_cache(const std::vector<int64_t>& kv_cache_shape);
 
   // Run the model on the given input. blocking call
-  ModelOutput execute_model(const ModelInput& inputs);
+  std::optional<ModelOutput> execute_model(const ModelInput& inputs);
 
   // capture cuda graph for the model. blocking call
   bool capture_cuda_graphs();
@@ -65,7 +65,10 @@ class Worker final {
 
   // Run the model on the given input. async call
   // the future returns a successfull status with no meaningful value
-  folly::SemiFuture<ModelOutput> execute_model_async(const ModelInput& inputs);
+  folly::SemiFuture<std::optional<ModelOutput>> execute_model_async(
+      const ModelInput& inputs);
+
+  folly::SemiFuture<bool> process_group_test_async();
 
   // capture cuda graph for the model. async call
   folly::SemiFuture<bool> capture_cuda_graphs_async();
@@ -73,6 +76,11 @@ class Worker final {
   const torch::Device& device() const { return device_; }
 
  private:
+  bool process_group_test();
+
+  // whether the worker is a driver, who takes care of the sampling
+  bool driver_ = false;
+
   // working thread
   ThreadPool threadpool_;
 

@@ -55,6 +55,10 @@ DEFINE_bool(enable_prefix_cache,
             true,
             "enable the prefix cache for the block manager");
 
+DEFINE_bool(enable_cuda_graph,
+            false,
+            "enable cuda graph for the model execution");
+
 DEFINE_int32(num_speculative_tokens, 0, "number of speculative tokens");
 
 DEFINE_int32(max_seq_len, 256, "Maximum sequence length.");
@@ -99,7 +103,7 @@ std::unique_ptr<Engine> create_engine(const std::string& model_path,
         .max_memory_utilization(FLAGS_max_memory_utilization)
         .enable_prefix_cache(FLAGS_enable_prefix_cache)
         .num_speculative_tokens(FLAGS_num_speculative_tokens)
-        .enable_cuda_graph(false);
+        .enable_cuda_graph(FLAGS_enable_cuda_graph);
 
     auto engine = std::make_unique<SpeculativeEngine>(options);
     CHECK(engine->init(model_path, draft_model_path));
@@ -112,7 +116,7 @@ std::unique_ptr<Engine> create_engine(const std::string& model_path,
       .max_cache_size(FLAGS_max_cache_size)
       .max_memory_utilization(FLAGS_max_memory_utilization)
       .enable_prefix_cache(FLAGS_enable_prefix_cache)
-      .enable_cuda_graph(false);
+      .enable_cuda_graph(FLAGS_enable_cuda_graph);
 
   auto engine = std::make_unique<LLMEngine>(options);
   CHECK(engine->init(model_path));
