@@ -86,12 +86,14 @@ jobs:
         run: ls -lha dist
 
       - name: Create release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/scalellm-*.whl
           tag_name: ${{ inputs.tag }}
-          draft: true
-          prerelease: true
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          make_latest: true
   
   commit_whl_index:
     needs: build_wheel
