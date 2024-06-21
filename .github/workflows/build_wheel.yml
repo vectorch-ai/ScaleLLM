@@ -13,9 +13,6 @@ on:
         description: 'Tag to build and update whl index'
         required: true
         type: string
-    secrets:
-      WHL_TOKEN:
-        required: true
 
 env:
   # Tells where to store caches.
