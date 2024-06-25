@@ -11,6 +11,7 @@ namespace py = pybind11;
 extern void init_sampling_params(py::module_& m);
 extern void init_output(py::module_& m);
 extern void init_llm_handler(py::module_& m);
+extern void init_vlm_handler(py::module_& m);
 
 // NOLINTNEXTLINE
 static std::string get_metrics() { return Metrics::Instance().GetString(); }
@@ -26,6 +27,7 @@ PYBIND11_MODULE(PY_MODULE_NAME, m) {
   init_sampling_params(m);
   init_output(m);
   init_llm_handler(m);
+  init_vlm_handler(m);
 }
 
 }  // namespace llm::csrc
