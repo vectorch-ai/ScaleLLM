@@ -1,18 +1,10 @@
-from enum import Enum
 from typing import Callable, List, Optional
 
+import torch
+
+from scalellm._C.llm_handler import Future, Priority
 from scalellm._C.output import RequestOutput
 from scalellm._C.sampling_params import SamplingParams
-
-class Priority(Enum):
-    DEFAULT: Priority = ...
-    LOW: Priority = ...
-    NORMAL: Priority = ...
-    HIGH: Priority = ...
-
-class Future:
-    def wait(self) -> None: ...
-    def get(self) -> bool: ...
 
 class VLMHandler:
     class Options:

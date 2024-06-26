@@ -37,6 +37,16 @@ void ModelRegistry::register_causallm_factory(const std::string& name,
   }
 }
 
+void ModelRegistry::register_causalvlm_factory(const std::string& name,
+                                               CausalVLMFactory factory) {
+  ModelRegistry* instance = get_instance();
+  if (instance->model_registry_[name].causal_vlm_factory != nullptr) {
+    LOG(WARNING) << "causal vlm factory for " << name << "already registered.";
+  } else {
+    instance->model_registry_[name].causal_vlm_factory = factory;
+  }
+}
+
 void ModelRegistry::register_model_args_loader(const std::string& name,
                                                ModelArgsLoader loader) {
   ModelRegistry* instance = get_instance();
@@ -83,6 +93,11 @@ void ModelRegistry::register_default_chat_template_factory(
 CausalLMFactory ModelRegistry::get_causallm_factory(const std::string& name) {
   ModelRegistry* instance = get_instance();
   return instance->model_registry_[name].causal_lm_factory;
+}
+
+CausalVLMFactory ModelRegistry::get_causalvlm_factory(const std::string& name) {
+  ModelRegistry* instance = get_instance();
+  return instance->model_registry_[name].causal_vlm_factory;
 }
 
 ModelArgsLoader ModelRegistry::get_model_args_loader(const std::string& name) {

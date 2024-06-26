@@ -23,7 +23,7 @@ struct InputParameters {
 
     params.new_cache_slots = safe_to(new_cache_slots, device);
     params.block_tables = safe_to(block_tables, device);
-    params.images = safe_to(images, device);
+    params.input_embedding = safe_to(input_embedding, device);
     return params;
   }
 
@@ -56,8 +56,8 @@ struct InputParameters {
   // IntTensor: [n_seq, max_n_blocks]
   torch::Tensor block_tables;
 
-  // input images tensor for vlm models
-  torch::Tensor images;
+  // input embedding = text_embedding + image_embedding
+  torch::Tensor input_embedding;
 };
 
 }  // namespace llm

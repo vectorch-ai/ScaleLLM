@@ -9,7 +9,7 @@
 #include "quantization/quant_args.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_args.h"
-#include "worker.h"
+#include "vlm_worker.h"
 
 namespace llm {
 
@@ -76,11 +76,8 @@ class VLMEngine : public Engine, public VisionEngine {
     return tokenizer_args_;
   }
 
-  torch::Tensor encode(torch::Tensor image) override { return torch::Tensor(); }
-
-  torch::Tensor project(torch::Tensor image_features, torch::Tensor text_features) override {
-    return torch::Tensor();
-  }
+  torch::Tensor vision_encode(torch::Tensor image,
+                              torch::Tensor tokens) override;
 
   const QuantArgs& quant_args() const { return quant_args_; }
 
@@ -132,8 +129,7 @@ class VLMEngine : public Engine, public VisionEngine {
   // tokenizer
   std::unique_ptr<Tokenizer> tokenizer_;
 
-  // a list of workers, with each worker handling a partial of model
-  std::vector<std::unique_ptr<Worker>> workers_;
+  std::unique_ptr<VLMWorker> worker_;
 
   // config for kv cache
   int64_t n_local_kv_heads_ = 0;

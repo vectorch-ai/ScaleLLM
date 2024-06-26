@@ -12,7 +12,7 @@
 #include "model_loader/model_loader.h"
 #include "model_parallel/parallel_args.h"
 #include "models/model_args.h"
-#include "worker.h"
+#include "vlm_worker.h"
 
 DEFINE_COUNTER(prepare_input_latency_seconds,
                "Latency of preparing input in seconds");
@@ -21,8 +21,7 @@ namespace llm {
 namespace {
 // clang-format off
 const std::vector<uint32_t> kDefaultBatchSizesForCudaGraph =
-    {1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 
-     64, 72, 80, 88, 96, 104, 112, 120, 128};
+    {1, 2, 4, 8, 16, 24, 32, 48, 64};
 // clang-format on
 
 torch::ScalarType parse_dtype(const std::string& dtype_str,
@@ -57,32 +56,13 @@ VLMEngine::VLMEngine(const Options& options) : options_(options) {
   CHECK_GT(devices.size(), 0) << "At least one device is required";
 
   const auto device_type = devices[0].type();
-  for (const auto device : devices) {
-    CHECK_EQ(device.type(), device_type)
-        << "All devices should be the same type";
-
-    if (device.is_cuda()) {
-      // check cuda compute capability
-      const auto* properties = at::cuda::getDeviceProperties(device.index());
-      const bool is_sm8x = properties->major == 8 && properties->minor >= 0;
-      const bool is_sm90 = properties->major == 9 && properties->minor == 0;
-      CHECK(is_sm90 || is_sm8x) << "Engine only supports Ampere GPUs or newer.";
-      // TODO: add Turing(sm75) support in the near future.
-    }
-  }
-
-  // initialize process groups if there are multiple devices
-  const int32_t world_size = static_cast<int32_t>(devices.size());
-  if (world_size > 1) {
-    // create a process group for each device if there are multiple gpus
-    process_groups_ = ProcessGroup::create_process_groups(devices);
-
-    // It is a known issue
-    // (https://github.com/vectorch-ai/ScaleLLM/issues/131)
-    // that CUDA graph capture may occasionally become stuck with multiple
-    // gpus.
-    // disable cuda graph for multi-gpus by default.
-    options_.enable_cuda_graph(false);
+  if (devices[0].is_cuda()) {
+    // check cuda compute capability
+    const auto* properties = at::cuda::getDeviceProperties(devices[0].index());
+    const bool is_sm8x = properties->major == 8 && properties->minor >= 0;
+    const bool is_sm90 = properties->major == 9 && properties->minor == 0;
+    CHECK(is_sm90 || is_sm8x) << "Engine only supports Ampere GPUs or newer.";
+    // TODO: add Turing(sm75) support in the near future.
   }
 
   // sort cuda graph batch sizes
@@ -98,13 +78,9 @@ VLMEngine::VLMEngine(const Options& options) : options_(options) {
       .num_decoding_tokens(options_.num_decoding_tokens())
       .cuda_graph_max_seq_len(options_.cuda_graph_max_seq_len())
       .cuda_graph_batch_sizes(batch_sizes_);
-  for (size_t i = 0; i < devices.size(); ++i) {
-    const int32_t rank = static_cast<int32_t>(i);
-    ProcessGroup* pg = world_size > 1 ? process_groups_[i].get() : nullptr;
-    ParallelArgs parallel_args(rank, world_size, pg);
-    workers_.emplace_back(
-        std::make_unique<Worker>(parallel_args, devices[i], runner_options));
-  }
+  ParallelArgs parallel_args(0, 1, nullptr);
+  worker_ =
+      std::make_unique<VLMWorker>(parallel_args, devices[0], runner_options);
 }
 
 bool VLMEngine::init(const std::string& model_weights_path) {
@@ -142,7 +118,7 @@ bool VLMEngine::init_model(const std::string& model_weights_path) {
   tokenizer_args_ = model_loader->tokenizer_args();
 
   // compute the number of local kv heads and head dim
-  const int world_size = static_cast<int>(workers_.size());
+  const int world_size = 1;
   const int64_t n_heads = args_.n_heads();
   const int64_t n_kv_heads = args_.n_kv_heads().value_or(n_heads);
   n_local_kv_heads_ = std::max<int64_t>(1, n_kv_heads / world_size);
@@ -173,55 +149,16 @@ bool VLMEngine::init_model(const std::string& model_weights_path) {
   LOG(INFO) << "Initializing model with quant args: " << quant_args_;
   LOG(INFO) << "Initializing model with tokenizer args: " << tokenizer_args_;
 
-  if (workers_.size() == 1) {
-    Worker* worker = workers_[0].get();
-    // only one worker, call init_model in current thread
-    if (!worker->init_model(dtype_, args_, quant_args_)) {
-      return false;
-    }
-    // load the weights from the checkpoint
-    for (const auto& state_dict : *model_loader) {
-      worker->load_state_dict(state_dict);
-    }
-    worker->verify_loaded_weights();
-    return true;
+  VLMWorker* worker = worker_.get();
+  // only one worker, call init_model in current thread
+  if (!worker->init_model(dtype_, args_, quant_args_)) {
+    return false;
   }
-
-  // init model for each worker in parallel
-  // multiple workers, call async init
-  std::vector<folly::SemiFuture<bool>> futures;
-  futures.reserve(workers_.size());
-  for (auto& worker : workers_) {
-    futures.push_back(worker->init_model_async(dtype_, args_, quant_args_));
-  }
-  // wait for all futures to complete
-  auto results = folly::collectAll(futures).get();
-  for (const auto& result : results) {
-    if (!result.value()) {
-      return false;
-    }
-  }
-
-  // load the weights from the checkpoint in parallel
+  // load the weights from the checkpoint
   for (const auto& state_dict : *model_loader) {
-    std::vector<folly::SemiFuture<folly::Unit>> futures;
-    futures.reserve(workers_.size());
-    for (auto& worker : workers_) {
-      futures.push_back(worker->load_state_dict_async(state_dict));
-    }
-    // wait for all futures to complete
-    auto results = folly::collectAll(futures).get();
-    for (const auto& result : results) {
-      if (result.hasException()) {
-        return false;
-      }
-    }
+    worker->load_state_dict(state_dict);
   }
-
-  // verify the weights are loaded correctly
-  for (const auto& worker : workers_) {
-    worker->verify_loaded_weights();
-  }
+  worker->verify_loaded_weights();
   return true;
 }
 
@@ -230,30 +167,15 @@ bool VLMEngine::capture_cuda_graphs() {
     return true;
   }
 
-  if (workers_.size() == 1) {
-    // only one worker, call blocking forward
-    return workers_[0]->capture_cuda_graphs();
-  }
+  LOG(INFO) << "Capturing CUDA graphs: num_decoding_tokens: "
+            << options_.num_decoding_tokens()
+            << ", batch sizes: " << batch_sizes_;
 
-  LOG(WARNING)
-      << "It is a known issue "
-         "(https://github.com/vectorch-ai/ScaleLLM/issues/131) that CUDA "
-         "graph capture may occasionally become stuck when multiple workers "
-         "are in use. If you encounter this problem, please set "
-         "'cuda_graph_batch_sizes' to empty to workaround it.";
-
-  // multiple workers, call async forward
-  std::vector<folly::SemiFuture<bool>> futures;
-  futures.reserve(workers_.size());
-  for (auto& worker : workers_) {
-    futures.emplace_back(worker->capture_cuda_graphs_async());
-  }
-  // wait for the all future to complete
-  auto results = folly::collectAll(futures).get();
-  for (const auto& result : results) {
-    if (!result.value()) {
-      return false;
-    }
+  for (const auto batch_size : batch_sizes_) {
+    std::vector<folly::SemiFuture<folly::Unit>> futures;
+    futures.emplace_back(worker_->capture_cuda_graph_async(batch_size));
+    // wait up to 4 seconds for all futures to complete
+    folly::collectAll(futures).within(std::chrono::seconds(4)).get();
   }
   return true;
 }
@@ -262,7 +184,7 @@ int64_t VLMEngine::profile_memory_for_kv_cache() {
   const int64_t max_cache_size = options_.max_cache_size();
   const double max_memory_utilization = options_.max_memory_utilization();
 
-  const auto& device = workers_[0]->device();
+  const auto& device = worker_->device();
   if (device.is_cpu()) {
     // use max memory cache size for CPU
     LOG(INFO) << "Initializing CPU cache with max cache size: "
@@ -274,17 +196,14 @@ int64_t VLMEngine::profile_memory_for_kv_cache() {
 
   // call worker to profile memory usage
   std::vector<folly::SemiFuture<std::tuple<int64_t, int64_t>>> futures;
-  futures.reserve(workers_.size());
-  for (auto& worker : workers_) {
-    futures.push_back(worker->profile_device_memory_async());
-  }
+  futures.push_back(worker_->profile_device_memory_async());
 
   // pick smallest available memory from all devices
   int64_t smallest_available_memory = std::numeric_limits<int64_t>::max();
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();
   for (size_t i = 0; i < results.size(); ++i) {
-    const auto device = workers_[i]->device();
+    const auto device = worker_->device();
     if (!results[i].hasValue()) {
       LOG(ERROR) << "Failed to profile memory usage for device: " << device;
       continue;
@@ -327,29 +246,17 @@ bool VLMEngine::init_kv_cache(int64_t n_blocks) {
       .enable_prefix_cache(options_.enable_prefix_cache());
   block_manager_ = std::make_unique<BlockManager>(options);
 
-  // init kv cache for each worker in parallel
-  if (workers_.size() == 1) {
-    // only one worker, call init_kv_cache in current thread
-    return workers_[0]->init_kv_cache(kv_cache_shape);
-  }
+  // only one worker, call init_kv_cache in current thread
+  return worker_->init_kv_cache(kv_cache_shape);
+}
 
-  std::vector<folly::SemiFuture<bool>> futures;
-  futures.reserve(workers_.size());
-  for (auto& worker : workers_) {
-    futures.push_back(worker->init_kv_cache_async(kv_cache_shape));
-  }
-  // wait for all futures to complete
-  auto results = folly::collectAll(futures).get();
-  for (const auto& result : results) {
-    if (!result.value()) {
-      return false;
-    }
-  }
-  return true;
+torch::Tensor VLMEngine::vision_encode(torch::Tensor image,
+                                       torch::Tensor tokens) {
+  return worker_->vision_encode(image, tokens);
 }
 
 ModelOutput VLMEngine::execute_model(Batch& batch) {
-  // prepare inputs for workers
+  // prepare inputs for worker
   uint32_t adjusted_batch_size = 0;
   if (options_.enable_cuda_graph()) {
     // find the closest batch size in the captured graph
@@ -370,25 +277,11 @@ ModelOutput VLMEngine::execute_model(Batch& batch) {
     return {};
   }
 
-  if (workers_.size() == 1) {
-    // only one worker, call blocking forward
-    auto model_output = workers_[0]->execute_model(model_inputs);
-    batch.process_sample_output(model_output.sample_output);
-    return model_output;
-  }
-
-  // multiple workers, call async forward
-  std::vector<folly::SemiFuture<ModelOutput>> futures;
-  futures.reserve(workers_.size());
-  for (auto& worker : workers_) {
-    futures.push_back(worker->execute_model_async(model_inputs));
-  }
-  // wait for the all future to complete
-  auto results = folly::collectAll(futures).get();
-  // return the result from the first worker
-  auto model_output = results.front().value();
-  batch.process_sample_output(model_output.sample_output);
-  return model_output;
+  // only one worker, call blocking forward
+  auto model_output = worker_->execute_model(model_inputs);
+  DCHECK(model_output.has_value()) << "Failed to execute model";
+  batch.process_sample_output(model_output.value().sample_output);
+  return model_output.value();
 }
 
 int64_t VLMEngine::kv_cache_slot_size_in_bytes() const {

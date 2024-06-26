@@ -409,7 +409,7 @@ class CLIPVisionModelImpl : public torch::nn::Module {
   CLIPVisionModelImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
                       const ParallelArgs& parallel_args,
-                      const torch::TensorOptions& options){
+                      const torch::TensorOptions& options) {
     transformer_ = register_module(
         "transformer",
         CLIPVisionTransformer(args, quant_args, parallel_args, options));
@@ -552,21 +552,29 @@ class LlavaModelImpl : public torch::nn::Module {
         "norm", RMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
-  torch::Tensor forward(const torch::Tensor& images,
-                        const torch::Tensor& tokens,
-                        const torch::Tensor& positions,
-                        std::vector<KVCache>& kv_caches,
-                        const InputParameters& input_params) {
+  torch::Tensor vision_encode(const torch::Tensor& image,
+                              const torch::Tensor& tokens) {
     auto text_embedding = embed_tokens_(tokens);
-
     // TODO: filter last_hidden_states
-    const auto& image_hidden_states = vision_model_(images);
+    const auto& image_hidden_states = vision_model_(image);
     // Only use the last hidden states
     const auto& last_hidden_states = image_hidden_states[vision_feature_layer_];
     const auto& vision_embedding = projector_(last_hidden_states);
     merge_text_vision_embeddings(text_embedding, vision_embedding, tokens);
+    return text_embedding;
+  }
 
-    auto hidden_states = text_embedding;
+  torch::Tensor forward(const torch::Tensor& tokens,
+                        const torch::Tensor& positions,
+                        std::vector<KVCache>& kv_caches,
+                        const InputParameters& input_params) {
+    auto input_embedding = input_params.input_embedding;
+    torch::Tensor hidden_states;
+    if (!input_embedding.defined()) {
+      hidden_states = embed_tokens_(tokens);
+    } else {
+      hidden_states = input_embedding;
+    }
     // TODO: set working space for attention handler
     for (size_t i = 0; i < layers_.size(); i++) {
       auto& layer = layers_[i];
@@ -630,12 +638,12 @@ class LlavaModelImpl : public torch::nn::Module {
 };
 TORCH_MODULE(LlavaModel);
 
-class LlavaForCausalLMImpl : public torch::nn::Module {
+class LlavaForCausalVLMImpl : public torch::nn::Module {
  public:
-  LlavaForCausalLMImpl(const ModelArgs& args,
-                       const QuantArgs& quant_args,
-                       const ParallelArgs& parallel_args,
-                       const torch::TensorOptions& options) {
+  LlavaForCausalVLMImpl(const ModelArgs& args,
+                        const QuantArgs& quant_args,
+                        const ParallelArgs& parallel_args,
+                        const torch::TensorOptions& options) {
     model_ = register_module(
         "model", LlavaModel(args, quant_args, parallel_args, options));
 
@@ -648,13 +656,17 @@ class LlavaForCausalLMImpl : public torch::nn::Module {
                                                     options));
   }
 
+  torch::Tensor vision_encode(const torch::Tensor& image,
+                              const torch::Tensor& tokens) {
+    return model_->vision_encode(image, tokens);
+  }
+
   // images is stored in input_params
   torch::Tensor forward(const torch::Tensor& tokens,
                         const torch::Tensor& positions,
                         std::vector<KVCache>& kv_caches,
                         const InputParameters& input_params) {
-    return model_(
-        input_params.images, tokens, positions, kv_caches, input_params);
+    return model_(tokens, positions, kv_caches, input_params);
   }
 
   torch::Tensor logits(const torch::Tensor& hidden_states,
@@ -681,9 +693,9 @@ class LlavaForCausalLMImpl : public torch::nn::Module {
   LlavaModel model_{nullptr};
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(LlavaForCausalLM);
+TORCH_MODULE(LlavaForCausalVLM);
 
-REGISTER_CAUSAL_MODEL(llava, LlavaForCausalLM);
+REGISTER_CAUSAL_VLM_MODEL(llava, LlavaForCausalVLM);
 
 // REGISTER_DEFAULT_CHAT_TEMPLATE(llama, Llama2ChatTemplate);
 

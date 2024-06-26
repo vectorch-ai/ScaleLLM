@@ -59,7 +59,7 @@ class VLMHandler {
 
     // the number of threads to use for handling requests
     DEFINE_ARG(size_t, num_handling_threads) = 4;
-    
+
     DEFINE_ARG(std::string, image_input_type) = "pixel_values";
 
     DEFINE_ARG(int64_t, image_token_id) = 32000;

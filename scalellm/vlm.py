@@ -1,8 +1,9 @@
 import os
-from typing import List, Optional, Union
+from typing import List, Optional
 
-from scalellm._C import (VLMHandler, Priority, RequestOutput,
-                         SamplingParams)
+import torch
+
+from scalellm._C import Priority, RequestOutput, SamplingParams, VLMHandler
 from scalellm.downloader import download_hf_model
 from scalellm.errors import ValidationError
 
@@ -78,7 +79,7 @@ class VLM:
 
         output = None
         def callback(async_output: RequestOutput) -> bool:
-            output = async_output
+            #output = async_output
             return True
 
         # schedule the batch requests

@@ -49,6 +49,8 @@ void Batch::add(Sequence* sequence, uint32_t token_budget) {
   sequences_.push_back(sequence);
   token_budgets_.push_back(token_budget);
   budget_used_.push_back(0);
+
+  input_embedding_ = sequence->get_input_embedding();
 }
 
 void Batch::add(const std::vector<Sequence*>& sequences) {
@@ -258,6 +260,7 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
 
   pad_2d_vector(block_tables_vec, /*pad_value=*/0);
   input_params.block_tables = create_2d_tensor(block_tables_vec, torch::kInt);
+  input_params.input_embedding = input_embedding_;
 
   CHECK_EQ(sampling_params.size(), selected_token_idxes.size());
   if (!selected_token_idxes.empty()) {

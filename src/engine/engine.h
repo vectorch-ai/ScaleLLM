@@ -31,10 +31,8 @@ class VisionEngine {
  public:
   virtual ~VisionEngine() = default;
 
-  virtual torch::Tensor encode(torch::Tensor image) = 0;
-
-  virtual torch::Tensor project(torch::Tensor image_features,
-      torch::Tensor text_features) = 0;
+  virtual torch::Tensor vision_encode(torch::Tensor image,
+                                      torch::Tensor tokens) = 0;
 };
 
 }  // namespace llm
