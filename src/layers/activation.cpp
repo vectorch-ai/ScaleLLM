@@ -84,6 +84,10 @@ ActFunc Activation::get_act_func(const std::string& name,
   if (boost::iequals(name, "gelu")) {
     return gelu;
   }
+  // TODO: need to support quick_gelu
+  if (boost::iequals(name, "quick_gelu")) {
+    return gelu;
+  }
   if (boost::iequals(name, "gelu_fast")) {
     return device.is_cuda() && !FLAGS_disable_custom_kernels ? kernel::gelu_fast
                                                              : gelu_fast;

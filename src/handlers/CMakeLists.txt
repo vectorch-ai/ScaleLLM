@@ -6,8 +6,10 @@ cc_library(
   HDRS 
     sampling_params.h
     llm_handler.h
+    vlm_handler.h
   SRCS 
     llm_handler.cpp
+    vlm_handler.cpp
   DEPS
     :common
     :scheduler
