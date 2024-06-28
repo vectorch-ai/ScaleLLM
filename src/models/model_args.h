@@ -103,6 +103,114 @@ struct ModelArgs {
 
   // Stop token ids for decoding.
   DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
+
+  // Vision model's dropout
+  DEFINE_ARG(float, mm_dropout) = 0.0f;
+
+  // Vision model's hidden_act
+  DEFINE_ARG(std::string, mm_hidden_act);
+
+  // Vision model's mm_hidden_size
+  DEFINE_ARG(int64_t, mm_hidden_size) = 0;
+
+  // Vision model's mm_image_size
+  DEFINE_ARG(int64_t, mm_image_size) = 0;
+
+  // Vision model's mm_intermediate_size
+  DEFINE_ARG(int64_t, mm_intermediate_size) = 0;
+
+  // Vision model's mm_num_channels
+  DEFINE_ARG(int64_t, mm_num_channels) = 0;
+
+  // Vision model's mm_initializer_range
+  DEFINE_ARG(float, mm_initializer_range) = 0.0f;
+
+  // Vision model's mm_layer_norm_eps
+  DEFINE_ARG(float, mm_layer_norm_eps) = 0;
+
+  // Vision model's mm_num_attention_heads
+  DEFINE_ARG(int64_t, mm_num_attention_heads) = 0;
+
+  // Vision model's mm_num_beam_groups
+  DEFINE_ARG(int64_t, mm_num_beam_groups) = 0;
+
+  // Vision model's mm_num_beams
+  DEFINE_ARG(int64_t, mm_num_beams) = 0;
+
+  // Vision model's mm_num_hidden_layers
+  DEFINE_ARG(int64_t, mm_num_hidden_layers) = 0;
+
+  // Vision model's mm_num_return_sequences
+  DEFINE_ARG(int64_t, mm_num_return_sequences) = 0;
+
+  // Vision model's mm_output_attentions
+  DEFINE_ARG(bool, mm_output_attentions) = false;
+
+  // Vision model's mm_output_hidden_states
+  DEFINE_ARG(bool, mm_output_hidden_states) = false;
+
+  // Vision model's mm_output_scores
+  DEFINE_ARG(bool, mm_output_scores) = false;
+
+  // Vision model's mm_patch_size
+  DEFINE_ARG(int64_t, mm_patch_size) = 0;
+
+  // Vision model's mm_projection_dim
+  DEFINE_ARG(int64_t, mm_projection_dim) = 0;
+
+  // Vision model's mm_remove_invalid_values
+  DEFINE_ARG(bool, mm_remove_invalid_values) = false;
+
+  // Vision model's mm_repetition_penalty
+  DEFINE_ARG(float, mm_repetition_penalty) = 0.0f;
+
+  // Vision model's mm_return_dict
+  DEFINE_ARG(bool, mm_return_dict) = false;
+
+  // Vision model's mm_return_dict_in_generate
+  DEFINE_ARG(bool, mm_return_dict_in_generate) = false;
+
+  // Vision model's mm_temperature
+  DEFINE_ARG(float, mm_temperature) = 0.0f;
+
+  // Vision model's mm_tie_encoder_decoder
+  DEFINE_ARG(bool, mm_tie_encoder_decoder) = false;
+
+  // Vision model's mm_tie_word_embeddings
+  DEFINE_ARG(bool, mm_tie_word_embeddings) = false;
+
+  // Vision model's mm_top_k
+  DEFINE_ARG(int64_t, mm_top_k) = 0;
+
+  // Vision model's mm_top_p
+  DEFINE_ARG(float, mm_top_p) = 0.0f;
+
+  // Vision model's mm_torchscript
+  DEFINE_ARG(bool, mm_torchscript) = false;
+
+  // Vision model's mm_use_bfloat16
+  DEFINE_ARG(bool, mm_use_bfloat16) = false;
+
+  // Vision model's mm_head_dim
+  DEFINE_ARG(int64_t, mm_head_dim) = 0;
+
+  // Vision model's mm_vocab_size
+  DEFINE_ARG(int64_t, mm_vocab_size) = 0;
+
+  // VLM model projector's mm_projector_type
+  DEFINE_ARG(std::string, mm_projector_type);
+
+  // VLM model projector's mm_projector_hidden_act
+  DEFINE_ARG(std::string, mm_projector_hidden_act);
+
+  // VLM model projector's mm_projector_n_layers
+  DEFINE_ARG(int64_t, mm_projector_n_layers) = 0;
+
+  // VLM model projector's mm_vision_feature_layer
+  DEFINE_ARG(int64_t, mm_vision_feature_layer) = 0;
+
+  // VLM model projector's mm_vision_feature_select_strategy
+  DEFINE_ARG(std::string, mm_vision_feature_select_strategy);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {

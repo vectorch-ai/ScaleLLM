@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "causal_lm.h"
+#include "causal_vlm.h"
 #include "chat_template/chat_template.h"
 #include "common/json_reader.h"
 #include "common/type_traits.h"  // IWYU pragma: keep
@@ -21,6 +22,13 @@ using CausalLMFactory = std::function<std::unique_ptr<CausalLM>(
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options)>;
 
+using CausalVLMFactory = std::function<std::unique_ptr<CausalVLM>(
+    const ModelArgs& args,
+    const QuantArgs& quant_args,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options)>;
+
+using ChatTemplateFactory = std::function<std::unique_ptr<ChatTemplate>()>;
 using ChatTemplateFactory = std::function<std::unique_ptr<ChatTemplate>()>;
 
 using ModelArgsLoader =
@@ -35,6 +43,7 @@ using TokenizerArgsLoader =
 // TODO: add default args loader.
 struct ModelMeta {
   CausalLMFactory causal_lm_factory;
+  CausalVLMFactory causal_vlm_factory;
   ChatTemplateFactory chat_template_factory;
   ModelArgsLoader model_args_loader;
   QuantArgsLoader quant_args_loader;
@@ -50,6 +59,9 @@ class ModelRegistry {
   static void register_causallm_factory(const std::string& name,
                                         CausalLMFactory factory);
 
+  static void register_causalvlm_factory(const std::string& name,
+                                         CausalVLMFactory factory);
+
   static void register_model_args_loader(const std::string& name,
                                          ModelArgsLoader loader);
 
@@ -64,6 +76,8 @@ class ModelRegistry {
       ChatTemplateFactory factory);
 
   static CausalLMFactory get_causallm_factory(const std::string& name);
+
+  static CausalVLMFactory get_causalvlm_factory(const std::string& name);
 
   static ModelArgsLoader get_model_args_loader(const std::string& name);
 
@@ -97,6 +111,25 @@ class ModelRegistry {
 
 #define REGISTER_CAUSAL_MODEL(ModelType, ModelClass) \
   REGISTER_CAUSAL_MODEL_WITH_VARNAME(ModelType, ModelType, ModelClass)
+
+#define REGISTER_CAUSAL_VLM_MODEL_WITH_VARNAME(VarName, ModelType, ModelClass) \
+  const bool VarName##_registered = []() {                                     \
+    ModelRegistry::register_causalvlm_factory(                                 \
+        #ModelType,                                                            \
+        [](const ModelArgs& args,                                              \
+           const QuantArgs& quant_args,                                        \
+           const ParallelArgs& parallel_args,                                  \
+           const torch::TensorOptions& options) {                              \
+          ModelClass model(args, quant_args, parallel_args, options);          \
+          model->eval();                                                       \
+          return std::make_unique<llm::CausalVLMImpl<ModelClass>>(             \
+              std::move(model), options);                                      \
+        });                                                                    \
+    return true;                                                               \
+  }()
+
+#define REGISTER_CAUSAL_VLM_MODEL(ModelType, ModelClass) \
+  REGISTER_CAUSAL_VLM_MODEL_WITH_VARNAME(ModelType, ModelType, ModelClass)
 
 #define REGISTER_DEFAULT_CHAT_TEMPLATE_WITH_VARNAME(                         \
     VarName, ModelType, ChatTemplateClass)                                   \

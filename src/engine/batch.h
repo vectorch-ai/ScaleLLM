@@ -57,6 +57,9 @@ class Batch {
   // set the engine type for the batch
   void set_engine_type(EngineType engine_type);
 
+  // TODO:
+  torch::Tensor get_input_embedding() const { return input_embedding_; }
+
  private:
   static Token build_token(int64_t index,
                            torch::Tensor token_ids,
@@ -72,6 +75,9 @@ class Batch {
 
   // number of used budget for each sequence
   std::vector<uint32_t> budget_used_;
+
+  // TODO:
+  torch::Tensor input_embedding_;
 };
 
 }  // namespace llm

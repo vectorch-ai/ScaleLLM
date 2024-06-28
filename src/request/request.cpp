@@ -29,6 +29,24 @@ Request::Request(std::string prompt,
   CHECK_GE(best_of, n);
 }
 
+Request::Request(std::string prompt,
+                 std::vector<int32_t> prompt_tokens,
+                 torch::Tensor input_embedding,
+                 size_t seq_capacity,
+                 size_t n,
+                 size_t best_of,
+                 bool logprobs)
+    : prompt(std::move(prompt)),
+      prompt_tokens(std::move(prompt_tokens)),
+      input_embedding(input_embedding),
+      seq_capacity(seq_capacity),
+      n(n),
+      best_of(best_of),
+      logprobs(logprobs),
+      created_time(absl::Now()) {
+  CHECK_GE(best_of, n);
+}
+
 void Request::add_sequence() {
   Sequence::Options options;
   options.sampling_param = this->sampling_param;
@@ -40,6 +58,7 @@ void Request::add_sequence() {
   sequences.emplace_back(index,
                          this->prompt,
                          this->prompt_tokens,
+                         this->input_embedding,
                          this->created_time,
                          this->seq_capacity,
                          options);

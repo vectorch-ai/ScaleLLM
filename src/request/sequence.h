@@ -66,6 +66,14 @@ class Sequence final {
            size_t capacity,
            const Options& option);
 
+  Sequence(size_t index,
+           const std::string_view& prompt,
+           const std::vector<int32_t>& prompt_token_ids,
+           torch::Tensor input_embedding,
+           const absl::Time& created_time,
+           size_t capacity,
+           const Options& option);
+
   // simple constructor for testing
   Sequence(const std::string_view& prompt,
            const std::vector<int32_t>& prompt_token_ids,
@@ -81,6 +89,9 @@ class Sequence final {
 
   // get token ids
   Slice<int32_t> token_ids() const { return {token_ids_, num_tokens_}; }
+
+  // get input embedding
+  torch::Tensor get_input_embedding() const { return input_embedding_; }
 
   // get token ids to count map
   const std::unordered_map<int32_t, int32_t>& token_to_count_map() const {
@@ -251,6 +262,8 @@ class Sequence final {
 
   // token ids generated for the sequence
   std::vector<int32_t> token_ids_;
+
+  torch::Tensor input_embedding_;
 
   // log probabilities of the sequence
   std::vector<std::optional<float>> logprobs_;
