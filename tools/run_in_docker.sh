@@ -51,7 +51,6 @@ RUN_OPTS+=("-v /tmp:/tmp")
 RUN_OPTS+=("-v ${HOME}:${HOME}")
 
 # Carry over cache settings
-# Carry over cache settings
 VCPKG_DEFAULT_BINARY_CACHE=${VCPKG_DEFAULT_BINARY_CACHE:-${HOME}/.cache/vcpkg}
 mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
 RUN_OPTS+=("-v ${VCPKG_DEFAULT_BINARY_CACHE}:${VCPKG_DEFAULT_BINARY_CACHE}")
