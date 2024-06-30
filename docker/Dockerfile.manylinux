@@ -2,11 +2,11 @@ ARG CUDA_VERSION=12.1
 FROM pytorch/manylinux-builder:cuda${CUDA_VERSION} as base
 
 LABEL maintainer="mi@vectorch.com"
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
-ENV LC_ALL en_US.UTF-8
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US.UTF-8
 
 # Install dependencies for vcpkg
 RUN yum -y update && yum -y install \

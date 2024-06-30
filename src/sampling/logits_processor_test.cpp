@@ -300,7 +300,7 @@ TEST(LogitsProcessorTest, TopP) {
   if (!torch::cuda::is_available()) {
     GTEST_SKIP() << "CUDA not available, skipping test";
   }
-  
+
   // Set the random seed
   torch::manual_seed(100);
   torch::ScalarType dtype(torch::kHalf);

@@ -1,11 +1,11 @@
 FROM quay.io/pypa/manylinux_2_28_x86_64 as base
 
 LABEL maintainer="mi@vectorch.com"
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
-ENV LC_ALL en_US.UTF-8
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US.UTF-8
 
 # Install common dependencies
 COPY ./common/install_base.sh install_base.sh
