@@ -92,6 +92,9 @@ TEST_P(AttentionPrefillTest, Varlen) {
                head_dim,
                scale,
                alibi] = GetParam();
+  if (device.is_cuda() && !torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
 
   absl::BitGen gen;
 
@@ -180,6 +183,10 @@ TEST_P(AttentionDecodeTest, KVCache) {
                head_dim,
                scale,
                alibi] = GetParam();
+  if (device.is_cuda() && !torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   // make sure kv_max_seq_len >= q_max_seq_len
   if (kv_max_seq_len < q_max_seq_len) {
     GTEST_SKIP() << "kv_max_seq_len < q_max_seq_len";

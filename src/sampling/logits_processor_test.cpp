@@ -52,6 +52,9 @@ TEST(LogitsProcessorTest, Temperature) {
 }
 
 TEST(LogitsProcessorTest, TemperatureKernel) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
   // Test TemperatureLogitsProcessor
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
@@ -121,6 +124,9 @@ TEST(LogitsProcessorTest, FrequencyPresencePenalty) {
 }
 
 TEST(LogitsProcessorTest, FrequencyPresencePenaltyKernel) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
   // Test FrequencyPresencePenaltyLogitsProcessor
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
@@ -209,6 +215,9 @@ TEST(LogitsProcessorTest, RepetitionPenalty) {
 }
 
 TEST(LogitsProcessorTest, RepetitionPenaltyKernel) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
   // Test RepetitionPenaltyLogitsProcessor
   torch::ScalarType dtype(torch::kHalf);
   torch::Device device(torch::kCUDA);
@@ -244,6 +253,10 @@ TEST(LogitsProcessorTest, RepetitionPenaltyKernel) {
 }
 
 TEST(LogitsProcessorTest, TopK) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   // Set the random seed
   torch::manual_seed(100);
   torch::ScalarType dtype(torch::kHalf);
@@ -284,6 +297,10 @@ TEST(LogitsProcessorTest, TopK) {
 }
 
 TEST(LogitsProcessorTest, TopP) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   // Set the random seed
   torch::manual_seed(100);
   torch::ScalarType dtype(torch::kHalf);

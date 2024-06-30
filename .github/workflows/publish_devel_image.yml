@@ -27,6 +27,22 @@ jobs:
       - name: Create cache directory
         run: mkdir -p $CI_CACHE_DIR/.buildx-cache
 
+      - name: Build devel image for cuda 12.4
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.devel
+          push: true
+          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
+          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          build-args: |
+            UBUNTU_VERSION=22.04
+            CUDA_VERSION=12.4
+            GCC_VERSION=12
+          tags: |
+            vectorchai/scalellm_devel:cuda12.4-ubuntu22.04
+            vectorchai/scalellm_devel:cuda12.4
+
       - name: Build devel image for cuda 12.1
         uses: docker/build-push-action@v5
         with:

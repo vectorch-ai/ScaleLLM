@@ -27,6 +27,19 @@ jobs:
       - name: Create cache directory
         run: mkdir -p $CI_CACHE_DIR/.buildx-cache
 
+      - name: Build base for cuda 12.4
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.manylinux
+          push: true
+          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
+          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          build-args: |
+            CUDA_VERSION=12.4
+          tags: |
+            vectorchai/scalellm_manylinux:cuda12.4
+
       - name: Build base for cuda 12.1
         uses: docker/build-push-action@v5
         with:

@@ -37,6 +37,10 @@ TEST(NormalizationTest, LayerNorm) {
 }
 
 TEST(NormalizationTest, LayerNormKernel) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   // TODO: test other device and dtype combinations
   const auto dtype = torch::kHalf;
   const auto device = torch::kCUDA;
@@ -98,6 +102,10 @@ TEST(NormalizationTest, RMSNorm) {
 }
 
 TEST(NormalizationTest, RMSNormKernel) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   // TODO: test other device and dtype combinations
   const auto dtype = torch::kHalf;
   const auto device = torch::kCUDA;
@@ -125,6 +133,10 @@ TEST(NormalizationTest, RMSNormKernel) {
 }
 
 TEST(NormalizationTest, RMSNormResidualKernel) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   const auto dtype = torch::kHalf;
   const auto device = torch::kCUDA;
   const auto options = torch::dtype(dtype).device(device);
