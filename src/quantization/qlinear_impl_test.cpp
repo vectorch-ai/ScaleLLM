@@ -23,6 +23,10 @@ TEST(QlinearTest, Basic) {
 }
 
 TEST(QlinearTest, ColumnParallelQuantLinear) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   const int64_t in_features = 4096;
   const int64_t out_features = 4096;
   QuantArgs quant_args;
@@ -57,6 +61,10 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
 }
 
 TEST(QlinearTest, RowParallelQuantLinear) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   const int64_t in_features = 4096;
   const int64_t out_features = 4096;
   QuantArgs quant_args;

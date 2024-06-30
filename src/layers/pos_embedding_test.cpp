@@ -116,6 +116,10 @@ TEST_P(PosEmbeddingTest, Rotary) {
               theta,
               interleaved,
               max_position_embeddings] = GetParam();
+  if (device.is_cuda() && !torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   const auto options = torch::dtype(dtype).device(device);
 
   // prepare inputs
@@ -193,6 +197,10 @@ TEST_P(PosEmbeddingKernelTest, Rotary) {
               theta,
               interleaved,
               max_position_embeddings] = GetParam();
+
+  if (device.is_cuda() && !torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
 
   const auto options = torch::dtype(dtype).device(device);
   // prepare inputs

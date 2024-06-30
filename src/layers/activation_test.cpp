@@ -36,6 +36,10 @@ TEST_P(ActivationTest, Basic) {
   const auto& [device, dtype, activation, in_features, out_features] =
       GetParam();
 
+  if (device.is_cuda() && !torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   auto input = torch::rand({in_features, out_features},
                            torch::dtype(dtype).device(device));
 

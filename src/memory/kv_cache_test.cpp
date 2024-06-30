@@ -14,6 +14,10 @@ TEST(KVCacheTest, Empty) {
 }
 
 TEST(KVCacheTest, Basic) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+
   const int num_kv_heads = 32;
   const int head_dim = 128;
   const int block_size = 8;
@@ -57,6 +61,10 @@ TEST(KVCacheTest, Basic) {
 }
 
 TEST(KVCacheTest, Random) {
+  if (!torch::cuda::is_available()) {
+    GTEST_SKIP() << "CUDA not available, skipping test";
+  }
+  
   const int64_t num_kv_heads = 12;
   const int64_t head_dim = 128;
   const int64_t block_size = 4;
