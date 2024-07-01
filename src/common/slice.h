@@ -18,7 +18,7 @@ class Slice final {
 
   Slice(const std::vector<T>& data, size_t size)
       : data_(data.data()), size_(size) {
-    CHECK(size <= data.size());
+    CHECK_LE(size, data.size());
   }
 
   // iterator for the slice
@@ -43,7 +43,7 @@ class Slice final {
 
   // get a sub slice
   Slice<T> slice(size_t start) const {
-    CHECK(start <= size_);
+    CHECK_LE(start, size_);
     return {data_ + start, size_ - start};
   }
 
