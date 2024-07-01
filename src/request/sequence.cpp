@@ -302,16 +302,16 @@ void Sequence::set_shared_blocks(std::vector<Block>&& shared_blocks) {
   // update the kv cache position
   size_t num_shared_tokens = blocks_.size() * blocks_[0].size();
 
-  // It is possible that num_shared_tokens == num_prompt_tokens_, indicating
+  // It is possible that num_shared_tokens == num_tokens_, indicating
   // that the exact same prompt has been received again. In this case, it
   // becomes necessary to adjust the kv cache position to the previous token,
   // allowing the model proceed. While the shared blocks should be immutable
   // ideally, but it remains safe to regenerate the kv cache in this context,
   // given the utiliztion of the exact same token.
-  if (num_shared_tokens == num_prompt_tokens_) {
+  if (num_shared_tokens == num_tokens_) {
     num_shared_tokens -= 1;
   }
-  CHECK(num_shared_tokens < num_prompt_tokens_);
+  CHECK_LT(num_shared_tokens, num_tokens_);
   // update the kv cache position
   std::fill(num_kv_cache_tokens_.begin(),
             num_kv_cache_tokens_.end(),
