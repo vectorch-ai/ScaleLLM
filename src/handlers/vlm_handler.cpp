@@ -20,9 +20,9 @@
 #include "request/request.h"
 #include "speculative/speculative_engine.h"
 
-// DEFINE_COUNTER_FAMILY(request_status_total, "Total number of request status");
-// DEFINE_COUNTER_INSTANCE(request_ok, request_status_total, {{"code", "OK"}});
-// DEFINE_COUNTER_INSTANCE(request_cancelled,
+// DEFINE_COUNTER_FAMILY(request_status_total, "Total number of request
+// status"); DEFINE_COUNTER_INSTANCE(request_ok, request_status_total, {{"code",
+// "OK"}}); DEFINE_COUNTER_INSTANCE(request_cancelled,
 //                         request_status_total,
 //                         {{"code", "CANCELLED"}});
 // DEFINE_COUNTER_INSTANCE(request_unknown,
