@@ -9,6 +9,7 @@ pybind_extension(
     csrc/sampling_params.cpp
     csrc/output.cpp
     csrc/llm_handler.cpp
+    csrc/vlm_handler.cpp
     csrc/module.cpp
   DEPS
     :llm_handler
