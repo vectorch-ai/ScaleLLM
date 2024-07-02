@@ -14,8 +14,10 @@
 #include "models/model_args.h"
 #include "worker.h"
 
+namespace {
 DEFINE_COUNTER(prepare_input_latency_seconds,
                "Latency of preparing input in seconds");
+}
 
 namespace llm {
 namespace {

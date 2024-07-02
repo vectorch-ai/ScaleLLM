@@ -19,6 +19,7 @@
 #include "request/request.h"
 #include "speculative/speculative_engine.h"
 
+namespace {
 DEFINE_COUNTER_FAMILY(request_status_total, "Total number of request status");
 DEFINE_COUNTER_INSTANCE(request_ok, request_status_total, {{"code", "OK"}});
 DEFINE_COUNTER_INSTANCE(request_cancelled,
@@ -59,6 +60,7 @@ DEFINE_COUNTER(tokenization_latency_seconds,
                "Prompt tokenization latency in seconds");
 DEFINE_COUNTER(chat_template_latency_seconds,
                "Chat template latency in seconds");
+}  // namespace
 
 namespace llm {
 namespace {

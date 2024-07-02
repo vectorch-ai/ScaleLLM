@@ -23,18 +23,20 @@
 #include "sampling/logits_processor.h"
 #include "sampling/sampler.h"
 
+namespace {
 // latency metrics
-// DEFINE_COUNTER_FAMILY(execution_latency_seconds,
-//                       "Execution latency in seconds");
-// DEFINE_COUNTER_INSTANCE(model_execution_latency_seconds,
-//                         execution_latency_seconds,
-//                         {{"stage", "model"}});
-// DEFINE_COUNTER_INSTANCE(logits_processing_latency_seconds,
-//                         execution_latency_seconds,
-//                         {{"stage", "logits_processing"}});
-// DEFINE_COUNTER_INSTANCE(sampling_latency_seconds,
-//                         execution_latency_seconds,
-//                         {{"stage", "sampling"}});
+DEFINE_COUNTER_FAMILY(execution_latency_seconds,
+                      "Execution latency in seconds");
+DEFINE_COUNTER_INSTANCE(model_execution_latency_seconds,
+                        execution_latency_seconds,
+                        {{"stage", "model"}});
+DEFINE_COUNTER_INSTANCE(logits_processing_latency_seconds,
+                        execution_latency_seconds,
+                        {{"stage", "logits_processing"}});
+DEFINE_COUNTER_INSTANCE(sampling_latency_seconds,
+                        execution_latency_seconds,
+                        {{"stage", "sampling"}});
+}  // namespace
 
 namespace llm {
 
@@ -149,7 +151,7 @@ std::optional<ModelOutput> VLMWorker::execute_model(const ModelInput& inputs) {
   }
 
   at::cuda::getCurrentCUDAStream().synchronize();
-  // COUNTER_ADD(model_execution_latency_seconds, timer.elapsed_seconds());
+  COUNTER_ADD(model_execution_latency_seconds, timer.elapsed_seconds());
 
   if (!driver_) {
     return std::nullopt;
@@ -166,7 +168,7 @@ std::optional<ModelOutput> VLMWorker::execute_model(const ModelInput& inputs) {
                                        sampling_params.unique_token_ids,
                                        sampling_params.unique_token_counts,
                                        sampling_params.unique_token_ids_lens);
-    // COUNTER_ADD(logits_processing_latency_seconds, timer.elapsed_seconds());
+    COUNTER_ADD(logits_processing_latency_seconds, timer.elapsed_seconds());
 
     // set logits to output
     output.logits = logits;
@@ -179,7 +181,7 @@ std::optional<ModelOutput> VLMWorker::execute_model(const ModelInput& inputs) {
     auto sample_logits =
         logits.index_select(/*dim=*/0, sampling_params.sample_idxes);
     auto sample_output = sampler->forward(sample_logits);
-    // COUNTER_ADD(sampling_latency_seconds, timer.elapsed_seconds());
+    COUNTER_ADD(sampling_latency_seconds, timer.elapsed_seconds());
 
     // set sample output to output
     output.sample_output = sample_output;

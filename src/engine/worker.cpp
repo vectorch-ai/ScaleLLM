@@ -23,6 +23,7 @@
 #include "sampling/logits_processor.h"
 #include "sampling/sampler.h"
 
+namespace {
 // latency metrics
 DEFINE_COUNTER_FAMILY(execution_latency_seconds,
                       "Execution latency in seconds");
@@ -35,6 +36,7 @@ DEFINE_COUNTER_INSTANCE(logits_processing_latency_seconds,
 DEFINE_COUNTER_INSTANCE(sampling_latency_seconds,
                         execution_latency_seconds,
                         {{"stage", "sampling"}});
+}  // namespace
 
 namespace llm {
 
