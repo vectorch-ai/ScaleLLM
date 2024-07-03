@@ -10,6 +10,21 @@ namespace py = pybind11;
 using namespace pybind11::literals;
 
 void init_vlm_handler(py::module_& m) {
+  py::enum_<Priority>(m, "Priority")
+      .value("DEFAULT", Priority::NORMAL)
+      .value("LOW", Priority::LOW)
+      .value("NORMAL", Priority::NORMAL)
+      .value("HIGH", Priority::HIGH)
+      .export_values();
+
+  py::class_<std::future<bool>>(m, "Future")
+      .def("wait",
+           &std::future<bool>::wait,
+           py::call_guard<py::gil_scoped_release>())
+      .def("get",
+           &std::future<bool>::get,
+           py::call_guard<py::gil_scoped_release>());
+
   auto vlm_handler =
       py::class_<VLMHandler>(m, "VLMHandler")
           .def(py::init<const VLMHandler::Options&>(), py::arg("options"))
@@ -76,7 +91,7 @@ void init_vlm_handler(py::module_& m) {
                "cuda_graph_batch_sizes={}, "
                "max_tokens_per_batch={}, max_seqs_per_batch={}, "
                "num_handling_threads={}, "
-               "image_input_type={}, image_token_id={}, "
+               "image_input_type={}, image_token_id={}, 
                "image_input_shape={}, image_feature_size={})"_s.format(
                    self.model_path_,
                    self.devices_,
