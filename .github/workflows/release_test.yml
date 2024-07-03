@@ -76,7 +76,7 @@ jobs:
         # Run pytest
         printf "\n\nRunning pytest\n\n"
         cd tests
-        pytest
+        pytest || exit 1
         printf "\n\n"
 
         conda deactivate || true
