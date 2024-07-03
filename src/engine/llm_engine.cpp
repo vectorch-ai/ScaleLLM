@@ -2,7 +2,6 @@
 
 #include <ATen/cuda/CUDAContext.h>
 #include <glog/logging.h>
-#include <sys/sysinfo.h>
 
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
@@ -255,32 +254,11 @@ int64_t LLMEngine::profile_memory_for_kv_cache() {
 
   const auto& device = workers_[0]->device();
   if (device.is_cpu()) {
-    // get cpu available memory and total memory
-    struct sysinfo info;
-    int err = sysinfo(&info);
-    if (err != 0) {
-      LOG(ERROR) << "Initializing CPU cache failure.";
-    }
-    int64_t available_memory = info.freeram;
-    int64_t total_memory = info.totalram;
-
-    int64_t smallest_available_memory = std::numeric_limits<int64_t>::max();
-    // apply memory cap from config if it is set
-    if (max_memory_utilization < 1.0) {
-      const int64_t buffer_memory =
-          total_memory * (1.0 - max_memory_utilization);
-      available_memory -= buffer_memory;
-    }
-    if (max_cache_size > 0) {
-      available_memory = std::min(available_memory, max_cache_size);
-    }
-    smallest_available_memory =
-        std::min(smallest_available_memory, available_memory);
-
-    auto cache_size = std::max(smallest_available_memory, int64_t(0));
-    LOG(INFO) << "Initializing CPU cache with cache size: "
-              << readable_size(cache_size);
-    return cache_size;
+    // use max memory cache size for CPU
+    LOG(INFO) << "Initializing CPU cache with max cache size: "
+              << readable_size(max_cache_size);
+    // TODO: add CPU memory profiling
+    return max_cache_size;
   }
   CHECK(device.is_cuda()) << "Only support CPU and CUDA device for now.";
 
