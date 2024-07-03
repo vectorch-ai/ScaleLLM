@@ -10,18 +10,14 @@ cc_library(
     batch.h
     model_runner.h
     worker.h
-    vlm_worker.h
     engine.h
     llm_engine.h
-    vlm_engine.h
   SRCS
     utils.cpp
     batch.cpp
     model_runner.cpp
     worker.cpp
-    vlm_worker.cpp
     llm_engine.cpp
-    vlm_engine.cpp
   DEPS
     torch
     :common

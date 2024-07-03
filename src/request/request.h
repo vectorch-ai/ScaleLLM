@@ -33,14 +33,6 @@ struct Request final {
           size_t best_of,
           bool logprobs);
 
-  Request(std::string prompt,
-          std::vector<int32_t> prompt_tokens,
-          torch::Tensor input_embedding,
-          size_t seq_capacity,
-          size_t n,
-          size_t best_of,
-          bool logprobs);
-
   void add_sequence();
 
   bool is_finished() const;
@@ -77,8 +69,6 @@ struct Request final {
   // the token ids from request's prompt.
   // NOLINTNEXTLINE
   const std::vector<int32_t> prompt_tokens;
-
-  torch::Tensor input_embedding;
 
   // the number of sequences to generate completions for the prompt.
   // NOLINTNEXTLINE
