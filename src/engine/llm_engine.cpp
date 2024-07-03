@@ -10,13 +10,11 @@
 
 #include "common/metrics.h"
 #include "common/pretty_print.h"
+#include "engine_metrics.h"
 #include "model_loader/model_loader.h"
 #include "model_parallel/parallel_args.h"
 #include "models/model_args.h"
 #include "worker.h"
-
-DEFINE_COUNTER(prepare_input_latency_seconds,
-               "Latency of preparing input in seconds");
 
 namespace llm {
 namespace {

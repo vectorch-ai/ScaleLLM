@@ -1,0 +1,19 @@
+#pragma once
+
+#include "common/metrics.h"
+
+DECLARE_COUNTER_FAMILY(request_status_total)
+DECLARE_COUNTER_INSTANCE(request_ok)
+DECLARE_COUNTER_INSTANCE(request_cancelled)
+DECLARE_COUNTER_INSTANCE(request_unknown)
+DECLARE_COUNTER_INSTANCE(request_invalid_argument)
+DECLARE_COUNTER_INSTANCE(request_deadline_exceeded)
+DECLARE_COUNTER_INSTANCE(request_resource_exhausted)
+DECLARE_COUNTER_INSTANCE(request_unauthenticated)
+DECLARE_COUNTER_INSTANCE(request_unavailable)
+DECLARE_COUNTER_INSTANCE(request_unimplemented)
+DECLARE_COUNTER_FAMILY(request_handling_latency_seconds)
+DECLARE_COUNTER_INSTANCE(chat_handling_latency_seconds)
+DECLARE_COUNTER_INSTANCE(completion_handling_latency_seconds)
+DECLARE_COUNTER(tokenization_latency_seconds)
+DECLARE_COUNTER(chat_template_latency_seconds)

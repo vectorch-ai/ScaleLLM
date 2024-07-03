@@ -1,0 +1,9 @@
+#pragma once
+
+#include "common/metrics.h"
+
+DECLARE_COUNTER(prepare_input_latency_seconds)
+DECLARE_COUNTER_FAMILY(execution_latency_seconds)
+DECLARE_COUNTER_INSTANCE(model_execution_latency_seconds)
+DECLARE_COUNTER_INSTANCE(logits_processing_latency_seconds)
+DECLARE_COUNTER_INSTANCE(sampling_latency_seconds)

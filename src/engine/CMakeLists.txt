@@ -14,6 +14,7 @@ cc_library(
     engine.h
     llm_engine.h
     vlm_engine.h
+    engine_metrics.h
   SRCS
     utils.cpp
     batch.cpp
@@ -22,6 +23,7 @@ cc_library(
     vlm_worker.cpp
     llm_engine.cpp
     vlm_engine.cpp
+    engine_metrics.cpp
   DEPS
     torch
     :common

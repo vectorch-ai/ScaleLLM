@@ -93,14 +93,16 @@ class AutoCounter final {
 // define gauge
 // a gauge is a metric that represents a single numerical value that can
 // arbitrarily go up and down.
-#define DEFINE_GAUGE(name, desc) \
-  auto& GAUGE_##name = llm::Metrics::Instance().BuildGauge(#name, desc).Add({});
+#define DEFINE_GAUGE(name, desc)    \
+  prometheus::Gauge& GAUGE_##name = \
+      llm::Metrics::Instance().BuildGauge(#name, desc).Add({});
 
-#define DEFINE_GAUGE_FAMILY(name, desc) \
-  auto& name##_family = llm::Metrics::Instance().BuildGauge(#name, desc);
+#define DEFINE_GAUGE_FAMILY(name, desc)                  \
+  prometheus::Family<prometheus::Gauge>& name##_family = \
+      llm::Metrics::Instance().BuildGauge(#name, desc);
 
 #define DEFINE_GAUGE_INSTANCE(alias, name, ...) \
-  auto& GAUGE_##alias = name##_family.Add(__VA_ARGS__);
+  prometheus::Gauge& GAUGE_##alias = name##_family.Add(__VA_ARGS__);
 
 #define GAUGE_SET(name, value) GAUGE_##name.Set(value);
 
@@ -111,15 +113,16 @@ class AutoCounter final {
 // define counter
 // a counter is a monotonically increasing counter whose value can only increase
 // or be reset to zero on restart.
-#define DEFINE_COUNTER(name, desc) \
-  auto& COUNTER_##name =           \
+#define DEFINE_COUNTER(name, desc)      \
+  prometheus::Counter& COUNTER_##name = \
       llm::Metrics::Instance().BuildCounter(#name, desc).Add({});
 
-#define DEFINE_COUNTER_FAMILY(name, desc) \
-  auto& name##_family = llm::Metrics::Instance().BuildCounter(#name, desc);
+#define DEFINE_COUNTER_FAMILY(name, desc)                  \
+  prometheus::Family<prometheus::Counter>& name##_family = \
+      llm::Metrics::Instance().BuildCounter(#name, desc);
 
 #define DEFINE_COUNTER_INSTANCE(alias, name, ...) \
-  auto& COUNTER_##alias = name##_family.Add(__VA_ARGS__);
+  prometheus::Counter& COUNTER_##alias = name##_family.Add(__VA_ARGS__);
 
 #define COUNTER_ADD(name, value) COUNTER_##name.Increment(value);
 
@@ -133,16 +136,17 @@ class AutoCounter final {
 // a histogram samples observations (usually things like request durations or
 // response sizes) and counts them in configurable buckets. It also provides a
 // sum of all observed values.
-#define DEFINE_HISTOGRAM(name, desc, ...)                   \
-  auto& HISTOGRAM_##name = llm::Metrics::Instance()         \
-                               .BuildHistogram(#name, desc) \
-                               .Add({}, __VA_ARGS__);
+#define DEFINE_HISTOGRAM(name, desc, ...)                                    \
+  prometheus::Histogram& HISTOGRAM_##name = llm::Metrics::Instance()         \
+                                                .BuildHistogram(#name, desc) \
+                                                .Add({}, __VA_ARGS__);
 
-#define DEFINE_HISTOGRAM_FAMILY(name, desc) \
-  auto& name##_family = llm::Metrics::Instance().BuildHistogram(#name, desc);
+#define DEFINE_HISTOGRAM_FAMILY(name, desc)                  \
+  prometheus::Family<prometheus::Histogram>& name##_family = \
+      llm::Metrics::Instance().BuildHistogram(#name, desc);
 
 #define DEFINE_HISTOGRAM_INSTANCE(alias, name, ...) \
-  auto& HISTOGRAM_##alias = name##_family.Add(__VA_ARGS__);
+  prometheus::Histogram& HISTOGRAM_##alias = name##_family.Add(__VA_ARGS__);
 
 #define HISTOGRAM_OBSERVE(name, value) HISTOGRAM_##name.Observe(value);
 
