@@ -7,9 +7,11 @@ cc_library(
     sampling_params.h
     llm_handler.h
     vlm_handler.h
+    handler_metrics.h
   SRCS 
     llm_handler.cpp
     vlm_handler.cpp
+    handler_metrics.cpp
   DEPS
     :common
     :scheduler
