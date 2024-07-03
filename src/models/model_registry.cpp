@@ -13,7 +13,6 @@
 #include "huggingface/gpt_neox.h"  // IWYU pragma: keep
 #include "huggingface/internlm.h"  // IWYU pragma: keep
 #include "huggingface/llama.h"     // IWYU pragma: keep
-#include "huggingface/llava.h"     // IWYU pragma: keep
 #include "huggingface/mistral.h"   // IWYU pragma: keep
 #include "huggingface/mpt.h"       // IWYU pragma: keep
 #include "huggingface/phi.h"       // IWYU pragma: keep
@@ -34,16 +33,6 @@ void ModelRegistry::register_causallm_factory(const std::string& name,
     LOG(WARNING) << "causal lm factory for " << name << "already registered.";
   } else {
     instance->model_registry_[name].causal_lm_factory = factory;
-  }
-}
-
-void ModelRegistry::register_causalvlm_factory(const std::string& name,
-                                               CausalVLMFactory factory) {
-  ModelRegistry* instance = get_instance();
-  if (instance->model_registry_[name].causal_vlm_factory != nullptr) {
-    LOG(WARNING) << "causal vlm factory for " << name << "already registered.";
-  } else {
-    instance->model_registry_[name].causal_vlm_factory = factory;
   }
 }
 
@@ -93,11 +82,6 @@ void ModelRegistry::register_default_chat_template_factory(
 CausalLMFactory ModelRegistry::get_causallm_factory(const std::string& name) {
   ModelRegistry* instance = get_instance();
   return instance->model_registry_[name].causal_lm_factory;
-}
-
-CausalVLMFactory ModelRegistry::get_causalvlm_factory(const std::string& name) {
-  ModelRegistry* instance = get_instance();
-  return instance->model_registry_[name].causal_vlm_factory;
 }
 
 ModelArgsLoader ModelRegistry::get_model_args_loader(const std::string& name) {

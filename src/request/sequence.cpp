@@ -55,40 +55,6 @@ Sequence::Sequence(size_t index,
   }
 }
 
-Sequence::Sequence(size_t index,
-                   const std::string_view& prompt,
-                   const std::vector<int32_t>& prompt_token_ids,
-                   torch::Tensor input_embedding,
-                   const absl::Time& created_time,
-                   size_t capacity,
-                   const Options& option)
-    : index_(index),
-      last_token_time_(created_time),
-      options_(option),
-      incremental_decoder_(prompt,
-                           prompt_token_ids.size(),
-                           option.echo,
-                           option.skip_special_tokens),
-      num_kv_cache_tokens_(static_cast<size_t>(EngineType::COUNT), 0) {
-  CHECK(!prompt_token_ids.empty()) << "empty prompt token ids";
-  CHECK_GT(capacity, prompt_token_ids.size()) << "capacity too small";
-
-  num_prompt_tokens_ = prompt_token_ids.size();
-  // allocate space for token ids, logprobs, top tokens and top logprobs
-  token_ids_.resize(capacity);
-  logprobs_.resize(capacity);
-  top_tokens_.resize(capacity);
-  top_logprobs_.resize(capacity);
-
-  // add the prompt tokens
-  for (const auto token_id : prompt_token_ids) {
-    token_ids_[num_tokens_++] = token_id;
-    token_to_count_map_[token_id]++;
-  }
-
-  input_embedding_ = input_embedding;
-}
-
 Sequence::Sequence(const std::string_view& prompt,
                    const std::vector<int32_t>& prompt_token_ids,
                    size_t capacity,

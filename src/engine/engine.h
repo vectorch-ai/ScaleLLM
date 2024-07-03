@@ -27,12 +27,4 @@ class Engine {
   virtual const TokenizerArgs& tokenizer_args() const = 0;
 };
 
-class VisionEngine {
- public:
-  virtual ~VisionEngine() = default;
-
-  virtual torch::Tensor vision_encode(torch::Tensor image,
-                                      torch::Tensor tokens) = 0;
-};
-
 }  // namespace llm
