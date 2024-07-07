@@ -51,8 +51,7 @@ jobs:
     steps:
     - name: Install toolkits
       run: |
-        sudo apt-get install -y build-essential ninja-build bison gcc-12 g++-12 libunwind-dev python3-dev libboost-all-dev ccache
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 10 --slave /usr/bin/g++ g++ /usr/bin/g++-12
+        sudo apt-get install -y build-essential ninja-build bison libunwind-dev python3-dev libboost-all-dev ccache
   
     - name: Show gcc version
       run: gcc --version
