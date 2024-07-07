@@ -11,7 +11,7 @@ struct RotaryEmbedding {
   // apply rotary embedding to data on position idx
   // x -> x * cos - y * sin
   // y -> x * sin + y * cos
-  static __device__ __forceinline__ T apply(T* __restrict__ data,
+  static __device__ __forceinline__ void apply(T* __restrict__ data,
                                             const T* __restrict__ cos,
                                             const T* __restrict__ sin,
                                             int idx,
