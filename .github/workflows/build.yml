@@ -51,7 +51,7 @@ jobs:
     steps:
     - name: Install toolkits
       run: |
-        sudo apt-get install -y build-essential ninja-build bison libunwind-dev python3-dev libboost-all-dev ccache
+        sudo apt-get install -y build-essential ninja-build bison libunwind-dev python3-dev ccache
   
     - name: Show gcc version
       run: gcc --version
