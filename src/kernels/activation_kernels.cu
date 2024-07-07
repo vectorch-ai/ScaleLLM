@@ -11,21 +11,10 @@ namespace {
 
 /* Gelu Activation */
 // adapted from https://github.com/NVIDIA/FasterTransformer
-__forceinline__ __device__ float copysignf_pos(float a, float b) {
-  float r;
-  r = __int_as_float(__float_as_int(a) | (__float_as_int(b) & 0x80000000));
-  return r;
-}
-
 __inline__ __device__ float tanh_opt(float x) {
-#if (__CUDA_ARCH__ >= 750 && CUDART_VERSION >= 11000)
   float r;
   asm("tanh.approx.f32 %0,%1; \n\t" : "=f"(r) : "f"(x));
   return r;
-#else
-  const float exp_val = -1.f * fabs(2 * x);
-  return copysignf_pos((1.0f - __expf(exp_val)) / (__expf(exp_val) + 1.0f), x);
-#endif
 }
 
 template <typename T>

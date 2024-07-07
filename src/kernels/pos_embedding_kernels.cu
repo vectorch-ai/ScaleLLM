@@ -11,12 +11,12 @@ struct RotaryEmbedding {
   // apply rotary embedding to data on position idx
   // x -> x * cos - y * sin
   // y -> x * sin + y * cos
-  static __device__ __forceinline__ T apply(T* __restrict__ data,
-                                            const T* __restrict__ cos,
-                                            const T* __restrict__ sin,
-                                            int idx,
-                                            int n,
-                                            bool interleaved) {
+  static __device__ __forceinline__ void apply(T* __restrict__ data,
+                                               const T* __restrict__ cos,
+                                               const T* __restrict__ sin,
+                                               int idx,
+                                               int n,
+                                               bool interleaved) {
     // interleaved: x = data[2 * idx], y = data[2 * idx + 1]
     // rotated: x = data[idx], y = data[idx + rotary_dim / 2]
     const int x_idx = interleaved ? 2 * idx : idx;

@@ -78,7 +78,7 @@ endif()
 # Build TORCH_CUDA_ARCH_LIST
 set(TORCH_CUDA_ARCH_LIST "")
 foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
-  if(CUDA_ARCH MATCHES "^([0-9])([0-9])(-real)*$")
+  if(CUDA_ARCH MATCHES "^([0-9])([0-9])*$")
     set(TORCH_ARCH "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}")
   elseif(CUDA_ARCH STREQUAL "native")
     set(TORCH_ARCH "Auto")
