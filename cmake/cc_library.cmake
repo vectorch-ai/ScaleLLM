@@ -76,8 +76,9 @@ function(cc_library)
     # Generating header only library
     add_library(${CC_LIB_NAME} INTERFACE)
     target_include_directories(${CC_LIB_NAME}
-      INTERFACE "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>"
-      PUBLIC ${CC_LIB_INCLUDES}
+      INTERFACE 
+        "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>"
+        ${CC_LIB_INCLUDES}
     )
 
     target_link_libraries(${CC_LIB_NAME}

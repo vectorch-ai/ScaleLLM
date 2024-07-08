@@ -41,7 +41,7 @@ function(cc_test)
     CC_TEST # prefix
     "" # options
     "NAME" # one value args
-    "SRCS;COPTS;LINKOPTS;DEPS;ARGS;DATA" # multi value args
+    "SRCS;COPTS;LINKOPTS;DEPS;INCLUDES;ARGS;DATA" # multi value args
     ${ARGN}
   )
 
@@ -55,7 +55,9 @@ function(cc_test)
   add_executable(${CC_TEST_NAME})
   target_sources(${CC_TEST_NAME} PRIVATE ${CC_TEST_SRCS})
   target_include_directories(${CC_TEST_NAME}
-    PUBLIC "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>"
+    PUBLIC 
+      "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>" 
+      ${CC_TEST_INCLUDES}
   )
 
   target_compile_options(${CC_TEST_NAME}
