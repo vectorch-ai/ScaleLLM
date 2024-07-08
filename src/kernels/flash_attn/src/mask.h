@@ -6,6 +6,8 @@
 
 #include <cute/tensor.hpp>
 
+#include "utils.h"
+
 namespace flash {
 
 using namespace cute;
