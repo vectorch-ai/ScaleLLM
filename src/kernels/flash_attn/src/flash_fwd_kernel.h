@@ -4,18 +4,18 @@
 
 #pragma once
 
-#include <cute/tensor.hpp>
-
-#include <cutlass/cutlass.h>
 #include <cutlass/array.h>
+#include <cutlass/cutlass.h>
 #include <cutlass/numeric_types.h>
+
+#include <cute/tensor.hpp>
 
 #include "block_info.h"
 #include "kernel_traits.h"
-#include "utils.h"
-#include "softmax.h"
 #include "mask.h"
 #include "rotary.h"
+#include "softmax.h"
+#include "utils.h"
 
 namespace flash {
 
