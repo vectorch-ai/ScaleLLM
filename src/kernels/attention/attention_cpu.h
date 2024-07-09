@@ -12,8 +12,6 @@
 #include "cute/stride.hpp"
 
 namespace llm {
-using namespace cute;
-
 // query/out: [q_len, n_head, head_dim]
 // key:   [seq_len, n_kv_head, head_dim]
 // value: [seq_len, n_kv_head, head_dim]
@@ -37,8 +35,11 @@ inline void mha(torch::Tensor query,
   CHECK(n_heads % n_kv_heads == 0) << "n_heads must be divisible by n_kv_heads";
   // number of heads to share the same k/v head
   const int64_t group_size = n_heads / n_kv_heads;
+  const int64_t q_seq_base = seq_len - q_seq_len;
+  const float sm_scale = static_cast<float>(1.0 / std::sqrt(head_dim));
 
   // convert to cute tensors
+  using namespace cute;
   // [q_seq_len, n_heads, head_dim]
   auto g_q = make_tensor(query.data_ptr<float>(),
                          make_shape(q_seq_len, n_heads, head_dim),
@@ -46,8 +47,6 @@ inline void mha(torch::Tensor query,
   auto g_o = make_tensor(out.data_ptr<float>(),
                          make_shape(q_seq_len, n_heads, head_dim),
                          GenRowMajor{});
-  cute::fill(g_o, 0.0f);
-
   // [seq_len, n_kv_heads, head_dim]
   auto g_k = make_tensor(key.data_ptr<float>(),
                          make_shape(seq_len, n_kv_heads, head_dim),
@@ -62,21 +61,27 @@ inline void mha(torch::Tensor query,
   // process each query against all key/value in sequence
   for (int64_t q_idx : range(q_seq_len)) {
     // process each head independently
-    for (int64_t q_head_idx : range(n_kv_heads)) {
+    for (int64_t q_head_idx : range(n_heads)) {
       // corresponding key-value head index
       const int64_t kv_head_idx = q_head_idx / group_size;
 
+      // slice query, key, value, and output for current head
       auto q = g_q(q_idx, q_head_idx, _);                // [head_dim]
+      auto o = g_o(q_idx, q_head_idx, _);                // [head_dim]
       auto k = g_k(_, kv_head_idx, _);                   // [seq_len, head_dim]
       auto v = g_v(_, kv_head_idx, _);                   // [seq_len, head_dim]
       auto attn = make_tensor(storage.data(), seq_len);  // [seq_len]
-      fill(attn, 0.0f);
+      cute::fill(attn, 0.0f);
 
       // dot product q and k: s = q * k
-      float max = -std::numeric_limits<float>::infinity();
+      float max = -INFINITY;
       for (int64_t kv_idx : range(seq_len)) {
         for (int64_t d : range(head_dim)) {
-          attn(kv_idx) += q(d) * k(kv_idx, d);
+          attn(kv_idx) += q(d) * k(kv_idx, d) * sm_scale;
+        }
+        // apply causal mask
+        if (kv_idx > q_seq_base + q_idx) {
+          attn(kv_idx) = -INFINITY;
         }
         max = std::max(max, attn(kv_idx));
       }
@@ -91,9 +96,7 @@ inline void mha(torch::Tensor query,
         attn(kv_idx) /= sum;
       }
 
-      // TODO: apply causal mask
-
-      auto o = g_o(q_idx, q_head_idx, _);  // [head_dim]
+      cute::fill(o, 0.0f);
       // dot product s and v: o = s * v
       for (int64_t kv_idx : range(seq_len)) {
         for (int64_t d : range(head_dim)) {
