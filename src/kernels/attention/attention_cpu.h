@@ -12,7 +12,7 @@
 #include "cute/stride.hpp"
 
 namespace llm {
-// query/out: [q_len, n_head, head_dim]
+// query/out: [q_seq_len, n_head, head_dim]
 // key:   [seq_len, n_kv_head, head_dim]
 // value: [seq_len, n_kv_head, head_dim]
 inline void mha(torch::Tensor query,
@@ -41,19 +41,13 @@ inline void mha(torch::Tensor query,
   // convert to cute tensors
   using namespace cute;
   // [q_seq_len, n_heads, head_dim]
-  auto g_q = make_tensor(query.data_ptr<float>(),
-                         make_shape(q_seq_len, n_heads, head_dim),
-                         GenRowMajor{});
-  auto g_o = make_tensor(out.data_ptr<float>(),
-                         make_shape(q_seq_len, n_heads, head_dim),
-                         GenRowMajor{});
+  auto qo_shape = make_shape(q_seq_len, n_heads, head_dim);
+  auto g_q = make_tensor(query.data_ptr<float>(), qo_shape, GenRowMajor{});
+  auto g_o = make_tensor(out.data_ptr<float>(), qo_shape, GenRowMajor{});
   // [seq_len, n_kv_heads, head_dim]
-  auto g_k = make_tensor(key.data_ptr<float>(),
-                         make_shape(seq_len, n_kv_heads, head_dim),
-                         GenRowMajor{});
-  auto g_v = make_tensor(value.data_ptr<float>(),
-                         make_shape(seq_len, n_kv_heads, head_dim),
-                         GenRowMajor{});
+  auto kv_shape = make_shape(seq_len, n_kv_heads, head_dim);
+  auto g_k = make_tensor(key.data_ptr<float>(), kv_shape, GenRowMajor{});
+  auto g_v = make_tensor(value.data_ptr<float>(), kv_shape, GenRowMajor{});
 
   // allocate intermediate storage
   std::vector<float> storage(seq_len);
@@ -66,41 +60,41 @@ inline void mha(torch::Tensor query,
       const int64_t kv_head_idx = q_head_idx / group_size;
 
       // slice query, key, value, and output for current head
-      auto q = g_q(q_idx, q_head_idx, _);                // [head_dim]
-      auto o = g_o(q_idx, q_head_idx, _);                // [head_dim]
-      auto k = g_k(_, kv_head_idx, _);                   // [seq_len, head_dim]
-      auto v = g_v(_, kv_head_idx, _);                   // [seq_len, head_dim]
-      auto attn = make_tensor(storage.data(), seq_len);  // [seq_len]
-      cute::fill(attn, 0.0f);
+      auto q = g_q(q_idx, q_head_idx, _);             // [head_dim]
+      auto o = g_o(q_idx, q_head_idx, _);             // [head_dim]
+      auto k = g_k(_, kv_head_idx, _);                // [seq_len, head_dim]
+      auto v = g_v(_, kv_head_idx, _);                // [seq_len, head_dim]
+      auto s = make_tensor(storage.data(), seq_len);  // [seq_len]
 
       // dot product q and k: s = q * k
       float max = -INFINITY;
+      cute::fill(s, 0.0f);
       for (int64_t kv_idx : range(seq_len)) {
         for (int64_t d : range(head_dim)) {
-          attn(kv_idx) += q(d) * k(kv_idx, d) * sm_scale;
+          s(kv_idx) += q(d) * k(kv_idx, d) * sm_scale;
         }
         // apply causal mask
         if (kv_idx > q_seq_base + q_idx) {
-          attn(kv_idx) = -INFINITY;
+          s(kv_idx) = -INFINITY;
         }
-        max = std::max(max, attn(kv_idx));
+        max = std::max(max, s(kv_idx));
       }
 
       // safe softmax: attn = exp(attn - max_score) / sum(...)
       float sum = 0;
       for (int64_t kv_idx : range(seq_len)) {
-        attn(kv_idx) = std::exp(attn(kv_idx) - max);
-        sum += attn(kv_idx);
+        s(kv_idx) = std::exp(s(kv_idx) - max);
+        sum += s(kv_idx);
       }
       for (int64_t kv_idx : range(seq_len)) {
-        attn(kv_idx) /= sum;
+        s(kv_idx) /= sum;
       }
 
-      cute::fill(o, 0.0f);
       // dot product s and v: o = s * v
+      cute::fill(o, 0.0f);
       for (int64_t kv_idx : range(seq_len)) {
         for (int64_t d : range(head_dim)) {
-          o[d] += attn(kv_idx) * v(kv_idx, d);
+          o[d] += s(kv_idx) * v(kv_idx, d);
         }
       }
     }
