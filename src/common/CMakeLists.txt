@@ -26,3 +26,16 @@ cc_library(
     nlohmann_json::nlohmann_json
 )
 
+cc_test(
+  NAME 
+    common_test
+  SRCS
+    range_test.cpp
+    threadpool_test.cpp
+  DEPS
+    common
+    absl::synchronization
+    absl::time
+    GTest::gtest_main
+)
+

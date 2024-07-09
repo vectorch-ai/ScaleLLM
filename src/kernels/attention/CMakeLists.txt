@@ -6,8 +6,8 @@ cc_library(
     attention.kernels
   SRCS 
     # attention.cu
-  INCLUDES
-    include
+  DEPS
+    cutlass
 )
 
 cc_test(
@@ -15,9 +15,8 @@ cc_test(
     cute_test
   SRCS
     cute_test.cpp
-  INCLUDES
-    include
   DEPS
+    cutlass
     GTest::gtest_main
     torch # include torch for CUDA configuration for now
 )
