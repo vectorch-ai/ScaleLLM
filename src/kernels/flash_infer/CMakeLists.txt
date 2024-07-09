@@ -29,13 +29,13 @@ cc_library(
     page.cu
     ${GENERATED_SRC_FILES}
   INCLUDES
-    include
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
   DEFINES
     FLASHINFER_ENABLE_BF16
     # FLASHINFER_ENABLE_FP8
   DEPS
+    flashinfer
     torch
 )
 
