@@ -42,4 +42,7 @@ namespace llm {
 // create an anonymous variable
 #define LLM_ANON_VAR(str) LLM_STR_CAT(str, __LINE__)
 
+
+#define REQUIRES(...) std::enable_if_t<(__VA_ARGS__)>* = nullptr
+
 }  // namespace llm
