@@ -3,20 +3,25 @@ include(cc_test)
 
 cc_library(
   NAME 
-    attention.kernels
+    attention.kernel
   SRCS 
     # attention.cu
   DEPS
     cutlass
+    glog::glog
+    torch
 )
 
 cc_test(
   NAME
-    cute_test
+    attention_kernel_test
+  HDRS
+    attention_cpu.h
   SRCS
     cute_test.cpp
+    attention_test.cpp
   DEPS
-    cutlass
+    :attention.kernel
+    glog::glog
     GTest::gtest_main
-    torch # include torch for CUDA configuration for now
 )
