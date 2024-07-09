@@ -5,11 +5,11 @@
 namespace llm {
 TEST(RangeTest, EmptyRange) {
   for (int i : range<int>(0)) {
-    FAIL() << "Empty range should not have any elements";
+    GTEST_FAIL() << "Empty range should not have any elements";
   }
 
   for (int i : range<int>(4, 2)) {
-    FAIL() << "Empty range should not have any elements";
+    GTEST_FAIL() << "Empty range should not have any elements";
   }
 }
 
