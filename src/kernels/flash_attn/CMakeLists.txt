@@ -25,8 +25,8 @@ cc_library(
     ${GENERATED_SRC_FILES}
   INCLUDES
     src
-    include
   DEPS
+    cutlass
     torch
 )
 
