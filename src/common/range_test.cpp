@@ -13,8 +13,7 @@ TEST(RangeTest, EmptyRange) {
   }
 }
 
-// create test for basic cases
-TEST(RangeTest, BasicRange) {
+TEST(RangeTest, Basic) {
   std::vector<int> expected = {0, 1, 2, 3, 4};
   std::vector<int> actual;
   for (int i : range<int>(5)) {
