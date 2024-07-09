@@ -37,6 +37,5 @@ cc_test(
     absl::synchronization
     absl::time
     GTest::gtest_main
-
 )
 
