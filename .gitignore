@@ -39,3 +39,6 @@ scalellm/*.pyd
 scalellm/*.so
 scalellm/version.py
 **/__pycache__/*
+
+# compile_commands.json from nvbench
+compile_commands.json
