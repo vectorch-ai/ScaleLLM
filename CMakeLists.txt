@@ -150,7 +150,7 @@ endif()
 find_package(Boost REQUIRED)
 find_package(Threads REQUIRED)
 # find all dependencies from vcpkg
-find_package(fmt CONFIG REQUIRED)
+find_package(fmt CONFIG REQUIRED GLOBAL)
 find_package(glog CONFIG REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
