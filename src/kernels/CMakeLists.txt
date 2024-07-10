@@ -74,4 +74,5 @@ cc_library(
 
 add_subdirectory(flash_attn)
 add_subdirectory(attention)
+add_subdirectory(bench)
 
