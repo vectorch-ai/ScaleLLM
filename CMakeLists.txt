@@ -190,7 +190,7 @@ if (DEFINED ENV{LIBTORCH_ROOT})
 else()
   include(FetchContent)
   if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.4)
-    # download nightly libtorch with cuda 12.4 from pytorch.org
+    # download nightly libtorch with cuda 12.4 from pytorch.org (experimental)
     if (USE_CXX11_ABI)
       set(LIBTORCH_URL "https://download.pytorch.org/libtorch/nightly/cu124/libtorch-cxx11-abi-shared-with-deps-latest.zip")
     else()
