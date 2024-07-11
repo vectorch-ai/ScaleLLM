@@ -10,8 +10,11 @@ case "$ID" in
   ubuntu)
     apt-get remove cmake -y
     ;;
+  centos)
+    rm -f /usr/local/bin/cmake
+    ;;
   almalinux)
-    rm /usr/local/bin/cmake
+    rm -f /usr/local/bin/cmake
     ;;
   *)
     echo "Unable to determine OS..."

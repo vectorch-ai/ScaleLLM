@@ -19,6 +19,11 @@ RUN yum -y update && yum -y install \
     perl-IPC-Cmd \
     sudo 
 
+ARG CMAKE_VERSION=3.29.3
+COPY ./common/install_cmake.sh install_cmake.sh
+RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
+RUN rm install_cmake.sh
+
 # Install ccache
 ARG CCACHE_VERSION=4.8.3
 COPY ./common/install_ccache.sh install_ccache.sh

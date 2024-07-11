@@ -30,6 +30,12 @@ COPY ./common/install_ninja.sh install_ninja.sh
 RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
 RUN rm install_ninja.sh
 
+# Install ccache
+ARG CCACHE_VERSION=4.8.3
+COPY ./common/install_ccache.sh install_ccache.sh
+RUN if [ -n "${CCACHE_VERSION}" ]; then bash ./install_ccache.sh; fi
+RUN rm install_ccache.sh
+
 # Install cuda, cudnn and nccl
 ARG CUDA_VERSION=12.1
 COPY ./common/install_cuda.sh install_cuda.sh
@@ -37,7 +43,7 @@ RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
 ENV DESIRED_CUDA=${CUDA_VERSION}
 ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
 
-# install rust
+# Install rust
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
 ENV PATH=/usr/local/cargo/bin:$PATH
@@ -46,7 +52,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 RUN chmod -R a+w ${RUSTUP_HOME} ${CARGO_HOME}
 RUN rustup --version; cargo --version; rustc --version
 
-# install jemalloc (optional)
+# Install jemalloc (optional)
 RUN cd /tmp && \
     wget -nc --no-check-certificate https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2 && \
     tar -xvf jemalloc-5.3.0.tar.bz2 && \

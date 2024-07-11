@@ -27,7 +27,7 @@ jobs:
       - name: Create cache directory
         run: mkdir -p $CI_CACHE_DIR/.buildx-cache
 
-      - name: Build base for cuda 12.4
+      - name: Build base for cuda 12.4 (experimental)
         uses: docker/build-push-action@v5
         with:
           context: ./docker
