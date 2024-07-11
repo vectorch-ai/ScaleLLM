@@ -49,7 +49,6 @@ while [[ $# > 1 ]]; do
     -o)
       RUN_OPTS+=($2); shift 2;;
     *)
-      echo "Unknown option: $1"; usage;
       break;;
   esac
 done
