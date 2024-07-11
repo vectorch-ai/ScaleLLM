@@ -34,12 +34,18 @@ env:
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  linux-gcc:    
-    runs-on: [self-hosted, linux, x64, build]
+  build-and-test-wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10"]
+        cuda: ["12.1"]
+        torch: ["2.3"]
+    runs-on: [self-hosted, linux, release]
     env:
-        PYTHON_VERSION: "3.10"
-        CUDA_VERSION: "12.1"
-        TORCH_VERSION: "2.3"
+      PYTHON_VERSION: ${{ matrix.python }}
+      CUDA_VERSION: ${{ matrix.cuda }}
+      TORCH_VERSION: ${{ matrix.torch }}
 
     steps:
     - name: Checkout
@@ -104,7 +110,7 @@ jobs:
         # Run pytest
         printf "\n\nRunning pytest\n\n"
         cd tests
-        pytest || exit 1
+        python3 -m pytest || exit 1
         printf "\n\n"
 
         # Deactivate the conda environment
