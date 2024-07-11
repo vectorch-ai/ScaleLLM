@@ -1,4 +1,4 @@
-name: Publish cpp docker image
+name: Publish cpp images
 on:
   workflow_dispatch:
     inputs:

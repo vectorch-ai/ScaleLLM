@@ -1,4 +1,4 @@
-name: Publish manylinux docker image
+name: Publish manylinux image
 on:
   workflow_dispatch:
 env:
