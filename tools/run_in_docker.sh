@@ -18,13 +18,20 @@
 set -e
 
 function usage() {
-  local progname=$(basename $0)
+  local progname=$(basename "$0")
   echo "Usage:"
-  echo "  ${progname} [-d <docker-image-name>] [-o <docker-run-options>] <command> [args ...]"
+  echo "  ${progname}  [-ni] [-d <docker-image-name>] [-o <docker-run-options>] <command> [args ...]"
+  echo ""
+  echo "Options:"
+  echo "  -ni                      Disable interactive mode."
+  echo "  -d <docker-image-name>   Specify the Docker image name."
+  echo "  -o <docker-run-options>  Specify options to pass to 'docker run'."
   echo ""
   echo "Examples:"
   echo "  ${progname} cmake -G Ninja -S . -B build"
   echo "  ${progname} cmake --build build --target all"
+  echo "  ${progname} -ni -d vectorchai/scalellm_devel:cuda12.1 -o '--gpus=all' ctest"
+  echo ""
   exit 1
 }
 
@@ -32,18 +39,27 @@ function usage() {
 
 IMAGE="vectorchai/scalellm_devel:latest"
 RUN_OPTS=()
+INTERACTIVE=1
 while [[ $# > 1 ]]; do
   case "$1" in
+    -ni)
+      INTERACTIVE=0; shift 1;;
     -d)
       IMAGE="$2"; shift 2;;
     -o)
       RUN_OPTS+=($2); shift 2;;
     *)
+      echo "Unknown option: $1"; usage;
       break;;
   esac
 done
 
+if [[ $INTERACTIVE -eq 1 ]]; then
+  RUN_OPTS+=("-it")
+fi
+
 RUN_OPTS+=(--rm --network=host)
+
 # Map the working directory and /tmp to allow scripts/binaries to run and also
 # output data that might be used by other scripts/binaries
 RUN_OPTS+=("-v $(pwd):$(pwd)")
