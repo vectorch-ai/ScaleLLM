@@ -4,56 +4,44 @@ on:
   workflow_dispatch:
 
   workflow_call:
+env:
+  # Tells where to store caches.
+  CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  linux-gcc:
-    strategy:
-      matrix:
-        os: [ubuntu-22.04]
-        # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-        build_type: [Release]
-    
-    runs-on: [self-hosted, linux, x64, release]
-    
+  linux-gcc:    
+    runs-on: [self-hosted, linux, x64, build]
     env:
-        BUILD_TYPE: ${{ matrix.build_type }}
-        # Tells vcpkg where binary packages are stored.
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincache
-        # Tells ccache where to store its cache.
-        CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache
+        PYTHON_VERSION: "3.10"
+        CUDA_VERSION: "12.1"
+        TORCH_VERSION: "2.3"
 
     steps:
-    - name: Install toolkits
-      run: |
-        sudo apt-get install -y build-essential ninja-build bison ccache
-  
-    - name: Show gcc version
-      run: gcc --version
-
     - name: Checkout
       uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    - name: Install python requirements
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
     - name: Create cache directory
       run: |
-        mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
-        mkdir -p $CCACHE_DIR
-    
-    - name: Zero out ccache statistics
-      run: ccache -z
-
-    - name: Build whl package
+        mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
+        mkdir -p $CI_CACHE_DIR/.ccache
+      
+    - name: Build wheel
       run: |
-        python setup.py bdist_wheel
-
-    - name: Show ccache statistics
-      run: ccache -s
+        docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
+        docker run --rm -t \
+            -v "$CI_CACHE_DIR":/ci_cache \
+            -v "$GITHUB_WORKSPACE":/ScaleLLM \
+            -e PYTHON_VERSION=${PYTHON_VERSION} \
+            -e CUDA_VERSION=${CUDA_VERSION} \
+            -e TORCH_VERSION=${TORCH_VERSION} \
+            -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
+            -e CCACHE_DIR=/ci_cache/.ccache \
+            -u $(id -u):$(id -g) \
+            vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
+            bash /ScaleLLM/scripts/build_wheel.sh
+      timeout-minutes: 60
 
     - name: Show whl package size
       run: du -h dist/*
@@ -61,16 +49,31 @@ jobs:
     - name: Install the package and run pytest
       shell: bash -l {0}
       run: |
+        # define the environment name based on the python and torch versions
+        ENV_NAME=pkg_test_py${PYTHON_VERSION}_torch${TORCH_VERSION}
+        
+        # Initialize conda environment
         source ~/anaconda3/etc/profile.d/conda.sh
-        # Create a new conda environment
-        if conda info --envs | grep -q pkg_test; then echo "pkg_test already exists"; else conda create -y -n pkg_test; fi
         conda init --all && source ~/.bashrc 
 
-        conda activate pkg_test
-        # Install the package and pytest
+        # Create a new conda environment
+        if conda info --envs | grep -q ${ENV_NAME}; then 
+          echo "${ENV_NAME} already exists"
+        else
+          conda create -y -n ${ENV_NAME} python=${PYTHON_VERSION}; 
+        fi
+
+        # Activate the conda environment
+        conda activate ${ENV_NAME}
+
+        # Install PyTorch
+        pip install torch==${TORCH_VERSION} -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
+
+        # Uninstall previous version of the package and install the new one
         pip uninstall -y scalellm
         pip install dist/*.whl
 
+        # Install the test requirements
         pip install -r requirements-test.txt
         
         # Run pytest
@@ -79,4 +82,5 @@ jobs:
         pytest || exit 1
         printf "\n\n"
 
+        # Deactivate the conda environment
         conda deactivate || true
