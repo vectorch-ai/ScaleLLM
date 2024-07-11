@@ -9,14 +9,14 @@ env:
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  build-and-test-wheel:    
+  build-and-test-wheel:
     strategy:
       fail-fast: false
       matrix:
         python: ["3.10"]
         cuda: ["12.1"]
         torch: ["2.3"]
-    runs-on: [self-hosted, linux, release]
+    runs-on: [self-hosted, linux, build]
     env:
       PYTHON_VERSION: ${{ matrix.python }}
       CUDA_VERSION: ${{ matrix.cuda }}
@@ -56,7 +56,7 @@ jobs:
       shell: bash -l {0}
       run: |
         # define the environment name based on the python and torch versions
-        ENV_NAME=pkg_test_py${PYTHON_VERSION}_torch${TORCH_VERSION}
+        ENV_NAME=pkg_test_py${PYTHON_VERSION//./}_cu${CUDA_VERSION//./}_torch${TORCH_VERSION//./}
         
         # Initialize conda environment
         source ~/anaconda3/etc/profile.d/conda.sh
