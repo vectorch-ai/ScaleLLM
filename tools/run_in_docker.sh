@@ -57,7 +57,7 @@ if [[ $INTERACTIVE -eq 1 ]]; then
   RUN_OPTS+=(-i)
 fi
 
-RUN_OPTS+=(-t --rm --network=host)
+RUN_OPTS+=(-t --rm)
 
 # Map the working directory and /tmp to allow scripts/binaries to run and also
 # output data that might be used by other scripts/binaries
