@@ -51,12 +51,3 @@ jobs:
     needs:
       - version-tag
       - publish-wheel
-
-  # publish docs to gh-pages for new release
-  publish_docs:
-    uses: ./.github/workflows/publish_docs.yml
-    secrets: inherit
-    needs:
-      - publish-wheel
-  
-

@@ -4,20 +4,8 @@ set -ex
 
 [ -n "$CMAKE_VERSION" ]
 
-# Remove system cmake install so it won't get used instead
-ID=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
-case "$ID" in
-  ubuntu)
-    apt-get remove cmake -y
-    ;;
-  almalinux)
-    rm /usr/local/bin/cmake
-    ;;
-  *)
-    echo "Unable to determine OS..."
-    exit 1
-    ;;
-esac
+# Remove existing CMake installation
+rm -f /usr/local/bin/cmake
 
 path="v${CMAKE_VERSION}"
 file="cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"

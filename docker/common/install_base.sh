@@ -9,8 +9,6 @@ install_ubuntu() {
   apt-get install -y --no-install-recommends \
     ${deploy_deps} \
     build-essential \
-    ccache \
-    cmake \
     zip \
     pkg-config \
     libssl-dev \
