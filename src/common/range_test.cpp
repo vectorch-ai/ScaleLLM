@@ -14,10 +14,10 @@ TEST(RangeTest, EmptyRange) {
 }
 
 TEST(RangeTest, Basic) {
-  std::vector<int> expected = {0, 1, 2, 3, 4};
+  std::vector<int> expected = {0, 1, 2, 3, 5};
   std::vector<int> actual;
   for (int i : range<int>(5)) {
-    actual_.push_back(i);
+    actual.push_back(i);
   }
   EXPECT_EQ(expected, actual);
 
