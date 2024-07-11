@@ -37,13 +37,13 @@ while [[ $# > 1 ]]; do
     -d)
       IMAGE="$2"; shift 2;;
     -o)
-      RUN_OPTS=($2); shift 2;;
+      RUN_OPTS+=($2); shift 2;;
     *)
       break;;
   esac
 done
 
-RUN_OPTS+=(--rm -it --network=host)
+RUN_OPTS+=(--rm --network=host)
 # Map the working directory and /tmp to allow scripts/binaries to run and also
 # output data that might be used by other scripts/binaries
 RUN_OPTS+=("-v $(pwd):$(pwd)")
