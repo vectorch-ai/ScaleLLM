@@ -33,7 +33,6 @@ jobs:
   linux-gcc:
     strategy:
       matrix:
-        os: [ubuntu-22.04]
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
     
@@ -49,13 +48,6 @@ jobs:
         DEPENDENCES_ROOT: ${{ github.workspace }}/../../ci_cache/.deps
 
     steps:
-    - name: Install toolkits
-      run: |
-        sudo apt-get install -y build-essential ninja-build bison libunwind-dev python3-dev ccache
-  
-    - name: Show gcc version
-      run: gcc --version
-
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -66,35 +58,11 @@ jobs:
         mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
         mkdir -p $CCACHE_DIR
         mkdir -p $DEPENDENCES_ROOT
-    
-    - name: Zero out ccache statistics
-      run: ccache -z
-
-    # Restore vcpkg bincache from the newest or latest cache available.
-    # TODO: use a distribute storage for bincache by following the instruction here: 
-    # https://learn.microsoft.com/en-us/vcpkg/users/binarycaching#aws
-    # - name: Restore vcpkg and its artifacts.
-    #   uses: actions/cache@v3
-    #   with:
-    #     path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-    #     key: |
-    #       scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}-${{ hashFiles( 'vcpkg.json' ) }}
-    #     restore-keys: |
-    #       scalellm-${{ matrix.os }}-gcc-x64-linux-${{env.BUILD_TYPE}}
-
-    # - name: Restore ccache and its artifacts.
-    #   uses: actions/cache@v3
-    #   with:
-    #     path: ${{ env.CCACHE_DIR }}
-    #     key: |
-    #       scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}-${{ github.sha }}
-    #     restore-keys: |
-    #       scalellm-${{ matrix.os }}-gcc-x64-linux-ccache-${{env.BUILD_TYPE}}
 
     - name: CMake Build in the 'build' subdirectory
       run: |
-        cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80 -DUSE_CCACHE=ON
-        cmake --build build --config ${{env.BUILD_TYPE}} --target all
+        ./tools/run_in_docker.sh cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80
+        ./tools/run_in_docker.sh cmake --build build --config ${{env.BUILD_TYPE}} --target all
 
     # - name: benchmark
     #   if: ${{ env.BUILD_TYPE == 'Release' }}
@@ -103,7 +71,4 @@ jobs:
     - name: Run unit tests
       working-directory: ${{github.workspace}}/build
       # Execute tests defined by the CMake configuration.
-      run: ctest --output-on-failure -C ${{env.BUILD_TYPE}}
-
-    - name: Show ccache statistics
-      run: ccache -s
+      run: ../tools/run_in_docker.sh -o --gpus=all ctest --output-on-failure -C ${{env.BUILD_TYPE}}

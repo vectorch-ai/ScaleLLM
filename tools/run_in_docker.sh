@@ -61,6 +61,12 @@ mkdir -p "${CCACHE_DIR}"
 RUN_OPTS+=("-v ${CCACHE_DIR}:${CCACHE_DIR}")
 RUN_OPTS+=("-e CCACHE_DIR=${CCACHE_DIR}")
 
+if [ -n "$DEPENDENCES_ROOT" ]; then
+  mkdir -p "${DEPENDENCES_ROOT}"
+  RUN_OPTS+=("-v ${DEPENDENCES_ROOT}:${DEPENDENCES_ROOT}")
+  RUN_OPTS+=("-e DEPENDENCES_ROOT=${DEPENDENCES_ROOT}")
+fi
+
 # Run as the current user
 RUN_OPTS+=("-u $(id -u):$(id -g)")
 
