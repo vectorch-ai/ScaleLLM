@@ -29,23 +29,17 @@ on:
       - ".github/workflows/package_test.yml"
     branches:
       - main
+env:
+  # Tells where to store caches.
+  CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  linux-gcc:
-    strategy:
-      matrix:
-        os: [ubuntu-22.04]
-        # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-        build_type: [Release]
-    
+  linux-gcc:    
     runs-on: [self-hosted, linux, x64, build]
-    
     env:
-        BUILD_TYPE: ${{ matrix.build_type }}
-        # Tells vcpkg where binary packages are stored.
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincache
-        # Tells ccache where to store its cache.
-        CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache
+        PYTHON_VERSION: "3.10"
+        CUDA_VERSION: "12.1"
+        TORCH_VERSION: "2.3"
 
     steps:
     - name: Install toolkits
@@ -60,25 +54,26 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Install python requirements
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
     - name: Create cache directory
       run: |
-        mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
-        mkdir -p $CCACHE_DIR
-    
-    - name: Zero out ccache statistics
-      run: ccache -z
-
-    - name: Build whl package
+        mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
+        mkdir -p $CI_CACHE_DIR/.ccache
+      
+    - name: Build wheel
       run: |
-        python setup.py bdist_wheel
-
-    - name: Show ccache statistics
-      run: ccache -s
+        docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
+        docker run --rm -t \
+            -v "$CI_CACHE_DIR":/ci_cache \
+            -v "$GITHUB_WORKSPACE":/ScaleLLM \
+            -e PYTHON_VERSION=${PYTHON_VERSION} \
+            -e CUDA_VERSION=${CUDA_VERSION} \
+            -e TORCH_VERSION=${TORCH_VERSION} \
+            -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
+            -e CCACHE_DIR=/ci_cache/.ccache \
+            -u $(id -u):$(id -g) \
+            vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
+            bash /ScaleLLM/scripts/build_wheel.sh
+      timeout-minutes: 60
 
     - name: Show whl package size
       run: du -h dist/*
