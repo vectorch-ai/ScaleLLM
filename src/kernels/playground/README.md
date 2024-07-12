@@ -28,12 +28,19 @@ For example:
 ```
 2> copy the generated LaTeX code to a file named `mma.tex`
 
-3> run `pdflatex -shell-escape mma.tex` to generate `mma.pdf`
-
-4> run `pdf2svg mma.pdf mma.svg` to convert the pdf to svg (optionally)
+3> run `./latex2svg.sh mma.tex` to generate `mma.svg`
 <p align="center">
   <img src="./images/mma.svg" alt="mma.svg" height="400"/>
 </p>
+
+Under the hood, the script does the following:
+
+```bash
+# generate `mma.pdf` from `mma.tex`
+pdflatex -shell-escape mma.tex
+# convert `mma.pdf` to `mma.svg`
+pdf2svg mma.pdf mma.svg
+```
 
 ### Install pdflatex
 PdfLatex is a tool that converts Latex sources into PDF. You can install it on Ubuntu using the following commands.
