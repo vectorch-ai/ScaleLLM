@@ -9,7 +9,6 @@ cc_library(
   DEPS
     cutlass
     glog::glog
-    torch
 )
 
 cc_test(

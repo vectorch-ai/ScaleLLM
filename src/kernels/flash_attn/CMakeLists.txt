@@ -27,6 +27,5 @@ cc_library(
     src
   DEPS
     cutlass
-    torch
 )
 
