@@ -35,7 +35,7 @@ inline void mha(torch::Tensor query,
   CHECK(n_heads % n_kv_heads == 0) << "n_heads must be divisible by n_kv_heads";
   // number of heads to share the same k/v head
   const int64_t group_size = n_heads / n_kv_heads;
-  const int64_t q_seq_base = seq_len - q_seq_len;
+  const int64_t q_idx_base = seq_len - q_seq_len;
   const float sm_scale = static_cast<float>(1.0 / std::sqrt(head_dim));
 
   // convert to cute tensors
@@ -49,9 +49,6 @@ inline void mha(torch::Tensor query,
   auto g_k = make_tensor(key.data_ptr<float>(), kv_shape, GenRowMajor{});
   auto g_v = make_tensor(value.data_ptr<float>(), kv_shape, GenRowMajor{});
 
-  // allocate intermediate storage
-  std::vector<float> storage(seq_len);
-
   // process each query against all key/value in sequence
   for (int64_t q_idx : range(q_seq_len)) {
     // process each head independently
@@ -60,42 +57,69 @@ inline void mha(torch::Tensor query,
       const int64_t kv_head_idx = q_head_idx / group_size;
 
       // slice query, key, value, and output for current head
-      auto q = g_q(q_idx, q_head_idx, _);             // [head_dim]
-      auto o = g_o(q_idx, q_head_idx, _);             // [head_dim]
-      auto k = g_k(_, kv_head_idx, _);                // [seq_len, head_dim]
-      auto v = g_v(_, kv_head_idx, _);                // [seq_len, head_dim]
-      auto s = make_tensor(storage.data(), seq_len);  // [seq_len]
+      auto q = g_q(q_idx, q_head_idx, _);  // [head_dim]
+      auto o = g_o(q_idx, q_head_idx, _);  // [head_dim]
+      auto k = g_k(_, kv_head_idx, _);     // [seq_len, head_dim]
+      auto v = g_v(_, kv_head_idx, _);     // [seq_len, head_dim]
 
-      // dot product q and k: s = q * k
+      // maximum value of pre-softmax scores
       float max = -INFINITY;
-      cute::fill(s, 0.0f);
-      for (int64_t kv_idx : range(seq_len)) {
-        for (int64_t d : range(head_dim)) {
-          s(kv_idx) += q(d) * k(kv_idx, d) * sm_scale;
-        }
-        // apply causal mask
-        if (kv_idx > q_seq_base + q_idx) {
-          s(kv_idx) = -INFINITY;
-        }
-        max = std::max(max, s(kv_idx));
-      }
-
-      // safe softmax: attn = exp(attn - max_score) / sum(...)
+      // sum of exp(...)
       float sum = 0;
-      for (int64_t kv_idx : range(seq_len)) {
-        s(kv_idx) = std::exp(s(kv_idx) - max);
-        sum += s(kv_idx);
-      }
-      for (int64_t kv_idx : range(seq_len)) {
-        s(kv_idx) /= sum;
+
+      constexpr int64_t kTileSize = 8;
+      const int64_t n_tiles = cute::ceil_div(seq_len, kTileSize);
+      // partition seq_len by kTileSize
+      for (int64_t tile_idx : range(n_tiles)) {
+        const int64_t kv_idx_base = tile_idx * kTileSize;
+        // handle last tile with leftover parts
+        const int64_t tile_size = std::min(kTileSize, seq_len - kv_idx_base);
+
+        // tiled k/v: [kTileSize, head_dim]
+        auto k_tile = local_tile(k, make_shape(kTileSize, head_dim), tile_idx);
+        auto v_tile = local_tile(v, make_shape(kTileSize, head_dim), tile_idx);
+
+        std::vector<float> storage(kTileSize);
+        auto s = make_tensor(storage.data(), kTileSize);  // [kTileSize]
+        cute::fill(s, 0.0f);
+
+        const float pre_max = max;
+        for (int64_t j : range(tile_size)) {
+          // dot product q and k: s = q * k
+          for (int64_t d : range(head_dim)) {
+            s(j) += q(d) * k_tile(j, d) * sm_scale;
+          }
+          // apply causal mask
+          if (kv_idx_base + j > q_idx_base + q_idx) {
+            s(j) = -INFINITY;
+          }
+          max = std::max(max, s(j));
+        }
+
+        const float o_scale = std::exp(pre_max - max);
+
+        // s_2 = s_1 * o_scale + sum(exp(...))
+        sum *= o_scale;
+        for (int64_t j : range(tile_size)) {
+          s(j) = std::exp(s(j) - max);
+          sum += s(j);
+        }
+
+        // o_2 = o_1 * o_scale + s * v
+        for (int64_t d : range(head_dim)) {
+          o(d) *= o_scale;
+        }
+        for (int64_t j : range(tile_size)) {
+          // dot product s and v: o += s * v
+          for (int64_t d : range(head_dim)) {
+            o(d) += s(j) * v_tile(j, d);
+          }
+        }
       }
 
-      // dot product s and v: o = s * v
-      cute::fill(o, 0.0f);
-      for (int64_t kv_idx : range(seq_len)) {
-        for (int64_t d : range(head_dim)) {
-          o[d] += s(kv_idx) * v(kv_idx, d);
-        }
+      // normalize output: o /= sum
+      for (int64_t d : range(head_dim)) {
+        o(d) /= sum;
       }
     }
   }
