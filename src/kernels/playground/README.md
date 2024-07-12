@@ -16,7 +16,7 @@ Playground to help learn and experiment with the kernel code.
 
 
 # HowTo
-## Visualization
+## Visualize layout
 The `cute::print_latex` function generates LaTeX that can be compiled with `pdflatex` into a color-coded vector graphics image of the same 2-D table. This works for 'Layout', 'TiledMMA', 'TiledCopy', which is super helpful for understanding the layout and partitioning patterns within Cute.
 
 For example:
@@ -42,7 +42,7 @@ pdflatex -shell-escape mma.tex
 pdf2svg mma.pdf mma.svg
 ```
 
-### Install pdflatex
+## Install pdflatex
 PdfLatex is a tool that converts Latex sources into PDF. You can install it on Ubuntu using the following commands.
 ```bash
 # install texlive
@@ -56,12 +56,7 @@ sudo apt-get install texlive-fonts-extra
 sudo apt-get install texlive-latex-extra
 ```
 
-Once installed, you can compile the LaTeX code into a PDF file using the following command.
-```bash
-pdflatex mma.tex
-```
-
-### Install pdf2svg
+## Install pdf2svg
 Pdf2svg is a tool that converts PDF files into SVG. You can install it on Ubuntu using the following commands.
 ```bash
 sudo apt-get install -y pdf2svg
