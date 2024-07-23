@@ -116,14 +116,13 @@ void varlen_masked_self_attention(
 RefHandler::RefHandler(float scale,
                        int64_t rotary_dim,
                        int64_t max_position,
-                       float rope_scaling,
-                       float rope_theta,
+                       torch::Tensor inv_freq,
                        bool interleaved,
                        const torch::TensorOptions& options)
     : scale_(scale) {
   // register rotary positional embedding
   pos_emb_ = RotaryEmbedding(
-      rotary_dim, max_position, rope_scaling, rope_theta, interleaved, options);
+      rotary_dim, max_position, inv_freq, interleaved, options);
 }
 
 RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)

@@ -500,8 +500,8 @@ REGISTER_MODEL_ARGS(baichuan, [&] {
   LOAD_ARG_OR(model_type, "model_type", "baichuan");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(hidden_act, "hidden_act", "silu");
+  LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
-  LOAD_ARG_OR(eos_token_id, "bos_token_id", 1);
   // LOAD_ARG_OR(pad_token_id, "pad_token_id", 0);
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   // initializer_range in Qwen & Falcon have but never use
@@ -514,7 +514,6 @@ REGISTER_MODEL_ARGS(baichuan, [&] {
   LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-6);
   LOAD_ARG_OR(vocab_size, "vocab_size", 125696);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-  LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
   // LOAD_ARG_OR(tie_word_embeddings, "tie_word_embeddings", false);
 
   LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {

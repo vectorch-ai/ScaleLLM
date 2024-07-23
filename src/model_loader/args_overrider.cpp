@@ -25,7 +25,7 @@ DEFINE_string(rotary_dim, "", "args for rotary position embeddings");
 DEFINE_string(rope_theta,
               "",
               "the base period of the rotary position embeddings");
-DEFINE_string(rope_scaling, "", "rope scaling factor");
+// DEFINE_string(rope_scaling, "", "rope scaling factor");
 DEFINE_string(
     rotary_pct,
     "",
@@ -170,7 +170,7 @@ void override_args_from_gflag(ModelArgs& args,
   OVERRIDE_ARG_FROM_GFLAG(args, layer_norm_eps);
   OVERRIDE_ARG_FROM_GFLAG(args, rotary_dim);
   OVERRIDE_ARG_FROM_GFLAG(args, rope_theta);
-  OVERRIDE_ARG_FROM_GFLAG(args, rope_scaling);
+  // OVERRIDE_ARG_FROM_GFLAG(args, rope_scaling);
   OVERRIDE_ARG_FROM_GFLAG(args, rotary_pct);
   OVERRIDE_ARG_FROM_GFLAG(args, max_position_embeddings);
   OVERRIDE_ARG_FROM_GFLAG(args, bos_token_id);

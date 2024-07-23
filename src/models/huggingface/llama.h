@@ -428,9 +428,16 @@ REGISTER_MODEL_ARGS(llama, [&] {
     LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 8192);
     LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-5);
     LOAD_ARG_OR(bos_token_id, "bos_token_id", 128000);
+    // TODO: support a list of eos token ids
     LOAD_ARG_OR(eos_token_id, "eos_token_id", 128001);
     LOAD_ARG_OR(rope_theta, "rope_theta", 500000.0f);
-    LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+    // load rope scaling parameters
+    LOAD_ARG(rope_scaling_rope_type, "rope_scaling.rope_type");
+    LOAD_ARG(rope_scaling_factor, "rope_scaling.factor");
+    LOAD_ARG(rope_scaling_low_freq_factor, "rope_scaling.low_freq_factor");
+    LOAD_ARG(rope_scaling_high_freq_factor, "rope_scaling.high_freq_factor");
+    LOAD_ARG(rope_scaling_original_max_position_embeddings,
+             "rope_scaling.original_max_position_embeddings");
 
     // stop token ids: "<|end_of_text|>", "<|eot_id|>"
     SET_ARG(stop_token_ids, std::unordered_set<int32_t>({128001, 128009}));
@@ -446,7 +453,7 @@ REGISTER_MODEL_ARGS(llama, [&] {
     LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
     LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
     LOAD_ARG_OR(rope_theta, "rope_theta", 5000000.0f);
-    LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+    // LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
     // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>",
     // "<|im_sep|>"
@@ -462,7 +469,7 @@ REGISTER_MODEL_ARGS(llama, [&] {
     LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
     LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
     LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-    LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
+    // LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
   }
 
   LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {

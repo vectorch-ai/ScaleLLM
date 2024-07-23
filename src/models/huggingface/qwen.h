@@ -398,7 +398,6 @@ REGISTER_MODEL_ARGS(qwen, [&] {
   // LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
   // LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-  // LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
   LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
     return args->hidden_size() / args->n_heads();

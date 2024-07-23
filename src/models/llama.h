@@ -371,7 +371,6 @@ REGISTER_MODEL_ARGS(llama2, [&] {
   LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
-  LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
   LOAD_ARG_OR_FUNC(intermediate_size, "intermediate_size", [&] {
     const int64_t multiple_of = json.value_or<int64_t>("multiple_of", 256);

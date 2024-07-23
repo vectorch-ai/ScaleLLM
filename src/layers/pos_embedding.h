@@ -8,10 +8,13 @@
 
 namespace llm {
 namespace detail {
-torch::Tensor compute_freqs(int64_t max_position_embeddings,
-                            int64_t rotary_dim,
-                            float scaling_factor,
-                            float theta);
+torch::Tensor compute_default_inv_freq(int64_t rotary_dim, float theta);
+
+torch::Tensor apply_llama3_rope_scaling(torch::Tensor inv_freq,
+                                        float factor,
+                                        float low_freq_factor,
+                                        float high_freq_factor,
+                                        int64_t old_context_len);
 
 std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
     const torch::Tensor& q,
@@ -48,8 +51,7 @@ class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
   // chose right implementation based on the args.
   RotaryEmbedding(int64_t rotary_dim,
                   int64_t max_position_embeddings,
-                  float scaling_factor,
-                  float rope_theta,
+                  torch::Tensor inv_freq,
                   bool interleaved,
                   const torch::TensorOptions& options);
 };
@@ -64,8 +66,7 @@ class RotaryEmbeddingGeneric : public RotaryEmbeddingImpl {
  public:
   RotaryEmbeddingGeneric(int64_t rotary_dim,
                          int64_t max_position_embeddings,
-                         float scaling_factor,
-                         float theta,
+                         torch::Tensor inv_freq,
                          bool interleaved,
                          const torch::TensorOptions& options);
 
@@ -88,8 +89,7 @@ class RotaryEmbeddingKernel : public RotaryEmbeddingImpl {
  public:
   RotaryEmbeddingKernel(int64_t rotary_dim,
                         int64_t max_position_embeddings,
-                        float scaling_factor,
-                        float theta,
+                        torch::Tensor inv_freq,
                         bool interleaved,
                         const torch::TensorOptions& options);
 
