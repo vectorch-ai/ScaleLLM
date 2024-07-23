@@ -439,8 +439,9 @@ REGISTER_MODEL_ARGS(llama, [&] {
     LOAD_ARG(rope_scaling_original_max_position_embeddings,
              "rope_scaling.original_max_position_embeddings");
 
-    // stop token ids: "<|end_of_text|>", "<|eot_id|>"
-    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({128001, 128009}));
+    // stop token ids: "<|end_of_text|>", "<|eom_id|>", "<|eot_id|>"
+    SET_ARG(stop_token_ids,
+            std::unordered_set<int32_t>({128001, 128008, 128009}));
   } else if (args->vocab_size() == 64000) {
     // choose the right chat template
     SET_ARG(model_type, "Yi");
