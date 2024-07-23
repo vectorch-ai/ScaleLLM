@@ -59,7 +59,7 @@ class JsonReader {
         return std::nullopt;
       }
     }
-    
+
     if (data.is_null() || data.is_structured()) {
       // cannot convert null or structured data to T
       return std::nullopt;

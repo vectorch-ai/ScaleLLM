@@ -17,8 +17,8 @@ FlashAttnHandler::FlashAttnHandler(float scale,
                                    const torch::TensorOptions& options)
     : scale_(scale) {
   // register rotary positional embedding
-  pos_emb_ = RotaryEmbedding(
-      rotary_dim, max_position, inv_freq, interleaved, options);
+  pos_emb_ =
+      RotaryEmbedding(rotary_dim, max_position, inv_freq, interleaved, options);
 }
 
 FlashAttnHandler::FlashAttnHandler(float scale,
