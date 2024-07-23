@@ -1,5 +1,7 @@
 .. _quick_start:
 
+Quick Start
+===========
 
 Installation
 ------------

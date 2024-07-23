@@ -58,7 +58,7 @@ announcement = """
 📢 ScaleLLM is distributed on <a href="https://pypi.org/project/scalellm/">PyPI</a> 🎉.
 If you like this project, <a href='https://github.com/vectorch-ai/ScaleLLM' target='_blank'>give us a star ⭐️! </a>
 """
-html_theme_options["announcement"] = announcement
+# html_theme_options["announcement"] = announcement
 # html_static_path = ['_static']
 
 # show On GitHub link in footer
