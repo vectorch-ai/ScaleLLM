@@ -16,8 +16,7 @@ class RefHandler : public AttentionHandler {
   RefHandler(float scale,
              int64_t rotary_dim,
              int64_t max_position,
-             float rope_scaling,
-             float rope_theta,
+             torch::Tensor inv_freq,
              bool interleaved,
              const torch::TensorOptions& options);
 

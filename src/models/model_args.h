@@ -52,8 +52,12 @@ struct ModelArgs {
   // the base period of the rotary position embeddings.
   DEFINE_ARG(float, rope_theta) = 10000.0f;
 
-  // rope scaling factor.
-  DEFINE_ARG(float, rope_scaling) = 0.0f;
+  // rope_scaling related args
+  DEFINE_ARG(std::string, rope_scaling_rope_type);
+  DEFINE_ARG(float, rope_scaling_factor) = 0.0f;
+  DEFINE_ARG(float, rope_scaling_low_freq_factor) = 0.0f;
+  DEFINE_ARG(float, rope_scaling_high_freq_factor) = 0.0f;
+  DEFINE_ARG(int64_t, rope_scaling_original_max_position_embeddings) = 0;
 
   // percentage of hidden dimension to allocate to rotary position embeddings.
   DEFINE_ARG(float, rotary_pct) = 1.0f;
@@ -120,7 +124,14 @@ inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {
   os << ", layer_norm_eps: " << args.layer_norm_eps();
   os << ", rotary_dim: " << args.rotary_dim();
   os << ", rope_theta: " << args.rope_theta();
-  os << ", rope_scaling: " << args.rope_scaling();
+  os << ", rope_scaling_rope_type: " << args.rope_scaling_rope_type();
+  os << ", rope_scaling_factor: " << args.rope_scaling_factor();
+  os << ", rope_scaling_low_freq_factor: "
+     << args.rope_scaling_low_freq_factor();
+  os << ", rope_scaling_high_freq_factor: "
+     << args.rope_scaling_high_freq_factor();
+  os << ", rope_scaling_original_max_position_embeddings: "
+     << args.rope_scaling_original_max_position_embeddings();
   os << ", rotary_pct: " << args.rotary_pct();
   os << ", max_position_embeddings: " << args.max_position_embeddings();
   os << ", bos_token_id: " << args.bos_token_id();

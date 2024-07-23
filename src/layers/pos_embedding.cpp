@@ -6,7 +6,9 @@
 
 #include <memory>
 
+#include "common/slice.h"
 #include "kernels/pos_embedding_kernels.h"
+
 DEFINE_bool(disable_custom_kernels, false, "disable all custom kernels");
 
 namespace llm {
@@ -54,43 +56,56 @@ inline std::tuple<torch::Tensor, torch::Tensor> apply_rotated_rotary_pos_emb(
 std::shared_ptr<RotaryEmbeddingImpl> create(
     int64_t rotary_dim,
     int64_t max_position_embeddings,
-    float scaling_factor,
-    float rope_theta,
+    torch::Tensor inv_freq,
     bool interleaved,
     const torch::TensorOptions& options) {
   if (options.device().is_cuda() && !FLAGS_disable_custom_kernels) {
     // use custom kernels
-    return std::make_shared<RotaryEmbeddingKernel>(rotary_dim,
-                                                   max_position_embeddings,
-                                                   scaling_factor,
-                                                   rope_theta,
-                                                   interleaved,
-                                                   options);
+    return std::make_shared<RotaryEmbeddingKernel>(
+        rotary_dim, max_position_embeddings, inv_freq, interleaved, options);
   }
-  return std::make_shared<RotaryEmbeddingGeneric>(rotary_dim,
-                                                  max_position_embeddings,
-                                                  scaling_factor,
-                                                  rope_theta,
-                                                  interleaved,
-                                                  options);
+  return std::make_shared<RotaryEmbeddingGeneric>(
+      rotary_dim, max_position_embeddings, inv_freq, interleaved, options);
 }
 }  // namespace
 
 namespace detail {
 // compute the inverse frequencies
-// returns float32 tensor with shape [max_position_embeddings, rotary_dim]
-torch::Tensor compute_freqs(int64_t max_position_embeddings,
-                            int64_t rotary_dim,
-                            float scaling_factor,
-                            float theta) {
+// returns float32 tensor with shape [rotary_dim / 2]
+torch::Tensor compute_default_inv_freq(int64_t rotary_dim, float theta) {
   CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
   const auto slice = torch::arange(0, rotary_dim, 2, torch::kFloat32);
-  const auto inv_freq = 1.0 / torch::pow(theta, slice / rotary_dim);
-  auto t = torch::arange(0, max_position_embeddings, 1, torch::kFloat32);
-  if (scaling_factor != 0) {
-    t /= scaling_factor;
+  return 1.0 / torch::pow(theta, slice / rotary_dim);
+}
+
+torch::Tensor apply_llama3_rope_scaling(torch::Tensor inv_freq,
+                                        float factor,
+                                        float low_freq_factor,
+                                        float high_freq_factor,
+                                        int64_t old_context_len) {
+  Slice<float> inv_freq_slice(inv_freq.mutable_data_ptr<float>(),
+                              inv_freq.numel());
+  std::vector<float> new_inv_freq;
+  new_inv_freq.reserve(inv_freq_slice.size());
+
+  const float low_freq_wavelen = old_context_len / low_freq_factor;
+  const float high_freq_wavelen = old_context_len / high_freq_factor;
+  for (auto freq : inv_freq_slice) {
+    float new_freq = freq;
+    const float wavelen = 2 * M_PI / freq;
+    if (wavelen < high_freq_wavelen) {
+      // do nothing
+    } else if (wavelen > low_freq_wavelen) {
+      new_freq = freq / factor;
+    } else {
+      CHECK_NE(low_freq_wavelen, high_freq_wavelen);
+      const float smooth = (old_context_len / wavelen - low_freq_factor) /
+                           (high_freq_factor - low_freq_factor);
+      new_freq = (1 - smooth) * freq / factor + smooth * freq;
+    }
+    new_inv_freq.push_back(new_freq);
   }
-  return torch::einsum("i,j->ij", {t, inv_freq});
+  return torch::tensor(new_inv_freq, inv_freq.options());
 }
 
 std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
@@ -109,29 +124,26 @@ std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb(
 
 RotaryEmbedding::RotaryEmbedding(int64_t rotary_dim,
                                  int64_t max_position_embeddings,
-                                 float scaling_factor,
-                                 float rope_theta,
+                                 torch::Tensor inv_freq,
                                  bool interleaved,
                                  const torch::TensorOptions& options)
     : ModuleHolder(create(rotary_dim,
                           max_position_embeddings,
-                          scaling_factor,
-                          rope_theta,
+                          inv_freq,
                           interleaved,
                           options)) {}
 
 RotaryEmbeddingGeneric::RotaryEmbeddingGeneric(
     int64_t rotary_dim,
     int64_t max_position_embeddings,
-    float scaling_factor,
-    float theta,
+    torch::Tensor inv_freq,
     bool interleaved,
     const torch::TensorOptions& options)
     : rotary_dim_(rotary_dim), interleaved_(interleaved) {
-  CHECK(rotary_dim % 2 == 0) << "rotary_dim must be even";
-
-  const auto freqs = detail::compute_freqs(
-      max_position_embeddings, rotary_dim, scaling_factor, theta);
+  // [max_position_embeddings]
+  auto t = torch::arange(0, max_position_embeddings, 1, torch::kFloat32);
+  // [max_position_embeddings, rotary_dim/2]
+  const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
   // Create cos and sin embeddings.
   torch::Tensor emd;
   if (interleaved) {
@@ -171,13 +183,14 @@ std::tuple<torch::Tensor, torch::Tensor> RotaryEmbeddingGeneric::forward(
 RotaryEmbeddingKernel::RotaryEmbeddingKernel(
     int64_t rotary_dim,
     int64_t max_position_embeddings,
-    float scaling_factor,
-    float theta,
+    torch::Tensor inv_freq,
     bool interleaved,
     const torch::TensorOptions& options)
     : rotary_dim_(rotary_dim), interleaved_(interleaved) {
-  const auto freqs = detail::compute_freqs(
-      max_position_embeddings, rotary_dim, scaling_factor, theta);
+  // [max_position_embeddings]
+  auto t = torch::arange(0, max_position_embeddings, 1, torch::kFloat32);
+  // [max_position_embeddings, rotary_dim/2]
+  const auto freqs = torch::einsum("i,j->ij", {t, inv_freq});
 
   const auto cos_sin = torch::cat({freqs.cos(), freqs.sin()}, /*dim=*/-1);
   cos_sin_cache_ = register_buffer("cos_sin_cache", cos_sin.to(options));

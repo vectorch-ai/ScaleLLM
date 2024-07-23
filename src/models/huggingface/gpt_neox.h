@@ -405,7 +405,6 @@ REGISTER_MODEL_ARGS(gpt_neox, [&] {
   LOAD_ARG_OR(hidden_act, "hidden_act", "gelu");
   LOAD_ARG_OR(rotary_pct, "rotary_pct", 0.25);
   LOAD_ARG_OR(rope_theta, "rotary_emb_base", 10000.0f);
-  LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 2048);
   LOAD_ARG_OR(layer_norm_eps, "layer_norm_eps", 1e-5);
   LOAD_ARG_OR(bos_token_id, "bos_token_id", 0);

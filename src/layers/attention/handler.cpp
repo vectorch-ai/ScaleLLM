@@ -9,14 +9,37 @@
 
 #include "flash_attn_handler.h"
 #include "flash_infer_handler.h"
+#include "layers/pos_embedding.h"
 #include "ref_handler.h"
 
 // decide which attention implementation to use
 DEFINE_string(attention_handler,
               "auto",
-              "attention handler, e.g. auto, pytorch, flash_attn, flash_infer");
+              "attention handler, e.g. auto, pytorch, flash_attn");
 
 namespace llm {
+
+namespace {
+torch::Tensor compute_inv_freq(int64_t rotary_dim, const ModelArgs& args) {
+  auto inv_freq =
+      detail::compute_default_inv_freq(rotary_dim, args.rope_theta());
+  if (boost::iequals(args.rope_scaling_rope_type(), "llama3")) {
+    return detail::apply_llama3_rope_scaling(
+        inv_freq,
+        args.rope_scaling_factor(),
+        args.rope_scaling_low_freq_factor(),
+        args.rope_scaling_high_freq_factor(),
+        args.rope_scaling_original_max_position_embeddings());
+  }
+
+  if (!args.rope_scaling_rope_type().empty()) {
+    LOG(FATAL) << "Unsupported rope scaling type: "
+               << args.rope_scaling_rope_type();
+  }
+  return inv_freq;
+}
+
+}  // namespace
 
 // create an attention handler with alibi slopes
 std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_alibi(
@@ -69,13 +92,14 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
 
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
 
+  const auto inv_freq = compute_inv_freq(rotary_dim, args);
+
   // check if the user specified the attention handler
   if (boost::iequals(FLAGS_attention_handler, "pytorch")) {
     return std::make_unique<RefHandler>(scale,
                                         rotary_dim,
                                         args.max_position_embeddings(),
-                                        args.rope_scaling(),
-                                        args.rope_theta(),
+                                        inv_freq,
                                         interleaved,
                                         options);
   }
@@ -86,20 +110,9 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
     return std::make_unique<FlashAttnHandler>(scale,
                                               rotary_dim,
                                               args.max_position_embeddings(),
-                                              args.rope_scaling(),
-                                              args.rope_theta(),
+                                              inv_freq,
                                               interleaved,
                                               options);
-  }
-  if (boost::iequals(FLAGS_attention_handler, "flash_infer")) {
-    CHECK(is_cuda) << "flash_infer only supports cuda device";
-    return std::make_unique<FlashInferHandler>(scale,
-                                               rotary_dim,
-                                               args.max_position_embeddings(),
-                                               args.rope_scaling(),
-                                               args.rope_theta(),
-                                               interleaved,
-                                               options);
   }
 
   // choose the best handler based on device type
@@ -108,8 +121,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
     return std::make_unique<FlashAttnHandler>(scale,
                                               rotary_dim,
                                               args.max_position_embeddings(),
-                                              args.rope_scaling(),
-                                              args.rope_theta(),
+                                              inv_freq,
                                               interleaved,
                                               options);
   }
@@ -118,8 +130,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
   return std::make_unique<RefHandler>(scale,
                                       rotary_dim,
                                       args.max_position_embeddings(),
-                                      args.rope_scaling(),
-                                      args.rope_theta(),
+                                      inv_freq,
                                       interleaved,
                                       options);
 }

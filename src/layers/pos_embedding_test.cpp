@@ -1,5 +1,6 @@
 #include "pos_embedding.h"
 
+#include <ATen/ops/allclose.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
@@ -94,6 +95,51 @@ std::tuple<torch::Tensor, torch::Tensor> apply_rotary_emb_ref(
 
 }  // namespace
 
+TEST(RopeScalingTest, Llama3) {
+  const int64_t rotary_dim = 128;
+  const float theta = 500000.0f;
+  const auto inv_freq = detail::compute_default_inv_freq(rotary_dim, theta);
+  auto expected_inv_freq = torch::tensor(
+      {1.0000e+00, 8.1462e-01, 6.6360e-01, 5.4058e-01, 4.4037e-01, 3.5873e-01,
+       2.9223e-01, 2.3805e-01, 1.9392e-01, 1.5797e-01, 1.2869e-01, 1.0483e-01,
+       8.5397e-02, 6.9566e-02, 5.6670e-02, 4.6164e-02, 3.7606e-02, 3.0635e-02,
+       2.4955e-02, 2.0329e-02, 1.6560e-02, 1.3490e-02, 1.0990e-02, 8.9523e-03,
+       7.2927e-03, 5.9407e-03, 4.8394e-03, 3.9423e-03, 3.2114e-03, 2.6161e-03,
+       2.1311e-03, 1.7360e-03, 1.4142e-03, 1.1520e-03, 9.3847e-04, 7.6450e-04,
+       6.2277e-04, 5.0732e-04, 4.1327e-04, 3.3666e-04, 2.7425e-04, 2.2341e-04,
+       1.8199e-04, 1.4825e-04, 1.2077e-04, 9.8381e-05, 8.0143e-05, 6.5286e-05,
+       5.3183e-05, 4.3324e-05, 3.5292e-05, 2.8750e-05, 2.3420e-05, 1.9078e-05,
+       1.5542e-05, 1.2660e-05, 1.0313e-05, 8.4015e-06, 6.8440e-06, 5.5752e-06,
+       4.5417e-06, 3.6997e-06, 3.0139e-06, 2.4551e-06},
+      torch::kFloat32);
+
+  EXPECT_TRUE(torch::allclose(inv_freq, expected_inv_freq, /*rtol=*/1e-04));
+
+  const float factor = 8.0f;
+  const float low_freq_factor = 1.0f;
+  const float high_freq_factor = 4.0f;
+  const int64_t old_context_len = 8192;
+  const auto scaled_inv_freq = detail::apply_llama3_rope_scaling(
+      inv_freq, factor, low_freq_factor, high_freq_factor, old_context_len);
+
+  auto expected_scaled_inv_freq = torch::tensor(
+      {1.0000e+00, 8.1462e-01, 6.6360e-01, 5.4058e-01, 4.4037e-01, 3.5873e-01,
+       2.9223e-01, 2.3805e-01, 1.9392e-01, 1.5797e-01, 1.2869e-01, 1.0483e-01,
+       8.5397e-02, 6.9566e-02, 5.6670e-02, 4.6164e-02, 3.7606e-02, 3.0635e-02,
+       2.4955e-02, 2.0329e-02, 1.6560e-02, 1.3490e-02, 1.0990e-02, 8.9523e-03,
+       7.2927e-03, 5.9407e-03, 4.8394e-03, 3.9423e-03, 3.2114e-03, 2.1666e-03,
+       1.3719e-03, 8.5675e-04, 5.2485e-04, 3.1269e-04, 1.7851e-04, 9.5562e-05,
+       7.7847e-05, 6.3415e-05, 5.1659e-05, 4.2082e-05, 3.4281e-05, 2.7926e-05,
+       2.2749e-05, 1.8532e-05, 1.5096e-05, 1.2298e-05, 1.0018e-05, 8.1607e-06,
+       6.6479e-06, 5.4155e-06, 4.4115e-06, 3.5937e-06, 2.9275e-06, 2.3848e-06,
+       1.9427e-06, 1.5826e-06, 1.2892e-06, 1.0502e-06, 8.5550e-07, 6.9690e-07,
+       5.6771e-07, 4.6247e-07, 3.7673e-07, 3.0689e-07},
+      torch::kFloat32);
+  EXPECT_TRUE(torch::allclose(scaled_inv_freq,
+                              expected_scaled_inv_freq,
+                              /*rtol=*/1e-04));
+}
+
 class PosEmbeddingTest : public ::testing::TestWithParam<
                              std::tuple<torch::Device,
                                         torch::ScalarType,
@@ -128,12 +174,9 @@ TEST_P(PosEmbeddingTest, Rotary) {
   const torch::Tensor positions = torch::randint(
       0, max_position_embeddings, {num_tokens}, options.dtype(torch::kInt));
 
-  RotaryEmbeddingGeneric rotary_embedding(head_dim,
-                                          max_position_embeddings,
-                                          /*scaling_factor*/ 0.0f,
-                                          theta,
-                                          interleaved,
-                                          options);
+  const auto inv_freq = detail::compute_default_inv_freq(head_dim, theta);
+  RotaryEmbeddingGeneric rotary_embedding(
+      head_dim, max_position_embeddings, inv_freq, interleaved, options);
   const auto [query_output, key_output] =
       rotary_embedding.forward(query, key, positions);
 
@@ -180,7 +223,6 @@ class PosEmbeddingKernelTest
                      int64_t /*n_kv_heads*/,
                      int64_t /*head_dim*/,
                      int64_t /*rotary_dim*/,
-                     float /*scaling_factor*/,
                      float /*theta*/,
                      bool /*interleaved*/,
                      int64_t /*max_position_embeddings*/>> {};
@@ -193,7 +235,6 @@ TEST_P(PosEmbeddingKernelTest, Rotary) {
               n_kv_heads,
               head_dim,
               rotary_dim,
-              scaling_factor,
               theta,
               interleaved,
               max_position_embeddings] = GetParam();
@@ -209,19 +250,12 @@ TEST_P(PosEmbeddingKernelTest, Rotary) {
   const torch::Tensor positions = torch::randint(
       0, max_position_embeddings, {num_tokens}, options.dtype(torch::kInt));
 
-  RotaryEmbeddingGeneric rotary_embedding(rotary_dim,
-                                          max_position_embeddings,
-                                          scaling_factor,
-                                          10000.0f,
-                                          interleaved,
-                                          options);
+  const auto inv_freq = detail::compute_default_inv_freq(rotary_dim, theta);
+  RotaryEmbeddingGeneric rotary_embedding(
+      rotary_dim, max_position_embeddings, inv_freq, interleaved, options);
 
-  RotaryEmbeddingKernel rotary_embedding_kernel(rotary_dim,
-                                                max_position_embeddings,
-                                                scaling_factor,
-                                                10000.0f,
-                                                interleaved,
-                                                options);
+  RotaryEmbeddingKernel rotary_embedding_kernel(
+      rotary_dim, max_position_embeddings, inv_freq, interleaved, options);
 
   auto [query_output, key_output] =
       rotary_embedding.forward(query, key, positions);
@@ -245,7 +279,6 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(32 /*mha*/, 8 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(128),                               // head_dim
         ::testing::Values(128, 64),                           // rotary_dim
-        ::testing::Values(0.0f, 0.5f),                        // scaling_factor
         ::testing::Values(100000.0f, 500000.0f),              // theta
         ::testing::Values(false, true),                       // interleaved
         ::testing::Values(4096, 8192)  // max_position_embeddings
