@@ -232,7 +232,7 @@ else()
   FetchContent_MakeAvailable(libtorch)
   
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
-  message(STATUS "Downloading and using libtorch 2.3 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
+  message(STATUS "Downloading and using libtorch 2.3.1 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
 
 # check if USE_CXX11_ABI is set correctly
