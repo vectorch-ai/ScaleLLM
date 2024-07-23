@@ -49,10 +49,10 @@ ScaleLLM is available as a Python Wheel package on PyPI. You can install it usin
 pip install scalellm
 ```
 
-If you want to install ScaleLLM with different version of CUDA and Pytorch, you can pip install it with provding index URL of the version. For example, to install ScaleLLM with CUDA 11.8 and Pytorch 2.2, you can use the following command:
+If you want to install ScaleLLM with different version of CUDA and Pytorch, you can pip install it with provding index URL of the version. For example, to install ScaleLLM with CUDA 11.8 and Pytorch 2.2.2, you can use the following command:
 
 ```bash
-pip install scalellm -i https://whl.vectorch.com/cu118/torch2.2/
+pip install scalellm -i https://whl.vectorch.com/cu118/torch2.2.2/
 ```
 
 ### Build from source
