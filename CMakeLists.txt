@@ -201,18 +201,18 @@ else()
       set(LIBTORCH_URL "https://download.pytorch.org/libtorch/nightly/cu124/libtorch-shared-with-deps-latest.zip")
     endif()
   elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.1)
-    # download libtorch 2.3 with cuda 12.1 from pytorch.org
+    # download libtorch 2.3.1 with cuda 12.1 from pytorch.org
     if (USE_CXX11_ABI)
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.3.0%2Bcu121.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.3.1%2Bcu121.zip")
     else()
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.3.0%2Bcu121.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.3.1%2Bcu121.zip")
     endif()
   elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 11.8)
-    # download libtorch 2.3 with cuda 11.8 from pytorch.org
+    # download libtorch 2.3.1 with cuda 11.8 from pytorch.org
     if (USE_CXX11_ABI)
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.3.0%2Bcu118.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.3.1%2Bcu118.zip")
     else()
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-shared-with-deps-2.3.0%2Bcu118.zip")
+      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-shared-with-deps-2.3.1%2Bcu118.zip")
     endif()
   else()
     # error out if cuda version is not supported
