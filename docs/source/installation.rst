@@ -67,36 +67,13 @@ If you want to install ScaleLLM with different version of CUDA and Pytorch, you 
 
 Build From Source
 -----------------
+If no wheel package is available for your configuration, you can build ScaleLLM from source code. You can clone the repository and install it locally using the following commands:
 
-.. tabs::
-
-	.. group-tab:: curl
-		
-		.. code-block:: bash
-
-			$ curl -L
-
-	.. group-tab:: openai
-
-		.. code-block:: bash
-
-			$ git clone
-
-
-Another section
----------------
-.. tabs::
-
-	.. group-tab:: curl
-		
-		.. code-block:: bash
-
-			$ curl -L
-
-	.. group-tab:: openai
-		
-		.. code-block:: bash
-
-			$ git clone
+.. code-block:: bash
+	
+	$ git clone --recursive https://github.com/vectorch-ai/ScaleLLM.git
+	$ cd ScaleLLM
+	$ python3 setup.py bdist_wheel
+	$ pip install dist/scalellm-*.whl
 
 

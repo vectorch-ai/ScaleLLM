@@ -7,3 +7,4 @@ sphinxcontrib-napoleon == 0.7
 sphinxcontrib-httpdomain == 1.8.1
 furo == 2024.5.6
 myst-parser == 3.0.1
+sphinx-autobuild 
