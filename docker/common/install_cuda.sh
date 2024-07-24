@@ -4,6 +4,9 @@
 
 set -ex
 
+NCCL_VERSION=v2.21.5-1
+CUDNN_VERSION=9.1.0.70
+
 function install_cusparselt_040 {
     # cuSparseLt license: https://docs.nvidia.com/cuda/cusparselt/license.html
     mkdir tmp_cusparselt && pushd tmp_cusparselt
@@ -27,7 +30,7 @@ function install_cusparselt_052 {
 }
 
 function install_118 {
-    echo "Installing CUDA 11.8 and cuDNN 8.7 and NCCL 2.15 and cuSparseLt-0.4.0"
+    echo "Installing CUDA 11.8 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt-0.4.0"
     rm -rf /usr/local/cuda-11.8 /usr/local/cuda
     # install CUDA 11.8.0 in the same container
     wget -q https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
@@ -38,16 +41,16 @@ function install_118 {
 
     # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
     mkdir tmp_cudnn && cd tmp_cudnn
-    wget -q https://developer.download.nvidia.com/compute/redist/cudnn/v8.7.0/local_installers/11.8/cudnn-linux-x86_64-8.7.0.84_cuda11-archive.tar.xz -O cudnn-linux-x86_64-8.7.0.84_cuda11-archive.tar.xz
-    tar xf cudnn-linux-x86_64-8.7.0.84_cuda11-archive.tar.xz
-    cp -a cudnn-linux-x86_64-8.7.0.84_cuda11-archive/include/* /usr/local/cuda/include/
-    cp -a cudnn-linux-x86_64-8.7.0.84_cuda11-archive/lib/* /usr/local/cuda/lib64/
+    wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}_cuda11-archive.tar.xz -O cudnn-linux-x86_64-${CUDNN_VERSION}_cuda11-archive.tar.xz
+    tar xf cudnn-linux-x86_64-${CUDNN_VERSION}_cuda11-archive.tar.xz
+    cp -a cudnn-linux-x86_64-${CUDNN_VERSION}_cuda11-archive/include/* /usr/local/cuda/include/
+    cp -a cudnn-linux-x86_64-${CUDNN_VERSION}_cuda11-archive/lib/* /usr/local/cuda/lib64/
     cd ..
     rm -rf tmp_cudnn
 
     # NCCL license: https://docs.nvidia.com/deeplearning/nccl/#licenses
     # Follow build: https://github.com/NVIDIA/nccl/tree/master?tab=readme-ov-file#build
-    git clone -b v2.20.5-1 --depth 1 https://github.com/NVIDIA/nccl.git
+    git clone -b $NCCL_VERSION --depth 1 https://github.com/NVIDIA/nccl.git
     cd nccl && make -j src.build
     cp -a build/include/* /usr/local/cuda/include/
     cp -a build/lib/* /usr/local/cuda/lib64/
@@ -60,7 +63,7 @@ function install_118 {
 }
 
 function install_121 {
-    echo "Installing CUDA 12.1 and cuDNN 8.9 and NCCL 2.20.5 and cuSparseLt-0.5.2"
+    echo "Installing CUDA 12.1 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt-0.5.2"
     rm -rf /usr/local/cuda-12.1 /usr/local/cuda
     # install CUDA 12.1.0 in the same container
     wget -q https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux.run
@@ -71,16 +74,16 @@ function install_121 {
 
     # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
     mkdir tmp_cudnn && cd tmp_cudnn
-    wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz -O cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz
-    tar xf cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz
-    cp -a cudnn-linux-x86_64-8.9.2.26_cuda12-archive/include/* /usr/local/cuda/include/
-    cp -a cudnn-linux-x86_64-8.9.2.26_cuda12-archive/lib/* /usr/local/cuda/lib64/
+    wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz -O cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz
+    tar xf cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz
+    cp -a cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive/include/* /usr/local/cuda/include/
+    cp -a cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive/lib/* /usr/local/cuda/lib64/
     cd ..
     rm -rf tmp_cudnn
 
     # NCCL license: https://docs.nvidia.com/deeplearning/nccl/#licenses
     # Follow build: https://github.com/NVIDIA/nccl/tree/master?tab=readme-ov-file#build
-    git clone -b v2.20.5-1 --depth 1 https://github.com/NVIDIA/nccl.git
+    git clone -b $NCCL_VERSION --depth 1 https://github.com/NVIDIA/nccl.git
     cd nccl && make -j src.build
     cp -a build/include/* /usr/local/cuda/include/
     cp -a build/lib/* /usr/local/cuda/lib64/
@@ -93,7 +96,7 @@ function install_121 {
 }
 
 function install_124 {
-  echo "Installing CUDA 12.4 and cuDNN 8.9 and NCCL 2.20.5 and cuSparseLt-0.5.2"
+  echo "Installing CUDA 12.4 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt-0.5.2"
   rm -rf /usr/local/cuda-12.4 /usr/local/cuda
   # install CUDA 12.4.0 in the same container
   wget -q https://developer.download.nvidia.com/compute/cuda/12.4.0/local_installers/cuda_12.4.0_550.54.14_linux.run
@@ -104,16 +107,16 @@ function install_124 {
 
   # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
   mkdir tmp_cudnn && cd tmp_cudnn
-  wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz -O cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz
-  tar xf cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz
-  cp -a cudnn-linux-x86_64-8.9.2.26_cuda12-archive/include/* /usr/local/cuda/include/
-  cp -a cudnn-linux-x86_64-8.9.2.26_cuda12-archive/lib/* /usr/local/cuda/lib64/
+  wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz -O cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz
+  tar xf cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz
+  cp -a cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive/include/* /usr/local/cuda/include/
+  cp -a cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive/lib/* /usr/local/cuda/lib64/
   cd ..
   rm -rf tmp_cudnn
 
   # NCCL license: https://docs.nvidia.com/deeplearning/nccl/#licenses
   # Follow build: https://github.com/NVIDIA/nccl/tree/master?tab=readme-ov-file#build
-  git clone -b v2.20.5-1 --depth 1 https://github.com/NVIDIA/nccl.git
+  git clone -b $NCCL_VERSION --depth 1 https://github.com/NVIDIA/nccl.git
   cd nccl && make -j src.build
   cp -a build/include/* /usr/local/cuda/include/
   cp -a build/lib/* /usr/local/cuda/lib64/
@@ -200,6 +203,9 @@ function prune_124 {
 
   if [[ -n "$OVERRIDE_GENCODE" ]]; then
       export GENCODE=$OVERRIDE_GENCODE
+  fi
+  if [[ -n "$OVERRIDE_GENCODE_CUDNN" ]]; then
+      export GENCODE_CUDNN=$OVERRIDE_GENCODE_CUDNN
   fi
 
   # all CUDA libs except CuDNN and CuBLAS
