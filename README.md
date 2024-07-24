@@ -159,7 +159,7 @@ For regular completions, you can use this example:
 curl http://localhost:8080/v1/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta-llama/Meta-Llama-3-8B",
+    "model": "meta-llama/Meta-Llama-3.1-8B",
     "prompt": "hello",
     "max_tokens": 32,
     "temperature": 0.7,

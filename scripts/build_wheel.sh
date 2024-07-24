@@ -23,13 +23,15 @@ export PATH="$HOME/.local/bin:$PATH"
 PYVER="${PYTHON_VERSION//./}"
 export PATH="/opt/python/cp${PYVER}-cp${PYVER}/bin:$PATH"
 
-
 # install PyTorch
 pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
 # install other dependencies
 pip install numpy jinja2
 pip install --upgrade setuptools wheel
+
+# set max cache size to 25GiB
+command -v ccache >/dev/null && ccache -M 25Gi
 
 # zero out ccache if ccache is installed
 command -v ccache >/dev/null && ccache -z
