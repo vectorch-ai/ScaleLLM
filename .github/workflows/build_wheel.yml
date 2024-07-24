@@ -23,9 +23,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.8", "3.9", "3.10", "3.11"]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         cuda: ["11.8", "12.1"]
-        torch: ["2.1.2", "2.2.2", "2.3.1"]
+        torch: ["2.2.2", "2.3.1", "2.4.0"]
+        include:
+          - cuda: "12.4"
+            torch: "2.4.0"
     runs-on: [self-hosted, linux, release]
     env:
       PYTHON_VERSION: ${{ matrix.python }}

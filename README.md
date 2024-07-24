@@ -1,10 +1,15 @@
-# ScaleLLM: An efficient LLM Inference solution
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![GitHub Repo stars](https://img.shields.io/github/stars/vectorch-ai/ScaleLLM?style=social)](https://github.com/vectorch-ai/ScaleLLM/stargazers) [![build and test](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) 
+<h1 align="center">
+ScaleLLM: An efficient LLM Inference solution
+</h1>
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
+[![build](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) 
+[![PyPI](https://badge.fury.io/py/scalellm.svg)](https://badge.fury.io/py/scalellm) 
+[![Twitter](https://img.shields.io/twitter/url?label=%20%40VectorchAI&style=social&url=https://x.com/VectorchAI)](https://x.com/VectorchAI)
+[![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn?compact=true&style=flat)](https://discord.gg/PKe5gvBZfn)
 
 
-[![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn)](https://discord.gg/PKe5gvBZfn)
-
-[ScaleLLM]() is a cutting-edge inference system engineered for large language models (LLMs), meticulously designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3](https://github.com/meta-llama/llama3), [Gemma](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more. 
+[ScaleLLM](#) is a cutting-edge inference system engineered for large language models (LLMs), meticulously designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3](https://github.com/meta-llama/llama3), [Gemma](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more. 
 
 ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
 
@@ -45,14 +50,14 @@ ScaleLLM is currently undergoing active development. We are fully committed to c
 
 ScaleLLM is available as a Python Wheel package on PyPI. You can install it using pip:
 ```bash
-# Install scalellm with CUDA 12.1 and Pytorch 2.3
+# Install scalellm with CUDA 12.4 and Pytorch 2.4.0
 pip install scalellm
 ```
 
-If you want to install ScaleLLM with different version of CUDA and Pytorch, you can pip install it with provding index URL of the version. For example, to install ScaleLLM with CUDA 11.8 and Pytorch 2.2.2, you can use the following command:
+If you want to install ScaleLLM with different version of CUDA and Pytorch, you can pip install it with provding index URL of the version. For example, to install ScaleLLM with CUDA 12.1 and Pytorch 2.2.2, you can use the following command:
 
 ```bash
-pip install scalellm -i https://whl.vectorch.com/cu118/torch2.2.2/
+pip install scalellm -i https://whl.vectorch.com/cu121/torch2.2.2/
 ```
 
 ### Build from source
