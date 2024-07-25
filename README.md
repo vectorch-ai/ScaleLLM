@@ -1,22 +1,27 @@
-<h1 align="center">
-ScaleLLM: An efficient LLM Inference solution
-</h1>
+<div align="center">
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
-[![build](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) 
+ScaleLLM
+=================
+<h3> An efficient LLM Inference solution </h3>
+
+[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](https://docs.vectorch.com/)
 [![PyPI](https://badge.fury.io/py/scalellm.svg)](https://badge.fury.io/py/scalellm) 
 [![Twitter](https://img.shields.io/twitter/url?label=%20%40VectorchAI&style=social&url=https://x.com/VectorchAI)](https://x.com/VectorchAI)
 [![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn?compact=true&style=flat)](https://discord.gg/PKe5gvBZfn)
+[![build](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
 
+---
 
-[ScaleLLM](#) is a cutting-edge inference system engineered for large language models (LLMs), meticulously designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3](https://github.com/meta-llama/llama3), [Gemma](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more. 
+<div align="left">
+
+[ScaleLLM](#) is a cutting-edge inference system engineered for large language models (LLMs), designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3](https://github.com/meta-llama/llama3), [Gemma](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more. 
 
 ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
 
-
 ## News:
 * [06/2024] - ScaleLLM is now available on [PyPI](https://pypi.org/project/scalellm/). You can install it using `pip install scalellm`.
-* [03/2024] - [Advanced features](#advanced-features) support for [CUDA graph](#cuda-graph), [prefix cache](#prefix-cache), [chunked prefill](#chunked-prefill) and [speculative decoding](#speculative-decoding).
+* [03/2024] - [Advanced features](#advanced-features) support for ✅ [CUDA graph](#cuda-graph), ✅ [prefix cache](#prefix-cache), ✅ [chunked prefill](#chunked-prefill) and ✅ [speculative decoding](#speculative-decoding).
 * [11/2023] - [First release](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1) with support for popular [open-source models](#supported-models).
 
 ## Key Features
