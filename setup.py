@@ -249,7 +249,6 @@ if __name__ == "__main__":
             "Intended Audience :: Developers",
             "Intended Audience :: Education",
             "Programming Language :: C++",
-            "Programming Language :: CUDA",
             "Programming Language :: Python :: 3 :: Only",
             "Programming Language :: Python :: 3.8",
             "Programming Language :: Python :: 3.9",

@@ -22,16 +22,6 @@ jobs:
     uses: ./.github/workflows/release_test.yml
     secrets: inherit
 
-  # build wheel for release if tests pass
-  build-wheel:
-    uses: ./.github/workflows/build_wheel.yml
-    with:
-      tag: ${{ needs.version-tag.outputs.tag }}
-    secrets: inherit
-    needs:
-      - version-tag
-      - release-test
-
   # publish wheel to pypi if wheel builds successfully
   publish-wheel:
     uses: ./.github/workflows/publish_wheel.yml
@@ -40,7 +30,17 @@ jobs:
     secrets: inherit
     needs:
       - version-tag
-      - build-wheel
+      - release-test
+
+  # build wheel for release if tests pass
+  build-wheel:
+    uses: ./.github/workflows/build_wheel.yml
+    with:
+      tag: ${{ needs.version-tag.outputs.tag }}
+    secrets: inherit
+    needs:
+      - version-tag
+      - publish-wheel
 
   # publish docker image to dockerhub
   publish-cpp-image:
