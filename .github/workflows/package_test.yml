@@ -33,6 +33,7 @@ env:
   # Tells where to store caches.
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
+# cancel all previous runs if a new one is triggered
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
