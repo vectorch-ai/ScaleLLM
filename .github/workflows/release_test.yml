@@ -73,7 +73,7 @@ jobs:
         conda activate ${ENV_NAME}
 
         # Install PyTorch
-        pip install -U torch==${TORCH_VERSION} -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
+        pip install torch==${TORCH_VERSION} -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
         # Uninstall previous version of the package and install the new one
         pip uninstall -y scalellm
