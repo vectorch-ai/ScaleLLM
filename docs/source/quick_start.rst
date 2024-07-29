@@ -29,7 +29,7 @@ If you want to install ScaleLLM with different versions of CUDA and PyTorch, you
 
                 .. code-block:: bash
 
-                    $ pip install scalellm -i https://whl.vectorch.com/cu124/torch2.4.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu124/torch2.4.0/
 
     .. tab:: CUDA 12.1
 
@@ -39,19 +39,19 @@ If you want to install ScaleLLM with different versions of CUDA and PyTorch, you
 
                 .. code-block:: bash
 
-                    $ pip install scalellm -i https://whl.vectorch.com/cu121/torch2.4.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.4.0/
 
             .. tab:: PyTorch 2.3.1
 
                 .. code-block:: bash
 
-                    $ pip install scalellm -i https://whl.vectorch.com/cu121/torch2.3.1/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.3.1/
 
             .. tab:: PyTorch 2.2.2
 
                 .. code-block:: bash
 
-                    $ pip install scalellm -i https://whl.vectorch.com/cu121/torch2.2.2/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.2.2/
 
     .. tab:: CUDA 11.8
 
@@ -61,19 +61,19 @@ If you want to install ScaleLLM with different versions of CUDA and PyTorch, you
 
                 .. code-block:: bash
 
-                    $ pip install scalellm -i https://whl.vectorch.com/cu118/torch2.4.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.4.0/
 
             .. tab:: PyTorch 2.3.1
 
                 .. code-block:: bash
 
-                    $ pip install scalellm -i https://whl.vectorch.com/cu118/torch2.3.1/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.3.1/
 
             .. tab:: PyTorch 2.2.2
 
                 .. code-block:: bash
 
-                    $ pip install scalellm -i https://whl.vectorch.com/cu118/torch2.2.2/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.2.2/
 
 
 Build from source

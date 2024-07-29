@@ -56,13 +56,13 @@ ScaleLLM is currently undergoing active development. We are fully committed to c
 ScaleLLM is available as a Python Wheel package on PyPI. You can install it using pip:
 ```bash
 # Install scalellm with CUDA 12.1 and Pytorch 2.4.0
-pip install scalellm
+pip install -U scalellm
 ```
 
 If you want to install ScaleLLM with different version of CUDA and Pytorch, you can pip install it with provding index URL of the version. For example, to install ScaleLLM with CUDA 12.1 and Pytorch 2.2.2, you can use the following command:
 
 ```bash
-pip install scalellm -i https://whl.vectorch.com/cu121/torch2.2.2/
+pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.2.2/
 ```
 
 ### Build from source
@@ -250,9 +250,7 @@ python3 -m scalellm.serve.api_server \
 ```
 
 ### Quantization
-Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization ([GPTQ](https://arxiv.org/abs/2210.17323)) and Activation-aware Weight Quantization ([AWQ](https://arxiv.org/abs/2306.00978)), with seamless integration into the following libraries: autogptq, exllama, exllamav2, and awq. 
-
->By default, **exllamav2** is employed for GPTQ 4-bit quantization. However, you have the flexibility to choose a specific implementation by configuring the **"--qlinear_gptq_impl"** option, which allows you to select from exllama, exllamav2, or auto option.
+Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization ([GPTQ](https://arxiv.org/abs/2210.17323)) and Activation-aware Weight Quantization ([AWQ](https://arxiv.org/abs/2306.00978)), with seamless integration into the following libraries: autogptq and awq. 
 
 
 ## Supported Models

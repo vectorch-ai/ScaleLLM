@@ -7,13 +7,11 @@ cc_library(
   HDRS 
     qlinear_impl.h
     qlinear_gptq_impl.h
-    qlinear_exllama_impl.h
     qlinear_exllamav2_impl.h
     qlinear_awq_impl.h
   SRCS 
     qlinear_impl.cpp
     qlinear_gptq_impl.cpp
-    qlinear_exllama_impl.cpp
     qlinear_exllamav2_impl.cpp
     qlinear_awq_impl.cpp
   DEPS
@@ -21,7 +19,6 @@ cc_library(
     :linear
     :gptq.kernels
     :awq.kernels
-    :exllama.kernels
     :exllamav2.kernels
     glog::glog
     gflags::gflags
