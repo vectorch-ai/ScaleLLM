@@ -29,5 +29,7 @@ cc_library(
     exllamav2/cuda/q_gemm.cu
   DEPS
     torch
+  LINKOPTS 
+    cublas
 )
 
