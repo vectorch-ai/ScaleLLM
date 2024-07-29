@@ -22,21 +22,6 @@ cc_library(
 
 cc_library(
   NAME 
-    exllama.kernels
-  SRCS 
-    exllama/exllama_ext.cpp
-    exllama/cuda_buffers.cu
-    exllama/cuda_func/column_remap.cu
-    exllama/cuda_func/q4_matmul.cu
-    exllama/cuda_func/q4_matrix.cu
-  DEPS
-    torch
-  LINKOPTS 
-    cublas
-)
-
-cc_library(
-  NAME 
     exllamav2.kernels
   SRCS 
     exllamav2/ext.cpp

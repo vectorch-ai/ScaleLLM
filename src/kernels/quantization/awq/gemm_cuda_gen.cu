@@ -582,17 +582,19 @@ torch::Tensor gemm_forward_cuda(torch::Tensor _in_feats,
     // threadIdx.x: 32
     // threadIdx.y: i_factors[2] * j_factors[2]
     dim3 threads_per_block(32, 2);
-    gemm_forward_4bit_cuda_m16n128k32<<<num_blocks, threads_per_block, 0, stream>>>(
-        group_size,
-        split_k_iters,
-        in_feats,
-        kernel,
-        scaling_factors,
-        zeros,
-        num_in_feats,
-        num_in_channels,
-        num_out_channels,
-        out_feats);
+    gemm_forward_4bit_cuda_m16n128k32<<<num_blocks,
+                                        threads_per_block,
+                                        0,
+                                        stream>>>(group_size,
+                                                  split_k_iters,
+                                                  in_feats,
+                                                  kernel,
+                                                  scaling_factors,
+                                                  zeros,
+                                                  num_in_feats,
+                                                  num_in_channels,
+                                                  num_out_channels,
+                                                  out_feats);
   } else if (num_out_channels % 64 == 0) {
     int j_factors1 = num_out_channels / 64 / 1;
     dim3 num_blocks(1 * (num_out_feats + 16 - 1) / 16 * j_factors1 *
@@ -601,17 +603,19 @@ torch::Tensor gemm_forward_cuda(torch::Tensor _in_feats,
     // threadIdx.x: 32
     // threadIdx.y: i_factors[2] * j_factors[2]
     dim3 threads_per_block(32, 2);
-    gemm_forward_4bit_cuda_m16n64k32<<<num_blocks, threads_per_block, 0, stream>>>(
-        group_size,
-        split_k_iters,
-        in_feats,
-        kernel,
-        scaling_factors,
-        zeros,
-        num_in_feats,
-        num_in_channels,
-        num_out_channels,
-        out_feats);
+    gemm_forward_4bit_cuda_m16n64k32<<<num_blocks,
+                                       threads_per_block,
+                                       0,
+                                       stream>>>(group_size,
+                                                 split_k_iters,
+                                                 in_feats,
+                                                 kernel,
+                                                 scaling_factors,
+                                                 zeros,
+                                                 num_in_feats,
+                                                 num_in_channels,
+                                                 num_out_channels,
+                                                 out_feats);
   }
   return _out_feats.sum(0);
 }
