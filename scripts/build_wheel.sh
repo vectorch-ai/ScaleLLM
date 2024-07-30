@@ -24,7 +24,7 @@ PYVER="${PYTHON_VERSION//./}"
 export PATH="/opt/python/cp${PYVER}-cp${PYVER}/bin:$PATH"
 
 # install PyTorch
-pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
+pip install --no-cache-dir torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
 # install other dependencies
 pip install numpy jinja2
