@@ -33,3 +33,13 @@ cc_library(
     cublas
 )
 
+cc_library(
+  NAME
+    marlin.kernels
+  SRCS
+    marlin/dense.cu
+    marlin/sparse.cu
+  DEPS
+    torch
+)
+
