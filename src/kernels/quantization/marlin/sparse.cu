@@ -718,9 +718,9 @@ __global__ void Marlin_2_4(
       int red_sh_rd = red_sh_stride * (threadIdx.x / b_sh_stride) +
                       (threadIdx.x % b_sh_stride);
 
-  // Parallel logarithmic shared memory reduction. We make sure to avoid any
-// unnecessary read or write iterations, e.g., for two warps we write only once
-// by warp 1 and read only once by warp 0.
+      // Parallel logarithmic shared memory reduction. We make sure to avoid any
+      // unnecessary read or write iterations, e.g., for two warps we write only
+      // once by warp 1 and read only once by warp 0.
 #pragma unroll
       for (int m_block = 0; m_block < thread_m_blocks; m_block++) {
 #pragma unroll
