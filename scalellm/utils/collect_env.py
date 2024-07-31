@@ -1,5 +1,5 @@
 # Adapted from https://github.com/pytorch/pytorch
-
+# ruff: noqa
 # mypy: allow-untyped-defs
 
 # this file must be python2 compliant.
