@@ -42,6 +42,8 @@ SystemEnv = namedtuple(
         "cuda_module_loading",
         "nvidia_driver_version",
         "nvidia_gpu_models",
+        "nvidia_gpu_topo",
+        "nccl_version",
         "cudnn_version",
         "pip_version",  # 'pip' or 'pip3'
         "pip_packages",
@@ -52,8 +54,6 @@ SystemEnv = namedtuple(
         "caching_allocator_config",
         "is_xnnpack_available",
         "cpu_info",
-        "gpu_info",
-        "gpu_topo",
     ],
 )
 
@@ -230,6 +230,11 @@ def get_cudnn_version(run_lambda):
     result = "\n".join(files)
     return "Probably one of the following:\n{}".format(result)
 
+def get_nccl_version():
+    if TORCH_AVAILABLE:
+        nccl_version = torch.cuda.nccl.version()
+        return '.'.join(str(x) for x in nccl_version)
+    return "N/A"
 
 def get_nvidia_smi():
     # Note: nvidia-smi is currently available only on Windows and Linux
@@ -343,10 +348,6 @@ def get_cpu_info(run_lambda):
         cpu_info = err
     return cpu_info
   
-def get_gpu_info(run_lambda):
-    if get_platform() == 'linux':
-        return run_and_read_all(run_lambda, 'nvidia-smi')
-    return "N/A"
   
 def get_gpu_topo(run_lambda):
     if get_platform() == 'linux':
@@ -539,7 +540,9 @@ def get_env_info():
         cuda_runtime_version=get_running_cuda_version(run_lambda),
         cuda_module_loading=get_cuda_module_loading_config(),
         nvidia_gpu_models=get_gpu_info(run_lambda),
+        nvidia_gpu_topo=get_gpu_topo(run_lambda),
         nvidia_driver_version=get_nvidia_driver_version(run_lambda),
+        nccl_version=get_nccl_version(),
         cudnn_version=get_cudnn_version(run_lambda),
         hip_compiled_version=hip_compiled_version,
         hip_runtime_version=hip_runtime_version,
@@ -555,8 +558,6 @@ def get_env_info():
         caching_allocator_config=get_cachingallocator_config(),
         is_xnnpack_available=is_xnnpack_available(),
         cpu_info=get_cpu_info(run_lambda),
-        gpu_info=get_gpu_info(run_lambda),
-        gpu_topo=get_gpu_topo(run_lambda),
     )
 
 
@@ -579,7 +580,9 @@ Is CUDA available: {is_cuda_available}
 CUDA runtime version: {cuda_runtime_version}
 CUDA_MODULE_LOADING set to: {cuda_module_loading}
 GPU models and configuration: {nvidia_gpu_models}
+GPU topology: {nvidia_gpu_topo}
 Nvidia driver version: {nvidia_driver_version}
+NCCL version: {nccl_version}
 cuDNN version: {cudnn_version}
 HIP runtime version: {hip_runtime_version}
 MIOpen runtime version: {miopen_runtime_version}
@@ -587,11 +590,6 @@ Is XNNPACK available: {is_xnnpack_available}
 
 CPU:
 {cpu_info}
-
-GPU:
-{gpu_info}
-
-{gpu_topo}
 
 Versions of relevant libraries:
 {pip_packages}
@@ -642,6 +640,7 @@ def pretty_str(envinfo):
     dynamic_cuda_fields = [
         "cuda_runtime_version",
         "nvidia_gpu_models",
+        "nvidia_gpu_topo",
         "nvidia_driver_version",
     ]
     all_cuda_fields = dynamic_cuda_fields + ["cudnn_version"]
