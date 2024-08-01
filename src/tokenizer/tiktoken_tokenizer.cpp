@@ -35,6 +35,10 @@ TiktokenTokenizer::TiktokenTokenizer(const std::string_view& dir_path,
   if (!args.pattern().empty()) {
     const auto regex_str = absl::StrCat("(", args.pattern(), ")");
     regex_ = std::make_unique<re2::RE2>(regex_str);
+    if (regex_->error_code() != 0) {
+      LOG(FATAL) << "Failed to compile regex: " << args.pattern() << ", error: "
+                 << regex_->error();
+    }
   }
 
   // construct prefix tokens
