@@ -4,7 +4,7 @@ This directory contains kernels written in Triton. These kernels can be compiled
 
 ## How to compile Triton Kernels
 
-For example, you can run the following command to compile the `vector_add` kernel for the `float16` data type:
+For example, you can run the following command to compile 'add_kernel' in example folder for the `float16` data type:
 
 ```bash
 # Kernel for data type=float16, BLOCK_SIZE=16

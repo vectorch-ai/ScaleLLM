@@ -32,6 +32,8 @@ jobs:
           echo "     // clang-format off"
           echo "     code"
           echo "     // clang-format on"
+          echo "3> Disable checks on filers/folders with:"
+          echo "     add files/folders to .clang-format-ignore"
 
           printf "\n\033[1mSuggested changes:\n\n"
           echo "$diff" | colordiff
