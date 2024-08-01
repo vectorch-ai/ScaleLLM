@@ -6,7 +6,7 @@ file(GLOB_RECURSE AOT_SOURCES aot/*.c)
 
 cuda_library(
   NAME 
-    vector_add.kernel
+    example.kernel
   HDRS 
     ${AOT_HEADERS}
   SRCS 
