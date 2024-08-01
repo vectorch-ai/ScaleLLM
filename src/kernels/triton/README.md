@@ -1,10 +1,8 @@
-Here's the polished README:
-
 # OpenAI Triton Kernels
 
 This directory contains kernels written in Triton. These kernels can be compiled into self-contained C source code that embeds the 'cubin' data using the Triton ahead-of-time compiler.
 
-## Building Triton Kernels
+## How to compile Triton Kernels
 
 For example, you can run the following command to compile the `vector_add` kernel for the `float16` data type:
 
@@ -25,6 +23,6 @@ python -m triton.tools.link aot/fp16/*.h --out aot/add_kernel_fp16
 ```
 
 The generated files will be located in the `aot` directory. You should find three functions:
-* `load_vector_add_{fp16|fp32}` to load the GPU kernel
-* `unload_vector_add_{fp16|fp32}` to unload the GPU kernel
-* `vector_add_{fp16|fp32}` to launch the kernel
+* `load_add_kernel_{fp16|fp32}` to load the GPU kernel
+* `unload_add_kernel_{fp16|fp32}` to unload the GPU kernel
+* `add_kernel_{fp16|fp32}` to launch the kernel
