@@ -38,7 +38,9 @@ function usage() {
 (( $# < 1 )) && usage
 
 IMAGE="vectorchai/scalellm_devel:latest"
-RUN_OPTS=()
+# by default use all GPUs, can be overridden by -o
+RUN_OPTS=("--gpus all")
+
 INTERACTIVE=1
 while [[ $# > 1 ]]; do
   case "$1" in
@@ -57,6 +59,7 @@ if [[ $INTERACTIVE -eq 1 ]]; then
   RUN_OPTS+=(-i)
 fi
 
+# 
 RUN_OPTS+=(-t --rm)
 
 # Map the working directory and /tmp to allow scripts/binaries to run and also

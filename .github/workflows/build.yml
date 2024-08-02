@@ -68,7 +68,7 @@ jobs:
       run: |
         ./tools/run_in_docker.sh -ni ccache -M 25Gi
         ./tools/run_in_docker.sh -ni cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80
-        ./tools/run_in_docker.sh -ni -o --gpus=all cmake --build build --config ${{env.BUILD_TYPE}} --target all
+        ./tools/run_in_docker.sh -ni cmake --build build --config ${{env.BUILD_TYPE}} --target all
 
     # - name: benchmark
     #   if: ${{ env.BUILD_TYPE == 'Release' }}
@@ -77,4 +77,4 @@ jobs:
     - name: Run unit tests
       working-directory: ${{github.workspace}}/build
       # Execute tests defined by the CMake configuration.
-      run: ../tools/run_in_docker.sh -ni -o --gpus=all ctest --output-on-failure -C ${{env.BUILD_TYPE}}
+      run: ../tools/run_in_docker.sh -ni ctest --output-on-failure -C ${{env.BUILD_TYPE}}

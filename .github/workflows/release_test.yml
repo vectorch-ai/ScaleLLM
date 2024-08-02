@@ -36,7 +36,7 @@ jobs:
     - name: Build wheel
       run: |
         docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
-        docker run --rm -t \
+        docker run --rm -t --gpus all \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
             -e PYTHON_VERSION=${PYTHON_VERSION} \
