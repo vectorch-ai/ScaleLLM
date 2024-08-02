@@ -13,7 +13,8 @@ class AttentionImpl : public torch::nn::Module {
   AttentionImpl(int64_t n_heads,
                 int64_t n_kv_heads,
                 int64_t head_dim,
-                AttentionHandler* handler);
+                AttentionHandler* handler,
+                int32_t sliding_window = -1);
 
   // query: [n_tokens, n_heads, head_dim]
   // key/value: [n_tokens, n_kv_heads, head_dim]
@@ -33,6 +34,9 @@ class AttentionImpl : public torch::nn::Module {
 
   // handler for attention operations
   AttentionHandler* handler_ = nullptr;
+
+  // sliding window for self-attention, -1 means no sliding window
+  int32_t sliding_window_ = -1;
 };
 TORCH_MODULE(Attention);
 

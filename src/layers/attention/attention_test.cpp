@@ -132,12 +132,14 @@ TEST_P(AttentionPrefillTest, Varlen) {
 
   RefHandler ref_handler(scale, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
-  ref_handler.batch_prefill(query, key, value, input_params, ref_output);
+  ref_handler.batch_prefill(
+      query, key, value, input_params, /*sliding_window=*/-1, ref_output);
 
   // flash attn handler
   FlashAttnHandler flash_attn_handler(scale, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
-  flash_attn_handler.batch_prefill(query, key, value, input_params, output);
+  flash_attn_handler.batch_prefill(
+      query, key, value, input_params, /*sliding_window=*/-1, output);
 
   EXPECT_TRUE(
       torch::allclose(ref_output, output, /*rtol=*/1e-2, /*atol=*/1e-3));
@@ -303,12 +305,14 @@ TEST_P(AttentionDecodeTest, KVCache) {
 
   RefHandler ref_handler(scale, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
-  ref_handler.batch_prefill(query, key, value, input_params, ref_output);
+  ref_handler.batch_prefill(
+      query, key, value, input_params, /*sliding_window=*/-1, ref_output);
 
   // flash attn handler
   FlashAttnHandler flash_attn_handler(scale, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
-  flash_attn_handler.batch_prefill(query, key, value, input_params, output);
+  flash_attn_handler.batch_prefill(
+      query, key, value, input_params, /*sliding_window=*/-1, output);
 
   EXPECT_TRUE(
       torch::allclose(ref_output, output, /*rtol=*/1e-2, /*atol=*/1e-3));
@@ -316,8 +320,11 @@ TEST_P(AttentionDecodeTest, KVCache) {
   torch::Tensor output_with_cache = torch::empty_like(query);
 
   input_params.block_tables = block_tables;
-  flash_attn_handler.batch_decode(
-      query, {k_cache, v_cache}, input_params, output_with_cache);
+  flash_attn_handler.batch_decode(query,
+                                  {k_cache, v_cache},
+                                  input_params,
+                                  /*sliding_window=*/-1,
+                                  output_with_cache);
 
   EXPECT_TRUE(
       torch::allclose(output, output_with_cache, /*rtol=*/1e-2, /*atol=*/1e-3));
