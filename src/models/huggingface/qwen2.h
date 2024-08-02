@@ -33,10 +33,7 @@ class QWen2MLPImpl : public torch::nn::Module {
     CHECK(act_with_mul_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
-    // the intermediate size is half of the size from the config
-    // ref:
-    // https://huggingface.co/QWen2/QWen2-7B/blob/main/modeling_QWen2.py#L562
-    const int64_t intermediate_size = args.intermediate_size() / 2;
+    const int64_t intermediate_size = args.intermediate_size();
 
     // register the weight parameter
     gate_up_proj_ =
@@ -410,12 +407,12 @@ class QWen2ChatTemplate final : public CodedChatTemplate {
 };
 
 // register the causal model
-REGISTER_CAUSAL_MODEL(QWen2, QWen2ForCausalLM);
-REGISTER_DEFAULT_CHAT_TEMPLATE(QWen2, QWen2ChatTemplate);
+REGISTER_CAUSAL_MODEL(qwen2, QWen2ForCausalLM);
+REGISTER_DEFAULT_CHAT_TEMPLATE(qwen2, QWen2ChatTemplate);
 // register the model args
 // example config:
 // https://huggingface.co/Qwen/Qwen2-7B-Instruct/blob/main/config.json
-REGISTER_MODEL_ARGS(QWen2, [&] {
+REGISTER_MODEL_ARGS(qwen2, [&] {
   LOAD_ARG_OR(model_type, "model_type", "QWen2");
   LOAD_ARG_OR(dtype, "torch_dtype", "");
   LOAD_ARG_OR(vocab_size, "vocab_size", 152064);
