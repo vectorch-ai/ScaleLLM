@@ -1,19 +1,17 @@
 include(cc_library)
 include(cc_test)
 
+# find all *.h/*.c files in folder aot recursively
+file(GLOB_RECURSE AOT_HEADERS aot/*.h)
+file(GLOB_RECURSE AOT_SOURCES aot/*.c)
+
 cc_library(
   NAME 
     triton_example.kernel
   HDRS 
-    aot/add_kernel_fp16.h
-    aot/add_kernel_fp32.h
-    aot/fp16/add_kernel_fp16.6a55b24f_0123.h
-    aot/fp32/add_kernel_fp32.3fbfba5d_0123.h
+    ${AOT_HEADERS}
   SRCS 
-    aot/add_kernel_fp16.c
-    aot/add_kernel_fp32.c
-    aot/fp16/add_kernel_fp16.6a55b24f_0123.c
-    aot/fp32/add_kernel_fp32.3fbfba5d_0123.c
+    ${AOT_SOURCES}
   DEPS
     cuda
     CUDA::toolkit
