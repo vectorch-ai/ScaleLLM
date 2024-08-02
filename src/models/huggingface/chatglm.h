@@ -480,22 +480,69 @@ class ChatGLMChatTemplate final : public CodedChatTemplate {
   }
 };
 
+class ChatGLM4ChatTemplate final : public CodedChatTemplate {
+ public:
+  // generate prompt from dialogs
+  // ref to
+  // https://huggingface.co/THUDM/glm-4-9b/blob/main/tokenization_chatglm.py#L144
+  std::optional<std::string> get_prompt(
+      const std::string_view& system_message,
+      const std::vector<std::string_view>& messages) const override {
+    // at least one user message
+    if (messages.size() % 2 == 0) {
+      return std::nullopt;
+    }
+
+    // TODO: support function calls.
+    // message format: <|{role}|>{metadata}\n{message}
+    std::stringstream ss;
+    if (!system_message.empty()) {
+      ss << "<|system|>\n" << system_message << "\n";
+    }
+
+    // then user and assistant message pairs (u/a/u/a/u...)
+    for (size_t i = 0; i < messages.size(); ++i) {
+      const char* role = (i % 2) == 0 ? "user" : "assistant";
+      ss << "<|" << role << "|>\n" << messages[i] << "\n";
+    }
+    // end with assistant message
+    ss << "<|assistant|>\n";
+    return ss.str();
+  }
+};
+
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(chatglm, ChatGLMForCausalLM);
+REGISTER_CAUSAL_MODEL(chatglm4, ChatGLMForCausalLM);
 REGISTER_DEFAULT_CHAT_TEMPLATE(chatglm, ChatGLMChatTemplate);
+REGISTER_DEFAULT_CHAT_TEMPLATE(chatglm4, ChatGLM4ChatTemplate);
 REGISTER_MODEL_ARGS(chatglm, [&] {
   // example config:
   // https://huggingface.co/THUDM/chatglm3-6b/blob/main/configuration_chatglm.py
   LOAD_ARG_OR(model_type, "model_type", "chatglm");
   LOAD_ARG_OR(dtype, "torch_dtype", "float16");
   LOAD_ARG_OR(vocab_size, "padded_vocab_size", 65024);
+  // decide model type based on vocab size
+  if (args->vocab_size() == 151552) {
+    // choose the right chat template and tokenizer based on model type
+    SET_ARG(model_type, "chatglm4");
+    LOAD_ARG_OR(eos_token_id, "eos_token_id", 151329);
+    // stop token ids: "<|endoftext|>", "<|user|>", "<|observation|>"
+    SET_ARG(stop_token_ids,
+            std::unordered_set<int32_t>({151329, 151336, 151338}));
+  } else {
+    LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
+    // stop token ids: "</s>", "<|user|>", "<|assistant|>", "<|observation|>"
+    SET_ARG(stop_token_ids,
+            std::unordered_set<int32_t>({2, 64795, 64796, 64797}));
+  }
+
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
   LOAD_ARG_OR(intermediate_size, "ffn_hidden_size", 13696);
   LOAD_ARG_OR(n_layers, "num_layers", 28);
   LOAD_ARG_OR(n_heads, "num_attention_heads", 32);
   LOAD_ARG_OR(use_rms_norm, "rmsnorm", true);
   LOAD_ARG_OR(layer_norm_eps, "layernorm_epsilon", 1e-5);
-  LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
   LOAD_ARG_OR(residual_post_layernorm,
               "apply_residual_connection_post_layernorm",
               true);
@@ -517,6 +564,7 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
   });
 
   // rotary position embedding related args
+  // https://huggingface.co/THUDM/chatglm3-6b/blob/main/modeling_chatglm.py#L755
   LOAD_ARG_OR(rotary_pct, "rotary_pct", 0.5f);
   LOAD_ARG_OR_FUNC(rope_theta, "rope_theta", [&] {
     // 10000 * rope_ratio
@@ -538,10 +586,6 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
   LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
     return args->hidden_size() / args->n_heads();
   });
-
-  // stop token ids: "</s>", "<|user|>", "<|assistant|>", "<|observation|>"
-  SET_ARG(stop_token_ids,
-          std::unordered_set<int32_t>({2, 64795, 64796, 64797}));
 });
 
 // Register tokenizer args since chatglm is using sentencepiece tokenizer.
@@ -563,6 +607,41 @@ REGISTER_TOKENIZER_ARGS(chatglm, [&] {
                                                   {"<|observation|>", 64797}});
   SET_ARG(special_tokens, special_tokens);
   SET_ARG(prefix_tokens, std::vector<std::string>({"[gMASK]", "sop"}));
+});
+
+REGISTER_TOKENIZER_ARGS(chatglm4, [&] {
+  SET_ARG(tokenizer_type, "tiktoken");
+  SET_ARG(vocab_file, "tokenizer.model");
+
+  // set special tokens
+  // ref to:
+  // https://huggingface.co/THUDM/glm-4-9b/blob/main/tokenizer_config.json
+  const std::vector<SpecialToken> special_tokens(
+      {{"<|endoftext|>", 151329},
+       {"[MASK]", 151330},
+       {"[gMASK]", 151331},
+       {"[sMASK]", 151332},
+       {"<sop>", 151333},
+       {"<eop>", 151334},
+       {"<|system|>", 151335},
+       {"<|user|>", 151336},
+       {"<|assistant|>", 151337},
+       {"<|observation|>", 151338},
+       {"<|begin_of_image|>", 151339},
+       {"<|end_of_image|>", 151340},
+       {"<|begin_of_video|>", 151341},
+       {"<|end_of_video|>", 151342}});
+  SET_ARG(special_tokens, special_tokens);
+
+  SET_ARG(prefix_tokens, std::vector<std::string>({"[gMASK]", "<sop>"}));
+
+  // set regex pattern for tiktoken tokenizer.
+  // ref to:
+  // https://huggingface.co/THUDM/glm-4-9b/blob/main/tokenization_chatglm.py#L27
+  // N.B. replaced '\s+(?!\S)' with '\s+[^\s]' to avoid regex error
+  const std::string pattern =
+      R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+[^\S]|\s+)";
+  SET_ARG(pattern, pattern);
 });
 
 }  // namespace llm::hf
