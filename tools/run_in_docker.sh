@@ -56,11 +56,13 @@ while [[ $# > 1 ]]; do
 done
 
 if [[ $INTERACTIVE -eq 1 ]]; then
-  RUN_OPTS+=(-i)
+  RUN_OPTS+=(-it)
+else
+  RUN_OPTS+=(-t)
 fi
 
-# 
-RUN_OPTS+=(-t --rm)
+# Remove the container when it stops
+RUN_OPTS+=(--rm)
 
 # Map the working directory and /tmp to allow scripts/binaries to run and also
 # output data that might be used by other scripts/binaries
