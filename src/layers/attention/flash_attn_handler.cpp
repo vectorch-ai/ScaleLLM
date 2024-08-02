@@ -44,6 +44,7 @@ void FlashAttnHandler::batch_prefill(
     const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
     const InputParameters& input_params,  // input paras used for attention
+    int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
   // don't use kv cache in prefill stage
   mha_varlen_fwd(output,
@@ -57,9 +58,8 @@ void FlashAttnHandler::batch_prefill(
                  input_params.q_max_seq_len,
                  input_params.kv_max_seq_len,
                  /*softmax_scale=*/scale_,
-                 /*is_causal=*/true,
-                 /*window_size_left=*/-1,
-                 /*window_size_right=*/-1,
+                 /*window_size_left=*/sliding_window,
+                 /*window_size_right=*/0,
                  /*num_splits=*/0);
 }
 
@@ -69,6 +69,7 @@ void FlashAttnHandler::batch_decode(
     const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
     const KVCache& kv_cache,              // where to retrieval key and value
     const InputParameters& input_params,  // input paras used for attention
+    int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
   auto [key_cache, value_cache] = kv_cache.get_kv_cache();
   mha_varlen_fwd(output,
@@ -82,9 +83,8 @@ void FlashAttnHandler::batch_decode(
                  input_params.q_max_seq_len,
                  input_params.kv_max_seq_len,
                  scale_,
-                 /*is_causal=*/true,
-                 /*window_size_left=*/-1,
-                 /*window_size_right=*/-1,
+                 /*window_size_left=*/sliding_window,
+                 /*window_size_right=*/0,
                  /*num_splits=*/0);
 }
 

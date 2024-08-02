@@ -42,8 +42,7 @@ void set_params_fprop(Flash_fwd_params &params,
                       void *softmax_lse_d,
                       float softmax_scale,
                       int window_size_left,
-                      int window_size_right,
-                      bool seqlenq_ngroups_swapped) {
+                      int window_size_right) {
 
     // Reset the parameters
     memset(&params, 0, sizeof(params));
@@ -70,10 +69,6 @@ void set_params_fprop(Flash_fwd_params &params,
         params.k_batch_stride = k.stride(0);
         params.v_batch_stride = v.stride(0);
         params.o_batch_stride = out.stride(0);
-        if (seqlenq_ngroups_swapped) {
-             params.q_batch_stride *= seqlen_q;
-             params.o_batch_stride *= seqlen_q;
-        }
     }
 
     params.cu_seqlens_q = static_cast<int *>(cu_seqlens_q_d);
@@ -222,7 +217,6 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V
                float softmax_scale,
-               bool is_causal,
                int window_size_left,
                int window_size_right,
                int num_splits) {
@@ -272,28 +266,7 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
     TORCH_CHECK(head_dim <= 256, "FlashAttention forward only supports head dimension at most 256");
     TORCH_CHECK(n_heads % n_kv_heads == 0, "Number of heads in key/value must divide number of heads in query");
 
-    // causal=true is the same as causal=false in this case
-    if (max_seqlen_q == 1 && !alibi_slopes.has_value()) { is_causal = false; }  
-    if (is_causal) { window_size_right = 0; }
-
     void *cu_seqlens_q_d = cu_seqlens_q.data_ptr();
-    // Faster to transpose q from (b, 1, (nheads_kv ngroups), d) to (b, ngroups, nheads_kv, d) in this case
-    // H/t Daniel Haziza
-    const bool seqlenq_ngroups_swapped = (max_seqlen_q == 1) && n_heads > n_kv_heads && window_size_left < 0 && window_size_right < 0 && !alibi_slopes.has_value();
-    if (seqlenq_ngroups_swapped) {
-        const int64_t n_groups = n_heads / n_kv_heads;
-        const int64_t size_before[] = {batch_size, n_kv_heads, n_groups, head_dim};
-        const int64_t size_after[] = {batch_size * n_groups, n_kv_heads, head_dim};
-        // [n_tokens, n_heads, head_dim] 
-        // => [batch_size, n_kv_heads, n_groups, head_dim]
-        // => [batch_size, n_groups, n_kv_heads, head_dim]
-        // => [batch_size*n_groups, n_kv_heads, head_dim]
-        q = q.reshape(size_before).transpose(1, 2).reshape(size_after);
-        out = out.reshape(size_before).transpose(1, 2).reshape(size_after);
-        max_seqlen_q = n_groups;
-        n_heads = n_kv_heads;
-        cu_seqlens_q_d = nullptr;
-    }
 
     // [n_tokens, n_heads, head_dim]
     CHECK_SHAPE(q, q.size(0), n_heads, head_dim);
@@ -334,14 +307,7 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
                      softmax_lse.data_ptr(),
                      softmax_scale,
                      window_size_left,
-                     window_size_right,
-                     seqlenq_ngroups_swapped);
-
-    if (seqlenq_ngroups_swapped) {
-        // only apply split-k for decoding
-        set_params_splitkv(params, batch_size, n_heads,
-                            head_size, max_seqlen_k, max_seqlen_q, num_splits);
-    }
+                     window_size_right);
 
     // keep the tensor alive to avoid freeing the underlying storage
     at::Tensor softmax_lse_accum;
@@ -368,17 +334,4 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
 
     cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
     run_mha_fwd(params, stream, /*force_split_kernel=*/paged_KV);
-
-    if (seqlenq_ngroups_swapped) {
-        // transpose back
-        // max_seqlen_q is the number of groups now
-        const int64_t n_groups = max_seqlen_q;
-        const int64_t size_before[] = {batch_size, n_groups, n_kv_heads, head_dim};
-        const int64_t size_after[] = {batch_size, n_kv_heads * n_groups, head_dim};
-        // [batch_size*n_groups, n_kv_heads, head_dim] 
-        // => [batch_size, n_groups, n_kv_heads, head_dim]
-        // => [batch_size, n_kv_heads, n_groups, head_dim]
-        // => [batch_size, n_heads(n_kv_heads*n_groups), head_dim]
-        out = out.reshape(size_before).transpose(1, 2).reshape(size_after);
-    }
 }

@@ -28,6 +28,7 @@ void FlashInferHandler::batch_prefill(
     const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
     const InputParameters& input_params,  // input paras used for attention
+    int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
   // TODO: add implementation
   LOG(FATAL) << "Not implemented yet";
@@ -39,6 +40,7 @@ void FlashInferHandler::batch_decode(
     const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
     const KVCache& kv_cache,              // where to retrieval key and value
     const InputParameters& input_params,  // input paras used for attention
+    int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
   // TODO: add implementation
   LOG(FATAL) << "Not implemented yet";

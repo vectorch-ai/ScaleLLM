@@ -40,6 +40,7 @@ class RefHandler : public AttentionHandler {
       const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
       const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
       const InputParameters& input_params,  // input paras used for attention
+      int32_t sliding_window,               // sliding window size
       torch::Tensor& output) override;
 
   // batch decode for attention, optimized for decode stage
@@ -48,6 +49,7 @@ class RefHandler : public AttentionHandler {
       const torch::Tensor& query,  // [n_tokens, n_heads, head_dim]
       const KVCache& kv_cache,     // where to store and retrieval key and value
       const InputParameters& input_params,  // input paras used for attention
+      int32_t sliding_window,               // sliding window size
       torch::Tensor& output) override;
 
   // append key and value to kv_cache

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -107,6 +108,11 @@ struct ModelArgs {
 
   // Stop token ids for decoding.
   DEFINE_ARG(std::unordered_set<int32_t>, stop_token_ids);
+
+  // sliding window for attention
+  DEFINE_ARG(bool, use_sliding_window) = false;
+  DEFINE_ARG(int32_t, sliding_window) = -1;
+  DEFINE_ARG(int32_t, max_window_layers) = 0;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ModelArgs& args) {

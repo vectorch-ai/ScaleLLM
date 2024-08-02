@@ -7,11 +7,13 @@ namespace llm {
 AttentionImpl::AttentionImpl(int64_t n_heads,
                              int64_t n_kv_heads,
                              int64_t head_dim,
-                             AttentionHandler* handler)
+                             AttentionHandler* handler,
+                             int32_t sliding_window)
     : n_heads_(n_heads),
       n_kv_heads_(n_kv_heads),
       head_dim_(head_dim),
-      handler_(handler) {
+      handler_(handler),
+      sliding_window_(sliding_window) {
   CHECK(handler_ != nullptr);
   CHECK(n_heads % n_kv_heads == 0)
       << "n_heads " << n_heads << " not divisible by n_kv_heads " << n_kv_heads;
@@ -38,9 +40,9 @@ torch::Tensor AttentionImpl::forward(const torch::Tensor& query,
 
   auto output = torch::empty_like(q);
   if (input_params.empty_kv_cache) {
-    handler_->batch_prefill(q, k, v, input_params, output);
+    handler_->batch_prefill(q, k, v, input_params, sliding_window_, output);
   } else {
-    handler_->batch_decode(q, kv_cache, input_params, output);
+    handler_->batch_decode(q, kv_cache, input_params, sliding_window_, output);
   }
   // reshape output to [n_tokens, n_heads * head_dim]
   return output.view({n_tokens, -1});

@@ -88,7 +88,8 @@ class QWen2AttentionImpl : public torch::nn::Module {
                      const QuantArgs& quant_args,
                      const ParallelArgs& parallel_args,
                      const torch::TensorOptions& options,
-                     AttentionHandler* handler) {
+                     AttentionHandler* handler,
+                     int32_t sliding_window) {
     const int32_t world_size = parallel_args.world_size();
     const int64_t hidden_size = args.hidden_size();
     const int64_t n_heads = args.n_heads();
@@ -125,8 +126,12 @@ class QWen2AttentionImpl : public torch::nn::Module {
                                                 options));
 
     // initialize attention
-    atten_ = register_module(
-        "atten", Attention(n_local_heads, n_local_kv_heads, head_dim, handler));
+    atten_ = register_module("atten",
+                             Attention(n_local_heads,
+                                       n_local_kv_heads,
+                                       head_dim,
+                                       handler,
+                                       sliding_window));
   }
 
   torch::Tensor forward(torch::Tensor x,
@@ -177,11 +182,13 @@ class QWen2DecoderLayerImpl : public torch::nn::Module {
                         const QuantArgs& quant_args,
                         const ParallelArgs& parallel_args,
                         const torch::TensorOptions& options,
-                        AttentionHandler* handler) {
+                        AttentionHandler* handler,
+                        int32_t sliding_window) {
     // register submodules
     self_attn_ = register_module(
         "self_attn",
-        QWen2Attention(args, quant_args, parallel_args, options, handler));
+        QWen2Attention(
+            args, quant_args, parallel_args, options, handler, sliding_window));
     mlp_ = register_module("mlp",
                            QWen2MLP(args, quant_args, parallel_args, options));
 
@@ -255,8 +262,16 @@ class QWen2ModelImpl : public torch::nn::Module {
     blocks_ = register_module("layers", torch::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
-      auto block = QWen2DecoderLayer(
-          args, quant_args, parallel_args, options, handler_.get());
+      int32_t sliding_window = -1;
+      if (args.use_sliding_window() && i >= args.max_window_layers()) {
+        sliding_window = args.sliding_window();
+      }
+      auto block = QWen2DecoderLayer(args,
+                                     quant_args,
+                                     parallel_args,
+                                     options,
+                                     handler_.get(),
+                                     sliding_window);
       layers_.push_back(block);
       blocks_->push_back(block);
     }
@@ -429,7 +444,9 @@ REGISTER_MODEL_ARGS(qwen2, [&] {
   LOAD_ARG_OR(eos_token_id, "eos_token_id", 151645);
   LOAD_ARG_OR(rope_theta, "rope_theta", 1000000.0f);
 
-  // TODO: sliding window support: use_sliding_window, sliding_window
+  LOAD_ARG_OR(use_sliding_window, "use_sliding_window", false);
+  LOAD_ARG_OR(sliding_window, "sliding_window", 4096);
+  LOAD_ARG_OR(max_window_layers, "max_window_layers", 28);
 
   LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
     return args->hidden_size() / args->n_heads();
