@@ -132,7 +132,7 @@ endif()
 
 project(
   "ScaleLLM"
-  LANGUAGES CXX CUDA
+  LANGUAGES C CXX CUDA
 )
 
 find_package(CUDAToolkit REQUIRED)

@@ -237,12 +237,14 @@ if __name__ == "__main__":
         version=version,
         license="Apache 2.0",
         author="ScaleLLM Team",
+        author_email="mi@vectorch.com",
         description="A high-performance inference system for large language models.",
         long_description=read_readme(),
         long_description_content_type="text/markdown",
         url="https://github.com/vectorch-ai/ScaleLLM",
         project_url={
             "Homepage": "https://github.com/vectorch-ai/ScaleLLM",
+            "Documentation": "https://docs.vectorch.com",
         },
         classifiers=[
             "Development Status :: 3 - Alpha",
