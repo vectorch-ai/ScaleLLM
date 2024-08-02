@@ -14,6 +14,8 @@
 #include <string>
 #include <string_view>
 
+#include "sentencepiece/util.h"
+
 namespace llm {
 
 TiktokenTokenizer::TiktokenTokenizer(const std::string_view& dir_path,
@@ -297,8 +299,26 @@ std::string TiktokenTokenizer::decode(const Slice<int32_t>& ids,
     LOG(ERROR) << "Failed to find token for id: " << id;
   }
 
-  // TODO: filter out unfinished byte sequence
-  return ss.str();
+  std::string data = ss.str();
+  absl::string_view bytes(data);
+
+  // replace unfinished utf8 bytes with � (U+FFFD)
+  std::stringstream utf8_ss;
+  size_t offset = 0;
+  while (offset < bytes.size()) {
+    size_t consumed = 0;
+    const bool is_valid = sentencepiece::string_util::IsValidDecodeUTF8(
+        bytes.substr(offset), &consumed);
+    if (is_valid) {
+      utf8_ss << bytes.substr(offset, consumed);
+    } else {
+      // add replacement character � (U+FFFD) in UTF-8
+      utf8_ss << "�";
+      break;
+    }
+    offset += consumed;
+  }
+  return utf8_ss.str();
 }
 
 size_t TiktokenTokenizer::vocab_size() const {
