@@ -261,7 +261,8 @@ class QWen2ModelImpl : public torch::nn::Module {
       blocks_->push_back(block);
     }
     norm_ = register_module(
-        "norm", RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
+        "norm",
+        RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   // tokens: [num_tokens]
