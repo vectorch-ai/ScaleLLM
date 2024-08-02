@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.28)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
@@ -17,6 +17,11 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 if(POLICY CMP0135)
   # CMP0135: ExternalProject ignores timestamps in archives by default for the URL download method.
   cmake_policy(SET CMP0135 NEW)
+endif()
+
+if(POLICY CMP0146)
+  # CMake 3.27+: use CMake FindCUDA if available.
+  cmake_policy(SET CMP0146 OLD) 
 endif()
 
 function(parse_make_options options prefix)
@@ -130,12 +135,9 @@ else()
       CACHE STRING "Vcpkg toolchain file")
 endif()
 
-project(
-  "ScaleLLM"
-  LANGUAGES CXX CUDA
-)
+project("ScaleLLM")
 
-find_package(CUDAToolkit REQUIRED)
+find_package(CUDA REQUIRED)
 
 # setup CMake module path, defines path for include() and find_package()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -193,21 +195,21 @@ if (DEFINED ENV{LIBTORCH_ROOT})
   message(STATUS "Using libtorch at $ENV{LIBTORCH_ROOT}")
 else()
   include(FetchContent)
-  if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.4)
+  if (CUDA_VERSION VERSION_GREATER_EQUAL 12.4)
     # download libtorch 2.4.0 with cuda 12.4 from pytorch.org
     if (USE_CXX11_ABI)
       set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcu124.zip")
     else()
       set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu124/libtorch-shared-with-deps-2.4.0%2Bcu124.zip")
     endif()
-  elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.1)
+  elseif(CUDA_VERSION VERSION_GREATER_EQUAL 12.1)
     # download libtorch 2.4.0 with cuda 12.1 from pytorch.org
     if (USE_CXX11_ABI)
       set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcu121.zip")
     else()
       set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.4.0%2Bcu121.zip")
     endif()
-  elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 11.8)
+  elseif(CUDA_VERSION VERSION_GREATER_EQUAL 11.8)
     # download libtorch 2.4.0 with cuda 11.8 from pytorch.org
     if (USE_CXX11_ABI)
       set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcu118.zip")
@@ -216,7 +218,7 @@ else()
     endif()
   else()
     # error out if cuda version is not supported
-    message(FATAL_ERROR "Unsupported CUDA version: ${CUDAToolkit_VERSION}")
+    message(FATAL_ERROR "Unsupported CUDA version: ${CUDA_VERSION}")
   endif()
 
   if (DEFINED ENV{DEPENDENCES_ROOT})
