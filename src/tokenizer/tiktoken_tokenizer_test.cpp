@@ -54,6 +54,32 @@ TEST(TiktokenTokenizerTest, CJKTest) {
   }
 }
 
+TEST(TiktokenTokenizerTest, UTF8Test) {
+  TokenizerArgs args;
+  args.vocab_file() = "test.tiktoken";
+  TiktokenTokenizer tokenizer("data", args);
+  const std::string test_text = "你好";
+  std::vector<int> ids;
+  ASSERT_TRUE(tokenizer.encode(test_text, &ids));
+  const std::vector<int> desired_ids = {160, 121, 254, 161, 98, 121};
+  EXPECT_EQ(ids, desired_ids);
+
+  {
+    const auto decoded_text =
+        tokenizer.decode(ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(decoded_text, test_text);
+  }
+
+  // test unfinished utf-8
+  {
+    const std::string unfinished_decoded_text = "你�";
+    const std::vector<int> unfinished_ids = {160, 121, 254, 161, 98};
+    const auto decoded_text =
+        tokenizer.decode(unfinished_ids, /*skip_special_tokens=*/false);
+    EXPECT_EQ(decoded_text, unfinished_decoded_text);
+  }
+}
+
 TEST(TiktokenTokenizerTest, PatternTest) {
   const std::string pattern =
       R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+[^\S]|\s+)";
