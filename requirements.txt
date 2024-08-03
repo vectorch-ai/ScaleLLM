@@ -4,3 +4,4 @@ huggingface_hub
 shortuuid
 safetensors
 numpy
+uvicorn
