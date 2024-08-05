@@ -15,7 +15,7 @@ FlashAttnHandler::FlashAttnHandler(float scale,
                                    torch::Tensor inv_freq,
                                    bool interleaved,
                                    const torch::TensorOptions& options)
-    : scale_(scale) {
+    : sm_scale_(scale) {
   // register rotary positional embedding
   pos_emb_ =
       RotaryEmbedding(rotary_dim, max_position, inv_freq, interleaved, options);
@@ -23,7 +23,7 @@ FlashAttnHandler::FlashAttnHandler(float scale,
 
 FlashAttnHandler::FlashAttnHandler(float scale,
                                    torch::optional<torch::Tensor> alibi_slopes)
-    : scale_(scale), alibi_slopes_(alibi_slopes) {}
+    : sm_scale_(scale), alibi_slopes_(alibi_slopes) {}
 
 FlashAttnHandler::~FlashAttnHandler() {}
 
@@ -57,7 +57,7 @@ void FlashAttnHandler::batch_prefill(
                  alibi_slopes_,
                  input_params.q_max_seq_len,
                  input_params.kv_max_seq_len,
-                 /*softmax_scale=*/scale_,
+                 /*softmax_scale=*/sm_scale_,
                  /*window_size_left=*/sliding_window,
                  /*window_size_right=*/0,
                  /*num_splits=*/0);
@@ -82,7 +82,7 @@ void FlashAttnHandler::batch_decode(
                  alibi_slopes_,
                  input_params.q_max_seq_len,
                  input_params.kv_max_seq_len,
-                 scale_,
+                 sm_scale_,
                  /*window_size_left=*/sliding_window,
                  /*window_size_right=*/0,
                  /*num_splits=*/0);

@@ -41,6 +41,7 @@ void set_params_fprop(Flash_fwd_params &params,
                       void *cu_seqlens_k_d,
                       void *softmax_lse_d,
                       float softmax_scale,
+                    //   float logits_soft_cap,
                       int window_size_left,
                       int window_size_right) {
 

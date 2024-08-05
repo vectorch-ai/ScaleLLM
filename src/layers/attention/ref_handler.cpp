@@ -15,12 +15,16 @@ torch::Tensor masked_self_attention(
     const torch::Tensor& value,         // [k_seq_len, n_heads, head_dim]
     const torch::Tensor& alibi_biases,  // [n_heads, q_seq_len, k_seq_len]
     const torch::Tensor& mask,          // [n_heads, q_seq_len, k_seq_len]
-    float scale) {
+    float sm_scale) {
   // => [n_heads, q_seq_len, k_seq_len]
   auto scores = torch::einsum("qhd,khd->hqk",
                               {query.to(torch::kFloat), key.to(torch::kFloat)});
   // apply scale
-  scores *= scale;
+  scores *= sm_scale;
+
+  // scores /= softcap;
+  // scores = scores.tanh()
+  // scores *= softcap;
 
   // add alibi biases to attention scores
   if (alibi_biases.defined()) {
@@ -119,14 +123,14 @@ RefHandler::RefHandler(float scale,
                        torch::Tensor inv_freq,
                        bool interleaved,
                        const torch::TensorOptions& options)
-    : scale_(scale) {
+    : sm_scale_(scale) {
   // register rotary positional embedding
   pos_emb_ =
       RotaryEmbedding(rotary_dim, max_position, inv_freq, interleaved, options);
 }
 
 RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)
-    : scale_(scale), alibi_slopes_(alibi_slopes) {}
+    : sm_scale_(scale), alibi_slopes_(alibi_slopes) {}
 
 std::tuple<torch::Tensor, torch::Tensor> RefHandler::apply_pos_emb(
     const torch::Tensor& query,
@@ -155,7 +159,7 @@ void RefHandler::batch_prefill(
                                input_params.q_cu_seq_lens,
                                input_params.kv_cu_seq_lens,
                                alibi_slopes_,
-                               scale_,
+                               sm_scale_,
                                output);
 }
 
@@ -177,7 +181,7 @@ void RefHandler::batch_decode(
                                input_params.q_cu_seq_lens,
                                input_params.kv_cu_seq_lens,
                                alibi_slopes_,
-                               scale_,
+                               sm_scale_,
                                output);
 }
 

@@ -61,8 +61,11 @@ class FlashAttnHandler : public AttentionHandler {
       const InputParameters& input_params) override;
 
  private:
-  // scale factor
-  float scale_ = 0.0;
+  // softmax scale factor
+  float sm_scale_ = 0.0;
+
+  // logits softcap
+  float logits_soft_cap_ = 0.0;
 
   // ROPE positional embedding
   RotaryEmbedding pos_emb_{nullptr};

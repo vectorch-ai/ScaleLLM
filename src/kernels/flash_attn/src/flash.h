@@ -103,6 +103,9 @@ struct Flash_fwd_params : public Qkv_params {
     // Local window size
     int window_size_left, window_size_right;
 
+    // softcap
+    float softcap;
+
     bool is_bf16;
     bool is_causal;
 
