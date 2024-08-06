@@ -76,6 +76,7 @@ class AttentionPrefillTest
                                                  torch::ScalarType,
                                                  int64_t /*batch_size*/,
                                                  int64_t /*max_seq_len*/,
+                                                 int32_t /*sliding_window*/,
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
@@ -88,6 +89,7 @@ TEST_P(AttentionPrefillTest, Varlen) {
                dtype,
                batch_size,
                max_seq_len,
+               sliding_window,
                n_heads,
                n_kv_heads,
                head_dim,
@@ -135,13 +137,13 @@ TEST_P(AttentionPrefillTest, Varlen) {
   RefHandler ref_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
   ref_handler.batch_prefill(
-      query, key, value, input_params, /*sliding_window=*/-1, ref_output);
+      query, key, value, input_params, sliding_window, ref_output);
 
   // flash attn handler
   FlashAttnHandler flash_attn_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
   flash_attn_handler.batch_prefill(
-      query, key, value, input_params, /*sliding_window=*/-1, output);
+      query, key, value, input_params, sliding_window, output);
 
   EXPECT_TRUE(
       torch::allclose(ref_output, output, /*rtol=*/1e-2, /*atol=*/1e-3));
@@ -154,6 +156,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(torch::kHalf, torch::kBFloat16),
                        ::testing::Values(2, 3, 5),          // batch_size
                        ::testing::Values(200),              // max_seq_len
+                       ::testing::Values(-1, 0, 50),        // sliding_window
                        ::testing::Values(6),                // n_heads
                        ::testing::Values(6, 3, 1),          // n_kv_heads
                        ::testing::Values(32, 40, 64, 128),  // head_dim
@@ -170,6 +173,7 @@ class AttentionDecodeTest
                                                  int64_t /*block_size*/,
                                                  int64_t /*q_max_seq_len*/,
                                                  int64_t /*kv_max_seq_len*/,
+                                                 int32_t /*sliding_window*/,
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
@@ -184,6 +188,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
                block_size,
                q_max_seq_len,
                kv_max_seq_len,
+               sliding_window,
                n_heads,
                n_kv_heads,
                head_dim,
@@ -311,13 +316,13 @@ TEST_P(AttentionDecodeTest, KVCache) {
   RefHandler ref_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
   ref_handler.batch_prefill(
-      query, key, value, input_params, /*sliding_window=*/-1, ref_output);
+      query, key, value, input_params, sliding_window, ref_output);
 
   // flash attn handler
   FlashAttnHandler flash_attn_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
   flash_attn_handler.batch_prefill(
-      query, key, value, input_params, /*sliding_window=*/-1, output);
+      query, key, value, input_params, sliding_window, output);
 
   EXPECT_TRUE(
       torch::allclose(ref_output, output, /*rtol=*/1e-2, /*atol=*/1e-3));
@@ -328,7 +333,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
   flash_attn_handler.batch_decode(query,
                                   {k_cache, v_cache},
                                   input_params,
-                                  /*sliding_window=*/-1,
+                                  sliding_window,
                                   output_with_cache);
 
   EXPECT_TRUE(
@@ -345,6 +350,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(16, 80, 256),                      // block_size
         ::testing::Values(1, 10),                            // q_max_seq_len
         ::testing::Values(100, 200),                         // kv_max_seq_len
+        ::testing::Values(-1, 50),                           // sliding_window
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 40, 64, 128),                  // head_dim
