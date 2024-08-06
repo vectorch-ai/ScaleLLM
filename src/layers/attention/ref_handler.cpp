@@ -15,12 +15,18 @@ torch::Tensor masked_self_attention(
     const torch::Tensor& value,         // [k_seq_len, n_heads, head_dim]
     const torch::Tensor& alibi_biases,  // [n_heads, q_seq_len, k_seq_len]
     const torch::Tensor& mask,          // [n_heads, q_seq_len, k_seq_len]
-    float scale) {
+    float sm_scale,
+    float logits_soft_cap) {
   // => [n_heads, q_seq_len, k_seq_len]
   auto scores = torch::einsum("qhd,khd->hqk",
                               {query.to(torch::kFloat), key.to(torch::kFloat)});
   // apply scale
-  scores *= scale;
+  scores *= sm_scale;
+
+  // apply softcap if needed
+  if (logits_soft_cap > 0.0) {
+    scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
+  }
 
   // add alibi biases to attention scores
   if (alibi_biases.defined()) {
@@ -45,7 +51,8 @@ void varlen_masked_self_attention(
     const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
     const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
     const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    float scale,
+    float sm_scale,
+    float logits_soft_cap,
     torch::Tensor& output) {
   // same length for key and value
   DCHECK(key.size(0) == value.size(0));
@@ -105,28 +112,51 @@ void varlen_masked_self_attention(
       bias = distance.view({1, 1, kv_len}) * slopes.view({n_heads, 1, 1});
     }
 
-    const auto attn =
-        masked_self_attention(_query, _key, _value, bias, mask, scale);
+    const auto attn = masked_self_attention(
+        _query, _key, _value, bias, mask, sm_scale, logits_soft_cap);
     output.index_put_({ISlice(q_start, q_end), ISlice(), ISlice()}, attn);
   }
 }
 
 }  // namespace
 
-RefHandler::RefHandler(float scale,
+RefHandler::RefHandler(float sm_scale,
                        int64_t rotary_dim,
                        int64_t max_position,
                        torch::Tensor inv_freq,
                        bool interleaved,
                        const torch::TensorOptions& options)
-    : scale_(scale) {
+    : RefHandler(sm_scale,
+                 /*logits_soft_cap=*/0,
+                 rotary_dim,
+                 max_position,
+                 inv_freq,
+                 interleaved,
+                 options) {}
+
+RefHandler::RefHandler(float sm_scale,
+                       float logits_soft_cap,
+                       int64_t rotary_dim,
+                       int64_t max_position,
+                       torch::Tensor inv_freq,
+                       bool interleaved,
+                       const torch::TensorOptions& options)
+    : sm_scale_(sm_scale), logits_soft_cap_(logits_soft_cap) {
   // register rotary positional embedding
   pos_emb_ =
       RotaryEmbedding(rotary_dim, max_position, inv_freq, interleaved, options);
 }
 
-RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)
-    : scale_(scale), alibi_slopes_(alibi_slopes) {}
+RefHandler::RefHandler(float sm_scale,
+                       torch::optional<torch::Tensor> alibi_slopes)
+    : RefHandler(sm_scale, /*logits_soft_cap=*/0, alibi_slopes) {}
+
+RefHandler::RefHandler(float sm_scale,
+                       float logits_soft_cap,
+                       torch::optional<torch::Tensor> alibi_slopes)
+    : sm_scale_(sm_scale),
+      logits_soft_cap_(logits_soft_cap),
+      alibi_slopes_(alibi_slopes) {}
 
 std::tuple<torch::Tensor, torch::Tensor> RefHandler::apply_pos_emb(
     const torch::Tensor& query,
@@ -155,7 +185,8 @@ void RefHandler::batch_prefill(
                                input_params.q_cu_seq_lens,
                                input_params.kv_cu_seq_lens,
                                alibi_slopes_,
-                               scale_,
+                               sm_scale_,
+                               logits_soft_cap_,
                                output);
 }
 
@@ -177,7 +208,8 @@ void RefHandler::batch_decode(
                                input_params.q_cu_seq_lens,
                                input_params.kv_cu_seq_lens,
                                alibi_slopes_,
-                               scale_,
+                               sm_scale_,
+                               logits_soft_cap_,
                                output);
 }
 

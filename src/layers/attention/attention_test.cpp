@@ -79,7 +79,8 @@ class AttentionPrefillTest
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
-                                                 float /*scale*/,
+                                                 float /*sm_scale*/,
+                                                 float /*logits_soft_cap*/,
                                                  bool /*alibi*/>> {};
 
 TEST_P(AttentionPrefillTest, Varlen) {
@@ -90,7 +91,8 @@ TEST_P(AttentionPrefillTest, Varlen) {
                n_heads,
                n_kv_heads,
                head_dim,
-               scale,
+               sm_scale,
+               logits_soft_cap,
                alibi] = GetParam();
   if (device.is_cuda() && !torch::cuda::is_available()) {
     GTEST_SKIP() << "CUDA not available, skipping test";
@@ -130,13 +132,13 @@ TEST_P(AttentionPrefillTest, Varlen) {
   input_params.q_max_seq_len = max_seq_len;
   input_params.kv_max_seq_len = max_seq_len;
 
-  RefHandler ref_handler(scale, alibi_slopes);
+  RefHandler ref_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
   ref_handler.batch_prefill(
       query, key, value, input_params, /*sliding_window=*/-1, ref_output);
 
   // flash attn handler
-  FlashAttnHandler flash_attn_handler(scale, alibi_slopes);
+  FlashAttnHandler flash_attn_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
   flash_attn_handler.batch_prefill(
       query, key, value, input_params, /*sliding_window=*/-1, output);
@@ -155,7 +157,8 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(6),                // n_heads
                        ::testing::Values(6, 3, 1),          // n_kv_heads
                        ::testing::Values(32, 40, 64, 128),  // head_dim
-                       ::testing::Values(0.9, 1.0),         // scale
+                       ::testing::Values(0.9, 1.0),         // sm_scale
+                       ::testing::Values(0.0, 50.0),        // logits_soft_cap
                        ::testing::Values(false, true)       // alibi
                        ));
 
@@ -170,7 +173,8 @@ class AttentionDecodeTest
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
-                                                 float /*scale*/,
+                                                 float /*sm_scale*/,
+                                                 float /*logits_soft_cap*/,
                                                  bool /*alibi*/>> {};
 
 TEST_P(AttentionDecodeTest, KVCache) {
@@ -183,7 +187,8 @@ TEST_P(AttentionDecodeTest, KVCache) {
                n_heads,
                n_kv_heads,
                head_dim,
-               scale,
+               sm_scale,
+               logits_soft_cap,
                alibi] = GetParam();
   if (device.is_cuda() && !torch::cuda::is_available()) {
     GTEST_SKIP() << "CUDA not available, skipping test";
@@ -303,13 +308,13 @@ TEST_P(AttentionDecodeTest, KVCache) {
   input_params.q_max_seq_len = q_max_seq_len;
   input_params.kv_max_seq_len = kv_max_seq_len;
 
-  RefHandler ref_handler(scale, alibi_slopes);
+  RefHandler ref_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor ref_output = torch::empty_like(query);
   ref_handler.batch_prefill(
       query, key, value, input_params, /*sliding_window=*/-1, ref_output);
 
   // flash attn handler
-  FlashAttnHandler flash_attn_handler(scale, alibi_slopes);
+  FlashAttnHandler flash_attn_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
   flash_attn_handler.batch_prefill(
       query, key, value, input_params, /*sliding_window=*/-1, output);
@@ -343,7 +348,8 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 40, 64, 128),                  // head_dim
-        ::testing::Values(0.9, 1.0),                         // scale
+        ::testing::Values(0.9, 1.0),                         // sm_scale
+        ::testing::Values(0.0, 50.0),                        // logits_soft_cap
         ::testing::Values(false, true)                       // alibi
         ));
 

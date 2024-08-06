@@ -18,6 +18,7 @@
 #include <cutlass/cutlass.h>
 #include <cutlass/numeric_conversion.h>
 #include <cutlass/numeric_types.h>
+#include <cutlass/fast_math.h>
 
 #include <cute/tensor.hpp>
 
@@ -377,6 +378,14 @@ __forceinline__ __device__ void copy_w_min_idx(Tensor<Engine0, Layout0> const &S
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename Engine, typename Layout>
+__forceinline__ __device__ void apply_softcap(Tensor<Engine, Layout> &tensor, const float softcap){
+    #pragma unroll
+    for (int i = 0; i < size(tensor); ++i) {
+        tensor(i) = cutlass::fast_tanh(tensor(i) * softcap);
+    }
+}
 
 // resolves initial base offset of a slice of a paged kv copy from gmem.
 // assumes that the tensor has already been positioned at the correct head.
