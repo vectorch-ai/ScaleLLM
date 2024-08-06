@@ -451,7 +451,8 @@ class Gemma2ChatTemplate final : public CodedChatTemplate {
     std::stringstream ss;
     for (size_t i = 0; i < messages.size(); i++) {
       const char* role = (i % 2) == 0 ? "user" : "model";
-      ss << "<start_of_turn>" << role << "\n" << messages[i] << "<end_of_turn>\n";
+      ss << "<start_of_turn>" << role << "\n"
+         << messages[i] << "<end_of_turn>\n";
     }
 
     ss << "<start_of_turn>model\n";
