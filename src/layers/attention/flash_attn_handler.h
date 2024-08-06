@@ -21,8 +21,20 @@ class FlashAttnHandler : public AttentionHandler {
                    bool interleaved,
                    const torch::TensorOptions& options);
 
+  FlashAttnHandler(float scale,
+                   float logits_soft_cap,
+                   int64_t rotary_dim,
+                   int64_t max_position,
+                   torch::Tensor inv_freq,
+                   bool interleaved,
+                   const torch::TensorOptions& options);
+
   // create a flash attn handler with alibi slopes
   FlashAttnHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
+
+  FlashAttnHandler(float scale,
+                   float logits_soft_cap,
+                   torch::optional<torch::Tensor> alibi_slopes);
 
   ~FlashAttnHandler() override;
 

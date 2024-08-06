@@ -9,21 +9,43 @@
 
 namespace llm {
 
-FlashAttnHandler::FlashAttnHandler(float scale,
+FlashAttnHandler::FlashAttnHandler(float sm_scale,
                                    int64_t rotary_dim,
                                    int64_t max_position,
                                    torch::Tensor inv_freq,
                                    bool interleaved,
                                    const torch::TensorOptions& options)
-    : sm_scale_(scale) {
+    : FlashAttnHandler(sm_scale,
+                       /*logits_soft_cap=*/0,
+                       rotary_dim,
+                       max_position,
+                       inv_freq,
+                       interleaved,
+                       options) {}
+
+FlashAttnHandler::FlashAttnHandler(float sm_scale,
+                                   float logits_soft_cap,
+                                   int64_t rotary_dim,
+                                   int64_t max_position,
+                                   torch::Tensor inv_freq,
+                                   bool interleaved,
+                                   const torch::TensorOptions& options)
+    : sm_scale_(sm_scale), logits_soft_cap_(logits_soft_cap) {
   // register rotary positional embedding
   pos_emb_ =
       RotaryEmbedding(rotary_dim, max_position, inv_freq, interleaved, options);
 }
 
-FlashAttnHandler::FlashAttnHandler(float scale,
+FlashAttnHandler::FlashAttnHandler(float sm_scale,
                                    torch::optional<torch::Tensor> alibi_slopes)
-    : sm_scale_(scale), alibi_slopes_(alibi_slopes) {}
+    : FlashAttnHandler(sm_scale, /*logits_soft_cap=*/0, alibi_slopes) {}
+
+FlashAttnHandler::FlashAttnHandler(float sm_scale,
+                                   float logits_soft_cap,
+                                   torch::optional<torch::Tensor> alibi_slopes)
+    : sm_scale_(sm_scale),
+      logits_soft_cap_(logits_soft_cap),
+      alibi_slopes_(alibi_slopes) {}
 
 FlashAttnHandler::~FlashAttnHandler() {}
 

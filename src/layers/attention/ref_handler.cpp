@@ -25,7 +25,7 @@ torch::Tensor masked_self_attention(
 
   // apply softcap if needed
   if (logits_soft_cap > 0.0) {
-    // scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
+    scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
   }
 
   // add alibi biases to attention scores
@@ -120,20 +120,43 @@ void varlen_masked_self_attention(
 
 }  // namespace
 
-RefHandler::RefHandler(float scale,
+RefHandler::RefHandler(float sm_scale,
                        int64_t rotary_dim,
                        int64_t max_position,
                        torch::Tensor inv_freq,
                        bool interleaved,
                        const torch::TensorOptions& options)
-    : sm_scale_(scale) {
+    : RefHandler(sm_scale,
+                 /*logits_soft_cap=*/0,
+                 rotary_dim,
+                 max_position,
+                 inv_freq,
+                 interleaved,
+                 options) {}
+
+RefHandler::RefHandler(float sm_scale,
+                       float logits_soft_cap,
+                       int64_t rotary_dim,
+                       int64_t max_position,
+                       torch::Tensor inv_freq,
+                       bool interleaved,
+                       const torch::TensorOptions& options)
+    : sm_scale_(sm_scale), logits_soft_cap_(logits_soft_cap) {
   // register rotary positional embedding
   pos_emb_ =
       RotaryEmbedding(rotary_dim, max_position, inv_freq, interleaved, options);
 }
 
-RefHandler::RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes)
-    : sm_scale_(scale), alibi_slopes_(alibi_slopes) {}
+RefHandler::RefHandler(float sm_scale,
+                       torch::optional<torch::Tensor> alibi_slopes)
+    : RefHandler(sm_scale, /*logits_soft_cap=*/0, alibi_slopes) {}
+
+RefHandler::RefHandler(float sm_scale,
+                       float logits_soft_cap,
+                       torch::optional<torch::Tensor> alibi_slopes)
+    : sm_scale_(sm_scale),
+      logits_soft_cap_(logits_soft_cap),
+      alibi_slopes_(alibi_slopes) {}
 
 std::tuple<torch::Tensor, torch::Tensor> RefHandler::apply_pos_emb(
     const torch::Tensor& query,

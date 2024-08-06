@@ -13,7 +13,15 @@ namespace llm {
 class RefHandler : public AttentionHandler {
  public:
   // create a flash attn handler with rope positional embedding
-  RefHandler(float scale,
+  RefHandler(float sm_scale,
+             int64_t rotary_dim,
+             int64_t max_position,
+             torch::Tensor inv_freq,
+             bool interleaved,
+             const torch::TensorOptions& options);
+
+  RefHandler(float sm_scale,
+             float logits_soft_cap,
              int64_t rotary_dim,
              int64_t max_position,
              torch::Tensor inv_freq,
@@ -21,7 +29,11 @@ class RefHandler : public AttentionHandler {
              const torch::TensorOptions& options);
 
   // create a flash attn handler with alibi slopes
-  RefHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
+  RefHandler(float sm_scale, torch::optional<torch::Tensor> alibi_slopes);
+
+  RefHandler(float sm_scale,
+             float logits_soft_cap,
+             torch::optional<torch::Tensor> alibi_slopes);
 
   virtual ~RefHandler() = default;
 
