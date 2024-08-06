@@ -24,7 +24,7 @@ mha_varlen_fwd(at::Tensor& out,             // [n_tokens, n_heads, head_dim]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V
                float softmax_scale,
-              //  float logits_soft_cap,
+               float softcap,
                int window_size_left,
                int window_size_right,
                int num_splits); // 0: auto, 1: no split, >1: split key/value into num_splits parts

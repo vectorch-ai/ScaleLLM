@@ -41,7 +41,7 @@ void set_params_fprop(Flash_fwd_params &params,
                       void *cu_seqlens_k_d,
                       void *softmax_lse_d,
                       float softmax_scale,
-                    //   float logits_soft_cap,
+                      float softcap,
                       int window_size_left,
                       int window_size_right) {
 
@@ -90,9 +90,18 @@ void set_params_fprop(Flash_fwd_params &params,
     params.d = d;
     params.d_rounded = d_rounded;
 
-    // Set the different scale values.
-    params.scale_softmax = softmax_scale;
-    params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+    // Adjust softcap and scale value to accommodate the fact that we apply 
+    // softcap then scale to logits.
+    if (softcap > 0.0) {
+        params.softcap = softmax_scale / softcap;
+        params.scale_softmax = softcap;
+        params.scale_softmax_log2 = softcap * M_LOG2E;
+    } else {
+        // Remove potential NaN
+        params.softcap = 0.0;
+        params.scale_softmax = softmax_scale;
+        params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+    }
 
     // Causal is the special case where window_size_right == 0 and window_size_left < 0.
     // Local is the more general case where window_size_right >= 0 or window_size_left >= 0.
@@ -218,6 +227,7 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V
                float softmax_scale,
+               float softcap,
                int window_size_left,
                int window_size_right,
                int num_splits) {
@@ -307,6 +317,7 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
                      cu_seqlens_k.data_ptr(),
                      softmax_lse.data_ptr(),
                      softmax_scale,
+                     softcap,
                      window_size_left,
                      window_size_right);
 

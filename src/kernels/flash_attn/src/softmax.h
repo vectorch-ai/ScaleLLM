@@ -127,6 +127,8 @@ struct Softmax {
 
     template<bool Split=false, typename Tensor0>
     __forceinline__ __device__ TensorT normalize_softmax_lse(Tensor0 &acc_o, float softmax_scale) {
+        SumOp<float> sum_op;
+        quad_allreduce_(row_sum, row_sum, sum_op);
         TensorT lse = make_fragment_like(row_sum);
         Tensor acc_o_rowcol = make_tensor(acc_o.data(), flash::convert_layout_acc_rowcol(acc_o.layout()));
         static_assert(decltype(size<0>(acc_o_rowcol))::value == kNRows);

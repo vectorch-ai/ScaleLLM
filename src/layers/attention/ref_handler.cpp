@@ -15,16 +15,18 @@ torch::Tensor masked_self_attention(
     const torch::Tensor& value,         // [k_seq_len, n_heads, head_dim]
     const torch::Tensor& alibi_biases,  // [n_heads, q_seq_len, k_seq_len]
     const torch::Tensor& mask,          // [n_heads, q_seq_len, k_seq_len]
-    float sm_scale) {
+    float sm_scale,
+    float logits_soft_cap) {
   // => [n_heads, q_seq_len, k_seq_len]
   auto scores = torch::einsum("qhd,khd->hqk",
                               {query.to(torch::kFloat), key.to(torch::kFloat)});
   // apply scale
   scores *= sm_scale;
 
-  // scores /= softcap;
-  // scores = scores.tanh()
-  // scores *= softcap;
+  // apply softcap if needed
+  if (logits_soft_cap > 0.0) {
+    // scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
+  }
 
   // add alibi biases to attention scores
   if (alibi_biases.defined()) {
@@ -49,7 +51,8 @@ void varlen_masked_self_attention(
     const torch::Tensor& q_cu_seq_lens,   // [n_seqs + 1]
     const torch::Tensor& kv_cu_seq_lens,  // [n_seqs + 1]
     const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
-    float scale,
+    float sm_scale,
+    float logits_soft_cap,
     torch::Tensor& output) {
   // same length for key and value
   DCHECK(key.size(0) == value.size(0));
@@ -109,8 +112,8 @@ void varlen_masked_self_attention(
       bias = distance.view({1, 1, kv_len}) * slopes.view({n_heads, 1, 1});
     }
 
-    const auto attn =
-        masked_self_attention(_query, _key, _value, bias, mask, scale);
+    const auto attn = masked_self_attention(
+        _query, _key, _value, bias, mask, sm_scale, logits_soft_cap);
     output.index_put_({ISlice(q_start, q_end), ISlice(), ISlice()}, attn);
   }
 }
@@ -160,6 +163,7 @@ void RefHandler::batch_prefill(
                                input_params.kv_cu_seq_lens,
                                alibi_slopes_,
                                sm_scale_,
+                               logits_soft_cap_,
                                output);
 }
 
@@ -182,6 +186,7 @@ void RefHandler::batch_decode(
                                input_params.kv_cu_seq_lens,
                                alibi_slopes_,
                                sm_scale_,
+                               logits_soft_cap_,
                                output);
 }
 

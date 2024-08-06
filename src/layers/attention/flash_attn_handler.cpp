@@ -57,7 +57,8 @@ void FlashAttnHandler::batch_prefill(
                  alibi_slopes_,
                  input_params.q_max_seq_len,
                  input_params.kv_max_seq_len,
-                 /*softmax_scale=*/sm_scale_,
+                 sm_scale_,
+                 logits_soft_cap_,
                  /*window_size_left=*/sliding_window,
                  /*window_size_right=*/0,
                  /*num_splits=*/0);
@@ -83,6 +84,7 @@ void FlashAttnHandler::batch_decode(
                  input_params.q_max_seq_len,
                  input_params.kv_max_seq_len,
                  sm_scale_,
+                 logits_soft_cap_,
                  /*window_size_left=*/sliding_window,
                  /*window_size_right=*/0,
                  /*num_splits=*/0);
