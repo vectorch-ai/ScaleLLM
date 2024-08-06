@@ -90,8 +90,6 @@ void set_params_fprop(Flash_fwd_params &params,
     params.d = d;
     params.d_rounded = d_rounded;
 
-    // Adjust softcap and scale value to accommodate the fact that we apply 
-    // softcap then scale to logits.
     if (softcap > 0.0) {
         params.softcap = softmax_scale / softcap;
         params.scale_softmax = softcap;
