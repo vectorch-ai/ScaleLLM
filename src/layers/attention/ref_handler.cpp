@@ -129,20 +129,6 @@ void varlen_masked_self_attention(
 }  // namespace
 
 RefHandler::RefHandler(float sm_scale,
-                       int64_t rotary_dim,
-                       int64_t max_position,
-                       torch::Tensor inv_freq,
-                       bool interleaved,
-                       const torch::TensorOptions& options)
-    : RefHandler(sm_scale,
-                 /*logits_soft_cap=*/0,
-                 rotary_dim,
-                 max_position,
-                 inv_freq,
-                 interleaved,
-                 options) {}
-
-RefHandler::RefHandler(float sm_scale,
                        float logits_soft_cap,
                        int64_t rotary_dim,
                        int64_t max_position,
@@ -154,10 +140,6 @@ RefHandler::RefHandler(float sm_scale,
   pos_emb_ =
       RotaryEmbedding(rotary_dim, max_position, inv_freq, interleaved, options);
 }
-
-RefHandler::RefHandler(float sm_scale,
-                       torch::optional<torch::Tensor> alibi_slopes)
-    : RefHandler(sm_scale, /*logits_soft_cap=*/0, alibi_slopes) {}
 
 RefHandler::RefHandler(float sm_scale,
                        float logits_soft_cap,

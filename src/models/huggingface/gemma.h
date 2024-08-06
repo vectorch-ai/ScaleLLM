@@ -18,7 +18,7 @@
 #include "models/model_registry.h"
 #include "models/parameters.h"
 
-// gemma model compatible with huggingface weight
+// Gemma model compatible with huggingface weight
 namespace llm::hf {
 
 class GemmaMLPImpl : public torch::nn::Module {
@@ -188,42 +188,37 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
 
     input_layernorm_ = register_module(
         "input_layernorm",
-        RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
+        GemmaRMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
 
     post_attention_layernorm_ = register_module(
         "post_attention_layernorm",
-        RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
+        GemmaRMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
   }
 
   torch::Tensor forward(torch::Tensor x,
                         torch::Tensor positions,
                         KVCache& kv_cache,
-                        const InputParameters& input_params,
-                        torch::Tensor& residual) {
-    auto hidden_states = input_layernorm_(x, residual);
+                        const InputParameters& input_params) {
+    auto residual = x;
+    auto hidden_states = input_layernorm_(x);
 
     hidden_states =
         self_attn_(hidden_states, positions, kv_cache, input_params);
+    hidden_states += residual;
 
     // fully connected
-    hidden_states = post_attention_layernorm_(hidden_states, residual);
-
-    return mlp_(hidden_states);
+    residual = hidden_states;
+    hidden_states = post_attention_layernorm_(hidden_states);
+    hidden_states = mlp_(hidden_states);
+    hidden_states += residual;
+    return hidden_states;
   }
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) {
-    input_layernorm_->load_state_dict((state_dict.select_with_transform(
-        "input_layernorm.",
-        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
-          return tensor + 1.0f;
-        })));
+    input_layernorm_->load_state_dict((state_dict.select("input_layernorm.")));
     mlp_->load_state_dict(state_dict.select("mlp."));
     post_attention_layernorm_->load_state_dict(
-        (state_dict.select_with_transform(
-            "post_attention_layernorm.",
-            [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
-              return tensor + 1.0f;
-            })));
+        (state_dict.select("post_attention_layernorm.")));
     self_attn_->load_state_dict(state_dict.select("self_attn."));
   }
   void verify_loaded_weights(const std::string& prefix) const {
@@ -239,9 +234,9 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
 
   GemmaMLP mlp_{nullptr};
 
-  RMSNormResidual input_layernorm_{nullptr};
+  GemmaRMSNorm input_layernorm_{nullptr};
 
-  RMSNormResidual post_attention_layernorm_{nullptr};
+  GemmaRMSNorm post_attention_layernorm_{nullptr};
 };
 TORCH_MODULE(GemmaDecoderLayer);
 
@@ -267,8 +262,7 @@ class GemmaModelImpl : public torch::nn::Module {
         register_buffer("normalizer", torch::tensor({normalizer}, options));
 
     norm_ = register_module(
-        "norm",
-        RMSNormResidual(args.hidden_size(), args.rms_norm_eps(), options));
+        "norm", GemmaRMSNorm(args.hidden_size(), args.rms_norm_eps(), options));
 
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
@@ -291,14 +285,11 @@ class GemmaModelImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     // embedding tokens
     auto h = embed_tokens_(tokens) * normalizer_;
-
-    torch::Tensor residual;
     for (int32_t i = 0; i < modelArgs_.n_layers(); i++) {
       auto& layer = layers_[i];
-      h = layer(h, positions, kv_caches[i], input_params, residual);
+      h = layer(h, positions, kv_caches[i], input_params);
     }
-
-    return norm_(h, residual);
+    return norm_(h);
   }
 
   // load the weight from the checkpoint
@@ -309,13 +300,7 @@ class GemmaModelImpl : public torch::nn::Module {
       layers_[i]->load_state_dict(
           state_dict.select("layers." + std::to_string(i) + "."));
     }
-    // GemmaRMSNorm is different from Llama's in that it multiplies
-    // (1 + weight) to the output, instead of just weight.
-    norm_->load_state_dict((state_dict.select_with_transform(
-        "norm.",
-        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
-          return tensor + 1.0f;
-        })));
+    norm_->load_state_dict((state_dict.select("norm.")));
   }
 
   void verify_loaded_weights(const std::string& prefix) const {
@@ -337,7 +322,7 @@ class GemmaModelImpl : public torch::nn::Module {
   // embedding normalizer
   torch::Tensor normalizer_{nullptr};
 
-  RMSNormResidual norm_{nullptr};
+  GemmaRMSNorm norm_{nullptr};
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
@@ -417,23 +402,21 @@ class GemmaChatTemplate final : public CodedChatTemplate {
   std::optional<std::string> get_prompt(
       const std::string_view& /*system_message*/,
       const std::vector<std::string_view>& messages) const override {
+    // ignore system message since it's not supported by the model
+
     // at least one user message
     if (messages.size() % 2 == 0) {
       return std::nullopt;
     }
-    // prompt:https://huggingface.co/google/gemma-2b-it
-    /*
-     * <bos><start_of_turn>user
-     * Write a hello world program<end_of_turn>
-     * <start_of_turn>model
-     */
+    // <start_of_turn>{role}\n{message}<end_of_turn>\n
+    // <start_of_turn>model\n
     std::stringstream ss;
-    // then user message
     for (size_t i = 0; i < messages.size(); i++) {
-      ss << "\n<start_of_turn> user\n" << messages[i] << "<end_of_turn>";
+      const char* role = (i % 2) == 0 ? "user" : "model";
+      ss << "<start_of_turn>" << role << "\n" << messages[i] << "<end_of_turn>\n";
     }
 
-    ss << "\n<start_of_turn> model";
+    ss << "<start_of_turn>model\n";
     return ss.str();
   }
 };

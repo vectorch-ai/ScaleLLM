@@ -11,15 +11,30 @@
 DECLARE_bool(disable_custom_kernels);
 namespace llm {
 namespace detail {
+
+inline torch::Tensor norm(const torch::Tensor& x, float eps) {
+  const auto mean = x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
+  return x * torch::rsqrt(mean + eps);
+}
+
 inline torch::Tensor rms_norm(const torch::Tensor& input,
                               const torch::Tensor& weight,
                               float eps) {
   // it is important to use float to calculate the mean and std
-  const auto x = input.to(torch::kFloat);
-  const auto mean = x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
-  const auto output = x * torch::rsqrt(mean + eps);
+  const auto output = norm(input.to(torch::kFloat), eps);
   // convert back to the original dtype
   return output.to(input) * weight;
+}
+
+inline torch::Tensor gemma_rms_norm(const torch::Tensor& input,
+                                    const torch::Tensor& weight,
+                                    float eps) {
+  // it is important to use float to calculate the mean and std
+  auto output = norm(input.to(torch::kFloat), eps);
+  // Llama does x.to(float16) * w whilst Gemma is (x * (w + 1)).to(float16)
+  // See https://github.com/huggingface/transformers/pull/29402
+  output = output * (1.0 + weight.to(torch::kFloat));
+  return output.type_as(input);
 }
 
 inline torch::Tensor rms_norm_residual(const torch::Tensor& input,
@@ -29,10 +44,7 @@ inline torch::Tensor rms_norm_residual(const torch::Tensor& input,
   // it is important to use float for the residual
   auto x = input.to(torch::kFloat) + residual.to(torch::kFloat);
   residual = x.to(input);
-
-  // it is important to use float to calculate the mean and std
-  const auto mean = x.pow(/*exponent=*/2).mean(/*dim=*/-1, /*keepdim=*/true);
-  const auto output = x * torch::rsqrt(mean + eps);
+  const auto output = norm(x, eps);
   // convert back to the original dtype
   return output.to(input) * weight;
 }
@@ -180,6 +192,56 @@ class RMSNormImpl : public torch::nn::Module {
   float eps_;
 };
 TORCH_MODULE(RMSNorm);
+
+class GemmaRMSNormImpl : public torch::nn::Module {
+ public:
+  GemmaRMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
+      : eps_(eps) {
+    weight_ = register_parameter("weight",
+                                 torch::empty({dim}, options),
+                                 /*requires_grad=*/false);
+  }
+
+  torch::Tensor forward(const torch::Tensor& input) {
+    if (input.is_cuda() && !FLAGS_disable_custom_kernels) {
+      auto output = torch::empty_like(input);
+      kernel::gemma_rms_norm(output, input, weight_, eps_);
+      return output;
+    }
+    return detail::gemma_rms_norm(input, weight_, eps_);
+  }
+
+  // load the weight from the checkpoint
+  void load_state_dict(const StateDict& state_dict) {
+    const auto weight = state_dict.get_tensor("weight");
+    if (weight.defined()) {
+      CHECK_EQ(weight_.sizes(), weight.sizes())
+          << "weight size mismatch for " << name();
+      weight_.copy_(weight);
+      is_loaded_ = true;
+    }
+  }
+
+  // whether the weight is loaded
+  void verify_loaded_weights(const std::string& prefix = "") const {
+    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
+  }
+
+  void pretty_print(std::ostream& stream) const override {
+    stream << name() << " " << weight_.sizes() << " " << weight_.device();
+  }
+
+ private:
+  // parameter members, must be registered
+  torch::Tensor weight_{nullptr};
+
+  // whether the weight is loaded
+  bool is_loaded_ = false;
+
+  // configs
+  float eps_;
+};
+TORCH_MODULE(GemmaRMSNorm);
 
 // Root mean square normalization
 class RMSNormResidualImpl : public torch::nn::Module {

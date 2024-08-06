@@ -88,6 +88,18 @@ struct ModelArgs {
   // whether to use alibi
   DEFINE_ARG(bool, attn_alibi) = false;
 
+  // scaling factor used on the attention scores
+  DEFINE_ARG(std::optional<float>, attn_scalar);
+
+  // whether to use bias for attn
+  DEFINE_ARG(bool, attn_bias) = false;
+
+  // scaling factor when applying tanh softcapping on the attention scores
+  DEFINE_ARG(float, attn_logit_soft_cap) = 0.0f;
+
+  // scaling factor when applying tanh softcapping on the logits
+  DEFINE_ARG(float, final_logit_soft_cap) = 0.0f;
+
   // max alibi bias
   DEFINE_ARG(float, alibi_bias_max) = 0.0f;
 

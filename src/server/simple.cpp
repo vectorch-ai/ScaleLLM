@@ -167,10 +167,10 @@ int main(int argc, char* argv[]) {
   stopping_criteria.max_context_len =
       model_args.max_position_embeddings() - FLAGS_num_speculative_tokens;
 
-  std::string prompt = "Enter a prompt: ";
-  std::cout << prompt;
-  std::string input;
+  std::string prompt = "[Prompt]: ";
+  std::cout << "\n\n" << prompt;
 
+  std::string input;
   while (std::getline(std::cin, input) && input != "exit") {
     if (input.empty()) {
       continue;
