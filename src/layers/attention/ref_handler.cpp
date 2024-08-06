@@ -53,6 +53,7 @@ void varlen_masked_self_attention(
     const torch::optional<torch::Tensor> alibi_slopes,  // [n_heads]
     float sm_scale,
     float logits_soft_cap,
+    int32_t sliding_window,
     torch::Tensor& output) {
   // same length for key and value
   DCHECK(key.size(0) == value.size(0));
@@ -94,9 +95,16 @@ void varlen_masked_self_attention(
       _value = _value.repeat_interleave(/*repeats=*/num_goups, /*dim=*/-2);
     }
 
-    // causal mask
+    // create mask
     // [1, q_len, kv_len]
     torch::Tensor mask = torch::ones({1, q_len, kv_len}, torch::kBool);
+    if (sliding_window >= 0) {
+      // sliding window mask
+      // returns the upper triangular part of a matrix
+      mask = torch::triu(mask, /*diagonal=*/kv_len - q_len - sliding_window);
+    }
+
+    // causal mask
     // returns the lower triangular part of a matrix
     mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(query);
 
@@ -177,7 +185,6 @@ void RefHandler::batch_prefill(
     const InputParameters& input_params,  // input paras used for attention
     int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
-  // TODO: add sliding window support
   // don't use kv cache in prefill stage
   varlen_masked_self_attention(query,
                                key,
@@ -187,6 +194,7 @@ void RefHandler::batch_prefill(
                                alibi_slopes_,
                                sm_scale_,
                                logits_soft_cap_,
+                               sliding_window,
                                output);
 }
 
@@ -201,7 +209,7 @@ void RefHandler::batch_decode(
   // retrieval key and value from kv_cache
   auto [key, value] = kv_cache.get_kv_cache(input_params.block_tables,
                                             input_params.kv_cu_seq_lens);
-  // TODO: add sliding window support
+
   varlen_masked_self_attention(query,
                                key,
                                value,
@@ -210,6 +218,7 @@ void RefHandler::batch_decode(
                                alibi_slopes_,
                                sm_scale_,
                                logits_soft_cap_,
+                               sliding_window,
                                output);
 }
 
