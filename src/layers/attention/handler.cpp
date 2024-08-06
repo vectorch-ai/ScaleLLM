@@ -47,7 +47,10 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_alibi(
     torch::optional<torch::Tensor> alibi_slopes,
     const torch::TensorOptions& options) {
   const int64_t head_dim = args.hidden_size() / args.n_heads();
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+
+  const float attn_scale =
+      args.attn_scalar().value_or(static_cast<float>(head_dim));
+  const float sm_scale = 1.0f / std::sqrt(attn_scale);
 
   if (alibi_slopes.has_value()) {
     // move alibi slopes to the same device as the model
@@ -56,27 +59,27 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_alibi(
 
   // check if the user specified the attention handler
   if (boost::iequals(FLAGS_attention_handler, "pytorch")) {
-    return std::make_unique<RefHandler>(scale, alibi_slopes);
+    return std::make_unique<RefHandler>(
+        sm_scale, args.attn_logit_soft_cap(), alibi_slopes);
   }
 
   const bool is_cuda = options.device().is_cuda();
   if (boost::iequals(FLAGS_attention_handler, "flash_attn")) {
     CHECK(is_cuda) << "flash_attn only supports cuda device";
-    return std::make_unique<FlashAttnHandler>(scale, alibi_slopes);
-  }
-  if (boost::iequals(FLAGS_attention_handler, "flash_infer")) {
-    CHECK(is_cuda) << "flash_infer only supports cuda device";
-    return std::make_unique<FlashInferHandler>(scale, alibi_slopes);
+    return std::make_unique<FlashAttnHandler>(
+        sm_scale, args.attn_logit_soft_cap(), alibi_slopes);
   }
 
   // choose the best handler based on device type
   if (is_cuda) {
     // use flash_attn for cuda device
-    return std::make_unique<FlashAttnHandler>(scale, alibi_slopes);
+    return std::make_unique<FlashAttnHandler>(
+        sm_scale, args.attn_logit_soft_cap(), alibi_slopes);
   }
 
   // use slower ref handler for other devices for now.
-  return std::make_unique<RefHandler>(scale, alibi_slopes);
+  return std::make_unique<RefHandler>(
+      sm_scale, args.attn_logit_soft_cap(), alibi_slopes);
 }
 
 // create an attention handler with ROPE
@@ -90,13 +93,16 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
   // apply rotary_dim percentage
   rotary_dim = static_cast<int64_t>(rotary_dim * args.rotary_pct());
 
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+  const float attn_scale =
+      args.attn_scalar().value_or(static_cast<float>(head_dim));
+  const float sm_scale = 1.0f / std::sqrt(attn_scale);
 
   const auto inv_freq = compute_inv_freq(rotary_dim, args);
 
   // check if the user specified the attention handler
   if (boost::iequals(FLAGS_attention_handler, "pytorch")) {
-    return std::make_unique<RefHandler>(scale,
+    return std::make_unique<RefHandler>(sm_scale,
+                                        args.attn_logit_soft_cap(),
                                         rotary_dim,
                                         args.max_position_embeddings(),
                                         inv_freq,
@@ -107,7 +113,8 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
   const bool is_cuda = options.device().is_cuda();
   if (boost::iequals(FLAGS_attention_handler, "flash_attn")) {
     CHECK(is_cuda) << "flash_attn only supports cuda device";
-    return std::make_unique<FlashAttnHandler>(scale,
+    return std::make_unique<FlashAttnHandler>(sm_scale,
+                                              args.attn_logit_soft_cap(),
                                               rotary_dim,
                                               args.max_position_embeddings(),
                                               inv_freq,
@@ -118,7 +125,8 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
   // choose the best handler based on device type
   if (is_cuda) {
     // use flash_attn for cuda device
-    return std::make_unique<FlashAttnHandler>(scale,
+    return std::make_unique<FlashAttnHandler>(sm_scale,
+                                              args.attn_logit_soft_cap(),
                                               rotary_dim,
                                               args.max_position_embeddings(),
                                               inv_freq,
@@ -127,7 +135,8 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
   }
 
   // use slower ref handler for other devices for now.
-  return std::make_unique<RefHandler>(scale,
+  return std::make_unique<RefHandler>(sm_scale,
+                                      args.attn_logit_soft_cap(),
                                       rotary_dim,
                                       args.max_position_embeddings(),
                                       inv_freq,

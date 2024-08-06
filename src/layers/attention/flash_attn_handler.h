@@ -14,14 +14,7 @@ namespace llm {
 class FlashAttnHandler : public AttentionHandler {
  public:
   // create a flash attn handler with rope positional embedding
-  FlashAttnHandler(float scale,
-                   int64_t rotary_dim,
-                   int64_t max_position,
-                   torch::Tensor inv_freq,
-                   bool interleaved,
-                   const torch::TensorOptions& options);
-
-  FlashAttnHandler(float scale,
+  FlashAttnHandler(float sm_scale,
                    float logits_soft_cap,
                    int64_t rotary_dim,
                    int64_t max_position,
@@ -30,9 +23,7 @@ class FlashAttnHandler : public AttentionHandler {
                    const torch::TensorOptions& options);
 
   // create a flash attn handler with alibi slopes
-  FlashAttnHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
-
-  FlashAttnHandler(float scale,
+  FlashAttnHandler(float sm_scale,
                    float logits_soft_cap,
                    torch::optional<torch::Tensor> alibi_slopes);
 
