@@ -185,7 +185,6 @@ void RefHandler::batch_prefill(
     const InputParameters& input_params,  // input paras used for attention
     int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
-  // TODO: add sliding window support
   // don't use kv cache in prefill stage
   varlen_masked_self_attention(query,
                                key,
@@ -210,7 +209,7 @@ void RefHandler::batch_decode(
   // retrieval key and value from kv_cache
   auto [key, value] = kv_cache.get_kv_cache(input_params.block_tables,
                                             input_params.kv_cu_seq_lens);
-  // TODO: add sliding window support
+
   varlen_masked_self_attention(query,
                                key,
                                value,
