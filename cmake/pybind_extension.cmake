@@ -58,7 +58,7 @@ function(pybind_extension)
     PY # prefix
     "TESTONLY" # options
     "NAME" # one value args
-    "HDRS;SRCS;COPTS;DEFINES;LINKOPTS;DEPS" # multi value args
+    "HDRS;SRCS;COPTS;DEFINES;LINKOPTS;LINKDIRS;DEPS" # multi value args
     ${ARGN}
   )
 
@@ -73,6 +73,10 @@ function(pybind_extension)
   target_link_libraries(${PY_NAME}
     PUBLIC ${PY_DEPS}
     PRIVATE ${PY_LINKOPTS}
+  )
+  # search directories for libraries
+  target_link_directories(${PY_NAME}
+    PUBLIC ${PY_LINKDIRS}
   )
   target_compile_options(${PY_NAME} PRIVATE ${PY_COPTS})
   target_compile_definitions(${PY_NAME} PUBLIC ${PY_DEFINES})
