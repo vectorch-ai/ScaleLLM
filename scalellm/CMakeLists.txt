@@ -10,9 +10,15 @@ pybind_extension(
     csrc/output.cpp
     csrc/llm_handler.cpp
     csrc/module.cpp
+    csrc/kernels.cpp
+  DEFINES 
+    PYBIND11_DETAILED_ERROR_MESSAGES=1
+  LINKDIRS
+    ${TORCH_INSTALL_PREFIX}/lib
   DEPS
     :llm_handler
     torch
+    torch_python
     absl::strings
     gflags::gflags
     glog::glog
