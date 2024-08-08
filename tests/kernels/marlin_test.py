@@ -2,9 +2,9 @@ import sys
 
 import pytest
 import torch
+from marlin_utils import gen_marlin_weights
 
 import scalellm._C.kernels as kernels
-from marlin_utils import gen_marlin_weights
 
 
 @pytest.mark.parametrize("m", [16, 32])
