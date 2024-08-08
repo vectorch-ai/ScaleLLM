@@ -5,12 +5,15 @@ import torch
 
 
 def marlin_weight_perm():
-    # shape: (1024)
+    # shape: (1024) for 4 16x16 matrices
     perm = []
+    # build permutation for 32 threads
     for i in range(32):
         perm1 = []
         col = i // 4
+        # two blocks for each 16x16 matrix
         for block in [0, 1]:
+            # each block is 16x8 (row x col)
             for row in [
                 2 * (i % 4),
                 2 * (i % 4) + 1,
@@ -18,9 +21,12 @@ def marlin_weight_perm():
                 2 * (i % 4 + 4) + 1,
             ]:
                 perm1.append(16 * row + col + 8 * block)
+        # total 4 16x16 blocks with stride 256
         for j in range(4):
             perm.extend([p + 256 * j for p in perm1])
     perm = np.array(perm)
+    # permute for fast interleaved_numeric_conversion
+    # [0, 1, 2, 3, 4, 5, 6, 7] -> [0, 2, 4, 6, 1, 3, 5, 7]
     interleave = np.array([0, 2, 4, 6, 1, 3, 5, 7])
     perm = perm.reshape((-1, 8))[:, interleave].ravel()
     perm = torch.from_numpy(perm)
@@ -28,7 +34,7 @@ def marlin_weight_perm():
 
 
 def marlin_scales_perm():
-    # shape: (64)
+    # shape: (32) for 4 16x16 matrices
     scale_perm = []
     for i in range(8):
         scale_perm.extend([i + 8 * j for j in range(8)])
