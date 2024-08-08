@@ -36,6 +36,8 @@ cc_library(
 cc_library(
   NAME
     marlin.kernels
+  HDRS
+    marlin/marlin.h
   SRCS
     marlin/dense.cu
     marlin/sparse.cu

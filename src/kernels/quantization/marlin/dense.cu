@@ -16,9 +16,13 @@
 
 // Adapted from https://github.com/IST-DASLab/marlin
 
+#include <ATen/cuda/CUDAContext.h>
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include <torch/torch.h>
+
+#include "marlin.h"
 
 namespace marlin {
 
@@ -833,8 +837,6 @@ const int SHARED_MEM =
         A_ptr, B_ptr, C_ptr, s_ptr, prob_m, prob_n, prob_k, locks);   \
   }
 
-}  // namespace
-
 const int ERR_PROB_SHAPE = 1;
 const int ERR_KERN_SHAPE = 2;
 
@@ -930,6 +932,70 @@ int marlin_dense(const void* A,
   }
 
   return ret;
+}
+
+}  // namespace
+
+void fp16_int4_gemm(const torch::Tensor& A,
+                    const torch::Tensor& B,
+                    torch::Tensor& C,
+                    const torch::Tensor& s,
+                    torch::Tensor& workspace,
+                    int thread_k,
+                    int thread_n,
+                    int sms,
+                    int max_par) {
+  // (m, k) x (k, n) = (m, n)
+  int prob_m = A.size(0);
+  int prob_n = C.size(1);
+  int prob_k = A.size(1);
+  // s: (k/groupsize, n) => groupsize = k / s.size(0)
+  int groupsize = (s.size(0) == 1) ? -1 : prob_k / s.size(0);
+  if (groupsize != -1 && groupsize * s.size(0) != prob_k)
+    AT_ERROR("k=", prob_k, " not compatible with ", s.size(0), " groups.");
+  if (workspace.numel() < prob_n / 128 * max_par)
+    AT_ERROR(
+        "workspace must be of size at least ", prob_n / 128 * max_par, ".");
+
+  int dev = A.get_device();
+  int err = marlin_dense(A.data_ptr(),
+                         B.data_ptr(),
+                         C.data_ptr(),
+                         s.data_ptr(),
+                         prob_m,
+                         prob_n,
+                         prob_k,
+                         workspace.data_ptr(),
+                         groupsize,
+                         dev,
+                         at::cuda::getCurrentCUDAStream(dev),
+                         thread_k,
+                         thread_n,
+                         sms,
+                         max_par);
+
+  if (err == ERR_PROB_SHAPE) {
+    AT_ERROR("Problem (m=",
+             prob_m,
+             ", n=",
+             prob_n,
+             ", k=",
+             prob_k,
+             ")",
+             " not compatible with thread_k=",
+             thread_k,
+             ", thread_n=",
+             thread_n,
+             ".");
+  } else if (err == ERR_KERN_SHAPE) {
+    AT_ERROR("No kernel implementation for thread_k=",
+             thread_k,
+             ", thread_n=",
+             thread_n,
+             ", groupsize=",
+             groupsize,
+             ".");
+  }
 }
 
 }  // namespace marlin
