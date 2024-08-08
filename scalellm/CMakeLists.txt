@@ -17,6 +17,7 @@ pybind_extension(
     ${TORCH_INSTALL_PREFIX}/lib
   DEPS
     :llm_handler
+    :marlin.kernels
     torch
     torch_python
     absl::strings
