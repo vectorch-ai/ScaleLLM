@@ -4,20 +4,13 @@ from typing import List, Optional
 import shortuuid
 
 from scalellm import AsyncLLMEngine, LogProb, SamplingParams
-from scalellm.serve.api_protocol import (
-    CompletionLogProbs,
-    CompletionRequest,
-    CompletionResponse,
-    CompletionResponseChoice,
-    CompletionResponseStreamChoice,
-    CompletionStreamResponse,
-)
-from scalellm.serve.common import (
-    get_printable_token,
-    jsonify_model,
-    to_api_usage,
-    to_priority,
-)
+from scalellm.serve.api_protocol import (CompletionLogProbs, CompletionRequest,
+                                         CompletionResponse,
+                                         CompletionResponseChoice,
+                                         CompletionResponseStreamChoice,
+                                         CompletionStreamResponse)
+from scalellm.serve.common import (get_printable_token, jsonify_model,
+                                   to_api_usage, to_priority)
 from scalellm.serve.streaming_response import SafeStreamingResponse
 
 
