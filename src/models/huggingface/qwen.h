@@ -395,17 +395,15 @@ REGISTER_MODEL_ARGS(qwen, [&] {
   LOAD_ARG_OR(intermediate_size, "intermediate_size", 22016);
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 32768);
   LOAD_ARG_OR(layer_norm_eps, "layer_norm_epsilon", 1e-6);
-  // LOAD_ARG_OR(bos_token_id, "bos_token_id", 1);
-  // LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
+  LOAD_ARG_OR(eos_token_id, "eos_token_id", 151643);
   LOAD_ARG_OR(rope_theta, "rope_theta", 10000.0f);
 
   LOAD_ARG_OR_FUNC(head_dim, "head_dim", [&] {
     return args->hidden_size() / args->n_heads();
   });
 
-  // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>"
-  SET_ARG(stop_token_ids,
-          std::unordered_set<int32_t>({151643, 151644, 151645}));
+  // stop token ids: "<|im_start|>", "<|im_end|>"
+  SET_ARG(stop_token_ids, std::unordered_set<int32_t>({151644, 151645}));
 });
 
 // Register tokenizer args since Qwen is using tiktoken tokenizer.

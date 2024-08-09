@@ -527,14 +527,12 @@ REGISTER_MODEL_ARGS(chatglm, [&] {
     // choose the right chat template and tokenizer based on model type
     SET_ARG(model_type, "chatglm4");
     LOAD_ARG_OR(eos_token_id, "eos_token_id", 151329);
-    // stop token ids: "<|endoftext|>", "<|user|>", "<|observation|>"
-    SET_ARG(stop_token_ids,
-            std::unordered_set<int32_t>({151329, 151336, 151338}));
+    // stop token ids: "<|user|>", "<|observation|>"
+    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({151336, 151338}));
   } else {
     LOAD_ARG_OR(eos_token_id, "eos_token_id", 2);
-    // stop token ids: "</s>", "<|user|>", "<|assistant|>", "<|observation|>"
-    SET_ARG(stop_token_ids,
-            std::unordered_set<int32_t>({2, 64795, 64796, 64797}));
+    // stop token ids: "<|user|>", "<|assistant|>", "<|observation|>"
+    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({64795, 64796, 64797}));
   }
 
   LOAD_ARG_OR(hidden_size, "hidden_size", 4096);
