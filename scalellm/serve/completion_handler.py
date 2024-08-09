@@ -154,6 +154,8 @@ async def generate_completion_stream_response(
                             )
                         ],
                     )
+                    if include_usage:
+                        response.usage = None
                     yield f"data: {jsonify_model(response)}\n\n"
 
                 # send seperate chunk with finish reason
@@ -172,6 +174,8 @@ async def generate_completion_stream_response(
                             )
                         ],
                     )
+                    if include_usage:
+                        response.usage = None
                     yield f"data: {jsonify_model(response)}\n\n"
             # record last usage info
             if output.usage:
