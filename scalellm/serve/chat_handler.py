@@ -134,13 +134,12 @@ async def generate_chat_stream_response(
         messages, sampling_params, priority, request.stream
     )
 
-    include_usage = False
-    if request.stream_options:
-        include_usage = request.stream_options.include_usage
+    include_usage = request.stream_options and request.stream_options.include_usage
 
     async def generate_stream_content():
         # to keep track of the first message sent
         first_message_sent = set()
+        usage = None
         async for output in output_stream:
             for seq_output in output.outputs:
                 index = seq_output.index
@@ -160,62 +159,58 @@ async def generate_chat_stream_response(
                             )
                         ],
                     )
-                    if include_usage:
-                        response.usage = None
                     yield f"data: {jsonify_model(response)}\n\n"
                     first_message_sent.add(index)
                 # send chunk with delta message
-                response = ChatCompletionStreamResponse(
-                    id=request_id,
-                    object=chunk_object_type,
-                    created=created_time,
-                    model=model,
-                    choices=[
-                        ChatCompletionResponseStreamChoice(
-                            index=index,
-                            delta=DeltaMessage(content=seq_output.text),
-                            logprobs=to_api_logprobs(seq_output.logprobs),
-                            finish_reason=None,
-                        )
-                    ],
-                )
-                if include_usage:
-                    response.usage = None
-                yield f"data: {jsonify_model(response)}\n\n"
+                if seq_output.text:
+                    response = ChatCompletionStreamResponse(
+                        id=request_id,
+                        object=chunk_object_type,
+                        created=created_time,
+                        model=model,
+                        choices=[
+                            ChatCompletionResponseStreamChoice(
+                                index=index,
+                                delta=DeltaMessage(content=seq_output.text),
+                                logprobs=to_api_logprobs(seq_output.logprobs),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+                    yield f"data: {jsonify_model(response)}\n\n"
 
-                if seq_output.finish_reason is None:
-                    continue
-                
                 # send a seperate chunk with finish reason
-                response = ChatCompletionStreamResponse(
-                    id=request_id,
-                    object=chunk_object_type,
-                    created=created_time,
-                    model=model,
-                    choices=[
-                        ChatCompletionResponseStreamChoice(
-                            index=index,
-                            delta=DeltaMessage(),
-                            logprobs=None,
-                            finish_reason=seq_output.finish_reason,
-                        )
-                    ],
-                )
-                if include_usage:
-                    response.usage = None
-                yield f"data: {jsonify_model(response)}\n\n"
+                if seq_output.finish_reason:
+                    response = ChatCompletionStreamResponse(
+                        id=request_id,
+                        object=chunk_object_type,
+                        created=created_time,
+                        model=model,
+                        choices=[
+                            ChatCompletionResponseStreamChoice(
+                                index=index,
+                                delta=DeltaMessage(),
+                                logprobs=None,
+                                finish_reason=seq_output.finish_reason,
+                            )
+                        ],
+                    )
+                    yield f"data: {jsonify_model(response)}\n\n"
+            # record last usage info
+            if output.usage:
+                usage = output.usage
 
-            # send additional chunk for usage info
-            if include_usage and output.usage:
-                response = ChatCompletionStreamResponse(
-                    id=request_id,
-                    object=chunk_object_type,
-                    created=created_time,
-                    model=model,
-                    choices=[],
-                    usage=to_api_usage(output.usage),
-                )
-                yield f"data: {jsonify_model(response)}\n\n"
+        # send additional chunk for usage info
+        if include_usage and usage:
+            response = ChatCompletionStreamResponse(
+                id=request_id,
+                object=chunk_object_type,
+                created=created_time,
+                model=model,
+                choices=[],
+                usage=to_api_usage(usage),
+            )
+            yield f"data: {jsonify_model(response)}\n\n"
         yield "data: [DONE]\n\n"
 
     return SafeStreamingResponse(

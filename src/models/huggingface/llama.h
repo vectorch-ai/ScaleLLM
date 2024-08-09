@@ -439,9 +439,8 @@ REGISTER_MODEL_ARGS(llama, [&] {
     LOAD_ARG(rope_scaling_original_max_position_embeddings,
              "rope_scaling.original_max_position_embeddings");
 
-    // stop token ids: "<|end_of_text|>", "<|eom_id|>", "<|eot_id|>"
-    SET_ARG(stop_token_ids,
-            std::unordered_set<int32_t>({128001, 128008, 128009}));
+    // stop token ids: "<|eom_id|>", "<|eot_id|>"
+    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({128008, 128009}));
   } else if (args->vocab_size() == 64000) {
     // choose the right chat template
     SET_ARG(model_type, "Yi");
@@ -456,9 +455,8 @@ REGISTER_MODEL_ARGS(llama, [&] {
     LOAD_ARG_OR(rope_theta, "rope_theta", 5000000.0f);
     // LOAD_ARG_OR(rope_scaling, "rope_scaling", 1.0f);
 
-    // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>",
-    // "<|im_sep|>"
-    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({2, 6, 7, 8}));
+    // stop token ids: "<|im_start|>", "<|im_end|>", "<|im_sep|>"
+    SET_ARG(stop_token_ids, std::unordered_set<int32_t>({6, 7, 8}));
   } else {
     // llama 2
     LOAD_ARG_OR(hidden_size, "hidden_size", 4096);

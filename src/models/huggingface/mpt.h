@@ -502,6 +502,7 @@ REGISTER_MODEL_ARGS(mpt, [&] {
   LOAD_ARG_OR(max_position_embeddings, "max_seq_len", 2048);
   LOAD_ARG_OR(layer_norm_eps, "layer_norm_eps", 1e-5);
   LOAD_ARG_OR(no_bias, "no_bias", true);
+  LOAD_ARG_OR(eos_token_id, "eos_token_id", 0);
 
   // load config for attention
   LOAD_ARG(attn_qkv_clip, "attn_config.clip_qkv");
@@ -519,8 +520,8 @@ REGISTER_MODEL_ARGS(mpt, [&] {
     return args->hidden_size() / args->n_heads();
   });
 
-  // stop token ids: [0, 50278]
-  SET_ARG(stop_token_ids, std::unordered_set<int32_t>({0, 50278}));
+  // stop token ids: [50278]
+  SET_ARG(stop_token_ids, std::unordered_set<int32_t>({50278}));
 });
 
 }  // namespace llm::hf

@@ -440,8 +440,7 @@ REGISTER_MODEL_ARGS(qwen2, [&] {
   LOAD_ARG_OR(intermediate_size, "intermediate_size", 18944);
   LOAD_ARG_OR(max_position_embeddings, "max_position_embeddings", 32768);
   LOAD_ARG_OR(rms_norm_eps, "rms_norm_eps", 1e-6);
-  LOAD_ARG_OR(bos_token_id, "bos_token_id", 151643);
-  LOAD_ARG_OR(eos_token_id, "eos_token_id", 151645);
+  LOAD_ARG_OR(eos_token_id, "eos_token_id", 151643);
   LOAD_ARG_OR(rope_theta, "rope_theta", 1000000.0f);
 
   LOAD_ARG_OR(use_sliding_window, "use_sliding_window", false);
@@ -452,9 +451,8 @@ REGISTER_MODEL_ARGS(qwen2, [&] {
     return args->hidden_size() / args->n_heads();
   });
 
-  // stop token ids: "<|endoftext|>", "<|im_start|>", "<|im_end|>"
-  SET_ARG(stop_token_ids,
-          std::unordered_set<int32_t>({151643, 151644, 151645}));
+  // stop token ids: "<|im_start|>", "<|im_end|>"
+  SET_ARG(stop_token_ids, std::unordered_set<int32_t>({151644, 151645}));
 });
 
 }  // namespace llm::hf
