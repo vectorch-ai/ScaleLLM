@@ -65,6 +65,7 @@ __global__ void gptq_marlin_repack_kernel(
 
   extern __shared__ int4 sh[];
 
+  // perm_size = 16 / 4
   constexpr int perm_size = tile_k_size / 4;
 
   int4* sh_perm_ptr = sh;

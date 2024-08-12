@@ -40,6 +40,7 @@ cc_library(
     marlin/marlin.h
   SRCS
     marlin/fp16_int4_gemm.cu
+    marlin/fp8_gemm.cu
     marlin/gptq_gemm.cu
     marlin/gptq_repack.cu
     marlin/sparse.cu
