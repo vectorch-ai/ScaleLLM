@@ -284,9 +284,9 @@ __global__ void gptq_marlin_repack_kernel(
   }
 
 torch::Tensor gptq_repack(
-    const torch::Tensor& b_q_weight,  // (k / pack_factor, n)
-    const torch::Tensor& perm,
-    torch::Tensor& out,  // (k / 16, n * 16 / pack_factor)
+    const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
+    const torch::Tensor& perm,        // ?
+    torch::Tensor& out,               // (k/16, n*16/pack_factor)
     int64_t size_k,
     int64_t size_n,
     int64_t num_bits) {
@@ -329,15 +329,6 @@ torch::Tensor gptq_repack(
   TORCH_CHECK(perm.device().is_cuda(), "perm is not on GPU");
   TORCH_CHECK(perm.is_contiguous(), "perm is not contiguous");
   TORCH_CHECK(perm.dtype() == at::kInt, "perm type is not at::kInt");
-
-  // Alloc buffers
-  const at::cuda::OptionalCUDAGuard device_guard(device_of(b_q_weight));
-  auto options = torch::TensorOptions()
-                     .dtype(b_q_weight.dtype())
-                     .device(b_q_weight.device());
-  // torch::Tensor out = torch::empty(
-  //     {size_k / marlin::tile_size, size_n * marlin::tile_size / pack_factor},
-  //     options);
 
   // Detect if there is act_order
   bool has_perm = perm.size(0) != 0;

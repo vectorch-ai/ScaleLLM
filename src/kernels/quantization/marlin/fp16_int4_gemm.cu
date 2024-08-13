@@ -843,7 +843,7 @@ const int ERR_KERN_SHAPE = 2;
 int marlin_dense(const void* A,
                  const void* B,
                  void* C,
-                 void* s,
+                 const void* s,
                  int prob_m,
                  int prob_n,
                  int prob_k,
@@ -936,10 +936,10 @@ int marlin_dense(const void* A,
 
 }  // namespace
 
-void fp16_int4_gemm(const torch::Tensor& A,
-                    const torch::Tensor& B,
-                    torch::Tensor& C,
-                    const torch::Tensor& s,
+void fp16_int4_gemm(const torch::Tensor& A,  // (m, k)
+                    const torch::Tensor& B,  // (k/16, n*16/8)
+                    torch::Tensor& C,        // (m, n)
+                    const torch::Tensor& s,  // (n_groups, n)
                     torch::Tensor& workspace,
                     int thread_k,
                     int thread_n,

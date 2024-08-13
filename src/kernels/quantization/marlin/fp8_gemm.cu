@@ -26,6 +26,8 @@
 
 #include <string>
 
+#include "marlin.h"
+
 #define STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t)               \
   static_assert(std::is_same<scalar_t, half>::value ||          \
                     std::is_same<scalar_t, nv_bfloat16>::value, \
@@ -37,6 +39,7 @@ inline std::string str(T x) {
 }
 
 namespace marlin {
+namespace {
 // Marlin params
 
 // 8 warps are a good choice since every SM has 4 schedulers and having more
@@ -1280,12 +1283,11 @@ template <typename scalar_t>
 void marlin_mm_f16i4(const void* A,
                      const void* B,
                      void* C,
-                     void* s,
+                     const void* scales,
                      int prob_m,
                      int prob_n,
                      int prob_k,
                      void* workspace,
-                     int num_bits,
                      int num_groups,
                      int group_size,
                      int dev,
@@ -1294,7 +1296,8 @@ void marlin_mm_f16i4(const void* A,
                      int thread_n,
                      int sms,
                      int max_par) {
-  TORCH_CHECK(num_bits == 8, "num_bits must be 8. Got = ", num_bits);
+  constexpr int num_bits = 8;
+
   TORCH_CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0,
               "Invalid MNK = [",
               prob_m,
@@ -1384,7 +1387,7 @@ void marlin_mm_f16i4(const void* A,
   const int4* A_ptr = (const int4*)A;
   const int4* B_ptr = (const int4*)B;
   int4* C_ptr = (int4*)C;
-  const int4* s_ptr = (const int4*)s;
+  const int4* s_ptr = (const int4*)scales;
 
   int* locks = (int*)workspace;
 
@@ -1427,150 +1430,83 @@ void marlin_mm_f16i4(const void* A,
   }
 }
 
+}  // namespace
+
+void fp8_gemm(const torch::Tensor& A,       // (m, k)
+              const torch::Tensor& B,       // (k/16, n*16/4)
+              torch::Tensor& C,             // (m, n)
+              const torch::Tensor& scales,  // (1, n)
+              torch::Tensor& workspace) {
+    // (m, k) x (k, n) = (m, n)
+  int prob_m = A.size(0);
+  int prob_n = C.size(1);
+  int prob_k = A.size(1);
+  
+  // thread_k: `k` size of a thread_tile in `weights` (can usually be left as
+  // auto -1)
+  int thread_k = -1;
+  // thread_n: `n` size of a thread_tile in `weights` (can usually be left as
+  // auto -1)
+  int thread_n = -1;
+  // sms: number of SMs to use for the kernel (can usually be left as auto -1)
+  int sms = -1;
+
+  // Channelwise only for FP8
+  int num_groups = scales.size(0);
+  TORCH_CHECK(num_groups == 1);
+  int group_size = -1;
+
+  // Verify workspace size
+  TORCH_CHECK(prob_n % marlin::min_thread_n == 0,
+              "size_n = ",
+              prob_n,
+              ", is not divisible by min_thread_n = ",
+              marlin::min_thread_n);
+  int min_workspace_size = (prob_n / marlin::min_thread_n) * marlin::max_par;
+  TORCH_CHECK(workspace.numel() >= min_workspace_size,
+              "workspace.numel = ",
+              workspace.numel(),
+              " is below min_workspace_size = ",
+              min_workspace_size);
+
+  int dev = A.get_device();
+  if (A.scalar_type() == at::ScalarType::Half) {
+    marlin_mm_f16i4<half>(A.data_ptr<at::Half>(),
+                          B.data_ptr(),
+                          C.data_ptr<at::Half>(),
+                          scales.data_ptr<at::Half>(),
+                          prob_m,
+                          prob_n,
+                          prob_k,
+                          workspace.data_ptr(),
+                          num_groups,
+                          group_size,
+                          dev,
+                          at::cuda::getCurrentCUDAStream(dev),
+                          thread_k,
+                          thread_n,
+                          sms,
+                          marlin::max_par);
+  } else if (A.scalar_type() == at::ScalarType::BFloat16) {
+    marlin_mm_f16i4<nv_bfloat16>(A.data_ptr<at::BFloat16>(),
+                                 B.data_ptr(),
+                                 C.data_ptr<at::BFloat16>(),
+                                 scales.data_ptr<at::BFloat16>(),
+                                 prob_m,
+                                 prob_n,
+                                 prob_k,
+                                 workspace.data_ptr(),
+                                 num_groups,
+                                 group_size,
+                                 dev,
+                                 at::cuda::getCurrentCUDAStream(dev),
+                                 thread_k,
+                                 thread_n,
+                                 sms,
+                                 marlin::max_par);
+  } else {
+    TORCH_CHECK(false, "marlin::fp8_gemm only supports bfloat16 and float16");
+  }
+}
+
 }  // namespace marlin
-
-// torch::Tensor fp8_marlin_gemm(torch::Tensor& a,
-//                               torch::Tensor& b_q_weight,
-//                               torch::Tensor& b_scales,
-//                               torch::Tensor& workspace,
-//                               int64_t num_bits,
-//                               int64_t size_m,
-//                               int64_t size_n,
-//                               int64_t size_k) {
-//   // Verify num_bits
-//   TORCH_CHECK(num_bits == 8, "num_bits must be 8. Got = ", num_bits);
-//   int pack_factor = 32 / num_bits;
-
-//   // Verify A
-//   TORCH_CHECK(a.size(0) == size_m,
-//               "Shape mismatch: a.size(0) = ",
-//               a.size(0),
-//               ", size_m = ",
-//               size_m);
-//   TORCH_CHECK(a.size(1) == size_k,
-//               "Shape mismatch: a.size(1) = ",
-//               a.size(1),
-//               ", size_k = ",
-//               size_k);
-
-//   // Verify B
-//   TORCH_CHECK(size_k % marlin::tile_size == 0,
-//               "size_k = ",
-//               size_k,
-//               " is not divisible by tile_size = ",
-//               marlin::tile_size);
-//   TORCH_CHECK((size_k / marlin::tile_size) == b_q_weight.size(0),
-//               "Shape mismatch: b_q_weight.size(0) = ",
-//               b_q_weight.size(0),
-//               ", size_k = ",
-//               size_k,
-//               ", tile_size = ",
-//               marlin::tile_size);
-//   TORCH_CHECK(b_q_weight.size(1) % marlin::tile_size == 0,
-//               "b_q_weight.size(1) = ",
-//               b_q_weight.size(1),
-//               " is not divisible by tile_size = ",
-//               marlin::tile_size);
-//   int actual_size_n = (b_q_weight.size(1) / marlin::tile_size) * pack_factor;
-//   TORCH_CHECK(size_n == actual_size_n,
-//               "size_n = ",
-//               size_n,
-//               ", actual_size_n = ",
-//               actual_size_n);
-
-//   // Verify device and strides
-//   TORCH_CHECK(a.device().is_cuda(), "A is not on GPU");
-//   TORCH_CHECK(a.is_contiguous(), "A is not contiguous");
-
-//   TORCH_CHECK(b_q_weight.device().is_cuda(), "b_q_weight is not on GPU");
-//   TORCH_CHECK(b_q_weight.is_contiguous(), "b_q_weight is not contiguous");
-
-//   TORCH_CHECK(b_scales.device().is_cuda(), "b_scales is not on GPU");
-//   TORCH_CHECK(b_scales.is_contiguous(), "b_scales is not contiguous");
-
-//   // Alloc buffers
-//   const at::cuda::OptionalCUDAGuard device_guard(device_of(a));
-//   auto options = torch::TensorOptions().dtype(a.dtype()).device(a.device());
-//   torch::Tensor c = torch::empty({size_m, size_n}, options);
-
-//   // thread_k: `k` size of a thread_tile in `weights` (can usually be left as
-//   // auto -1)
-//   int thread_k = -1;
-//   // thread_n: `n` size of a thread_tile in `weights` (can usually be left as
-//   // auto -1)
-//   int thread_n = -1;
-//   // sms: number of SMs to use for the kernel (can usually be left as auto
-//   -1) int sms = -1;
-
-//   // Detect groupsize and act_order
-//   int num_groups = -1;
-//   int group_size = -1;
-
-//   int b_rank = b_scales.sizes().size();
-//   TORCH_CHECK(b_rank == 2, "b_scales rank = ", b_rank, " is not 2");
-//   TORCH_CHECK(b_scales.size(1) == size_n,
-//               "b_scales dim 1 = ",
-//               b_scales.size(1),
-//               " is not size_n = ",
-//               size_n);
-//   // Channelwise only for FP8
-//   TORCH_CHECK(b_scales.size(0) == 1)
-//   num_groups = b_scales.size(0);
-
-//   // Verify workspace size
-//   TORCH_CHECK(size_n % marlin::min_thread_n == 0,
-//               "size_n = ",
-//               size_n,
-//               ", is not divisible by min_thread_n = ",
-//               marlin::min_thread_n);
-//   int min_workspace_size = (size_n / marlin::min_thread_n) * marlin::max_par;
-//   TORCH_CHECK(workspace.numel() >= min_workspace_size,
-//               "workspace.numel = ",
-//               workspace.numel(),
-//               " is below min_workspace_size = ",
-//               min_workspace_size);
-
-//   int dev = a.get_device();
-//   if (a.scalar_type() == at::ScalarType::Half) {
-//     fp8_marlin::marlin_mm_f16i4<half>(a.data_ptr<at::Half>(),
-//                                       b_q_weight.data_ptr(),
-//                                       c.data_ptr<at::Half>(),
-//                                       b_scales.data_ptr<at::Half>(),
-//                                       size_m,
-//                                       size_n,
-//                                       size_k,
-//                                       workspace.data_ptr(),
-//                                       num_bits,
-//                                       num_groups,
-//                                       group_size,
-//                                       dev,
-//                                       at::cuda::getCurrentCUDAStream(dev),
-//                                       thread_k,
-//                                       thread_n,
-//                                       sms,
-//                                       marlin::max_par);
-//   } else if (a.scalar_type() == at::ScalarType::BFloat16) {
-//     fp8_marlin::marlin_mm_f16i4<nv_bfloat16>(
-//         a.data_ptr<at::BFloat16>(),
-//         b_q_weight.data_ptr(),
-//         c.data_ptr<at::BFloat16>(),
-//         b_scales.data_ptr<at::BFloat16>(),
-//         size_m,
-//         size_n,
-//         size_k,
-//         workspace.data_ptr(),
-//         num_bits,
-//         num_groups,
-//         group_size,
-//         dev,
-//         at::cuda::getCurrentCUDAStream(dev),
-//         thread_k,
-//         thread_n,
-//         sms,
-//         marlin::max_par);
-//   } else {
-//     TORCH_CHECK(false, "fp8_marlin_gemm only supports bfloat16 and float16");
-//   }
-
-//   return c;
-// }

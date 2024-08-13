@@ -43,7 +43,7 @@ cc_library(
     marlin/fp8_gemm.cu
     marlin/gptq_gemm.cu
     marlin/gptq_repack.cu
-    marlin/sparse.cu
+    # marlin/sparse.cu
   DEPS
     torch
 )
