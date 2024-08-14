@@ -1,7 +1,11 @@
-#include <c10/cuda/CUDAGuard.h>
+#include <c10/cuda/CUDAStream.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <cstdint>
+
 namespace marlin {
+namespace {
 // Repack params
 static constexpr int repack_stages = 8;
 
@@ -267,8 +271,6 @@ __global__ void gptq_marlin_repack_kernel(
   }
 }
 
-}  // namespace marlin
-
 #define CALL_IF(NUM_BITS, HAS_PERM)                                           \
   else if (num_bits == NUM_BITS && has_perm == HAS_PERM) {                    \
     cudaFuncSetAttribute(                                                     \
@@ -283,66 +285,43 @@ __global__ void gptq_marlin_repack_kernel(
             b_q_weight_ptr, perm_ptr, out_ptr, size_k, size_n);               \
   }
 
-torch::Tensor gptq_repack(
-    const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
-    const torch::Tensor& perm,        // ?
-    torch::Tensor& out,               // (k/16, n*16/pack_factor)
-    int64_t size_k,
-    int64_t size_n,
-    int64_t num_bits) {
+}  // namespace
+
+void gptq_repack(const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
+                 const torch::Tensor& perm,        // ?
+                 torch::Tensor& out,               // (k/16, n*16/pack_factor)
+                 int64_t num_bits) {
+  CHECK(num_bits == 4 || num_bits == 8);
+
+  const int64_t pack_factor = 32 / num_bits;
+  const int64_t size_k = b_q_weight.size(0) * pack_factor;
+  const int64_t size_n = b_q_weight.size(1);
+
   // Verify compatibility with marlin tile of 16x64
-  TORCH_CHECK(size_k % marlin::tile_k_size == 0,
-              "size_k = ",
-              size_k,
-              " is not divisible by tile_k_size = ",
-              marlin::tile_k_size);
-  TORCH_CHECK(size_n % marlin::tile_n_size == 0,
-              "size_n = ",
-              size_n,
-              " is not divisible by tile_n_size = ",
-              marlin::tile_n_size);
-
-  TORCH_CHECK(num_bits == 4 || num_bits == 8,
-              "num_bits must be 4 or 8. Got = ",
-              num_bits);
-  int const pack_factor = 32 / num_bits;
-
-  // Verify B
-  TORCH_CHECK((size_k / pack_factor) == b_q_weight.size(0),
-              "Shape mismatch: b_q_weight.size(0) = ",
-              b_q_weight.size(0),
-              ", size_k = ",
-              size_k,
-              ", pack_factor = ",
-              pack_factor);
-  TORCH_CHECK(b_q_weight.size(1) == size_n,
-              "b_q_weight.size(1) = ",
-              b_q_weight.size(1),
-              " is not size_n = ",
-              size_n);
+  CHECK(size_k % 16 == 0);
+  CHECK(size_n % 64 == 0);
 
   // Verify device and strides
-  TORCH_CHECK(b_q_weight.device().is_cuda(), "b_q_weight is not on GPU");
-  TORCH_CHECK(b_q_weight.is_contiguous(), "b_q_weight is not contiguous");
-  TORCH_CHECK(b_q_weight.dtype() == at::kInt, "b_q_weight type is not kInt");
-
-  TORCH_CHECK(perm.device().is_cuda(), "perm is not on GPU");
-  TORCH_CHECK(perm.is_contiguous(), "perm is not contiguous");
-  TORCH_CHECK(perm.dtype() == at::kInt, "perm type is not at::kInt");
+  CHECK(b_q_weight.device().is_cuda());
+  CHECK(b_q_weight.is_contiguous());
+  CHECK(b_q_weight.dtype() == torch::kInt);
+  CHECK(perm.device().is_cuda());
+  CHECK(perm.is_contiguous());
+  CHECK(perm.dtype() == torch::kInt);
 
   // Detect if there is act_order
-  bool has_perm = perm.size(0) != 0;
+  bool has_perm = perm.defined();
 
   // Get ptrs
-  uint32_t const* b_q_weight_ptr =
-      reinterpret_cast<uint32_t const*>(b_q_weight.data_ptr());
-  uint32_t const* perm_ptr = reinterpret_cast<uint32_t const*>(perm.data_ptr());
+  const uint32_t* b_q_weight_ptr =
+      reinterpret_cast<const uint32_t*>(b_q_weight.data_ptr());
+  const uint32_t* perm_ptr = reinterpret_cast<const uint32_t*>(perm.data_ptr());
   uint32_t* out_ptr = reinterpret_cast<uint32_t*>(out.data_ptr());
 
   // Get dev info
   int dev = b_q_weight.get_device();
   cudaStream_t stream = at::cuda::getCurrentCUDAStream(dev);
-  int blocks;
+  int blocks = 0;
   cudaDeviceGetAttribute(&blocks, cudaDevAttrMultiProcessorCount, dev);
 
   int max_shared_mem = 0;
@@ -350,6 +329,7 @@ torch::Tensor gptq_repack(
       &max_shared_mem, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
   TORCH_CHECK(max_shared_mem > 0);
 
+  // NOLINTNEXTLINE
   if (false) {
   }
   CALL_IF(4, false)
@@ -357,12 +337,9 @@ torch::Tensor gptq_repack(
   CALL_IF(8, false)
   CALL_IF(8, true)
   else {
-    TORCH_CHECK(false,
-                "Unsupported repack config: num_bits = ",
-                num_bits,
-                ", has_perm = ",
-                has_perm);
+    LOG(FATAL) << "Unsupported repack config: num_bits = " << num_bits
+               << ", has_perm = " << has_perm;
   }
-
-  return out;
 }
+
+}  // namespace marlin

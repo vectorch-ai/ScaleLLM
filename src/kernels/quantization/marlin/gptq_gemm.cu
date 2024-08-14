@@ -22,6 +22,7 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <string>
@@ -2193,18 +2194,10 @@ void marlin_mm(const void* A,
                int sms,
                int max_par,
                bool use_fp32_reduce) {
-  TORCH_CHECK(num_bits == 4 || num_bits == 8,
-              "num_bits must be 4 or 8. Got = ",
-              num_bits);
-
-  TORCH_CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0,
-              "Invalid MNK = [",
-              prob_m,
-              ", ",
-              prob_n,
-              ", ",
-              prob_k,
-              "]");
+  CHECK(num_bits == 4 || num_bits == 8)
+      << "Unsupported num_bits = " << num_bits;
+  CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0)
+      << "Invalid MNK = [" << prob_m << ", " << prob_n << ", " << prob_k << "]";
 
   // TODO: remove alias when we start supporting other 8bit types
   int tot_m = prob_m;
@@ -2218,7 +2211,7 @@ void marlin_mm(const void* A,
   int max_shared_mem = 0;
   cudaDeviceGetAttribute(
       &max_shared_mem, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
-  TORCH_CHECK(max_shared_mem > 0);
+  CHECK(max_shared_mem > 0);
 
   // Set thread config
   exec_config_t exec_cfg;
@@ -2238,7 +2231,7 @@ void marlin_mm(const void* A,
                                        max_shared_mem);
   }
 
-  TORCH_CHECK(
+  const bool valid_config =
       exec_cfg.max_m_blocks > 0 && is_valid_config(exec_cfg.tb_cfg,
                                                    exec_cfg.max_m_blocks,
                                                    prob_m,
@@ -2248,31 +2241,18 @@ void marlin_mm(const void* A,
                                                    group_size,
                                                    has_act_order,
                                                    is_k_full,
-                                                   max_shared_mem),
-      "Invalid thread config: max_m_blocks = ",
-      exec_cfg.max_m_blocks,
-      ", thread_k = ",
-      exec_cfg.tb_cfg.thread_k,
-      ", thread_n = ",
-      exec_cfg.tb_cfg.thread_n,
-      ", num_threads = ",
-      exec_cfg.tb_cfg.num_threads,
-      " for MKN = [",
-      prob_m,
-      ", ",
-      prob_k,
-      ", ",
-      prob_n,
-      "] and num_bits = ",
-      num_bits,
-      ", group_size = ",
-      group_size,
-      ", has_act_order = ",
-      has_act_order,
-      ", is_k_full = ",
-      is_k_full,
-      ", max_shared_mem = ",
-      max_shared_mem);
+                                                   max_shared_mem);
+  CHECK(valid_config) << "Invalid thread config: max_m_blocks = "
+                      << exec_cfg.max_m_blocks
+                      << ", thread_k = " << exec_cfg.tb_cfg.thread_k
+                      << ", thread_n = " << exec_cfg.tb_cfg.thread_n
+                      << ", num_threads = " << exec_cfg.tb_cfg.num_threads
+                      << " for MKN = [" << prob_m << ", " << prob_k << ", "
+                      << prob_n << "] and num_bits = " << num_bits
+                      << ", group_size = " << group_size
+                      << ", has_act_order = " << has_act_order
+                      << ", is_k_full = " << is_k_full
+                      << ", max_shared_mem = " << max_shared_mem;
 
   int num_threads = exec_cfg.tb_cfg.num_threads;
   thread_k = exec_cfg.tb_cfg.thread_k;
@@ -2283,29 +2263,23 @@ void marlin_mm(const void* A,
 
   int blocks = sms;
 
-  TORCH_CHECK(prob_n % thread_n == 0,
-              "prob_n = ",
-              prob_n,
-              " is not divisible by thread_n = ",
-              thread_n);
-  TORCH_CHECK(prob_k % thread_k == 0,
-              "prob_k = ",
-              prob_k,
-              " is not divisible by thread_k = ",
-              thread_k);
+  CHECK(prob_n % thread_n == 0)
+      << "prob_n = " << prob_n
+      << " is not divisible by thread_n = " << thread_n;
+  CHECK(prob_k % thread_k == 0)
+      << "prob_k = " << prob_k
+      << " is not divisible by thread_k = " << thread_k;
 
   int group_blocks = 0;
   if (has_act_order) {
     if (is_k_full) {
-      TORCH_CHECK(group_size != -1);
+      CHECK(group_size != -1);
       group_blocks = group_size / 16;
-      TORCH_CHECK(prob_k % group_blocks == 0,
-                  "prob_k = ",
-                  prob_k,
-                  " is not divisible by group_blocks = ",
-                  group_blocks);
+      CHECK(prob_k % group_blocks == 0)
+          << "prob_k = " << prob_k
+          << " is not divisible by group_blocks = " << group_blocks;
     } else {
-      TORCH_CHECK(group_size == 0);
+      CHECK(group_size == 0);
       group_blocks = 0;
     }
 
@@ -2314,11 +2288,9 @@ void marlin_mm(const void* A,
       group_blocks = -1;
     } else {
       group_blocks = group_size / 16;
-      TORCH_CHECK(prob_k % group_blocks == 0,
-                  "prob_k = ",
-                  prob_k,
-                  " is not divisible by group_blocks = ",
-                  group_blocks);
+      CHECK(prob_k % group_blocks == 0)
+          << "prob_k = " << prob_k
+          << " is not divisible by group_blocks = " << group_blocks;
     }
   }
 
@@ -2384,28 +2356,14 @@ void marlin_mm(const void* A,
     AWQ_CALL_IF(8, 8, 4, 128)
     AWQ_CALL_IF(8, 4, 8, 128)
     else {
-      TORCH_CHECK(false,
-                  "Unsupported shapes: MNK = [",
-                  prob_m,
-                  ", ",
-                  prob_n,
-                  ", ",
-                  prob_k,
-                  "]",
-                  ", has_act_order = ",
-                  has_act_order,
-                  ", num_groups = ",
-                  num_groups,
-                  ", group_size = ",
-                  group_size,
-                  ", thread_m_blocks = ",
-                  thread_m_blocks,
-                  ", thread_n_blocks = ",
-                  thread_n_blocks,
-                  ", thread_k_blocks = ",
-                  thread_k_blocks,
-                  ", num_bits = ",
-                  num_bits);
+      LOG(FATAL) << "Unsupported shapes: MNK = [" << prob_m << ", " << prob_n
+                 << ", " << prob_k << "], has_act_order = " << has_act_order
+                 << ", num_groups = " << num_groups
+                 << ", group_size = " << group_size
+                 << ", thread_m_blocks = " << thread_m_blocks
+                 << ", thread_n_blocks = " << thread_n_blocks
+                 << ", thread_k_blocks = " << thread_k_blocks
+                 << ", num_bits = " << num_bits;
     }
 
     A_ptr += 16 * thread_m_blocks * (prob_k / 8) * par;
@@ -2415,7 +2373,7 @@ void marlin_mm(const void* A,
 
 }  // namespace
 
-torch::Tensor gptq_gemm(
+void gptq_gemm(
     const torch::Tensor& A,       // (m, k)
     const torch::Tensor& B,       // (k, n) => (k/16, n * 16 / pack_factor)
     torch::Tensor& C,             // (m, n)
@@ -2428,9 +2386,8 @@ torch::Tensor gptq_gemm(
     bool is_k_full,
     bool has_zp,
     bool use_fp32_reduce) {
-  TORCH_CHECK(num_bits == 4 || num_bits == 8,
-              "num_bits must be 4 or 8. Got = ",
-              num_bits);
+  CHECK(num_bits == 4 || num_bits == 8)
+      << "num_bits must be 4 or 8. Got = " << num_bits;
 
   int pack_factor = 32 / num_bits;
 
@@ -2466,14 +2423,11 @@ torch::Tensor gptq_gemm(
   int sms = -1;
 
   // Verify g_idx and perm
-  TORCH_CHECK((g_idx.size(0) == 0 && perm.size(0) == 0) ||
-                  (g_idx.size(0) == prob_k && perm.size(0) == prob_k),
-              "Unexpected g_idx.size(0) = ",
-              g_idx.size(0),
-              " and perm.size(0) = ",
-              perm.size(0),
-              ", where size_k = ",
-              prob_k);
+  CHECK((g_idx.size(0) == 0 && perm.size(0) == 0) ||
+        (g_idx.size(0) == prob_k && perm.size(0) == prob_k))
+      << "Unexpected g_idx.size(0) = " << g_idx.size(0)
+      << " and perm.size(0) = " << perm.size(0)
+      << ", where size_k = " << prob_k;
 
   // Detect groupsize and act_order
   int num_groups = -1;
@@ -2481,22 +2435,17 @@ torch::Tensor gptq_gemm(
   bool has_act_order = g_idx.size(0) != 0;
 
   int rank = scales.sizes().size();
-  TORCH_CHECK(rank == 2, "b_scales rank = ", rank, " is not 2");
-  TORCH_CHECK(scales.size(1) == prob_n,
-              "b_scales dim 1 = ",
-              scales.size(1),
-              " is not size_n = ",
-              prob_n);
+  CHECK(rank == 2) << "b_scales rank = " << rank << " is not 2";
+  CHECK(scales.size(1) == prob_n)
+      << "b_scales dim 1 = " << scales.size(1) << " is not size_n = " << prob_n;
   num_groups = scales.size(0);
 
   if (has_act_order) {
     if (is_k_full) {
-      TORCH_CHECK(num_groups > 1, "For act_order, num_groups must be > 1");
-      TORCH_CHECK(prob_k % num_groups == 0,
-                  "size_k = ",
-                  prob_k,
-                  ", is not divisible by num_groups = ",
-                  num_groups);
+      CHECK(num_groups > 1) << "For act_order, num_groups must be > 1";
+      CHECK(prob_k % num_groups == 0)
+          << "size_k = " << prob_k
+          << ", is not divisible by num_groups = " << num_groups;
       group_size = prob_k / num_groups;
     } else {
       group_size = 0;
@@ -2504,11 +2453,9 @@ torch::Tensor gptq_gemm(
 
   } else {
     if (num_groups > 1) {
-      TORCH_CHECK(prob_k % num_groups == 0,
-                  "size_k = ",
-                  prob_k,
-                  ", is not divisible by b_scales.size(0) = ",
-                  scales.size(0));
+      CHECK(prob_k % num_groups == 0)
+          << "size_k = " << prob_k
+          << ", is not divisible by b_scales.size(0) = " << scales.size(0);
       group_size = prob_k / num_groups;
     } else {
       group_size = -1;
@@ -2516,29 +2463,25 @@ torch::Tensor gptq_gemm(
   }
 
   // Verify workspace size
-  TORCH_CHECK(prob_n % marlin::min_thread_n == 0,
-              "size_n = ",
-              prob_n,
-              ", is not divisible by min_thread_n = ",
-              marlin::min_thread_n);
+  CHECK(prob_n % marlin::min_thread_n == 0)
+      << "size_n = " << prob_n
+      << ", is not divisible by min_thread_n = " << marlin::min_thread_n;
   int min_workspace_size = (prob_n / marlin::min_thread_n) * marlin::max_par;
-  TORCH_CHECK(workspace.numel() >= min_workspace_size,
-              "workspace.numel = ",
-              workspace.numel(),
-              " is below min_workspace_size = ",
-              min_workspace_size);
+  CHECK(workspace.numel() >= min_workspace_size)
+      << "workspace.numel = " << workspace.numel()
+      << " is below min_workspace_size = " << min_workspace_size;
 
   int dev = A.get_device();
   if (A.scalar_type() == at::ScalarType::Half) {
-    marlin_mm<half>(A.data_ptr<at::Half>(),
+    marlin_mm<half>(A.data_ptr(),
                     B.data_ptr(),
-                    C.data_ptr<at::Half>(),
-                    c_tmp.data_ptr<float>(),
-                    scales.data_ptr<at::Half>(),
+                    C.data_ptr(),
+                    c_tmp.data_ptr(),
+                    scales.data_ptr(),
                     zeros.data_ptr(),
                     g_idx.data_ptr(),
                     perm.data_ptr(),
-                    a_tmp.data_ptr<at::Half>(),
+                    a_tmp.data_ptr(),
                     prob_m,
                     prob_n,
                     prob_k,
@@ -2557,15 +2500,15 @@ torch::Tensor gptq_gemm(
                     marlin::max_par,
                     use_fp32_reduce);
   } else if (A.scalar_type() == at::ScalarType::BFloat16) {
-    marlin_mm<nv_bfloat16>(A.data_ptr<at::BFloat16>(),
+    marlin_mm<nv_bfloat16>(A.data_ptr(),
                            B.data_ptr(),
-                           C.data_ptr<at::BFloat16>(),
-                           c_tmp.data_ptr<float>(),
-                           scales.data_ptr<at::BFloat16>(),
+                           C.data_ptr(),
+                           c_tmp.data_ptr(),
+                           scales.data_ptr(),
                            zeros.data_ptr(),
                            g_idx.data_ptr(),
                            perm.data_ptr(),
-                           a_tmp.data_ptr<at::BFloat16>(),
+                           a_tmp.data_ptr(),
                            prob_m,
                            prob_n,
                            prob_k,
@@ -2584,7 +2527,7 @@ torch::Tensor gptq_gemm(
                            marlin::max_par,
                            use_fp32_reduce);
   } else {
-    TORCH_CHECK(false, "gpt_marlin_gemm only supports bfloat16 and float16");
+    LOG(FATAL) << "Unsupported scalar type = " << A.scalar_type();
   }
 }
 

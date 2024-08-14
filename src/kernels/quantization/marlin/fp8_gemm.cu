@@ -19,9 +19,10 @@
  * Adapted from https://github.com/IST-DASLab/marlin
  */
 
-#include <c10/cuda/CUDAGuard.h>
+#include <c10/cuda/CUDAStream.h>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <string>
@@ -1296,17 +1297,10 @@ void marlin_mm_f16i4(const void* A,
                      int thread_n,
                      int sms,
                      int max_par) {
+  CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0)
+      << "Invalid MNK = [" << prob_m << ", " << prob_n << ", " << prob_k << "]";
+
   constexpr int num_bits = 8;
-
-  TORCH_CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0,
-              "Invalid MNK = [",
-              prob_m,
-              ", ",
-              prob_n,
-              ", ",
-              prob_k,
-              "]");
-
   int tot_m = prob_m;
   int tot_m_blocks = div_ceil(tot_m, 16);
   int pad = 16 * tot_m_blocks - tot_m;
@@ -1318,7 +1312,7 @@ void marlin_mm_f16i4(const void* A,
   int max_shared_mem = 0;
   cudaDeviceGetAttribute(
       &max_shared_mem, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
-  TORCH_CHECK(max_shared_mem > 0);
+  CHECK(max_shared_mem > 0);
 
   // Set thread config
   exec_config_t exec_cfg;
@@ -1332,7 +1326,7 @@ void marlin_mm_f16i4(const void* A,
         prob_m, prob_n, prob_k, num_bits, group_size, max_shared_mem);
   }
 
-  TORCH_CHECK(
+  const bool valid_config =
       exec_cfg.max_m_blocks > 0 && is_valid_config(exec_cfg.tb_cfg,
                                                    exec_cfg.max_m_blocks,
                                                    prob_m,
@@ -1340,27 +1334,16 @@ void marlin_mm_f16i4(const void* A,
                                                    prob_k,
                                                    num_bits,
                                                    group_size,
-                                                   max_shared_mem),
-      "Invalid thread config: max_m_blocks = ",
-      exec_cfg.max_m_blocks,
-      ", thread_k = ",
-      exec_cfg.tb_cfg.thread_k,
-      ", thread_n = ",
-      exec_cfg.tb_cfg.thread_n,
-      ", num_threads = ",
-      exec_cfg.tb_cfg.num_threads,
-      " for MKN = [",
-      prob_m,
-      ", ",
-      prob_k,
-      ", ",
-      prob_n,
-      "] and num_bits = ",
-      num_bits,
-      ", group_size = ",
-      group_size,
-      ", max_shared_mem = ",
-      max_shared_mem);
+                                                   max_shared_mem);
+  CHECK(valid_config) << "Invalid thread config: max_m_blocks = "
+                      << exec_cfg.max_m_blocks
+                      << ", thread_k = " << exec_cfg.tb_cfg.thread_k
+                      << ", thread_n = " << exec_cfg.tb_cfg.thread_n
+                      << ", num_threads = " << exec_cfg.tb_cfg.num_threads
+                      << " for MKN = [" << prob_m << ", " << prob_k << ", "
+                      << prob_n << "] and num_bits = " << num_bits
+                      << ", group_size = " << group_size
+                      << ", max_shared_mem = " << max_shared_mem;
 
   int num_threads = exec_cfg.tb_cfg.num_threads;
   thread_k = exec_cfg.tb_cfg.thread_k;
@@ -1371,16 +1354,12 @@ void marlin_mm_f16i4(const void* A,
 
   int blocks = sms;
 
-  TORCH_CHECK(prob_n % thread_n == 0,
-              "prob_n = ",
-              prob_n,
-              " is not divisible by thread_n = ",
-              thread_n);
-  TORCH_CHECK(prob_k % thread_k == 0,
-              "prob_k = ",
-              prob_k,
-              " is not divisible by thread_k = ",
-              thread_k);
+  CHECK(prob_n % thread_n == 0)
+      << "prob_n = " << prob_n
+      << ", is not divisible by thread_n = " << thread_n;
+  CHECK(prob_k % thread_k == 0)
+      << "prob_k = " << prob_k
+      << ", is not divisible by thread_k = " << thread_k;
 
   int group_blocks = -1;
 
@@ -1407,6 +1386,7 @@ void marlin_mm_f16i4(const void* A,
     }
 
     // Define kernel configurations
+    // NOLINTNEXTLINE
     if (false) {
     }
     CALL_IF(8, 32, 2, 256)
@@ -1415,14 +1395,13 @@ void marlin_mm_f16i4(const void* A,
     CALL_IF(8, 8, 4, 128)
     CALL_IF(8, 4, 8, 128)
     else {
-      TORCH_CHECK(false,
-                  "Unsupported shapes: MNK = [" + str(prob_m) + ", " +
-                      str(prob_n) + ", " + str(prob_k) + "]" +
-                      ", num_groups = " + str(num_groups) +
-                      ", group_size = " + str(group_size) +
-                      ", thread_m_blocks = " + str(thread_m_blocks) +
-                      ", thread_n_blocks = " + str(thread_n_blocks) +
-                      ", thread_k_blocks = " + str(thread_k_blocks));
+      LOG(FATAL) << "Unsupported shapes: MNK = [" << prob_m << ", " << prob_n
+                 << ", " << prob_k << "]"
+                 << ", num_groups = " << num_groups
+                 << ", group_size = " << group_size
+                 << ", thread_m_blocks = " << thread_m_blocks
+                 << ", thread_n_blocks = " << thread_n_blocks
+                 << ", thread_k_blocks = " << thread_k_blocks;
     }
 
     A_ptr += 16 * thread_m_blocks * (prob_k / 8) * par;
@@ -1437,11 +1416,11 @@ void fp8_gemm(const torch::Tensor& A,       // (m, k)
               torch::Tensor& C,             // (m, n)
               const torch::Tensor& scales,  // (1, n)
               torch::Tensor& workspace) {
-    // (m, k) x (k, n) = (m, n)
+  // (m, k) x (k, n) = (m, n)
   int prob_m = A.size(0);
   int prob_n = C.size(1);
   int prob_k = A.size(1);
-  
+
   // thread_k: `k` size of a thread_tile in `weights` (can usually be left as
   // auto -1)
   int thread_k = -1;
@@ -1453,28 +1432,24 @@ void fp8_gemm(const torch::Tensor& A,       // (m, k)
 
   // Channelwise only for FP8
   int num_groups = scales.size(0);
-  TORCH_CHECK(num_groups == 1);
+  CHECK(num_groups == 1);
   int group_size = -1;
 
   // Verify workspace size
-  TORCH_CHECK(prob_n % marlin::min_thread_n == 0,
-              "size_n = ",
-              prob_n,
-              ", is not divisible by min_thread_n = ",
-              marlin::min_thread_n);
+  CHECK(prob_n % marlin::min_thread_n == 0)
+      << "size_n = " << prob_n
+      << ", is not divisible by min_thread_n = " << marlin::min_thread_n;
   int min_workspace_size = (prob_n / marlin::min_thread_n) * marlin::max_par;
-  TORCH_CHECK(workspace.numel() >= min_workspace_size,
-              "workspace.numel = ",
-              workspace.numel(),
-              " is below min_workspace_size = ",
-              min_workspace_size);
+  CHECK(workspace.numel() >= min_workspace_size)
+      << "workspace.numel = " << workspace.numel()
+      << " is below min_workspace_size = " << min_workspace_size;
 
   int dev = A.get_device();
   if (A.scalar_type() == at::ScalarType::Half) {
-    marlin_mm_f16i4<half>(A.data_ptr<at::Half>(),
+    marlin_mm_f16i4<half>(A.data_ptr(),
                           B.data_ptr(),
-                          C.data_ptr<at::Half>(),
-                          scales.data_ptr<at::Half>(),
+                          C.data_ptr(),
+                          scales.data_ptr(),
                           prob_m,
                           prob_n,
                           prob_k,
@@ -1488,10 +1463,10 @@ void fp8_gemm(const torch::Tensor& A,       // (m, k)
                           sms,
                           marlin::max_par);
   } else if (A.scalar_type() == at::ScalarType::BFloat16) {
-    marlin_mm_f16i4<nv_bfloat16>(A.data_ptr<at::BFloat16>(),
+    marlin_mm_f16i4<nv_bfloat16>(A.data_ptr(),
                                  B.data_ptr(),
-                                 C.data_ptr<at::BFloat16>(),
-                                 scales.data_ptr<at::BFloat16>(),
+                                 C.data_ptr(),
+                                 scales.data_ptr(),
                                  prob_m,
                                  prob_n,
                                  prob_k,
@@ -1505,7 +1480,7 @@ void fp8_gemm(const torch::Tensor& A,       // (m, k)
                                  sms,
                                  marlin::max_par);
   } else {
-    TORCH_CHECK(false, "marlin::fp8_gemm only supports bfloat16 and float16");
+    LOG(FATAL) << "Unsupported data type: " << A.scalar_type();
   }
 }
 
