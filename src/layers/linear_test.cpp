@@ -4,8 +4,6 @@
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
-#include <memory>
-#include <thread>
 #include <torch/csrc/distributed/c10d/FileStore.hpp>
 #include <torch/csrc/distributed/c10d/HashStore.hpp>
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
@@ -27,6 +25,7 @@ TEST(LinearTest, RowParallelLoadWeight) {
   std::unordered_map<std::string, torch::Tensor> state_dict_data;
   // weight is transposed
   state_dict_data["weight"] = torch::randn({out_features, in_features});
+  state_dict_data["bias"] = torch::randn({out_features});
   // weight is not sharded
   StateDict state_dict(state_dict_data);
   EXPECT_EQ(state_dict_data["weight"].data_ptr(),
@@ -36,7 +35,7 @@ TEST(LinearTest, RowParallelLoadWeight) {
   ParallelArgs parallel_args(0, 1, nullptr);
   RowParallelLinearImpl linear(in_features,
                                out_features,
-                               /*bias=*/false,
+                               /*bias=*/true,
                                /*input_is_parallelized=*/true,
                                parallel_args,
                                options);
@@ -46,13 +45,16 @@ TEST(LinearTest, RowParallelLoadWeight) {
   EXPECT_TRUE(torch::equal(state_dict.get_tensor("weight"),
                            named_parameters["weight"]));
 
+  EXPECT_TRUE(torch::equal(state_dict.get_tensor("bias"),
+                           named_parameters["bias"]));
+
   // test load weight with 2 shards
   const int32_t num_shards = 2;
   for (int32_t shard_id = 0; shard_id < num_shards; ++shard_id) {
     ParallelArgs parallel_args(shard_id, num_shards, nullptr);
     RowParallelLinearImpl linear(in_features,
                                  out_features,
-                                 /*bias=*/false,
+                                 /*bias=*/true,
                                  /*input_is_parallelized=*/false,
                                  parallel_args,
                                  options);
@@ -69,6 +71,11 @@ TEST(LinearTest, RowParallelLoadWeight) {
                                                           /*dim=*/1)[shard_id];
 
     EXPECT_TRUE(torch::equal(loaded_weight, desired_weight));
+
+    const auto loaded_bias = named_parameters["bias"];
+    auto desired_bias = state_dict_data["bias"];
+    EXPECT_TRUE(torch::equal(loaded_bias, desired_bias));
+
   }
 }
 

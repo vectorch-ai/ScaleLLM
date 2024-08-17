@@ -6,7 +6,6 @@
 
 #include "layers/linear_impl.h"
 #include "model_loader/state_dict.h"
-#include "model_loader/tensor_utils.h"
 
 namespace llm {
 namespace {
@@ -177,35 +176,15 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
-  qweight_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                         "qweight",
-                                                         /*dim=*/1,
-                                                         rank,
-                                                         world_size,
-                                                         qweight_);
-
-  qzeros_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "qzeros",
-                                                        /*dim=*/1,
-                                                        rank,
-                                                        world_size,
-                                                        qzeros_);
-
-  scales_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "scales",
-                                                        /*dim=*/1,
-                                                        rank,
-                                                        world_size,
-                                                        scales_);
+  // load sharded weights on dim 1
+  LOAD_SHARDED_WEIGHT(qweight, 1);
+  LOAD_SHARDED_WEIGHT(qzeros, 1);
+  LOAD_SHARDED_WEIGHT(scales, 1);
 
   // load bias if defined
   if (bias_.defined()) {
-    bias_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "bias",
-                                                        /*dim=*/0,
-                                                        rank,
-                                                        world_size,
-                                                        bias_);
+    // load sharded bias on dim 0
+    LOAD_SHARDED_WEIGHT(bias, 0);
   }
 }
 
@@ -216,48 +195,15 @@ void ColumnParallelQLinearImpl::load_state_dict(
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
-  // load and merge the weights from multiple prefixes
-  TensorUtils::load_fused_weights(state_dict,
-                                  prefixes,
-                                  "qweight",
-                                  /*dim=*/1,
-                                  rank,
-                                  world_size,
-                                  qweight_list_,
-                                  qweight_,
-                                  qweight_is_loaded_);
-
-  TensorUtils::load_fused_weights(state_dict,
-                                  prefixes,
-                                  "qzeros",
-                                  /*dim=*/1,
-                                  rank,
-                                  world_size,
-                                  qzeros_list_,
-                                  qzeros_,
-                                  qzeros_is_loaded_);
-
-  TensorUtils::load_fused_weights(state_dict,
-                                  prefixes,
-                                  "scales",
-                                  /*dim=*/1,
-                                  rank,
-                                  world_size,
-                                  scales_list_,
-                                  scales_,
-                                  scales_is_loaded_);
+  // load and merge weights on dim 1
+  LOAD_FUSED_WEIGHT(qweight, 1);
+  LOAD_FUSED_WEIGHT(qzeros, 1);
+  LOAD_FUSED_WEIGHT(scales, 1);
 
   // load bias if defined
   if (bias_.defined()) {
-    TensorUtils::load_fused_weights(state_dict,
-                                    prefixes,
-                                    "bias",
-                                    /*dim=*/0,
-                                    rank,
-                                    world_size,
-                                    bias_list_,
-                                    bias_,
-                                    bias_is_loaded_);
+    // load and merge bias on dim 0
+    LOAD_FUSED_WEIGHT(bias, 0);
   }
 }
 
@@ -348,29 +294,14 @@ void RowParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
-  qweight_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                         "qweight",
-                                                         /*dim=*/0,
-                                                         rank,
-                                                         world_size,
-                                                         qweight_);
-
-  qzeros_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "qzeros",
-                                                        /*dim=*/0,
-                                                        rank,
-                                                        world_size,
-                                                        qzeros_);
-
-  scales_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "scales",
-                                                        /*dim=*/0,
-                                                        rank,
-                                                        world_size,
-                                                        scales_);
+  // load sharded weights on dim 0
+  LOAD_SHARDED_WEIGHT(qweight, 0);
+  LOAD_SHARDED_WEIGHT(qzeros, 0);
+  LOAD_SHARDED_WEIGHT(scales, 0);
 
   if (bias_.defined()) {
-    bias_is_loaded_ = TensorUtils::load_weights(state_dict, "bias", bias_);
+    // load bias
+    LOAD_WEIGHT(bias);
   }
 }
 

@@ -4,10 +4,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include <algorithm>
-
 #include "model_loader/state_dict.h"
-#include "model_loader/tensor_utils.h"
 #include "model_parallel/model_parallel.h"
 
 namespace llm {
@@ -63,22 +60,13 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
   CHECK(transform_func != nullptr) << "transform_func must be provided";
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
-  weight_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "weight",
-                                                        transform_func,
-                                                        /*dim=*/0,
-                                                        rank,
-                                                        world_size,
-                                                        weight_);
+
+  // load sharded weights on dim 0
+  LOAD_SHARDED_WEIGHT_WITH_TRANSFORM(weight, 0);
 
   if (bias_.defined()) {
-    bias_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "bias",
-                                                        transform_func,
-                                                        /*dim=*/0,
-                                                        rank,
-                                                        world_size,
-                                                        bias_);
+    // load sharded bias on dim 0
+    LOAD_SHARDED_WEIGHT_WITH_TRANSFORM(bias, 0);
   }
 }
 
@@ -86,27 +74,15 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
 void ColumnParallelLinearImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string>& prefixes) {
-  // load and merge the weights from multiple prefixes
-  TensorUtils::load_fused_weights(state_dict,
-                                  prefixes,
-                                  "weight",
-                                  /*dim=*/0,
-                                  parallel_args_.rank(),
-                                  parallel_args_.world_size(),
-                                  weight_list_,
-                                  weight_,
-                                  weight_is_loaded_);
+  const auto rank = parallel_args_.rank();
+  const auto world_size = parallel_args_.world_size();
+
+  // load and merge the weights on dim 0
+  LOAD_FUSED_WEIGHT(weight, 0);
 
   if (bias_.defined()) {
-    TensorUtils::load_fused_weights(state_dict,
-                                    prefixes,
-                                    "bias",
-                                    /*dim=*/0,
-                                    parallel_args_.rank(),
-                                    parallel_args_.world_size(),
-                                    bias_list_,
-                                    bias_,
-                                    bias_is_loaded_);
+    // load and merge the bias on dim 0
+    LOAD_FUSED_WEIGHT(bias, 0);
   }
 }
 
@@ -158,20 +134,12 @@ torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) const {
 void RowParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
-  weight_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "weight",
-                                                        /*dim=*/1,
-                                                        rank,
-                                                        world_size,
-                                                        weight_);
+
+  // load sharded weights on dim 1
+  LOAD_SHARDED_WEIGHT(weight, 1);
 
   if (bias_.defined()) {
-    bias_is_loaded_ = TensorUtils::load_sharded_weights(state_dict,
-                                                        "bias",
-                                                        /*dim=*/1,
-                                                        rank,
-                                                        world_size,
-                                                        bias_);
+    LOAD_WEIGHT(bias);
   }
 }
 

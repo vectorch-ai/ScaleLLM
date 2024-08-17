@@ -58,7 +58,8 @@ std::unique_ptr<ModelLoader> ModelLoader::create(
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path)
     : model_weights_path_(model_weights_path) {
-  CHECK(load_model_args(model_weights_path));
+  CHECK(load_model_args(model_weights_path)) << "Failed to load model args from "
+                                             << model_weights_path;
   // try to load safetensors first
   for (const auto& entry :
        std::filesystem::directory_iterator(model_weights_path)) {

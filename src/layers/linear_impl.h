@@ -5,6 +5,7 @@
 
 #include "linear.h"
 #include "model_loader/state_dict.h"
+#include "weight_utils.h"
 
 namespace llm {
 
@@ -52,13 +53,8 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features_per_partition, in_features]
-  torch::Tensor weight_{nullptr};
-  torch::Tensor bias_{nullptr};
-
-  bool weight_is_loaded_ = false;
-  bool bias_is_loaded_ = false;
-  std::vector<torch::Tensor> weight_list_;
-  std::vector<torch::Tensor> bias_list_;
+  DEFINE_FUSED_WEIGHT(weight);
+  DEFINE_FUSED_WEIGHT(bias);
 
   // whether to gather the output
   bool gather_output_;
@@ -110,12 +106,8 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features, in_features_per_partition]
-  torch::Tensor weight_{nullptr};
-  torch::Tensor bias_{nullptr};
-
-  // whether the weight is loaded
-  bool weight_is_loaded_ = false;
-  bool bias_is_loaded_ = false;
+  DEFINE_WEIGHT(weight);
+  DEFINE_WEIGHT(bias);
 
   // whether the input is already parallelized
   bool input_is_parallelized_;

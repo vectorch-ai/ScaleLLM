@@ -4,6 +4,7 @@
 #include <torch/torch.h>
 
 #include <memory>
+#include <string_view>
 #include <unordered_map>
 
 namespace llm {
@@ -19,7 +20,7 @@ class StateDict final {
   static std::unique_ptr<StateDict> load_safetensors(
       const std::string& weights_file);
 
-  StateDict(std::unordered_map<std::string, torch::Tensor> dict);
+  StateDict(std::unordered_map<std::string, torch::Tensor> dict, const std::string& prefix = "");
 
   StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
             std::unordered_map<std::string, torch::Tensor> dict);
@@ -46,6 +47,8 @@ class StateDict final {
 
   size_t size() const { return dict_.size(); }
 
+  std::string_view prefix() const { return prefix_; }
+
   // support range-based for loop
   auto begin() const { return dict_.begin(); }
   auto end() const { return dict_.end(); }
@@ -57,5 +60,8 @@ class StateDict final {
   std::unordered_map<std::string, torch::Tensor> dict_;
 
   TensorTransform transform_func_ = nullptr;
+
+  // prefix for debug purpose
+  std::string prefix_;
 };
 }  // namespace llm
