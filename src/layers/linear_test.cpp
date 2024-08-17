@@ -45,8 +45,8 @@ TEST(LinearTest, RowParallelLoadWeight) {
   EXPECT_TRUE(torch::equal(state_dict.get_tensor("weight"),
                            named_parameters["weight"]));
 
-  EXPECT_TRUE(torch::equal(state_dict.get_tensor("bias"),
-                           named_parameters["bias"]));
+  EXPECT_TRUE(
+      torch::equal(state_dict.get_tensor("bias"), named_parameters["bias"]));
 
   // test load weight with 2 shards
   const int32_t num_shards = 2;
@@ -75,7 +75,6 @@ TEST(LinearTest, RowParallelLoadWeight) {
     const auto loaded_bias = named_parameters["bias"];
     auto desired_bias = state_dict_data["bias"];
     EXPECT_TRUE(torch::equal(loaded_bias, desired_bias));
-
   }
 }
 

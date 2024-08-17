@@ -155,7 +155,8 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
   return std::make_unique<StateDict>(std::move(mem_map), std::move(dict));
 }
 
-StateDict::StateDict(std::unordered_map<std::string, torch::Tensor> dict, const std::string& prefix)
+StateDict::StateDict(std::unordered_map<std::string, torch::Tensor> dict,
+                     const std::string& prefix)
     : dict_(std::move(dict)), prefix_(prefix) {}
 
 StateDict::StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,

@@ -20,7 +20,8 @@ class StateDict final {
   static std::unique_ptr<StateDict> load_safetensors(
       const std::string& weights_file);
 
-  StateDict(std::unordered_map<std::string, torch::Tensor> dict, const std::string& prefix = "");
+  StateDict(std::unordered_map<std::string, torch::Tensor> dict,
+            const std::string& prefix = "");
 
   StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
             std::unordered_map<std::string, torch::Tensor> dict);
