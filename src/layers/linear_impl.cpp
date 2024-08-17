@@ -59,6 +59,83 @@ void merge_weights(const std::string& tensor_name,
   }
 }
 
+void load_fused_weights(const StateDict& state_dict,
+                        const std::vector<std::string>& prefixes,
+                        const std::string& name,
+                        int64_t dim,
+                        int32_t rank,
+                        int32_t world_size,
+                        std::vector<torch::Tensor>& accumulated_tensors,
+                        torch::Tensor& weight,
+                        bool& weight_is_loaded) {
+  std::vector<torch::Tensor> tensors(prefixes.size());
+  for (size_t i = 0; i < prefixes.size(); ++i) {
+    const std::string tensor_name = prefixes[i] + name;
+    const auto tensor =
+        state_dict.get_sharded_tensor(tensor_name, dim, rank, world_size);
+    if (tensor.defined()) {
+      CHECK(!tensors[i].defined())
+          << "weight already loaded, name: " << tensor_name;
+      tensors[i] = tensor;
+    }
+  }
+  merge_weights(name,
+                std::move(tensors),
+                /*dim=*/0,
+                /*clone=*/true,
+                accumulated_tensors,
+                weight,
+                weight_is_loaded);
+}
+
+void load_weights(const StateDict& state_dict,
+                  const std::string& name,
+                  torch::Tensor& weight,
+                  bool& weight_is_loaded) {
+  const auto tensor = state_dict.get_tensor(name);
+  if (tensor.defined()) {
+    CHECK_EQ(weight.sizes(), tensor.sizes())
+        << "weight size mismatch for " << name;
+    weight.copy_(tensor);
+    weight_is_loaded = true;
+  }
+}
+
+void load_weights(const StateDict& state_dict,
+                  const std::string& name,
+                  int64_t dim,
+                  int32_t rank,
+                  int32_t world_size,
+                  torch::Tensor& weight,
+                  bool& weight_is_loaded) {
+  const auto tensor =
+      state_dict.get_sharded_tensor(name, dim, rank, world_size);
+  if (tensor.defined()) {
+    CHECK_EQ(weight.sizes(), tensor.sizes())
+        << "weight size mismatch for " << name;
+    weight.copy_(tensor);
+    weight_is_loaded = true;
+  }
+}
+
+void load_weights_with_transform(const StateDict& state_dict,
+                                 const std::string& name,
+                                 TensorTransform transform_func,
+                                 int64_t dim,
+                                 int32_t rank,
+                                 int32_t world_size,
+                                 torch::Tensor& weight,
+                                 bool& weight_is_loaded) {
+  auto tensor = state_dict.get_sharded_tensor(name, dim, rank, world_size);
+  if (tensor.defined()) {
+    tensor = transform_func(tensor);
+    CHECK_EQ(weight.sizes(), tensor.sizes())
+        << "weight size mismatch for " << name;
+    weight.copy_(tensor);
+    weight_is_loaded = true;
+  }
+}
+
 }  // namespace detail
 
 // Linear layer with column parallelism.
@@ -110,32 +187,26 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
 void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
                                                TensorTransform transform_func) {
   CHECK(transform_func != nullptr) << "transform_func must be provided";
-  auto weight =
-      state_dict.get_sharded_tensor("weight",
-                                    /*dim=*/0,
-                                    /*rank=*/parallel_args_.rank(),
-                                    /*world_size=*/parallel_args_.world_size());
-  if (weight.defined()) {
-    weight = transform_func(weight);
-    CHECK_EQ(weight_.sizes(), weight.sizes())
-        << "weight size mismatch for " << name();
-    weight_.copy_(weight);
-    weight_is_loaded_ = true;
-  }
+  const auto rank = parallel_args_.rank();
+  const auto world_size = parallel_args_.world_size();
+  detail::load_weights_with_transform(state_dict,
+                                      "weight",
+                                      transform_func,
+                                      /*dim=*/0,
+                                      rank,
+                                      world_size,
+                                      weight_,
+                                      weight_is_loaded_);
 
   if (bias_.defined()) {
-    auto bias = state_dict.get_sharded_tensor(
-        "bias",
-        /*dim=*/0,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
-    if (bias.defined()) {
-      bias = transform_func(bias);
-      CHECK_EQ(bias_.sizes(), bias.sizes())
-          << "bias size mismatch for " << name();
-      bias_.copy_(bias);
-      bias_is_loaded_ = true;
-    }
+    detail::load_weights_with_transform(state_dict,
+                                        "bias",
+                                        transform_func,
+                                        /*dim=*/0,
+                                        rank,
+                                        world_size,
+                                        bias_,
+                                        bias_is_loaded_);
   }
 }
 
@@ -143,48 +214,26 @@ void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
 void ColumnParallelLinearImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string>& prefixes) {
-  std::vector<torch::Tensor> weight_list(prefixes.size());
-  std::vector<torch::Tensor> bias_list(prefixes.size());
-  for (size_t i = 0; i < prefixes.size(); ++i) {
-    std::string name = std::string(prefixes[i]) + "weight";
-    const auto weight =
-        state_dict.get_sharded_tensor(name,
-                                      /*dim=*/0,
-                                      parallel_args_.rank(),
-                                      parallel_args_.world_size());
-    if (weight.defined()) {
-      CHECK(!weight_list[i].defined()) << "weight already loaded";
-      weight_list[i] = weight;
-    }
+  detail::load_fused_weights(state_dict,
+                             prefixes,
+                             "weight",
+                             /*dim=*/0,
+                             parallel_args_.rank(),
+                             parallel_args_.world_size(),
+                             weight_list_,
+                             weight_,
+                             weight_is_loaded_);
 
-    if (bias_.defined()) {
-      name = std::string(prefixes[i]) + "bias";
-      const auto bias =
-          state_dict.get_sharded_tensor(name,
-                                        /*dim=*/0,
-                                        parallel_args_.rank(),
-                                        parallel_args_.world_size());
-      if (bias.defined()) {
-        CHECK(!bias_list[i].defined()) << "bias already loaded";
-        bias_list[i] = bias;
-      }
-    }
-  }
-  detail::merge_weights(name(),
-                        std::move(weight_list),
-                        /*dim=*/0,
-                        /*clone=*/true,
-                        weight_list_,
-                        weight_,
-                        weight_is_loaded_);
   if (bias_.defined()) {
-    detail::merge_weights(name(),
-                          std::move(bias_list),
-                          /*dim=*/0,
-                          /*clone=*/true,
-                          bias_list_,
-                          bias_,
-                          bias_is_loaded_);
+    detail::load_fused_weights(state_dict,
+                               prefixes,
+                               "bias",
+                               /*dim=*/0,
+                               parallel_args_.rank(),
+                               parallel_args_.world_size(),
+                               bias_list_,
+                               bias_,
+                               bias_is_loaded_);
   }
 }
 
@@ -234,26 +283,22 @@ torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) const {
 
 // load the weight from the checkpoint
 void RowParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto weight =
-      state_dict.get_sharded_tensor("weight",
-                                    /*dim=*/1,
-                                    /*rank=*/parallel_args_.rank(),
-                                    /*world_size=*/parallel_args_.world_size());
-  if (weight.defined()) {
-    CHECK_EQ(weight_.sizes(), weight.sizes())
-        << "weight size mismatch for " << name();
-    weight_.copy_(weight);
-    weight_is_loaded_ = true;
-  }
+  detail::load_weights(state_dict,
+                       "weight",
+                       /*dim=*/0,
+                       parallel_args_.rank(),
+                       parallel_args_.world_size(),
+                       weight_,
+                       weight_is_loaded_);
 
   if (bias_.defined()) {
-    const auto bias = state_dict.get_tensor("bias");
-    if (bias.defined()) {
-      CHECK_EQ(bias_.sizes(), bias.sizes())
-          << "bias size mismatch for " << name();
-      bias_.copy_(bias);
-      bias_is_loaded_ = true;
-    }
+    detail::load_weights(state_dict,
+                         "bias",
+                         /*dim=*/0,
+                         parallel_args_.rank(),
+                         parallel_args_.world_size(),
+                         bias_,
+                         bias_is_loaded_);
   }
 }
 

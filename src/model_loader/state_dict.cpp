@@ -78,13 +78,16 @@ std::vector<int64_t> get_sizes(const View* view) {
 
 }  // namespace
 
-std::unique_ptr<StateDict> StateDict::load_pickle_file(
-    const std::string& weights_file,
-    int shard_id,
-    int num_shards) {
-  CHECK(shard_id >= 0 && shard_id < num_shards)
-      << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
+std::unique_ptr<StateDict> StateDict::load(const std::string& weights_file,
+                                         bool is_pickle) {
+  if (is_pickle) {
+    return load_pickle_file(weights_file);
+  }
+  return load_safetensors(weights_file);
+}
 
+std::unique_ptr<StateDict> StateDict::load_pickle_file(
+    const std::string& weights_file) {
   using caffe2::serialize::PyTorchStreamReader;
   const torch::IValue data = pickle_load(weights_file);
 
@@ -95,15 +98,11 @@ std::unique_ptr<StateDict> StateDict::load_pickle_file(
     const auto& value = kv.value();
     dict[key.toStringRef()] = value.toTensor();
   }
-  return std::make_unique<StateDict>(std::move(dict), shard_id, num_shards);
+  return std::make_unique<StateDict>(std::move(dict));
 }
 
 std::unique_ptr<StateDict> StateDict::load_safetensors(
-    const std::string& weights_file,
-    int shard_id,
-    int num_shards) {
-  CHECK(shard_id >= 0 && shard_id < num_shards)
-      << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
+    const std::string& weights_file) {
   folly::MemoryMapping::Options options;
   options.setPrefault(true).setReadable(true);
   auto mem_map = std::make_unique<folly::MemoryMapping>(weights_file.c_str(),
@@ -153,30 +152,15 @@ std::unique_ptr<StateDict> StateDict::load_safetensors(
   CHECK(safetensors_destroy(handle) == Status::Ok)
       << "Failed to destroy safetensors handle";
 
-  return std::make_unique<StateDict>(
-      std::move(mem_map), std::move(dict), shard_id, num_shards);
+  return std::make_unique<StateDict>(std::move(mem_map), std::move(dict));
 }
 
-StateDict::StateDict(std::unordered_map<std::string, torch::Tensor> dict,
-                     int shard_id,
-                     int num_shards)
-    : dict_(std::move(dict)), shard_id_(shard_id), num_shards_(num_shards) {
-  CHECK(shard_id_ >= 0 && shard_id_ < num_shards_)
-      << "Invalid shard id " << shard_id_ << " for " << num_shards_
-      << " shards";
-}
+StateDict::StateDict(std::unordered_map<std::string, torch::Tensor> dict)
+    : dict_(std::move(dict)) {}
 
 StateDict::StateDict(std::unique_ptr<folly::MemoryMapping> mem_map,
-                     std::unordered_map<std::string, torch::Tensor> dict,
-                     int shard_id,
-                     int num_shards)
-    : mem_map_(std::move(mem_map)),
-      dict_(std::move(dict)),
-      shard_id_(shard_id),
-      num_shards_(num_shards) {
-  CHECK(shard_id >= 0 && shard_id < num_shards)
-      << "Invalid shard id " << shard_id << " for " << num_shards << " shards";
-}
+                     std::unordered_map<std::string, torch::Tensor> dict)
+    : mem_map_(std::move(mem_map)), dict_(std::move(dict)) {}
 
 torch::Tensor StateDict::get_tensor(const std::string& tensor_name) const {
   const auto it = dict_.find(tensor_name);
@@ -195,38 +179,24 @@ torch::Tensor StateDict::get_sharded_tensor(const std::string& tensor_name,
   CHECK(dim == 0 || dim == 1) << "Only support 1D or 2D sharding";
   CHECK(rank >= 0 && rank < world_size)
       << "Invalid rank " << rank << " for " << world_size << " shards";
-  CHECK(world_size >= num_shards_) << "Invalid world size " << world_size
-                                   << " for " << num_shards_ << " data shards";
-  CHECK(world_size % num_shards_ == 0)
-      << "Invalid world size " << world_size << " for " << num_shards_
-      << " data shards";
-  // check if the tensor contains the data for the given rank
-  const int64_t num_ranks_per_shard = world_size / num_shards_;
-  const int64_t start_rank = shard_id_ * num_ranks_per_shard;
-  const int64_t end_rank = start_rank + num_ranks_per_shard;
-  if (rank < start_rank || rank >= end_rank) {
-    // not in the range, return empty tensor
-    return torch::Tensor{nullptr};
-  }
 
-  CHECK(rank >= start_rank && rank < end_rank);
-  const int64_t local_rank = rank - start_rank;
   auto tensor = get_tensor(tensor_name);
   if (!tensor.defined()) {
     return tensor;
   }
   // chunk tensor along the dim
   const int64_t dim_size = tensor.size(dim);
-  if (dim_size < num_ranks_per_shard) {
+  if (dim_size < world_size) {
     // too small to shard, return the whole tensor instead
+    // TODO: assert dim_size >= world_size
     return tensor;
   }
 
-  CHECK(dim_size % num_ranks_per_shard == 0)
+  CHECK(dim_size % world_size == 0)
       << "can't devide tensor evenly on " << dim << " with dim: " << dim_size
-      << " ranks_per_shard: " << num_ranks_per_shard;
-  const auto chunks = tensor.chunk(num_ranks_per_shard, dim);
-  return chunks[local_rank];
+      << " world_size: " << world_size;
+  const auto chunks = tensor.chunk(world_size, dim);
+  return chunks[rank];
 }
 
 // select all the tensors whose name starts with prefix.
@@ -237,7 +207,7 @@ StateDict StateDict::select(const std::string& prefix) const {
       selected[name.substr(prefix.length())] = tensor;
     }
   }
-  return {std::move(selected), shard_id_, num_shards_};
+  return {std::move(selected)};
 }
 
 StateDict StateDict::select_with_transform(

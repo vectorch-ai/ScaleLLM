@@ -28,7 +28,7 @@ TEST(LinearTest, RowParallelLoadWeight) {
   // weight is transposed
   state_dict_data["weight"] = torch::randn({out_features, in_features});
   // weight is not sharded
-  StateDict state_dict(state_dict_data, /*shard_id=*/0, /*num_shards=*/1);
+  StateDict state_dict(state_dict_data);
   EXPECT_EQ(state_dict_data["weight"].data_ptr(),
             state_dict.get_tensor("weight").data_ptr());
 
@@ -80,7 +80,7 @@ TEST(LinearTest, RowParallelLoadFusedWeight) {
   torch::Device device(torch::kCPU);
   torch::ScalarType dtype(torch::kFloat);
   const auto options = torch::dtype(dtype).device(device);
-  StateDict state_dict({}, /*shard_id=*/0, /*num_shards=*/1);
+  StateDict state_dict({});
 
   // test load weight
   ParallelArgs parallel_args(0, 1, nullptr);
@@ -109,7 +109,7 @@ TEST(LinearTest, ColumnParallelLoadWeight) {
   // Allocate transposed weight matrix
   state_dict_data["weight"] = torch::randn({out_features, in_features});
   // weight is not sharded
-  StateDict state_dict(state_dict_data, /*shard_id=*/0, /*num_shards=*/1);
+  StateDict state_dict(state_dict_data);
   EXPECT_EQ(state_dict_data["weight"].data_ptr(),
             state_dict.get_tensor("weight").data_ptr());
 
@@ -168,7 +168,7 @@ TEST(LinearTest, ColumnParallelLoadFusedWeight) {
   state_dict_data["value.weight"] = torch::randn({out_features, in_features});
 
   // weight is not sharded
-  StateDict state_dict(state_dict_data, /*shard_id=*/0, /*num_shards=*/1);
+  StateDict state_dict(state_dict_data);
 
   // test load weight
   {

@@ -22,7 +22,7 @@ TEST(NormalizationTest, LayerNorm) {
   // generate weight
   const auto weight = torch::rand({dim}, options);
   const auto bias = torch::rand({dim}, options);
-  StateDict state_dict({{"weight", weight}, {"bias", bias}}, 0, 1);
+  StateDict state_dict({{"weight", weight}, {"bias", bias}});
 
   LayerNorm norm(dim, eps, /*bias=*/true, options);
   // test load state dict
@@ -84,7 +84,7 @@ TEST(NormalizationTest, RMSNorm) {
 
   // generate weight
   const auto weight = torch::rand({dim}, options);
-  StateDict state_dict({{"weight", weight}}, 0, 1);
+  StateDict state_dict({{"weight", weight}});
 
   RMSNorm norm(dim, eps, options);
   // test load state dict

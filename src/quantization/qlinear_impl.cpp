@@ -4,6 +4,7 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
+#include "layers/linear_impl.h"
 #include "model_loader/state_dict.h"
 
 namespace llm {
@@ -172,56 +173,42 @@ torch::Tensor ColumnParallelQLinearImpl::quant_matmul(
 
 // load the weight from the checkpoint
 void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto qweight =
-      state_dict.get_sharded_tensor("qweight",
-                                    /*dim=*/1,
-                                    parallel_args_.rank(),
-                                    parallel_args_.world_size());
-  if (qweight.defined()) {
-    CHECK(!qweight_is_loaded_) << "qweight already loaded";
-    CHECK_EQ(qweight_.sizes(), qweight.sizes())
-        << "qweight size mismatch for " << name();
-    qweight_.copy_(qweight);
-    qweight_is_loaded_ = true;
-  }
-  const auto qzeros =
-      state_dict.get_sharded_tensor("qzeros",
-                                    /*dim=*/1,
-                                    parallel_args_.rank(),
-                                    parallel_args_.world_size());
-  if (qzeros.defined()) {
-    CHECK(qzeros_.defined()) << "qzeros is not defined for " << name();
-    CHECK_EQ(qzeros_.sizes(), qzeros.sizes())
-        << "qzeros size mismatch for " << name();
-    qzeros_.copy_(qzeros);
-    qzeros_is_loaded_ = true;
-  }
-  const auto scales =
-      state_dict.get_sharded_tensor("scales",
-                                    /*dim=*/1,
-                                    parallel_args_.rank(),
-                                    parallel_args_.world_size());
-  if (scales.defined()) {
-    CHECK(!scales_is_loaded_) << "scales already loaded";
-    CHECK_EQ(scales_.sizes(), scales.sizes())
-        << "scales size mismatch for " << name();
-    scales_.copy_(scales);
-    scales_is_loaded_ = true;
-  }
+  const auto rank = parallel_args_.rank();
+  const auto world_size = parallel_args_.world_size();
 
+  detail::load_weights(state_dict,
+                       "qweight",
+                       /*dim=*/1,
+                       rank,
+                       world_size,
+                       qweight_,
+                       qweight_is_loaded_);
+
+  detail::load_weights(state_dict,
+                       "qzeros",
+                       /*dim=*/1,
+                       rank,
+                       world_size,
+                       qzeros_,
+                       qzeros_is_loaded_);
+
+  detail::load_weights(state_dict,
+                       "scales",
+                       /*dim=*/1,
+                       rank,
+                       world_size,
+                       scales_,
+                       scales_is_loaded_);
+
+  // load bias if defined
   if (bias_.defined()) {
-    const auto bias =
-        state_dict.get_sharded_tensor("bias",
-                                      /*dim=*/0,
-                                      parallel_args_.rank(),
-                                      parallel_args_.world_size());
-    if (bias.defined()) {
-      CHECK(!bias_is_loaded_) << "bias already loaded";
-      CHECK_EQ(bias_.sizes(), bias.sizes())
-          << "bias size mismatch for " << name();
-      bias_.copy_(bias);
-      bias_is_loaded_ = true;
-    }
+    detail::load_weights(state_dict,
+                         "bias",
+                         /*dim=*/0,
+                         rank,
+                         world_size,
+                         bias_,
+                         bias_is_loaded_);
   }
 }
 
@@ -229,94 +216,50 @@ void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
 void ColumnParallelQLinearImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string>& prefixes) {
-  const size_t count = prefixes.size();
-  std::vector<torch::Tensor> qweight_list(count);
-  std::vector<torch::Tensor> qzeros_list(count);
-  std::vector<torch::Tensor> scales_list(count);
-  std::vector<torch::Tensor> bias_list(count);
+  const auto rank = parallel_args_.rank();
+  const auto world_size = parallel_args_.world_size();
 
-  for (size_t i = 0; i < count; ++i) {
-    std::string tensor_name = std::string(prefixes[i]) + "qweight";
-    const auto qweight =
-        state_dict.get_sharded_tensor(tensor_name,
-                                      /*dim=*/1,
-                                      parallel_args_.rank(),
-                                      parallel_args_.world_size());
-    if (qweight.defined()) {
-      CHECK(!qweight_is_loaded_) << "qweight already loaded";
-      CHECK(!qweight_list[i].defined()) << "qweight already loaded";
-      qweight_list[i] = qweight;
-    }
-    tensor_name = std::string(prefixes[i]) + "qzeros";
-    const auto qzeros =
-        state_dict.get_sharded_tensor(tensor_name,
-                                      /*dim=*/1,
-                                      parallel_args_.rank(),
-                                      parallel_args_.world_size());
-    if (qzeros.defined()) {
-      CHECK(!qzeros_is_loaded_) << "qzeros already loaded";
-      CHECK(!qzeros_list[i].defined()) << "qzeros already loaded";
-      qzeros_list[i] = qzeros;
-    }
-    tensor_name = std::string(prefixes[i]) + "scales";
-    const auto scales =
-        state_dict.get_sharded_tensor(tensor_name,
-                                      /*dim=*/1,
-                                      parallel_args_.rank(),
-                                      parallel_args_.world_size());
-    if (scales.defined()) {
-      CHECK(!scales_is_loaded_) << "scales already loaded";
-      CHECK(!scales_list[i].defined()) << "scales already loaded";
-      scales_list[i] = scales;
-    }
-    // load bias if defined
-    if (bias_.defined()) {
-      tensor_name = std::string(prefixes[i]) + "bias";
-      const auto bias =
-          state_dict.get_sharded_tensor(tensor_name,
-                                        /*dim=*/0,
-                                        parallel_args_.rank(),
-                                        parallel_args_.world_size());
-      if (bias.defined()) {
-        CHECK(!bias_is_loaded_) << "bias already loaded";
-        CHECK(!bias_list[i].defined()) << "bias already loaded";
-        bias_list[i] = bias;
-      }
-    }
-  }
+  detail::load_fused_weights(state_dict,
+                             prefixes,
+                             "qweight",
+                             /*dim=*/1,
+                             rank,
+                             world_size,
+                             qweight_list_,
+                             qweight_,
+                             qweight_is_loaded_);
 
-  detail::merge_weights(name(),
-                        std::move(qweight_list),
-                        /*dim=*/1,
-                        /*clone=*/true,
-                        qweight_list_,
-                        qweight_,
-                        qweight_is_loaded_);
+  detail::load_fused_weights(state_dict,
+                             prefixes,
+                             "qzeros",
+                             /*dim=*/1,
+                             rank,
+                             world_size,
+                             qzeros_list_,
+                             qzeros_,
+                             qzeros_is_loaded_);
 
-  detail::merge_weights(name(),
-                        std::move(qzeros_list),
-                        /*dim=*/1,
-                        /*clone=*/true,
-                        qzeros_list_,
-                        qzeros_,
-                        qzeros_is_loaded_);
+  detail::load_fused_weights(state_dict,
+                             prefixes,
+                             "scales",
+                             /*dim=*/1,
+                             rank,
+                             world_size,
+                             scales_list_,
+                             scales_,
+                             scales_is_loaded_);
 
-  detail::merge_weights(name(),
-                        std::move(scales_list),
-                        /*dim=*/1,
-                        /*clone=*/true,
-                        scales_list_,
-                        scales_,
-                        scales_is_loaded_);
   // load bias if defined
   if (bias_.defined()) {
-    detail::merge_weights(name(),
-                          std::move(bias_list),
-                          /*dim=*/0,
-                          /*clone=*/true,
-                          bias_list_,
-                          bias_,
-                          bias_is_loaded_);
+    detail::load_fused_weights(state_dict,
+                               prefixes,
+                               "bias",
+                               /*dim=*/0,
+                               rank,
+                               world_size,
+                               bias_list_,
+                               bias_,
+                               bias_is_loaded_);
   }
 }
 
@@ -404,47 +347,49 @@ torch::Tensor RowParallelQLinearImpl::quant_matmul(
 
 // load the weight from the checkpoint
 void RowParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto qweight =
-      state_dict.get_sharded_tensor("qweight",
-                                    /*dim=*/0,
-                                    parallel_args_.rank(),
-                                    parallel_args_.world_size());
-  if (qweight.defined()) {
-    CHECK_EQ(qweight_.sizes(), qweight.sizes())
-        << "qweight size mismatch for " << name();
-    qweight_.copy_(qweight);
-    qweight_is_loaded_ = true;
-  }
-  const auto qzeros =
-      state_dict.get_sharded_tensor("qzeros",
-                                    /*dim=*/0,
-                                    parallel_args_.rank(),
-                                    parallel_args_.world_size());
-  if (qzeros.defined()) {
-    CHECK_EQ(qzeros_.sizes(), qzeros.sizes())
-        << "qzeros size mismatch for " << name();
-    qzeros_.copy_(qzeros);
-    qzeros_is_loaded_ = true;
-  }
-  const auto scales =
-      state_dict.get_sharded_tensor("scales",
-                                    /*dim=*/0,
-                                    parallel_args_.rank(),
-                                    parallel_args_.world_size());
-  if (scales.defined()) {
-    CHECK_EQ(scales_.sizes(), scales.sizes())
-        << "scales size mismatch for " << name();
-    scales_.copy_(scales);
-    scales_is_loaded_ = true;
-  }
+  const auto rank = parallel_args_.rank();
+  const auto world_size = parallel_args_.world_size();
+
+  detail::load_weights(state_dict,
+                       "qweight",
+                       /*dim=*/0,
+                       rank,
+                       world_size,
+                       qweight_,
+                       qweight_is_loaded_);
+  
+  detail::load_weights(state_dict,
+                        "qzeros",
+                        /*dim=*/0,
+                        rank,
+                        world_size,
+                        qzeros_,
+                        qzeros_is_loaded_);
+  
+  detail::load_weights(state_dict,
+                        "scales",
+                        /*dim=*/0,
+                        rank,
+                        world_size,
+                        scales_,
+                        scales_is_loaded_);
+
+  // load bias if defined
   if (bias_.defined()) {
-    const auto bias = state_dict.get_tensor("bias");
-    if (bias.defined()) {
-      CHECK_EQ(bias_.sizes(), bias.sizes())
-          << "bias size mismatch for " << name();
-      bias_.copy_(bias);
-      bias_is_loaded_ = true;
-    }
+    detail::load_weights(state_dict,
+                         "bias",
+                         /*dim=*/0,
+                         rank,
+                         world_size,
+                         bias_,
+                         bias_is_loaded_);
+  }
+  
+  if (bias_.defined()) {
+    detail::load_weights(state_dict,
+                         "bias",
+                         bias_,
+                         bias_is_loaded_);
   }
 }
 

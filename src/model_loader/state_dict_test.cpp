@@ -15,7 +15,7 @@ namespace llm {
 // torch.save(tensors, "test.pth")
 
 TEST(StateDictTest, LoadPickle) {
-  auto state_dict = StateDict::load_pickle_file("data/test.pth", 0, 1);
+  auto state_dict = StateDict::load_pickle_file("data/test.pth");
   EXPECT_EQ(state_dict->size(), 20);
   for (int i = 0; i < 20; ++i) {
     const std::string key = "key_" + std::to_string(i);
@@ -29,7 +29,7 @@ TEST(StateDictTest, LoadPickle) {
 }
 
 TEST(StateDictTest, LoadSafeTensors) {
-  auto state_dict = StateDict::load_safetensors("data/test.safetensors", 0, 1);
+  auto state_dict = StateDict::load_safetensors("data/test.safetensors");
   EXPECT_EQ(state_dict->size(), 20);
   for (int i = 0; i < 20; ++i) {
     const std::string key = "key_" + std::to_string(i);
@@ -51,7 +51,7 @@ TEST(StateDictTest, SharedTensor) {
   }
   torch::Tensor tensor = torch::cat(tensors, /*dim=*/0);
   EXPECT_EQ(tensor.sizes(), torch::IntArrayRef({16, 2}));
-  StateDict state_dict({{"tensor", tensor}}, 0, 1);
+  StateDict state_dict({{"tensor", tensor}});
   EXPECT_EQ(state_dict.size(), 1);
 
   // test get_tensor

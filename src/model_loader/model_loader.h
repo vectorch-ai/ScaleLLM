@@ -55,8 +55,6 @@ class StateDictIterator {
   size_t index_ = 0;
   // whether the model weights file is a pickle file
   bool is_pickle_ = false;
-  // whether the model weights file is sharded
-  bool is_sharded_ = false;
 
   // pointer to the current state dict, lazy loaded
   mutable std::unique_ptr<StateDict> state_dict_;
@@ -79,51 +77,6 @@ class ModelLoader {
   // create a model loader from the given path
   static std::unique_ptr<ModelLoader> create(
       const std::string& model_weights_path);
-};
-
-// A model loader for shared pytorch model files.
-class PTModelLoader : public ModelLoader {
- public:
-  PTModelLoader(const std::string& model_weights_path);
-
-  const ModelArgs& model_args() const override { return args_; }
-
-  const QuantArgs& quant_args() const override { return quant_args_; }
-
-  const TokenizerArgs& tokenizer_args() const override {
-    return tokenizer_args_;
-  }
-
-  std::unique_ptr<Tokenizer> tokenizer() const override;
-
-  size_t weights_files_count() const override {
-    return model_weights_files_.size();
-  }
-
-  // support range-based for loop
-  StateDictIterator begin() const override {
-    return {model_weights_files_, 0, true, true};
-  }
-  StateDictIterator end() const override {
-    return {model_weights_files_, weights_files_count(), true, true};
-  }
-
- private:
-  bool load_model_args(const std::string& args_file_path);
-
-  std::string model_weights_path_;
-
-  // loaded model args
-  ModelArgs args_;
-
-  // quantization args
-  QuantArgs quant_args_;
-
-  // tokenizer args
-  TokenizerArgs tokenizer_args_;
-
-  // sorted model weights files
-  std::vector<std::string> model_weights_files_;
 };
 
 // A model loader for huggingface model files.

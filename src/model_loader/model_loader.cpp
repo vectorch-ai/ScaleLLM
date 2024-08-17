@@ -26,8 +26,7 @@ StateDictIterator::StateDictIterator(
     bool is_sharded)
     : model_weights_files_(model_weights_files),
       index_(index),
-      is_pickle_(is_pickle),
-      is_sharded_(is_sharded) {}
+      is_pickle_(is_pickle) {}
 
 const StateDict* StateDictIterator::get_state_dict() const {
   const size_t num_weight_files = model_weights_files_.size();
@@ -35,16 +34,7 @@ const StateDict* StateDictIterator::get_state_dict() const {
   // lazy loading
   if (!state_dict_) {
     LOG(INFO) << "Loading model weights from " << model_weights_files_[index_];
-
-    const int shard_id = is_sharded_ ? static_cast<int>(index_) : 0;
-    const int num_shards = is_sharded_ ? static_cast<int>(num_weight_files) : 1;
-    if (is_pickle_) {
-      state_dict_ = StateDict::load_pickle_file(
-          model_weights_files_[index_], shard_id, num_shards);
-    } else {
-      state_dict_ = StateDict::load_safetensors(
-          model_weights_files_[index_], shard_id, num_shards);
-    }
+    state_dict_ = StateDict::load(model_weights_files_[index_], is_pickle_);
   }
   return state_dict_.get();
 }
@@ -60,81 +50,10 @@ std::unique_ptr<ModelLoader> ModelLoader::create(
       break;
     }
   }
-  if (has_hf_weight_files) {
-    return std::make_unique<HFModelLoader>(model_weights_path);
-  }
-  return std::make_unique<PTModelLoader>(model_weights_path);
-}
-
-std::unique_ptr<Tokenizer> PTModelLoader::tokenizer() const {
-  return std::make_unique<SentencePieceTokenizer>(model_weights_path_,
-                                                  tokenizer_args_);
-}
-
-PTModelLoader::PTModelLoader(const std::string& model_weights_path)
-    : model_weights_path_(model_weights_path) {
-  const std::string args_file_path = model_weights_path + "/params.json";
-  CHECK(load_model_args(args_file_path))
-      << "Failed to load model args from " << args_file_path;
-  for (const auto& entry :
-       std::filesystem::directory_iterator(model_weights_path)) {
-    if (entry.path().extension() == ".pth") {
-      model_weights_files_.push_back(entry.path().string());
-    }
-  }
-  CHECK(!model_weights_files_.empty())
-      << "Failed to find model weights files in " << model_weights_path;
-  // sort the model weights files by name
-  std::sort(model_weights_files_.begin(), model_weights_files_.end());
-}
-
-bool PTModelLoader::load_model_args(const std::string& args_file_path) {
-  JsonReader reader;
-  if (!reader.parse(args_file_path)) {
-    LOG(ERROR) << "Failed to parse model args file: " << args_file_path;
-    return false;
-  }
-  // hardcode the model type to llama2 for now.
-  args_.model_type() = "llama2";
-  auto args_loader = ModelRegistry::get_model_args_loader(args_.model_type());
-  if (args_loader == nullptr) {
-    LOG(ERROR) << "Failed to find model args loader for model type "
-               << args_.model_type();
-    return false;
-  }
-  if (!args_loader(reader, &args_)) {
-    LOG(ERROR) << "Failed to load model args from " << args_file_path;
-    return false;
-  }
-
-  // read tokenizer args from tokenizer_config.json if exists
-  JsonReader tokenizer_reader;
-  const std::string tokenizer_args_file_path =
-      model_weights_path_ + "/tokenizer_config.json";
-  if (tokenizer_reader.parse(tokenizer_args_file_path)) {
-    // read chat template if exists
-    if (auto v = tokenizer_reader.value<std::string>("chat_template")) {
-      tokenizer_args_.chat_template() = v.value();
-    }
-  }
-
-  auto tokenizer_args_loader =
-      ModelRegistry::get_tokenizer_args_loader(args_.model_type());
-  if (tokenizer_args_loader != nullptr) {
-    if (!tokenizer_args_loader(tokenizer_reader, &tokenizer_args_)) {
-      LOG(ERROR) << "Failed to load tokenizer args from "
-                 << tokenizer_args_file_path;
-      return false;
-    }
-  } else {
-    // use default values if no tokenizer args loader exists
-    LOG(WARNING) << "Failed to find tokenizer args loader for model type "
-                 << args_.model_type();
-  }
-
-  // apply args override from gflag if exists
-  override_args_from_gflag(args_, quant_args_, tokenizer_args_);
-  return true;
+  CHECK(has_hf_weight_files)
+      << "Failed to find model weights files (*.safetensors, *.bin) in "
+      << model_weights_path;
+  return std::make_unique<HFModelLoader>(model_weights_path);
 }
 
 HFModelLoader::HFModelLoader(const std::string& model_weights_path)
