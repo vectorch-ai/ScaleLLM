@@ -5,20 +5,9 @@
 
 #include "linear.h"
 #include "model_loader/state_dict.h"
-#include "models/model_args.h"
+#include "weight_utils.h"
 
 namespace llm {
-namespace detail {
-// helper function to merge fused weights
-void merge_weights(const std::string& tensor_name,
-                   std::vector<torch::Tensor> weight_list,
-                   int64_t dim,  // dim to cat
-                   bool clone,   // wheather to make a colne for accumulating
-                   std::vector<torch::Tensor>& accumulated_weight_list,
-                   torch::Tensor& weight,
-                   bool& weight_is_loaded);
-
-}  // namespace detail
 
 // Linear layer with column parallelism.
 // The linear layer is defined as Y = XA + b. A is parallelized along
@@ -64,13 +53,8 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features_per_partition, in_features]
-  torch::Tensor weight_{nullptr};
-  torch::Tensor bias_{nullptr};
-
-  bool weight_is_loaded_ = false;
-  bool bias_is_loaded_ = false;
-  std::vector<torch::Tensor> weight_list_;
-  std::vector<torch::Tensor> bias_list_;
+  DEFINE_FUSED_WEIGHT(weight);
+  DEFINE_FUSED_WEIGHT(bias);
 
   // whether to gather the output
   bool gather_output_;
@@ -122,12 +106,8 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features, in_features_per_partition]
-  torch::Tensor weight_{nullptr};
-  torch::Tensor bias_{nullptr};
-
-  // whether the weight is loaded
-  bool weight_is_loaded_ = false;
-  bool bias_is_loaded_ = false;
+  DEFINE_WEIGHT(weight);
+  DEFINE_WEIGHT(bias);
 
   // whether the input is already parallelized
   bool input_is_parallelized_;

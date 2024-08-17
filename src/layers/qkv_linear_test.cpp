@@ -38,7 +38,7 @@ TEST_P(QKVLinearTest, LoadFusedWeight) {
       torch::randn({n_kv_heads * head_dim, hidden_size});
 
   // weight is not sharded
-  StateDict state_dict(state_dict_data, /*shard_id=*/0, /*num_shards=*/1);
+  StateDict state_dict(state_dict_data);
 
   // test load weight
   for (int32_t shard_id = 0; shard_id < n_shards; ++shard_id) {

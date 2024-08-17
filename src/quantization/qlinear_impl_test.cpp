@@ -8,8 +8,7 @@
 namespace llm {
 
 TEST(QlinearTest, Basic) {
-  auto state_dict = StateDict::load_safetensors(
-      "data/gptq_small.safetensors", /*shard_id=*/0, /*num_shards=*/1);
+  auto state_dict = StateDict::load_safetensors("data/gptq_small.safetensors");
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
                                            state_dict->get_tensor("qzeros"),
                                            state_dict->get_tensor("scales"),
@@ -40,8 +39,7 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
                                         /*gather_output=*/false,
                                         ParallelArgs(0, 1, nullptr),
                                         options);
-  auto state_dict = StateDict::load_safetensors(
-      "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
+  auto state_dict = StateDict::load_safetensors("data/gptq.safetensors");
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
                                            state_dict->get_tensor("qzeros"),
                                            state_dict->get_tensor("scales"),
@@ -78,8 +76,7 @@ TEST(QlinearTest, RowParallelQuantLinear) {
                                      /*input_is_parallelized=*/true,
                                      ParallelArgs(0, 1, nullptr),
                                      options);
-  auto state_dict = StateDict::load_safetensors(
-      "data/gptq.safetensors", /*shard_id=*/0, /*num_shards=*/1);
+  auto state_dict = StateDict::load_safetensors("data/gptq.safetensors");
   auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
                                            state_dict->get_tensor("qzeros"),
                                            state_dict->get_tensor("scales"),

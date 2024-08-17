@@ -8,10 +8,12 @@ cc_library(
     linear.h
     qkv_linear.h
     linear_impl.h
+    weight_utils.h
   SRCS
     linear.cpp
     qkv_linear.cpp
     linear_impl.cpp
+    weight_utils.cpp
   DEPS
     :state_dict
     :model_parallel

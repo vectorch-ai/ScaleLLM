@@ -4,6 +4,7 @@
 #include <torch/torch.h>
 
 #include "layers/linear_impl.h"
+#include "layers/weight_utils.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
 #include "models/model_args.h"
@@ -83,20 +84,10 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
 
  private:
   // parameter members, must be registered
-  torch::Tensor qweight_{nullptr};
-  torch::Tensor qzeros_{nullptr};
-  torch::Tensor scales_{nullptr};
-
-  torch::Tensor bias_{nullptr};
-
-  bool qweight_is_loaded_ = false;
-  bool qzeros_is_loaded_ = false;
-  bool scales_is_loaded_ = false;
-  bool bias_is_loaded_ = false;
-  std::vector<torch::Tensor> qweight_list_;
-  std::vector<torch::Tensor> qzeros_list_;
-  std::vector<torch::Tensor> scales_list_;
-  std::vector<torch::Tensor> bias_list_;
+  DEFINE_FUSED_WEIGHT(qweight);
+  DEFINE_FUSED_WEIGHT(qzeros);
+  DEFINE_FUSED_WEIGHT(scales);
+  DEFINE_FUSED_WEIGHT(bias);
 
   // quantization parameters
   int64_t bits_ = 0;
@@ -165,16 +156,10 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
 
  private:
   // parameter members, must be registered
-  torch::Tensor qweight_{nullptr};
-  torch::Tensor qzeros_{nullptr};
-  torch::Tensor scales_{nullptr};
-
-  torch::Tensor bias_{nullptr};
-
-  bool qweight_is_loaded_ = false;
-  bool qzeros_is_loaded_ = false;
-  bool scales_is_loaded_ = false;
-  bool bias_is_loaded_ = false;
+  DEFINE_WEIGHT(qweight);
+  DEFINE_WEIGHT(qzeros);
+  DEFINE_WEIGHT(scales);
+  DEFINE_WEIGHT(bias);
 
   // quantization parameters
   int64_t bits_ = 0;

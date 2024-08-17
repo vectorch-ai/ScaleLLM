@@ -35,9 +35,15 @@ const auto none_tensor = torch::empty({1, 1}, torch::kMeta);
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 thread_local torch::Tensor tl_temp_dq;
 
+bool same_device(const torch::Device& a, const torch::Device& b) {
+  const auto a_index = a.has_index() ? a.index() : 0;
+  const auto b_index = b.has_index() ? b.index() : 0;
+  return a.type() == b.type() && a_index == b_index;
+}
+
 void allocate_temp_dq(int64_t size, const torch::Device& device) {
   if (tl_temp_dq.defined()) {
-    CHECK(tl_temp_dq.device() == device)
+    CHECK(same_device(tl_temp_dq.device(), device))
         << "temp_dq was allocated on " << tl_temp_dq.device()
         << " but now is on " << device;
   }

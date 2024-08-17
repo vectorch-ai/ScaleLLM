@@ -176,20 +176,6 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
   LOG(INFO) << "Initializing model with quant args: " << quant_args_;
   LOG(INFO) << "Initializing model with tokenizer args: " << tokenizer_args_;
 
-  if (workers_.size() == 1) {
-    Worker* worker = workers_[0].get();
-    // only one worker, call init_model in current thread
-    if (!worker->init_model(dtype_, args_, quant_args_)) {
-      return false;
-    }
-    // load the weights from the checkpoint
-    for (const auto& state_dict : *model_loader) {
-      worker->load_state_dict(state_dict);
-    }
-    worker->verify_loaded_weights();
-    return true;
-  }
-
   // init model for each worker in parallel
   // multiple workers, call async init
   std::vector<folly::SemiFuture<bool>> futures;
@@ -340,11 +326,6 @@ bool LLMEngine::init_kv_cache(int64_t n_blocks) {
   block_manager_ = std::make_unique<BlockManager>(options);
 
   // init kv cache for each worker in parallel
-  if (workers_.size() == 1) {
-    // only one worker, call init_kv_cache in current thread
-    return workers_[0]->init_kv_cache(kv_cache_shape);
-  }
-
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
@@ -380,14 +361,6 @@ ModelOutput LLMEngine::execute_model(Batch& batch) {
   if (!model_inputs.token_ids.defined()) {
     // empty input, just return
     return {};
-  }
-
-  if (workers_.size() == 1) {
-    // only one worker, call blocking forward
-    auto model_output = workers_[0]->execute_model(model_inputs);
-    DCHECK(model_output.has_value()) << "Failed to execute model";
-    batch.process_sample_output(model_output.value().sample_output);
-    return model_output.value();
   }
 
   std::vector<folly::SemiFuture<std::optional<ModelOutput>>> futures;

@@ -9,6 +9,8 @@
 
 namespace llm {
 
+using TensorTransform = std::function<torch::Tensor(const torch::Tensor&)>;
+
 // an interface for parallel linear layer.
 // all linear classes should inherit from this class and implement the forward
 // function.
@@ -23,7 +25,6 @@ class ParallelLinearImpl : public torch::nn::Module {
   virtual void verify_loaded_weights(const std::string& prefix = "") const = 0;
 
   // load state dict with a transform function
-  using TensorTransform = std::function<torch::Tensor(torch::Tensor)>;
   virtual void load_state_dict(const StateDict& /*state_dict*/,
                                TensorTransform /*transform_func*/) {
     LOG(FATAL) << "not implemented";
