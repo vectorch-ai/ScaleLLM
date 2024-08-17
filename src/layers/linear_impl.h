@@ -7,50 +7,6 @@
 #include "model_loader/state_dict.h"
 
 namespace llm {
-namespace detail {
-
-void load_weights(const StateDict& state_dict,
-                  const std::string& name,
-                  torch::Tensor& weight,
-                  bool& weight_is_loaded);
-
-void load_fused_weights(const StateDict& state_dict,
-                        const std::vector<std::string>& prefixes,
-                        const std::string& name,
-                        int64_t dim,
-                        int32_t rank,
-                        int32_t world_size,
-                        std::vector<torch::Tensor>& accumulated_tensors,
-                        torch::Tensor& weight,
-                        bool& weight_is_loaded);
-
-void load_weights(const StateDict& state_dict,
-                  const std::string& name,
-                  int64_t dim,
-                  int32_t rank,
-                  int32_t world_size,
-                  torch::Tensor& weight,
-                  bool& weight_is_loaded);
-
-void load_weights_with_transform(const StateDict& state_dict,
-                                 const std::string& name,
-                                 TensorTransform transform_func,
-                                 int64_t dim,
-                                 int32_t rank,
-                                 int32_t world_size,
-                                 torch::Tensor& weight,
-                                 bool& weight_is_loaded);               
-
-// helper function to merge fused weights
-void merge_weights(const std::string& tensor_name,
-                   std::vector<torch::Tensor> weight_list,
-                   int64_t dim,  // dim to cat
-                   bool clone,   // wheather to make a colne for accumulating
-                   std::vector<torch::Tensor>& accumulated_weight_list,
-                   torch::Tensor& weight,
-                   bool& weight_is_loaded);
-
-}  // namespace detail
 
 // Linear layer with column parallelism.
 // The linear layer is defined as Y = XA + b. A is parallelized along

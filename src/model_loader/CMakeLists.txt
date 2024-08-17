@@ -6,8 +6,10 @@ cc_library(
     state_dict
   HDRS 
     state_dict.h
+    tensor_utils.h
   SRCS 
     state_dict.cpp
+    tensor_utils.cpp
   DEPS
     huggingface
     torch

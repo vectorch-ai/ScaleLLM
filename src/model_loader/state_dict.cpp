@@ -79,7 +79,7 @@ std::vector<int64_t> get_sizes(const View* view) {
 }  // namespace
 
 std::unique_ptr<StateDict> StateDict::load(const std::string& weights_file,
-                                         bool is_pickle) {
+                                           bool is_pickle) {
   if (is_pickle) {
     return load_pickle_file(weights_file);
   }
