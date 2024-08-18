@@ -1,19 +1,13 @@
 #include "qlinear_gptq_marlin_impl.h"
 
 #include <glog/logging.h>
-#include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "handlers/llm_handler.h"
 #include "kernels/quantization/marlin/marlin.h"
 #include "layers/weight_utils.h"
 #include "model_loader/state_dict.h"
-
-// void gptq_repack(const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
-//                  const torch::Tensor& perm,        // ?
-//                  torch::Tensor& out,               // (k/16,
-//                  n*16/pack_factor) int64_t num_bits);
+#include "model_parallel/model_parallel.h"
 
 namespace llm {
 namespace {
@@ -21,12 +15,25 @@ int64_t round_up(int64_t num, int64_t multiple) {
   return ((num + multiple - 1) / multiple);
 }
 
-const std::vector<int64_t> scale_perm = {
+void check_gptq_quant_args(const QuantArgs& quant_args) {
+  CHECK(quant_args.is_sym())
+      << "Only symmetric quantization is supported for GPTQ";
+
+  const auto bits = quant_args.bits();
+  CHECK(bits == 4 || bits == 8) << "Only 4 and 8 bits are supported for GPTQ";
+
+  const auto group_size = quant_args.group_size();
+  CHECK(group_size == -1 || group_size == 32 || group_size == 64 ||
+        group_size == 128)
+      << "Only group_size of -1, 32, 64, 128 are supported for GPTQ";
+}
+
+const std::vector<int64_t> kScalesPerm = {
     0, 8,  16, 24, 32, 40, 48, 56, 1, 9,  17, 25, 33, 41, 49, 57,
     2, 10, 18, 26, 34, 42, 50, 58, 3, 11, 19, 27, 35, 43, 51, 59,
     4, 12, 20, 28, 36, 44, 52, 60, 5, 13, 21, 29, 37, 45, 53, 61,
     6, 14, 22, 30, 38, 46, 54, 62, 7, 15, 23, 31, 39, 47, 55, 63};
-const std::vector<int64_t> scale_perm_single = {
+const std::vector<int64_t> kScalesPermSingle = {
     0, 1, 8,  9,  16, 17, 24, 25, 2, 3, 10, 11, 18, 19, 26, 27,
     4, 5, 12, 13, 20, 21, 28, 29, 6, 7, 14, 15, 22, 23, 30, 31,
 };
@@ -34,26 +41,32 @@ const std::vector<int64_t> scale_perm_single = {
 torch::Tensor repack_weight(torch::Tensor& qweight,
                             torch::Tensor& scales,
                             torch::Tensor& g_idx,
-                            int64_t num_bits) {
+                            int64_t num_bits,
+                            bool act_order) {
   torch::Tensor perm;
-  if (g_idx.defined()) {
+  if (act_order) {
     // sort g_idx in ascending order
     perm = torch::argsort(g_idx).to(torch::kInt32);
     auto p_g_idx = g_idx.index_select(/*dim=*/0, perm);
     g_idx.set_data(p_g_idx);
+  } else {
+    perm = torch::empty({0}, g_idx.options());
   }
 
   // permute and repack qweight to marlin compatible format
-  auto out = torch::empty_like(qweight);
-  marlin::gptq_repack(qweight, perm, out, num_bits);
-  qweight.set_data(out);
+  auto marlin_qweights = torch::empty_like(qweight);
+  marlin::gptq_repack(qweight, perm, marlin_qweights, num_bits);
+  qweight.set_data(marlin_qweights);
 
-  // // permute scales
-  // const int64_t perm_len = scale_perm.size();
-  // auto perm_scale =
-  //     scales.reshape({-1, perm_len}).index_select(/*dim=*/1,
-  //     perm).contiguous();
-  // scales.set_data(perm_scale.view_as(scales));
+  // permute scales
+  const int64_t n_groups = scales.size(0);
+  const auto& scale_perm = n_groups == 1 ? kScalesPermSingle : kScalesPerm;
+  const int64_t perm_len = scale_perm.size();
+  auto marlin_scales =
+      scales.reshape({-1, perm_len})
+          .index_select(/*dim=*/1, torch::tensor(scale_perm, scales.device()));
+  marlin_scales = marlin_scales.reshape(scales.sizes()).contiguous();
+  scales.set_data(marlin_scales);
   return perm;
 }
 
@@ -68,17 +81,17 @@ ColumnParallelQLinearGPTQMarlinImpl::ColumnParallelQLinearGPTQMarlinImpl(
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options)
     : bits_(quant_args.bits()),
+      act_order_(quant_args.desc_act()),
       gather_output_(gather_output),
       parallel_args_(parallel_args) {
-  const auto bits = quant_args.bits();
-  const auto group_size =
-      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
+  check_gptq_quant_args(quant_args);
+
   const int64_t world_size = parallel_args.world_size();
   CHECK(out_features % world_size == 0)
       << "out_features " << out_features << " not divisible by world_size "
       << world_size;
   const int64_t out_features_per_partition = out_features / world_size;
-  const int64_t pack_factor = 32 / bits;
+  const int64_t pack_factor = 32 / bits_;
 
   // gptq pack weight on dim 0
   qweight_ =
@@ -89,15 +102,17 @@ ColumnParallelQLinearGPTQMarlinImpl::ColumnParallelQLinearGPTQMarlinImpl(
   CHECK(out_features_per_partition % pack_factor == 0)
       << "out_features_per_partition " << out_features_per_partition
       << " not divisible by pack_factor " << pack_factor;
-  const auto n_groups = round_up(in_features, group_size);
-  qzeros_ = torch::empty({n_groups, out_features_per_partition / pack_factor},
-                         options.dtype(torch::kInt32));
-
+  const auto n_groups = quant_args.group_size() < 0
+                            ? 1
+                            : round_up(in_features, quant_args.group_size());
   scales_ = torch::empty({n_groups, out_features_per_partition}, options);
+  qzeros_ = torch::empty({0}, options);
 
   // default g_idx values
   if (quant_args.desc_act()) {
     g_idx_ = torch::empty({in_features}, options.dtype(torch::kInt32));
+  } else {
+    g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
   }
 
   if (bias) {
@@ -116,10 +131,9 @@ void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
 
   // load sharded weights on dim 1
   LOAD_SHARDED_WEIGHT(qweight, 1);
-  LOAD_SHARDED_WEIGHT(qzeros, 1);
   LOAD_SHARDED_WEIGHT(scales, 1);
 
-  if (g_idx_.defined()) {
+  if (act_order_) {
     LOAD_WEIGHT(g_idx);
   }
 
@@ -139,13 +153,10 @@ void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
 
   // load and merge weights on dim 1
   LOAD_FUSED_WEIGHT(qweight, 1);
-  LOAD_FUSED_WEIGHT(qzeros, 1);
   LOAD_FUSED_WEIGHT(scales, 1);
 
-  if (g_idx_.defined()) {
+  if (act_order_) {
     LOG(FATAL) << "fused weight does not support desc_act";
-    // load and merge g_idx
-    // LOAD_FUSED_WEIGHT(g_idx, 0);
   }
 
   // load bias if defined
@@ -159,9 +170,8 @@ void ColumnParallelQLinearGPTQMarlinImpl::verify_loaded_weights(
     const std::string& prefix) const {
   CHECK(qweight_is_loaded_)
       << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!g_idx_.defined() || g_idx_is_loaded_)
+  CHECK(!act_order_ || g_idx_is_loaded_)
       << "g_idx is not loaded for " << prefix + "g_idx";
   CHECK(!bias_.defined() || bias_is_loaded_)
       << "bias is not loaded for " << prefix + "bias";
@@ -171,7 +181,8 @@ torch::Tensor ColumnParallelQLinearGPTQMarlinImpl::forward(
     torch::Tensor input) {
   // repack qweight and scales to marlin compatible format at the first call
   if (!perm_.defined()) {
-    perm_ = repack_weight(qweight_, scales_, g_idx_, bits_);
+    perm_ = repack_weight(qweight_, scales_, g_idx_, bits_, act_order_);
+    CHECK(perm_.defined());
   }
 
   auto output =
@@ -207,30 +218,31 @@ RowParallelQLinearGPTQMarlinImpl::RowParallelQLinearGPTQMarlinImpl(
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options)
     : bits_(quant_args.bits()),
+      act_order_(quant_args.desc_act()),
       input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
-  const auto bits = quant_args.bits();
+  check_gptq_quant_args(quant_args);
+
   const int64_t world_size = parallel_args.world_size();
   CHECK(in_features % world_size == 0)
       << "in_features " << in_features << " not divisible by world_size "
       << world_size;
   const int64_t in_features_per_partition = in_features / world_size;
-  const int64_t pack_factor = 32 / bits;
-  const auto group_size =
-      quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
+  const int64_t pack_factor = 32 / bits_;
 
   qweight_ =
       torch::empty({in_features_per_partition / pack_factor, out_features},
                    options.dtype(torch::kInt32));
 
   // load full qzeros and scales
-  const auto n_groups = round_up(in_features, group_size);
-  qzeros_ = torch::empty({n_groups, out_features / pack_factor},
-                         options.dtype(torch::kInt32));
+  const auto n_groups = quant_args.group_size() < 0
+                            ? 1
+                            : round_up(in_features, quant_args.group_size());
   scales_ = torch::empty({n_groups, out_features}, options);
+  qzeros_ = torch::empty({0}, options);
 
   // load sharded g_idx on dim 0
-  if (quant_args.desc_act()) {
+  if (act_order_) {
     g_idx_ =
         torch::empty({in_features_per_partition}, options.dtype(torch::kInt32));
   }
@@ -251,10 +263,9 @@ void RowParallelQLinearGPTQMarlinImpl::load_state_dict(
 
   // load sharded weights on dim 0
   LOAD_SHARDED_WEIGHT(qweight, 0);
-  LOAD_SHARDED_WEIGHT(qzeros, 0);
   LOAD_SHARDED_WEIGHT(scales, 0);
 
-  if (g_idx_.defined()) {
+  if (act_order_) {
     LOAD_SHARDED_WEIGHT(g_idx, 0);
   }
 
@@ -268,8 +279,9 @@ void RowParallelQLinearGPTQMarlinImpl::verify_loaded_weights(
     const std::string& prefix) const {
   CHECK(qweight_is_loaded_)
       << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
+  CHECK(!act_order_ || g_idx_is_loaded_)
+      << "g_idx is not loaded for " << prefix + "g_idx";
   CHECK(!bias_.defined() || bias_is_loaded_)
       << "bias is not loaded for " << prefix + "bias";
 }
@@ -277,7 +289,8 @@ void RowParallelQLinearGPTQMarlinImpl::verify_loaded_weights(
 torch::Tensor RowParallelQLinearGPTQMarlinImpl::forward(torch::Tensor input) {
   // repack qweight and scales to marlin compatible format at the first call
   if (!perm_.defined()) {
-    perm_ = repack_weight(qweight_, scales_, g_idx_, bits_);
+    perm_ = repack_weight(qweight_, scales_, g_idx_, bits_, act_order_);
+    CHECK(perm_.defined());
   }
 
   if (!input_is_parallelized_) {

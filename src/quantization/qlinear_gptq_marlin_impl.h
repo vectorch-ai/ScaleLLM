@@ -3,11 +3,10 @@
 #include <ATen/core/TensorBody.h>
 #include <torch/torch.h>
 
-#include "layers/linear_impl.h"
+#include "layers/linear.h"
 #include "layers/weight_utils.h"
 #include "model_loader/state_dict.h"
-#include "model_parallel/model_parallel.h"
-#include "models/model_args.h"
+#include "model_parallel/parallel_args.h"
 
 namespace llm {
 
@@ -38,24 +37,24 @@ class ColumnParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " device=" << qweight_.device();
+           << " scales=" << scales_.sizes() << " device=" << qweight_.device();
   }
 
  private:
   // parameter members, must be registered
   DEFINE_FUSED_WEIGHT(qweight);
-  DEFINE_FUSED_WEIGHT(qzeros);
   DEFINE_FUSED_WEIGHT(scales);
   DEFINE_FUSED_WEIGHT(g_idx);
   DEFINE_FUSED_WEIGHT(bias);
 
   // buffers
+  torch::Tensor qzeros_;
   torch::Tensor workspace_;
   torch::Tensor perm_;
 
   // quantization parameters
   int64_t bits_ = 0;
+  bool act_order_ = false;
 
   // whether to gather the output
   bool gather_output_ = false;
@@ -94,31 +93,29 @@ class RowParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
 
   void pretty_print(std::ostream& stream) const override {
     stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " device=" << qweight_.device();
+           << " scales=" << scales_.sizes() << " device=" << qweight_.device();
   }
 
  private:
   // parameter members, must be registered
   DEFINE_WEIGHT(qweight);
-  DEFINE_WEIGHT(qzeros);
   DEFINE_WEIGHT(scales);
   DEFINE_WEIGHT(g_idx);
   DEFINE_WEIGHT(bias);
 
   // buffers
+  torch::Tensor qzeros_;
   torch::Tensor workspace_;
   torch::Tensor perm_;
 
   // quantization parameters
   int64_t bits_ = 0;
+  bool act_order_ = false;
 
   // whether the input is already parallelized
   bool input_is_parallelized_;
 
   // parallel args
   ParallelArgs parallel_args_;
-
-  bool act_order_ = false;
 };
 }  // namespace llm
