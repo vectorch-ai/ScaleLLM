@@ -21,6 +21,7 @@ cc_library(
     :linear
     :gptq.kernels
     :awq.kernels
+    :marlin.kernels
     :exllamav2.kernels
     glog::glog
     gflags::gflags

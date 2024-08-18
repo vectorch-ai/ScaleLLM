@@ -18,7 +18,7 @@ class ParallelLinearImpl : public torch::nn::Module {
  public:
   ~ParallelLinearImpl() override = default;
 
-  virtual torch::Tensor forward(torch::Tensor input) const = 0;
+  virtual torch::Tensor forward(torch::Tensor input) = 0;
 
   virtual void load_state_dict(const StateDict& state_dict) = 0;
 

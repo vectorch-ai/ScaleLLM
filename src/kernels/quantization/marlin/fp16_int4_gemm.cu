@@ -956,7 +956,7 @@ void fp16_int4_gemm(const torch::Tensor& A,  // (m, k)
   int groupsize = (s.size(0) == 1) ? -1 : prob_k / s.size(0);
   CHECK(groupsize == -1 || groupsize * s.size(0) == prob_k)
       << "k=" << prob_k << " not compatible with " << s.size(0) << " groups.";
-  CHECK_LT(workspace.numel(), prob_n / 128 * max_par)
+  CHECK_GE(workspace.numel(), prob_n / 128 * max_par)
       << "workspace must be of size at most " << prob_n / 128 * max_par << ".";
 
   int dev = A.get_device();

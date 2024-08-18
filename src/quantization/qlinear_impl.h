@@ -58,7 +58,7 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
                                      const torch::Tensor& qzeros_,
                                      const torch::Tensor& scales_) const;
 
-  torch::Tensor forward(torch::Tensor input) const override {
+  torch::Tensor forward(torch::Tensor input) override {
     auto output = quant_matmul(input, qweight_, qzeros_, scales_);
     if (bias_.defined()) {
       output.add_(bias_);
@@ -126,7 +126,7 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
                                      const torch::Tensor& qzeros_,
                                      const torch::Tensor& scales_) const;
 
-  torch::Tensor forward(torch::Tensor input) const override {
+  torch::Tensor forward(torch::Tensor input) override {
     if (!input_is_parallelized_) {
       input = scatter_to_model_parallel_region(input, parallel_args_);
     }

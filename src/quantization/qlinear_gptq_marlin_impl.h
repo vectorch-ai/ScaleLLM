@@ -27,17 +27,7 @@ class ColumnParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
   // verify if the weight is loaded correctly
   void verify_loaded_weights(const std::string& prefix = "") const override;
 
-  torch::Tensor forward(torch::Tensor input) const override;
-  // {
-  //   auto output = quant_matmul(input, qweight_, qzeros_, scales_);
-  //   if (bias_.defined()) {
-  //     output.add_(bias_);
-  //   }
-  //   if (parallel_args_.world_size() > 1 && gather_output_) {
-  //     output = gather_from_model_parallel_region(output, parallel_args_);
-  //   }
-  //   return output;
-  // }
+  torch::Tensor forward(torch::Tensor input) override;
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) override;
@@ -60,11 +50,15 @@ class ColumnParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
   DEFINE_FUSED_WEIGHT(g_idx);
   DEFINE_FUSED_WEIGHT(bias);
 
+  // buffers
+  torch::Tensor workspace_;
+  torch::Tensor perm_;
+
   // quantization parameters
   int64_t bits_ = 0;
 
   // whether to gather the output
-  bool gather_output_;
+  bool gather_output_ = false;
 
   // parallel args
   ParallelArgs parallel_args_;
@@ -90,23 +84,7 @@ class RowParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
                                    const ParallelArgs& parallel_args,
                                    const torch::TensorOptions& options);
 
-  torch::Tensor forward(torch::Tensor input) const override;
-
-  // {
-  //   if (!input_is_parallelized_) {
-  //     input = scatter_to_model_parallel_region(input, parallel_args_);
-  //   }
-
-  //   auto output = quant_matmul(input, qweight_, qzeros_, scales_);
-  //   if (parallel_args_.world_size() > 1) {
-  //     output = reduce_from_model_parallel_region(output, parallel_args_);
-  //   }
-  //   // N.B. need to apply bias after the reduce
-  //   if (bias_.defined()) {
-  //     output.add_(bias_);
-  //   }
-  //   return output;
-  // }
+  torch::Tensor forward(torch::Tensor input) override;
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) override;
@@ -128,6 +106,10 @@ class RowParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
   DEFINE_WEIGHT(g_idx);
   DEFINE_WEIGHT(bias);
 
+  // buffers
+  torch::Tensor workspace_;
+  torch::Tensor perm_;
+
   // quantization parameters
   int64_t bits_ = 0;
 
@@ -136,5 +118,7 @@ class RowParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
 
   // parallel args
   ParallelArgs parallel_args_;
+
+  bool act_order_ = false;
 };
 }  // namespace llm
