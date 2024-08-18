@@ -12,9 +12,10 @@
 #include "quantization/qlinear_gptq_impl.h"
 #include "quantization/qlinear_gptq_marlin_impl.h"
 
-DEFINE_string(qlinear_gptq_impl,
-              "auto",
-              "type of qlinear gptq impl: slow, cuda, exllamav2, marlin or auto");
+DEFINE_string(
+    qlinear_gptq_impl,
+    "auto",
+    "type of qlinear gptq impl: slow, cuda, exllamav2, marlin or auto");
 
 namespace llm {
 namespace {
