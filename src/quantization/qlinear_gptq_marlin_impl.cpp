@@ -98,18 +98,18 @@ ColumnParallelQLinearGPTQMarlinImpl::ColumnParallelQLinearGPTQMarlinImpl(
       torch::empty({in_features / pack_factor, out_features_per_partition},
                    options.dtype(torch::kInt32));
 
-  // TODO: support tensor parallelism for gptq
   CHECK(out_features_per_partition % pack_factor == 0)
       << "out_features_per_partition " << out_features_per_partition
       << " not divisible by pack_factor " << pack_factor;
-  const auto n_groups = quant_args.group_size() < 0
-                            ? 1
-                            : round_up(in_features, quant_args.group_size());
+
+  int64_t n_groups = 1;
+  if (quant_args.group_size() > 0) {
+    n_groups = round_up(in_features, quant_args.group_size());
+  }
   scales_ = torch::empty({n_groups, out_features_per_partition}, options);
   qzeros_ = torch::empty({0}, options);
 
-  // default g_idx values
-  if (quant_args.desc_act()) {
+  if (act_order_) {
     g_idx_ = torch::empty({in_features}, options.dtype(torch::kInt32));
   } else {
     g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
@@ -148,16 +148,14 @@ void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
 void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string>& prefixes) {
+  CHECK(!act_order_) << "fused weight does not support desc_act";
+
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
   // load and merge weights on dim 1
   LOAD_FUSED_WEIGHT(qweight, 1);
   LOAD_FUSED_WEIGHT(scales, 1);
-
-  if (act_order_) {
-    LOG(FATAL) << "fused weight does not support desc_act";
-  }
 
   // load bias if defined
   if (bias_.defined()) {
@@ -234,17 +232,23 @@ RowParallelQLinearGPTQMarlinImpl::RowParallelQLinearGPTQMarlinImpl(
       torch::empty({in_features_per_partition / pack_factor, out_features},
                    options.dtype(torch::kInt32));
 
-  // load full qzeros and scales
-  const auto n_groups = quant_args.group_size() < 0
-                            ? 1
-                            : round_up(in_features, quant_args.group_size());
+  // load full scales for act_order and channelwise quant
+  load_full_scales_ = act_order_ || quant_args.group_size() == -1;
+  int64_t n_groups = 1;
+  if (quant_args.group_size() > 0) {
+    n_groups =
+        round_up(load_full_scales_ ? in_features : in_features_per_partition,
+                 quant_args.group_size());
+  }
   scales_ = torch::empty({n_groups, out_features}, options);
   qzeros_ = torch::empty({0}, options);
 
-  // load sharded g_idx on dim 0
   if (act_order_) {
+    // load sharded g_idx on dim 0
     g_idx_ =
         torch::empty({in_features_per_partition}, options.dtype(torch::kInt32));
+  } else {
+    g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
   }
 
   if (bias) {
@@ -263,7 +267,11 @@ void RowParallelQLinearGPTQMarlinImpl::load_state_dict(
 
   // load sharded weights on dim 0
   LOAD_SHARDED_WEIGHT(qweight, 0);
-  LOAD_SHARDED_WEIGHT(scales, 0);
+  if (load_full_scales_) {
+    LOAD_WEIGHT(scales);
+  } else {
+    LOAD_SHARDED_WEIGHT(scales, 0);
+  }
 
   if (act_order_) {
     LOAD_SHARDED_WEIGHT(g_idx, 0);

@@ -112,6 +112,9 @@ class RowParallelQLinearGPTQMarlinImpl : public ParallelLinearImpl {
   int64_t bits_ = 0;
   bool act_order_ = false;
 
+  // whether to load full scales
+  bool load_full_scales_ = false;
+
   // whether the input is already parallelized
   bool input_is_parallelized_;
 
