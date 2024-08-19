@@ -38,7 +38,7 @@ DECLARE_string(quant_method);
 DECLARE_string(bits);
 DECLARE_string(group_size);
 DECLARE_string(desc_act);
-DECLARE_string(true_sequential);
+DECLARE_string(is_sym);
 
 // tokenizer flags
 DECLARE_string(tokenizer_type);

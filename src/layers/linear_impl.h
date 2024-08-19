@@ -21,7 +21,7 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
                            const ParallelArgs& parallel_args,
                            const torch::TensorOptions& options);
 
-  torch::Tensor forward(torch::Tensor input) const override;
+  torch::Tensor forward(torch::Tensor input) override;
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) override;
@@ -82,7 +82,7 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
                         const ParallelArgs& parallel_args,
                         const torch::TensorOptions& options);
 
-  torch::Tensor forward(torch::Tensor input) const override;
+  torch::Tensor forward(torch::Tensor input) override;
 
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) override;

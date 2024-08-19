@@ -125,4 +125,7 @@ def gen_marlin_weights(m, n, groupsize=-1, device="cpu"):
 
 
 if __name__ == "__main__":
-    w, q, s = gen_marlin_weights(16, 64)
+    # w, q, s = gen_marlin_weights(16, 64)
+    perm, perm_single = marlin_scales_perm()
+    print(perm)
+    print(perm_single)

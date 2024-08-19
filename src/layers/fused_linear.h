@@ -20,7 +20,7 @@ class FusedColumnParallelLinearImpl : public torch::nn::Module {
                                 const ParallelArgs& parallel_args,
                                 const torch::TensorOptions& options);
 
-  std::vector<torch::Tensor> forward(torch::Tensor input) const;
+  std::vector<torch::Tensor> forward(torch::Tensor input);
 
   // load_state_dict for fused weights
   void load_state_dict(const StateDict& state_dict,

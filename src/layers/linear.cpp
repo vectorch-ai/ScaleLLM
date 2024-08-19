@@ -10,10 +10,12 @@
 #include "quantization/qlinear_awq_impl.h"
 #include "quantization/qlinear_exllamav2_impl.h"
 #include "quantization/qlinear_gptq_impl.h"
+#include "quantization/qlinear_gptq_marlin_impl.h"
 
-DEFINE_string(qlinear_gptq_impl,
-              "auto",
-              "type of qlinear gptq impl: slow, cuda, exllamav2 or auto");
+DEFINE_string(
+    qlinear_gptq_impl,
+    "auto",
+    "type of qlinear gptq impl: slow, cuda, exllamav2, marlin or auto");
 
 namespace llm {
 namespace {
@@ -71,6 +73,9 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllamav2")) {
     return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearExllamav2Impl);
   }
+  if (boost::iequals(FLAGS_qlinear_gptq_impl, "marlin")) {
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearGPTQMarlinImpl);
+  }
   return nullptr;
 }
 
@@ -98,6 +103,9 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear_by_impl(
   if (boost::iequals(FLAGS_qlinear_gptq_impl, "exllamav2")) {
     return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearExllamav2Impl);
   }
+  if (boost::iequals(FLAGS_qlinear_gptq_impl, "marlin")) {
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearGPTQMarlinImpl);
+  }
   return nullptr;
 }
 
@@ -119,11 +127,8 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
     return qlinear;
   }
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
-    // use exllamav2 for 4 bits which is faster
-    if (quant_args.bits() == 4) {
-      return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearExllamav2Impl);
-    }
-    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearGPTQImpl);
+    // default to use marlin implementation for gptq
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearGPTQMarlinImpl);
   }
   if (boost::iequals(quant_args.quant_method(), "awq") ||
       boost::iequals(quant_args.quant_method(), "GEMM")) {
@@ -152,13 +157,8 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
     return qlinear;
   }
   if (boost::iequals(quant_args.quant_method(), "gptq")) {
-    // use exllamav2 for 4 bits which is faster
-    if (quant_args.bits() == 4) {
-      // TODO: double check if exllama supports row tensor parallelism with
-      // act-order.
-      return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearExllamav2Impl);
-    }
-    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearGPTQImpl);
+    // default to use marlin implementation for gptq
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearGPTQMarlinImpl);
   }
   if (boost::iequals(quant_args.quant_method(), "awq") ||
       boost::iequals(quant_args.quant_method(), "GEMM")) {

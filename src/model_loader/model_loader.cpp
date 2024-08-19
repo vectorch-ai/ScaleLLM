@@ -145,8 +145,8 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     if (auto v = reader.value<bool>("quantization_config.desc_act")) {
       quant_args_.desc_act() = v.value();
     }
-    if (auto v = reader.value<bool>("quantization_config.true_sequential")) {
-      quant_args_.true_sequential() = v.value();
+    if (auto v = reader.value<bool>("quantization_config.sym")) {
+      quant_args_.is_sym() = v.value();
     }
   }
 
@@ -185,8 +185,8 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     if (auto v = gptq_reader.value<bool>("desc_act")) {
       quant_args_.desc_act() = v.value();
     }
-    if (auto v = gptq_reader.value<bool>("true_sequential")) {
-      quant_args_.true_sequential() = v.value();
+    if (auto v = gptq_reader.value<bool>("sym")) {
+      quant_args_.is_sym() = v.value();
     }
   }
 

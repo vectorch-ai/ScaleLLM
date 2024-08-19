@@ -56,7 +56,7 @@ FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
 }
 
 std::vector<torch::Tensor> FusedColumnParallelLinearImpl::forward(
-    torch::Tensor input) const {
+    torch::Tensor input) {
   if (fused_) {
     auto fused_output = fused_linear_->forward(input);
     return fused_output.split(split_sizes_, /*dim=*/1);
@@ -65,7 +65,7 @@ std::vector<torch::Tensor> FusedColumnParallelLinearImpl::forward(
   // otherwise, use the non-fused linear layers
   std::vector<torch::Tensor> outputs;
   outputs.reserve(parallel_linears_.size());
-  for (const auto& parallel_linear : parallel_linears_) {
+  for (auto& parallel_linear : parallel_linears_) {
     auto output = parallel_linear->forward(input);
     outputs.push_back(output);
   }

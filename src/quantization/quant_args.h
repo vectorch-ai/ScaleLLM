@@ -8,7 +8,7 @@
 namespace llm {
 
 struct QuantArgs {
-  DEFINE_ARG(std::string, quant_method) = "";
+  DEFINE_ARG(std::string, quant_method);
 
   // quantization bits
   DEFINE_ARG(int64_t, bits) = 0;
@@ -19,7 +19,8 @@ struct QuantArgs {
   // aka act_order, true results in better quantisation accuracy.
   DEFINE_ARG(bool, desc_act) = false;
 
-  DEFINE_ARG(bool, true_sequential) = false;
+  // whether the input is symmetric
+  DEFINE_ARG(bool, is_sym) = false;
 
   // check if weights can be fused
   bool can_be_fused() const {
@@ -34,7 +35,7 @@ inline std::ostream& operator<<(std::ostream& os, const QuantArgs& args) {
   os << ", bits: " << args.bits();
   os << ", group_size: " << args.group_size();
   os << ", desc_act: " << args.desc_act();
-  os << ", true_sequential: " << args.true_sequential();
+  os << ", is_sym: " << args.is_sym();
   os << "]";
   return os;
 }

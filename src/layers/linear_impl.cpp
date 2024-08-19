@@ -39,7 +39,7 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
   }
 }
 
-torch::Tensor ColumnParallelLinearImpl::forward(torch::Tensor input) const {
+torch::Tensor ColumnParallelLinearImpl::forward(torch::Tensor input) {
   namespace F = torch::nn::functional;
   auto output = F::linear(input, weight_, bias_);
   if (parallel_args_.world_size() > 1 && gather_output_) {
@@ -114,7 +114,7 @@ RowParallelLinearImpl::RowParallelLinearImpl(
   }
 }
 
-torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) const {
+torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) {
   namespace F = torch::nn::functional;
   if (!input_is_parallelized_) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
