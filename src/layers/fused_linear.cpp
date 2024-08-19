@@ -12,7 +12,7 @@ namespace llm {
 
 FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
     int64_t in_features,
-    std::vector<int64_t> out_features_vec,
+    const std::vector<int64_t>& out_features_vec,
     bool bias,
     bool gather_output,
     const QuantArgs& quant_args,

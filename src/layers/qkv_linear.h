@@ -3,7 +3,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "linear.h"
+#include "fused_linear.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
 #include "quantization/quant_args.h"
@@ -24,7 +24,7 @@ class QKVColumnParallelLinearImpl : public torch::nn::Module {
                               const ParallelArgs& parallel_args,
                               const torch::TensorOptions& options);
 
-  torch::Tensor forward(torch::Tensor input) const {
+  std::vector<torch::Tensor> forward(torch::Tensor input) const {
     return parallel_linear_->forward(input);
   }
 
@@ -38,7 +38,7 @@ class QKVColumnParallelLinearImpl : public torch::nn::Module {
   }
 
  private:
-  ColumnParallelLinear parallel_linear_{nullptr};
+  FusedColumnParallelLinear parallel_linear_{nullptr};
 
   // replication ratio of kv heads for MQA/GQA cases
   int64_t kv_replication_ratio_ = 0;

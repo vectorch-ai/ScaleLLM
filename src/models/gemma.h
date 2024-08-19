@@ -27,23 +27,23 @@ class GemmaMLPImpl : public torch::nn::Module {
                const QuantArgs& quant_args,
                const ParallelArgs& parallel_args,
                const torch::TensorOptions& options) {
-    act_with_mul_ =
-        Activation::get_act_with_mul_func(args.hidden_act(), options.device());
-    CHECK(act_with_mul_ != nullptr);
+    act_func_ = Activation::get_act_func(args.hidden_act(), options.device());
+    CHECK(act_func_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
     // register the weight parameter
-    gate_up_proj_ =
-        register_module("gate_up_proj",
-                        ColumnParallelLinear(hidden_size,
-                                             intermediate_size * 2,
-                                             /*bias=*/false,
-                                             /*gather_output=*/false,
-                                             quant_args,
-                                             parallel_args,
-                                             options));
+    gate_up_proj_ = register_module(
+        "gate_up_proj",
+        FusedColumnParallelLinear(
+            hidden_size,
+            std::vector<int64_t>{intermediate_size, intermediate_size},
+            /*bias=*/false,
+            /*gather_output=*/false,
+            quant_args,
+            parallel_args,
+            options));
     down_proj_ =
         register_module("down_proj",
                         RowParallelLinear(intermediate_size,
@@ -56,7 +56,8 @@ class GemmaMLPImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    return down_proj_(act_with_mul_(gate_up_proj_(x)));
+    const auto gate_up = gate_up_proj_(x);
+    return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
   }
 
   // load the weight from the checkpoint
@@ -73,11 +74,11 @@ class GemmaMLPImpl : public torch::nn::Module {
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear gate_up_proj_{nullptr};
+  FusedColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 
-  // calculate act(x) * y
-  ActFunc act_with_mul_{nullptr};
+  // activation function
+  ActFunc act_func_{nullptr};
 };
 TORCH_MODULE(GemmaMLP);
 
@@ -96,11 +97,6 @@ class GemmaAttentionImpl : public torch::nn::Module {
     const int64_t n_local_heads = n_heads / world_size;
     const int64_t n_local_kv_heads =
         std::max<int64_t>(1, n_kv_heads / world_size);
-
-    // size for q, k, v
-    qkv_sizes_ = {n_local_heads * head_dim,
-                  n_local_kv_heads * head_dim,
-                  n_local_kv_heads * head_dim};
 
     // register submodules
     qkv_proj_ = register_module("qkv_proj",
@@ -134,12 +130,10 @@ class GemmaAttentionImpl : public torch::nn::Module {
                         const InputParameters& input_params) {
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
-    auto qkv = qkv_proj_(x).split(/*split_size=*/qkv_sizes_, /*dim=*/-1);
-    DCHECK_EQ(qkv.size(), 3);
-
+    const auto qkv = qkv_proj_(x);
     // calculate attention,
     // output: (num_tokens, n_local_heads*head_dim)
-    auto output =
+    const auto output =
         atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return o_proj_(output);
   }
@@ -165,9 +159,6 @@ class GemmaAttentionImpl : public torch::nn::Module {
 
   // module members without parameters
   Attention atten_{nullptr};
-
-  // size for q, k, v
-  std::vector<int64_t> qkv_sizes_;
 };
 TORCH_MODULE(GemmaAttention);
 

@@ -13,7 +13,7 @@ namespace llm {
 class FusedColumnParallelLinearImpl : public torch::nn::Module {
  public:
   FusedColumnParallelLinearImpl(int64_t in_features,
-                                std::vector<int64_t> out_features,
+                                const std::vector<int64_t>& out_features,
                                 bool bias,
                                 bool gather_output,
                                 const QuantArgs& quant_args,

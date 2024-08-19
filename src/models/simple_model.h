@@ -3,13 +3,10 @@
 #include <c10/core/ScalarType.h>
 #include <torch/torch.h>
 
-#include "chat_template/common_chat_template.h"
 #include "layers/activation.h"
-#include "layers/attention/attention.h"
-#include "layers/attention/handler.h"
 #include "layers/embedding.h"
+#include "layers/fused_linear.h"
 #include "layers/linear.h"
-#include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -24,20 +21,22 @@ class SimpleMLPImpl : public torch::nn::Module {
                 const QuantArgs& quant_args,
                 const ParallelArgs& parallel_args,
                 const torch::TensorOptions& options) {
-    act_with_mul_ = Activation::get_act_with_mul_func("silu", options.device());
-    CHECK(act_with_mul_ != nullptr);
+    act_func_ = Activation::get_act_func("silu", options.device());
+    CHECK(act_func_ != nullptr);
 
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    gate_up_proj_ = register_module("gate_up_proj",
-                                    ColumnParallelLinear(hidden_size,
-                                                         intermediate_size * 2,
-                                                         false,
-                                                         false,
-                                                         quant_args,
-                                                         parallel_args,
-                                                         options));
+    gate_up_proj_ = register_module(
+        "gate_up_proj",
+        FusedColumnParallelLinear(
+            hidden_size,
+            std::vector<int64_t>{intermediate_size, intermediate_size},
+            false,
+            false,
+            quant_args,
+            parallel_args,
+            options));
     down_proj_ = register_module("down_proj",
                                  RowParallelLinear(intermediate_size,
                                                    hidden_size,
@@ -49,7 +48,8 @@ class SimpleMLPImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    return down_proj_(act_with_mul_(gate_up_proj_(x)));
+    const auto gate_up = gate_up_proj_(x);
+    return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
   }
 
   void load_state_dict(const StateDict& state_dict) {
@@ -63,10 +63,10 @@ class SimpleMLPImpl : public torch::nn::Module {
   }
 
  private:
-  ColumnParallelLinear gate_up_proj_{nullptr};
+  FusedColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 
-  ActFunc act_with_mul_{nullptr};
+  ActFunc act_func_{nullptr};
 };
 
 TORCH_MODULE(SimpleMLP);
