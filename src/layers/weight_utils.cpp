@@ -81,11 +81,10 @@ void WeightUtils::load_fused_weight(
     const auto tensor =
         state_dict.get_sharded_tensor(tensor_name, dim, rank, world_size);
     if (tensor.defined()) {
-      const bool duplicated =
-          tensors[i].defined() || accumulated_tensors[i].defined();
-      CHECK(!duplicated) << "weight already loaded, name: "
-                         << state_dict.prefix() << tensor_name;
       tensors[i] = tensor;
+    } else if (accumulated_tensors[i].defined()) {
+      // carry over the accumulated weight
+      tensors[i] = accumulated_tensors[i];
     }
   }
 

@@ -21,6 +21,12 @@ struct QuantArgs {
 
   // whether the input is symmetric
   DEFINE_ARG(bool, is_sym) = false;
+
+  // check if weights can be fused
+  bool can_be_fused() const {
+    // can't fuse quantized weights if desc_act is true
+    return quant_method().empty() || !desc_act();
+  }
 };
 
 inline std::ostream& operator<<(std::ostream& os, const QuantArgs& args) {
