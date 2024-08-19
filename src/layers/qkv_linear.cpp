@@ -18,7 +18,7 @@ QKVColumnParallelLinearImpl::QKVColumnParallelLinearImpl(
     : n_kv_heads_(n_kv_heads), head_dim_(head_dim) {
   // calculate logical kv heads with support of MQA/GQA
   const int32_t world_size = parallel_args.world_size();
-  int64_t effective_out_features = (n_heads + 2 * n_kv_heads) * head_dim;
+  int64_t effective_kv_heads = n_kv_heads;
   if (n_kv_heads >= world_size) {
     // partition kv heads evenly across world_size for MHA
     CHECK_EQ(n_kv_heads % world_size, 0)
@@ -28,18 +28,22 @@ QKVColumnParallelLinearImpl::QKVColumnParallelLinearImpl(
     CHECK_EQ(world_size % n_kv_heads, 0)
         << "kv heads can't be replicated evenly across world_size";
     kv_replication_ratio_ = world_size / n_kv_heads;
-    effective_out_features = (n_heads + 2 * world_size) * head_dim;
+    effective_kv_heads = world_size;
   }
 
-  parallel_linear_ =
-      register_module("parallel_linear",
-                      ColumnParallelLinear(hidden_size,
-                                           effective_out_features,
-                                           bias,
-                                           gather_output,
-                                           quant_args,
-                                           parallel_args,
-                                           options));
+  // output features for Q, K, V
+  std::vector<int64_t> out_features = {n_heads * head_dim,
+                                       effective_kv_heads * head_dim,
+                                       effective_kv_heads * head_dim};
+
+  parallel_linear_ = register_module("parallel_linear",
+                                     FusedColumnParallelLinear(hidden_size,
+                                                               out_features,
+                                                               bias,
+                                                               gather_output,
+                                                               quant_args,
+                                                               parallel_args,
+                                                               options));
 }
 
 // special load_state_dict for fused cases

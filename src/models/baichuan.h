@@ -9,6 +9,7 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
+#include "layers/fused_linear.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
@@ -36,20 +37,20 @@ class BaichuanMLPImpl : public torch::nn::Module {
     const int64_t hidden_size = args.hidden_size();
     const int64_t intermediate_size = args.intermediate_size();
 
-    act_with_mul_ =
-        Activation::get_act_with_mul_func(args.hidden_act(), options.device());
-    CHECK(act_with_mul_ != nullptr);
+    act_func_ = Activation::get_act_func(args.hidden_act(), options.device());
+    CHECK(act_func_ != nullptr);
 
     // register the weight parameter
-    gate_up_proj_ =
-        register_module("gate_up_proj",
-                        ColumnParallelLinear(hidden_size,
-                                             intermediate_size * 2,
-                                             /*bias=*/false,
-                                             /*gather_output=*/false,
-                                             quant_args,
-                                             parallel_args,
-                                             options));
+    gate_up_proj_ = register_module(
+        "gate_up_proj",
+        FusedColumnParallelLinear(
+            hidden_size,
+            std::vector<int64_t>{intermediate_size, intermediate_size},
+            /*bias=*/false,
+            /*gather_output=*/false,
+            quant_args,
+            parallel_args,
+            options));
     down_proj_ =
         register_module("down_proj",
                         RowParallelLinear(intermediate_size,
@@ -62,7 +63,8 @@ class BaichuanMLPImpl : public torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    return down_proj_(act_with_mul_(gate_up_proj_(x)));
+    const auto gate_up = gate_up_proj_(x);
+    return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
   }
 
   // load the weight from the checkpoint
@@ -79,11 +81,11 @@ class BaichuanMLPImpl : public torch::nn::Module {
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear gate_up_proj_{nullptr};
+  FusedColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 
-  // calculate act(x) * y
-  ActFunc act_with_mul_{nullptr};
+  // activation function
+  ActFunc act_func_{nullptr};
 };
 TORCH_MODULE(BaichuanMLP);
 
