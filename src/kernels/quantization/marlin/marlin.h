@@ -32,6 +32,10 @@ void gptq_repack(const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
                  torch::Tensor& out,               // (k/16, n*16/pack_factor)
                  int64_t num_bits);
 
+void awq_repack(const torch::Tensor& b_q_weight,  // (k, n/pack_factor)
+                torch::Tensor& out,               // (k/16, n*16/pack_factor)
+                int64_t num_bits);
+
 void fp8_gemm(const torch::Tensor& A,       // (m, k)
               const torch::Tensor& B,       // (k/16, n*16/4)
               torch::Tensor& C,             // (m, n)

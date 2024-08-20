@@ -1,3 +1,5 @@
+// Adapted from: https://github.com/vllm-project/vllm
+
 #include <c10/cuda/CUDAStream.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
