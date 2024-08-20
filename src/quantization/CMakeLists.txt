@@ -10,12 +10,14 @@ cc_library(
     qlinear_exllamav2_impl.h
     qlinear_awq_impl.h
     qlinear_gptq_marlin_impl.h
+    qlinear_awq_marlin_impl.h
   SRCS 
     qlinear_impl.cpp
     qlinear_gptq_impl.cpp
     qlinear_exllamav2_impl.cpp
     qlinear_awq_impl.cpp
     qlinear_gptq_marlin_impl.cpp
+    qlinear_awq_marlin_impl.cpp
   DEPS
     :state_dict
     :linear
