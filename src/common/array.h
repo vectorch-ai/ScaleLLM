@@ -29,17 +29,28 @@ inline std::vector<size_t> row_major_stride(const std::vector<size_t>& shape) {
 }  // namespace detail
 
 using Coord = std::vector<size_t>;
+using Shape = std::vector<size_t>;
+using Stride = std::vector<size_t>;
+
 template <class... Ts>
 Coord make_coord(const Ts&... t) {
+  return {static_cast<size_t>(t)...};
+}
+
+template <class... Ts>
+Shape make_shape(const Ts&... t) {
+  return {static_cast<size_t>(t)...};
+}
+
+template <class... Ts>
+Stride make_stride(const Ts&... t) {
   return {static_cast<size_t>(t)...};
 }
 
 template <typename T>
 class Array {
  public:
-  Array(T* data,
-        const std::vector<size_t>& shape,
-        const std::vector<size_t>& stride)
+  Array(T* data, const Shape& shape, const Stride& stride)
       : data_(data),
         shape_(shape),
         stride_(stride),
@@ -47,7 +58,7 @@ class Array {
     CHECK_EQ(shape.size(), stride.size());
   }
 
-  Array(T* data, const std::vector<size_t>& shape)
+  Array(T* data, const Shape& shape)
       : Array(data, shape, detail::row_major_stride(shape)) {}
 
   // indexing with offset
@@ -118,8 +129,8 @@ class Array {
  private:
   size_t coord_to_offset(const std::vector<size_t>& coord) const {
     CHECK_EQ(coord.size(), shape_.size());
-    int64_t offset = 0;
-    for (int i = 0; i < coord.size(); ++i) {
+    size_t offset = 0;
+    for (size_t i = 0; i < coord.size(); ++i) {
       CHECK_LT(coord[i], shape_[i]);
       offset += coord[i] * stride_[i];
     }
@@ -130,8 +141,8 @@ class Array {
   T* data_;
 
   // shape and stride
-  std::vector<size_t> shape_;
-  std::vector<size_t> stride_;
+  Shape shape_;
+  Stride stride_;
 
   // domain size
   size_t size_ = 0;
