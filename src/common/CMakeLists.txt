@@ -15,6 +15,7 @@ cc_library(
     threadpool.h
     pretty_print.h
     json_reader.h
+    array.h
   SRCS
     timer.cpp
     threadpool.cpp
@@ -24,6 +25,7 @@ cc_library(
     absl::strings
     prometheus-cpp::core
     nlohmann_json::nlohmann_json
+    glog::glog
 )
 
 cc_test(
@@ -32,10 +34,12 @@ cc_test(
   SRCS
     range_test.cpp
     threadpool_test.cpp
+    array_test.cpp
   DEPS
     common
     absl::synchronization
     absl::time
     GTest::gtest_main
+    torch
 )
 
