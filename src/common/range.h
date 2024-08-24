@@ -8,10 +8,10 @@
 namespace llm {
 
 template <typename T, REQUIRES(std::is_integral_v<T>)>
-class integer_range {
+class IntegerAange {
  public:
   class iterator;
-  integer_range(T begin, T end) : begin_(begin), end_(end) {}
+  IntegerAange(T begin, T end) : begin_(begin), end_(end) {}
 
   iterator begin() const { return begin_; }
 
@@ -49,14 +49,14 @@ class integer_range {
 
 // create a range for half-open interval [0, end)
 template <typename T, REQUIRES(std::is_integral_v<T>)>
-integer_range<T> range(T end) {
+IntegerAange<T> range(T end) {
   return {T(), end};
 }
 
 // create a range for half-open interval [begin, end)
 // return an empty range if begin >= end
 template <typename T, REQUIRES(std::is_integral_v<T>)>
-integer_range<T> range(T begin, T end) {
+IntegerAange<T> range(T begin, T end) {
   return {begin, std::max(begin, end)};
 }
 
