@@ -40,30 +40,6 @@ inline std::string str(T x) {
 
 namespace marlin {
 
-// Marlin params
-
-// 8 warps are a good choice since every SM has 4 schedulers and having more
-// than 1 warp per schedule allows some more latency hiding. At the same time,
-// we want relatively few warps to have many registers per warp and small tiles.
-static constexpr int default_threads = 256;
-
-static constexpr int pipe_stages =
-    4;  // 4 pipeline stages fit into shared memory
-
-static constexpr int min_thread_n = 64;
-static constexpr int min_thread_k = 64;
-
-static constexpr int tile_size = 16;
-static constexpr int max_par = 16;
-
-// Repack params
-static constexpr int repack_stages = 8;
-
-static constexpr int repack_threads = 256;
-
-static constexpr int tile_k_size = tile_size;
-static constexpr int tile_n_size = tile_k_size * 4;
-
 // Helpers
 template <typename T, int n>
 struct Vec {
@@ -568,60 +544,6 @@ __device__ inline void barrier_release(int* lock, bool reset = false) {
   }
 }
 
-// For a given "a" of size [M,K] performs a permutation of the K columns based
-// on the given "perm" indices.
-__global__ void permute_cols_kernel(int4 const* __restrict__ a_int4_ptr,
-                                    int const* __restrict__ perm_int_ptr,
-                                    int4* __restrict__ out_int4_ptr,
-                                    int size_m,
-                                    int size_k,
-                                    int block_rows) {
-  int start_row = block_rows * blockIdx.x;
-  int finish_row = start_row + block_rows;
-  if (finish_row > size_m) {
-    finish_row = size_m;
-  }
-  int cur_block_rows = finish_row - start_row;
-
-  int row_stride = size_k * sizeof(half) / 16;
-
-  auto permute_row = [&](int row) {
-    int iters = size_k / default_threads;
-    int rest = size_k % default_threads;
-
-    int offset = row * row_stride;
-
-    half const* a_row_half = reinterpret_cast<half const*>(a_int4_ptr + offset);
-    half* out_half = reinterpret_cast<half*>(out_int4_ptr + offset);
-
-    int base_k = 0;
-
-    for (int i = 0; i < iters; i++) {
-      int cur_k = base_k + threadIdx.x;
-      int src_pos = perm_int_ptr[cur_k];
-
-      out_half[cur_k] = a_row_half[src_pos];
-
-      base_k += default_threads;
-    }
-
-    if (rest) {
-      if (threadIdx.x < rest) {
-        int cur_k = base_k + threadIdx.x;
-        int src_pos = perm_int_ptr[cur_k];
-
-        out_half[cur_k] = a_row_half[src_pos];
-      }
-    }
-  };
-
-  for (int i = 0; i < cur_block_rows; i++) {
-    int cur_row = start_row + i;
-    if (cur_row < size_m) {
-      permute_row(cur_row);
-    }
-  }
-}
 
 template <typename scalar_t,          // compute dtype, half or nv_float16
           const int num_bits,         // number of bits used for weights

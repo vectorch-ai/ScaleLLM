@@ -3,19 +3,15 @@
 # This file is run to generate the kernel instantiations for the marlin kernels
 # They are written to several files in order to speed up compilation
 import shutil
-import itertools
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator
+from typing import List
 
 # mapping from dtype to the corresponding CUDA type
 DTYPE_MAP = {
-    "fp16": "half_t",
+    "fp16": "half",
     "bf16": "nv_bfloat16",
 }
-
-NUM_BITS = [4, 8]
-M_BLOCKS = [1, 2, 3, 4]
 
 KERNEL_IMPL_TEMPLATE = """
 // Splitting the different head dimensions to different files to speed up
@@ -25,7 +21,7 @@ KERNEL_IMPL_TEMPLATE = """
 
 #include "gemm_kernel.cuh"
 
-namespace marlin {
+namespace marlin {{
 
 template <>
 void Marlin<{DTYPE},
@@ -55,7 +51,7 @@ void Marlin<{DTYPE},
     bool use_fp32_reduce  // whether to use fp32 global reduce
 );
 
-}  // namespace marlin
+}}  // namespace marlin
 """
 
 
@@ -92,7 +88,7 @@ class Kernel:
         return f"marlin_{self.dtype}_b{self.num_bits}_t{self.threads}_m{self.m_blocks}_n{self.n_blocks}_k{self.k_blocks}_s{self.stages}_{self.has_act_order}_{self.has_zp}_g{self.group_blocks}.cu"
 
 
-def get_gptq_kernels() -> Generator[Kernel]:
+def get_gptq_kernels() -> List[Kernel]:
     for dtype in DTYPE_MAP.keys():
         for num_bits in [4, 8]:
             for m_blocks in [1, 2, 3, 4]:
@@ -125,7 +121,7 @@ def get_gptq_kernels() -> Generator[Kernel]:
                                 )
 
 
-def get_awq_kernels() -> Generator[Kernel]:
+def get_awq_kernels() -> List[Kernel]:
     for dtype in DTYPE_MAP.keys():
         for num_bits in [4, 8]:
             for m_blocks in [1, 2, 3, 4]:
@@ -153,7 +149,7 @@ def get_awq_kernels() -> Generator[Kernel]:
                                     )
 
 
-def get_all_kernels() -> Generator[Kernel]:
+def get_all_kernels() -> List[Kernel]:
     yield from get_gptq_kernels()
     yield from get_awq_kernels()
 
