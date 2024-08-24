@@ -38,12 +38,16 @@ cc_library(
     marlin.kernels
   HDRS
     marlin/marlin.h
+    marlin/gemm_kernel.cuh
+    marlin/gemm_kernel_launch.cuh
   SRCS
     marlin/fp16_int4_gemm.cu
     marlin/fp8_gemm.cu
     marlin/gptq_gemm.cu
     marlin/gptq_repack.cu
     marlin/awq_repack.cu
+    marlin/marlin_fp16_b4_t256_m4_n16_k4_s4_false_false_g8.cu
+    marlin/marlin_bf16_b4_t256_m4_n16_k4_s4_false_false_g8.cu
     # marlin/sparse.cu
   DEPS
     torch
