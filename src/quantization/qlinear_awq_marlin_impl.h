@@ -10,9 +10,6 @@
 
 namespace llm {
 
-// Base QLinear class that handles quantized weights loading.
-// The linear layer is defined as Y = XA + b. A is parallelized along
-// its second dimension as A = [A_1, ..., A_p].
 class ColumnParallelQLinearAWQMarlinImpl : public ParallelLinearImpl {
  public:
   ColumnParallelQLinearAWQMarlinImpl(int64_t in_features,
@@ -35,26 +32,21 @@ class ColumnParallelQLinearAWQMarlinImpl : public ParallelLinearImpl {
   void load_state_dict(const StateDict& state_dict,
                        const std::vector<std::string>& prefixes) override;
 
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " scales=" << scales_.sizes() << " device=" << qweight_.device();
-  }
-
  private:
   // parameter members, must be registered
   DEFINE_FUSED_WEIGHT(qweight);
+  DEFINE_FUSED_WEIGHT(qzeros);
   DEFINE_FUSED_WEIGHT(scales);
-  DEFINE_FUSED_WEIGHT(g_idx);
   DEFINE_FUSED_WEIGHT(bias);
 
   // buffers
-  torch::Tensor qzeros_;
   torch::Tensor workspace_;
+  torch::Tensor g_idx_;
   torch::Tensor perm_;
 
   // quantization parameters
   int64_t bits_ = 0;
-  bool act_order_ = false;
+  bool weight_repacked_ = false;
 
   // whether to gather the output
   bool gather_output_ = false;
@@ -63,16 +55,6 @@ class ColumnParallelQLinearAWQMarlinImpl : public ParallelLinearImpl {
   ParallelArgs parallel_args_;
 };
 
-// Base QLinear class that handles quantized weights loading.
-//     The linear layer is defined as Y = XA + b. A is parallelized along
-//     its first dimension and X along its second dimension as:
-//                -   -
-//               | A_1 |
-//               | .   |
-//           A = | .   |       X = [X_1, ..., X_p]
-//               | .   |
-//               | A_p |
-//                -   -
 class RowParallelQLinearAWQMarlinImpl : public ParallelLinearImpl {
  public:
   RowParallelQLinearAWQMarlinImpl(int64_t in_features,
@@ -91,29 +73,21 @@ class RowParallelQLinearAWQMarlinImpl : public ParallelLinearImpl {
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const override;
 
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " scales=" << scales_.sizes() << " device=" << qweight_.device();
-  }
-
  private:
   // parameter members, must be registered
   DEFINE_WEIGHT(qweight);
+  DEFINE_WEIGHT(qzeros);
   DEFINE_WEIGHT(scales);
-  DEFINE_WEIGHT(g_idx);
   DEFINE_WEIGHT(bias);
 
   // buffers
-  torch::Tensor qzeros_;
   torch::Tensor workspace_;
+  torch::Tensor g_idx_;
   torch::Tensor perm_;
 
   // quantization parameters
   int64_t bits_ = 0;
-  bool act_order_ = false;
-
-  // whether to load full scales
-  bool load_full_scales_ = false;
+  bool weight_repacked_ = false;
 
   // whether the input is already parallelized
   bool input_is_parallelized_;
