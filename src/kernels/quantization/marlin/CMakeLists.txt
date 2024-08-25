@@ -22,15 +22,13 @@ cc_library(
     marlin.h
     gemm_kernel.cuh
   SRCS
+    ${GENERATED_SRC_FILES}
     fp16_int4_gemm.cu
     fp8_gemm.cu
     gptq_gemm.cu
     gptq_repack.cu
     awq_repack.cu
     # sparse.cu
-    ${GENERATED_SRC_FILES}
-    # marlin_fp16_b4_t256_m4_n16_k4_s4_false_false_g8.cu
-    # marlin_bf16_b4_t256_m4_n16_k4_s4_false_false_g8.cu
   INCLUDES
     .
   DEPS
