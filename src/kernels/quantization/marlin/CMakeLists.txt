@@ -20,7 +20,7 @@ cc_library(
     marlin.kernels
   HDRS
     marlin.h
-    gemm_kernel.cuh
+    gemm_kernel_launch.cuh
   SRCS
     ${GENERATED_SRC_FILES}
     fp16_int4_gemm.cu
