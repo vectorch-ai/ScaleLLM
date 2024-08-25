@@ -33,19 +33,5 @@ cc_library(
     cublas
 )
 
-cc_library(
-  NAME
-    marlin.kernels
-  HDRS
-    marlin/marlin.h
-  SRCS
-    marlin/fp16_int4_gemm.cu
-    marlin/fp8_gemm.cu
-    marlin/gptq_gemm.cu
-    marlin/gptq_repack.cu
-    marlin/awq_repack.cu
-    # marlin/sparse.cu
-  DEPS
-    torch
-)
+add_subdirectory(marlin)
 
