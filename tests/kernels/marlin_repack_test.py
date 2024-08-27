@@ -3,13 +3,8 @@ import sys
 import pytest
 import torch
 from marlin_utils import pack_marlin_weights
-from quant_utils import (
-    pack_rows,
-    pack_cols,
-    quantize_weights,
-    sort_rows,
-    fast_conversion_interleave,
-)
+from quant_utils import (fast_conversion_interleave, pack_cols, pack_rows,
+                         quantize_weights, sort_rows)
 
 import scalellm._C.kernels as kernels
 

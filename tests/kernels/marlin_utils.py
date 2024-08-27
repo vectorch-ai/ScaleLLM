@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from quant_utils import quantize_weights, fast_conversion_interleave
+from quant_utils import fast_conversion_interleave, quantize_weights
 
 # Adapted from https://github.com/IST-DASLab/marlin/blob/master/test.py
 
