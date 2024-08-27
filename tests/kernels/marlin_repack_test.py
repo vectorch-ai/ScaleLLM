@@ -36,7 +36,7 @@ def test_gptq_repack(k, n, num_bits, group_size, act_order):
         k // 16, n * 16 // pack_factor, dtype=torch.int32, device="cuda"
     )
     kernels.marlin_gptq_repack(
-        gptq_q_w,
+        q_weight=gptq_q_w,
         perm=perm,
         out=marlin_out,
         num_bits=num_bits,
@@ -72,7 +72,7 @@ def test_awq_repack(k, n, num_bits, group_size):
         k // 16, n * 16 // pack_factor, dtype=torch.int32, device="cuda"
     )
     kernels.marlin_awq_repack(
-        awq_q_w,
+        q_weight=awq_q_w,
         out=marlin_out,
         num_bits=num_bits,
     )

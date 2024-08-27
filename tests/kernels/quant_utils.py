@@ -279,14 +279,16 @@ def pack_marlin_weights(
 
 
 # permute the scales
-def permute_marlin_scales(s, groupsize=-1):
-    _, n = s.shape
+def permute_marlin_scales(
+    s: torch.Tensor,  # scales, float32 (k, n)
+):
+    n_groups, n = s.shape
     perm, perm_single = marlin_scales_perm()
-    if groupsize != -1:
-        s = s.reshape((-1, len(perm)))[:, perm]
-    else:
+    if n_groups == 1:
         s = s.reshape((-1, len(perm_single)))[:, perm_single]
-    return s.reshape((-1, n))
+    else:
+        s = s.reshape((-1, len(perm)))[:, perm]
+    return s.reshape((-1, n)).contiguous()
 
 
 if __name__ == "__main__":

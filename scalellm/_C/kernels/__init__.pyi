@@ -4,7 +4,7 @@ import torch
 def add_test(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor: ...
 
 # marlin gemm kernel
-def fp16_int4_gemm_marlin(
+def marlin_fp16_int4_gemm(
     A: torch.Tensor,
     B: torch.Tensor,
     C: torch.Tensor,

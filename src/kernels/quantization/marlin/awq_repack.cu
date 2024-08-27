@@ -41,7 +41,7 @@ __device__ inline void cp_async4(void* smem_ptr, const void* glob_ptr) {
 
 template <int const num_threads, int const num_bits>
 __global__ void awq_marlin_repack_kernel(
-    uint32_t const* __restrict__ b_q_weight_ptr,
+    uint32_t const* __restrict__ q_weight_ptr,
     uint32_t* __restrict__ out_ptr,
     int size_k,
     int size_n) {
@@ -95,8 +95,8 @@ __global__ void awq_marlin_repack_kernel(
 
       cp_async4(&sh_ptr[k_id * stage_n_threads + n_id],
                 reinterpret_cast<int4 const*>(
-                    &(b_q_weight_ptr[(first_k + k_id) * (size_n / pack_factor) +
-                                     first_n_packed + (n_id * 4)])));
+                    &(q_weight_ptr[(first_k + k_id) * (size_n / pack_factor) +
+                                   first_n_packed + (n_id * 4)])));
     }
 
     cp_async_fence();
@@ -220,36 +220,36 @@ __global__ void awq_marlin_repack_kernel(
         max_shared_mem);                                                    \
     marlin::awq_marlin_repack_kernel<marlin::repack_threads, NUM_BITS>      \
         <<<blocks, marlin::repack_threads, max_shared_mem, stream>>>(       \
-            b_q_weight_ptr, out_ptr, size_k, size_n);                       \
+            q_weight_ptr, out_ptr, size_k, size_n);                         \
   }
 
 }  // namespace
 
-void awq_repack(const torch::Tensor& b_q_weight,  // (k, n/pack_factor)
-                torch::Tensor& out,               // (k/16, n*16/pack_factor)
+void awq_repack(const torch::Tensor& q_weight,  // (k, n/pack_factor)
+                torch::Tensor& out,             // (k/16, n*16/pack_factor)
                 int64_t num_bits) {
   TORCH_CHECK(num_bits == 4 || num_bits == 8);
 
   // Verify device and strides
-  TORCH_CHECK(b_q_weight.device().is_cuda());
-  TORCH_CHECK(b_q_weight.is_contiguous());
-  TORCH_CHECK(b_q_weight.dtype() == at::kInt);
+  TORCH_CHECK(q_weight.device().is_cuda());
+  TORCH_CHECK(q_weight.is_contiguous());
+  TORCH_CHECK(q_weight.dtype() == at::kInt);
 
   const int64_t pack_factor = 32 / num_bits;
-  const int64_t size_k = b_q_weight.size(0);
-  const int64_t size_n = b_q_weight.size(1) * pack_factor;
+  const int64_t size_k = q_weight.size(0);
+  const int64_t size_n = q_weight.size(1) * pack_factor;
 
   // Verify compatibility with marlin tile of 16x64
   TORCH_CHECK(size_k % 16 == 0);
   TORCH_CHECK(size_n % 64 == 0);
 
   // Get ptrs
-  const uint32_t* b_q_weight_ptr =
-      reinterpret_cast<const uint32_t*>(b_q_weight.data_ptr());
+  const uint32_t* q_weight_ptr =
+      reinterpret_cast<const uint32_t*>(q_weight.data_ptr());
   uint32_t* out_ptr = reinterpret_cast<uint32_t*>(out.data_ptr());
 
   // Get dev info
-  auto dev = b_q_weight.get_device();
+  auto dev = q_weight.get_device();
   cudaStream_t stream = at::cuda::getCurrentCUDAStream(dev);
   int blocks = 0;
   cudaDeviceGetAttribute(&blocks, cudaDevAttrMultiProcessorCount, dev);
