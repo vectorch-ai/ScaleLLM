@@ -5,7 +5,7 @@ from quant_utils import quantize_weights
 # Adapted from https://github.com/IST-DASLab/marlin/blob/master/test.py
 
 
-def marlin_weight_perm():
+def marlin_weight_perm(num_bits: int):
     # shape: (1024) for 4 16x16 matrices
     perm = []
     # build permutation for 32 threads
@@ -26,12 +26,19 @@ def marlin_weight_perm():
         for j in range(4):
             perm.extend([p + 256 * j for p in perm1])
     perm = np.array(perm)
+
     # permute for fast interleaved_numeric_conversion
-    # [0, 1, 2, 3, 4, 5, 6, 7] -> [0, 2, 4, 6, 1, 3, 5, 7]
-    interleave = np.array([0, 2, 4, 6, 1, 3, 5, 7])
-    perm = perm.reshape((-1, 8))[:, interleave].ravel()
-    perm = torch.from_numpy(perm)
-    return perm
+    if num_bits == 4:
+        # [0, 1, 2, 3, 4, 5, 6, 7] -> [0, 2, 4, 6, 1, 3, 5, 7]
+        interleave = np.array([0, 2, 4, 6, 1, 3, 5, 7])
+    elif num_bits == 8:
+        interleave = np.array([0, 2, 1, 3])
+    else:
+        raise NotImplementedError(f"num_bits={num_bits} not implemented")
+
+    perm = perm.reshape((-1, len(interleave)))[:, interleave].ravel()
+    # return as torch tensor
+    return torch.from_numpy(perm)
 
 
 def marlin_scales_perm():
@@ -49,28 +56,39 @@ def marlin_scales_perm():
 
 # returns the packed weights (k/16, n*16/pack_factor)
 def pack_marlin_weights(
-    w: torch.Tensor,  # quantized weights, int32 (k, n)
+    q_w: torch.Tensor,  # quantized weights, int32 (k, n)
+    num_bits: int = 4,  # number of bits
+    tile: int = 16,  # marlin tile size
 ):
-    k, n = w.shape
-    tile = 16
+    device = q_w.device
+    k, n = q_w.shape
+    assert k % tile == 0
+    assert n % tile == 0
+    
     # tile the weights to 16x16 blocks
     # [m/16, 16, n/16, 16]
-    w = w.reshape(k // tile, tile, n // tile, tile)
+    q_w = q_w.reshape(k // tile, tile, n // tile, tile)
     # [m/16, n/16, 16, 16]
-    w = w.permute((0, 2, 1, 3))
+    q_w = q_w.permute((0, 2, 1, 3))
     # [m/16, n*16]
-    w = w.reshape((k // tile, n * tile))
+    q_w = q_w.reshape((k // tile, n * tile))
 
     # permute the weights
-    perm = marlin_weight_perm()
-    res = w.reshape((-1, perm.numel()))[:, perm].reshape(w.shape)
-    # [m/16, n*16/8]
-    q = np.zeros((res.shape[0], res.shape[1] // 8), dtype=np.uint32)
+    perm = marlin_weight_perm(num_bits).to(device)
+    # [m/16, n*16]
+    res = q_w.reshape((-1, perm.numel()))[:, perm].reshape(q_w.shape)
+
+    # pack the weights using numpy for bit manipulation
+    pack_factor = 32 // num_bits
+    # [m/16, n*16/pack_factor]
+    packed = np.zeros((res.shape[0], res.shape[1] // pack_factor), dtype=np.uint32)
     res = res.cpu().numpy().astype(np.uint32)
-    # pack 8 bytes into 32-bit integers
-    for i in range(8):
-        q |= res[:, i::8] << 4 * i
-    return torch.from_numpy(q.astype(np.int32))
+    # pack bytes into 32-bit integers
+    for i in range(pack_factor):
+        packed |= res[:, i::pack_factor] << num_bits * i
+
+    # convert back to torch tensor
+    return torch.from_numpy(packed.astype(np.int32)).to(device)
 
 
 # permute the scales
@@ -84,20 +102,20 @@ def permute_marlin_scales(s, groupsize=-1):
     return s.reshape((-1, n))
 
 
-def gen_marlin_weights(k, n, groupsize=-1, device="cpu"):
+def gen_marlin_weights(k, n, num_bits, groupsize=-1, device="cpu"):
     # generate random weights
     w = torch.randn((k, n), dtype=torch.half, device=device)
 
     # quantize weights
-    w_ref, q_w, s, _, _ = quantize_weights(w, num_bits=4, group_size=groupsize)
+    w_ref, q_w, s, _, _ = quantize_weights(w, num_bits=num_bits, group_size=groupsize)
 
     # pack weights to marlin format
-    q_w = pack_marlin_weights(q_w).to(device)
+    q_w = pack_marlin_weights(q_w, num_bits=num_bits).to(device)
     # permute scales
     s = permute_marlin_scales(s, groupsize).to(device)
     return w_ref, q_w, s
 
 
 if __name__ == "__main__":
-    w, q, s = gen_marlin_weights(16, 64)
+    w, q, s = gen_marlin_weights(16, 64, 4)
     perm, perm_single = marlin_scales_perm()

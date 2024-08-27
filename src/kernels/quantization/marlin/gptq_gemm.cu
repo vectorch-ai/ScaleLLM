@@ -2432,7 +2432,7 @@ void gptq_gemm(
   // Detect groupsize and act_order
   int num_groups = -1;
   int group_size = -1;
-  bool has_act_order = g_idx.size(0) != 0;
+  const bool has_act_order = g_idx.defined() && g_idx.size(0) != 0;
 
   int rank = scales.sizes().size();
   CHECK(rank == 2) << "b_scales rank = " << rank << " is not 2";

@@ -1,4 +1,3 @@
-from typing import List
 
 import numpy
 import torch
@@ -18,6 +17,19 @@ def permute_rows(
     g_idx = g_idx[perm].contiguous()
 
     return (w_ref, q_w, g_idx)
+
+
+# sort rows by group index
+def sort_rows(
+    q_w: torch.Tensor,  # quantized weights, int32 (k, ...)
+    g_idx: torch.Tensor,  # group indices (k,)
+):
+    assert q_w.size(0) == g_idx.size(0)
+    
+    perm = torch.argsort(g_idx).to(torch.int32)
+    q_w = q_w[perm, :].contiguous()
+    g_idx = g_idx[perm].contiguous()
+    return (q_w, g_idx, perm)
 
 
 def quantize_weights(
@@ -70,7 +82,9 @@ def quantize_weights(
 
     s = s.reshape((-1, n)).contiguous()
 
-    if act_order and group_size != -1:
+    if act_order:
+        if group_size == -1:
+            group_size = k
         assert k % group_size == 0
         # permute rows to simulate act_order
         g_idx = torch.arange(k, dtype=torch.int32, device=w.device)
@@ -84,6 +98,7 @@ def quantize_weights(
     return (w_ref, q_w, s, g_idx, perm)
 
 
+# returns the packed weights (k/pack_factor, n)
 def pack_rows(
     q_w: torch.Tensor,  # quantized weights, int32 (k, n)
     num_bits: int,  # number of bits
@@ -171,7 +186,7 @@ if __name__ == "__main__":
     q_zero = 2 ** (num_bits - 1)
     # weights = (qweights - qzeros) * scales
     w = (q_w - q_zero) * s[g_idx, :]
-    assert torch.allclose(w, w_ref)
+    assert torch.equal(w, w_ref)
 
     # test pack_rows
     p_w = pack_rows(q_w, num_bits=4)

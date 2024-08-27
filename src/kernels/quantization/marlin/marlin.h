@@ -28,7 +28,7 @@ void gptq_gemm(const torch::Tensor& A,  // (m, k)
                bool use_fp32_reduce);
 
 void gptq_repack(const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
-                 const torch::Tensor& perm,        // ?
+                 const torch::Tensor& perm,        // (k)
                  torch::Tensor& out,               // (k/16, n*16/pack_factor)
                  int64_t num_bits);
 

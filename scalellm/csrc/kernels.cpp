@@ -27,6 +27,22 @@ void init_kernels(py::module_& m) {
         py::arg("thread_n") = -1,
         py::arg("sms") = -1,
         py::arg("max_par") = 8);
+
+  // marlink repack kernels
+  m.def("marlin_gptq_repack",
+        &marlin::gptq_repack,
+        "Marlin GPTQ repack",
+        py::arg("b_q_weight"),
+        py::arg("perm"),
+        py::arg("out"),
+        py::arg("num_bits"));
+
+  m.def("marlin_awq_repack",
+        &marlin::awq_repack,
+        "Marlin AWQ repack",
+        py::arg("b_q_weight"),
+        py::arg("out"),
+        py::arg("num_bits"));
 }
 
 }  // namespace llm::csrc

@@ -10,12 +10,13 @@ import scalellm._C.kernels as kernels
 @pytest.mark.parametrize("m", [16, 32])
 @pytest.mark.parametrize("n", [512])
 @pytest.mark.parametrize("k", [64, 128, 192])
-def test_fp16_int4_gemm(m, n, k):
+@pytest.mark.parametrize("num_bits", [4])
+def test_fp16_int4_gemm(m, n, k, num_bits):
     thread_k = 64
     thread_n = 256
     A = torch.randn((m, k), dtype=torch.half, device="cuda")
     workspace = torch.zeros(n // 128 * 16, device="cuda")
-    B_ref, B, s = gen_marlin_weights(k, n, device="cuda")
+    B_ref, B, s = gen_marlin_weights(k, n, num_bits=num_bits, device="cuda")
     C = torch.zeros((m, n), dtype=torch.half, device="cuda")
     B_ref = B_ref.to("cuda")
     B = B.to("cuda")

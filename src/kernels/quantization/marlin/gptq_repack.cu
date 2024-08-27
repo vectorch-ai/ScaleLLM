@@ -290,7 +290,7 @@ __global__ void gptq_marlin_repack_kernel(
 }  // namespace
 
 void gptq_repack(const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
-                 const torch::Tensor& perm,        // ?
+                 const torch::Tensor& perm,        // (k)
                  torch::Tensor& out,               // (k/16, n*16/pack_factor)
                  int64_t num_bits) {
   CHECK(num_bits == 4 || num_bits == 8);
@@ -312,7 +312,7 @@ void gptq_repack(const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
   CHECK(perm.dtype() == torch::kInt);
 
   // Detect if there is act_order
-  bool has_perm = perm.defined();
+  const bool has_perm = perm.defined() && perm.size(0) != 0;
 
   // Get ptrs
   const uint32_t* b_q_weight_ptr =
