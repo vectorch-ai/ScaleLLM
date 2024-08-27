@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from quant_utils import quantize_weights
 
 # Adapted from https://github.com/IST-DASLab/marlin/blob/master/test.py
 
@@ -46,16 +47,19 @@ def marlin_scales_perm():
     return scale_perm, scale_perm_single
 
 
-def pack_marlin_weights(w):
-    m, n = w.shape
+# returns the packed weights (k/16, n*16/pack_factor)
+def pack_marlin_weights(
+    w: torch.Tensor,  # quantized weights, int32 (k, n)
+):
+    k, n = w.shape
     tile = 16
     # tile the weights to 16x16 blocks
     # [m/16, 16, n/16, 16]
-    w = w.reshape(m // tile, tile, n // tile, tile)
+    w = w.reshape(k // tile, tile, n // tile, tile)
     # [m/16, n/16, 16, 16]
     w = w.permute((0, 2, 1, 3))
     # [m/16, n*16]
-    w = w.reshape((m // tile, n * tile))
+    w = w.reshape((k // tile, n * tile))
 
     # permute the weights
     perm = marlin_weight_perm()
@@ -69,6 +73,7 @@ def pack_marlin_weights(w):
     return torch.from_numpy(q.astype(np.int32))
 
 
+# permute the scales
 def permute_marlin_scales(s, groupsize=-1):
     _, n = s.shape
     perm, perm_single = marlin_scales_perm()
@@ -79,53 +84,20 @@ def permute_marlin_scales(s, groupsize=-1):
     return s.reshape((-1, n))
 
 
-def gen_marlin_weights(m, n, groupsize=-1, device="cpu"):
-    num_bits = 4
-    max_q = 2**num_bits - 1
-    w = torch.randn((m, n), dtype=torch.half, device=device)
-    if groupsize != -1:
-        # (m, n) -> (m/groupsize, groupsize, n)
-        w = w.reshape((-1, groupsize, n))
-        # (groupsize, m/groupsize, n)
-        w = w.permute(1, 0, 2)
-        # (groupsize, m /groupsize * n)
-        w = w.reshape((groupsize, -1))
+def gen_marlin_weights(k, n, groupsize=-1, device="cpu"):
+    # generate random weights
+    w = torch.randn((k, n), dtype=torch.half, device=device)
 
-    # max value of each column
-    s = torch.max(torch.abs(w), dim=0, keepdim=True)[0]
-    s *= 2 / max_q
+    # quantize weights
+    w_ref, q_w, s, _, _ = quantize_weights(w, num_bits=4, group_size=groupsize)
 
-    zero = (max_q + 1) // 2
-    w = torch.round(w / s).int()
-    w += zero
-    # values are clampped to [0, 15] for 4 bits
-    w = torch.clamp(w, 0, max_q)
-    # weights = (qweights - qzeros) * scales
-    w_ref = (w - zero).half() * s
-    if groupsize != -1:
-
-        def reshape(w):
-            # (groupsize, m/groupsize, n)
-            w = w.reshape((groupsize, -1, n))
-            # (m/groupsize, groupsize, n)
-            w = w.permute(1, 0, 2)
-            # (m, n)
-            w = w.reshape((m, n)).contiguous()
-            return w
-
-        w_ref = reshape(w_ref)
-        w = reshape(w)
-
-    s = s.reshape((-1, n)).contiguous()
-
-    # pack weights for marlin
-    q = pack_marlin_weights(w).to(device)
+    # pack weights to marlin format
+    q_w = pack_marlin_weights(q_w).to(device)
+    # permute scales
     s = permute_marlin_scales(s, groupsize).to(device)
-    return w_ref, q, s
+    return w_ref, q_w, s
 
 
 if __name__ == "__main__":
-    # w, q, s = gen_marlin_weights(16, 64)
+    w, q, s = gen_marlin_weights(16, 64)
     perm, perm_single = marlin_scales_perm()
-    print(perm)
-    print(perm_single)
