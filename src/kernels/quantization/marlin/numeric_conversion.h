@@ -285,4 +285,84 @@ __device__ inline void scale_float(float* c,
   c[1] = __fmul_rn(c[1], ScalarType<scalar_t>::num2float(s_ptr[1]));
 }
 
+///////////////////////////////////////// Fp8 conversion /////////////////////////////////////////
+
+// Fast FP8ToFp16/FP8ToBf16: Efficiently dequantize 8bit fp8_e4m3 values to fp16
+// bf16 Reference:
+// - FP16:
+// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L53-L85
+// - BF16:
+// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L125-L175
+template <typename scalar_t>
+__device__ inline typename ScalarType<scalar_t>::FragB dequant_fp8(int q) {
+  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
+}
+
+template <>
+__device__ inline typename ScalarType<half>::FragB dequant_fp8<half>(int q) {
+  // Constants for FP8 (E4M3) and FP16 formats
+  constexpr int FP8_EXPONENT = 4, FP8_MANTISSA = 3, FP16_EXPONENT = 5;
+  constexpr int RIGHT_SHIFT = FP16_EXPONENT - FP8_EXPONENT;
+
+  // Calculate MASK for extracting mantissa and exponent
+  constexpr int MASK1 = 0x80000000;
+  constexpr int MASK2 = MASK1 >> (FP8_EXPONENT + FP8_MANTISSA);
+  constexpr int MASK3 = MASK2 & 0x7fffffff;
+  constexpr int MASK = MASK3 | (MASK3 >> 16);
+  // Final MASK value: 0x7F007F00
+
+  // Extract and shift FP8 values to FP16 format
+  int Out1 = (q & 0x80008000) | ((q & MASK) >> RIGHT_SHIFT);
+  int Out2 = ((q << 8) & 0x80008000) | (((q << 8) & MASK) >> RIGHT_SHIFT);
+
+  // Construct and apply exponent bias
+  constexpr int BIAS_OFFSET =
+      (1 << (FP16_EXPONENT - 1)) - (1 << (FP8_EXPONENT - 1));
+  const half2 bias_reg = __float2half2_rn(float(1 << BIAS_OFFSET));
+
+  // Convert to half2 and apply bias
+  typename ScalarType<half>::FragB frag_b;
+  // Note: reverse indexing is intentional because weights are permuted
+  frag_b[1] = __hmul2(*reinterpret_cast<const half2*>(&Out1), bias_reg);
+  frag_b[0] = __hmul2(*reinterpret_cast<const half2*>(&Out2), bias_reg);
+  return frag_b;
+}
+
+template <>
+__device__ inline typename ScalarType<nv_bfloat16>::FragB
+dequant_fp8<nv_bfloat16>(int q) {
+  // Constants for FP8 (E4M3) and BF16 formats
+  constexpr int FP8_EXPONENT = 4;
+  constexpr int FP8_MANTISSA = 3;
+  constexpr int BF16_EXPONENT = 8;
+  constexpr int RIGHT_SHIFT = BF16_EXPONENT - FP8_EXPONENT;
+
+  // Calculate MASK for extracting mantissa and exponent
+  constexpr int MASK1 = 0x80000000;
+  constexpr int MASK2 = MASK1 >> (FP8_EXPONENT + FP8_MANTISSA);
+  constexpr int MASK3 = MASK2 & 0x7fffffff;
+  constexpr int MASK = MASK3 | (MASK3 >> 16);
+  // Final MASK value: 0x7F007F00
+
+  // Extract and shift FP8 values to BF16 format
+  int Out1 = (q & 0x80008000) | ((q & MASK) >> RIGHT_SHIFT);
+  int Out2 = ((q << 8) & 0x80008000) | (((q << 8) & MASK) >> RIGHT_SHIFT);
+
+  // Construct and apply exponent bias
+  constexpr int BIAS_OFFSET =
+      (1 << (BF16_EXPONENT - 1)) - (1 << (FP8_EXPONENT - 1));
+  // Add 127 (float exponent bias) to BIAS_OFFSET and shift to float exponent
+  // position
+  constexpr uint32_t BIAS = (BIAS_OFFSET + 127) << 23;
+  const nv_bfloat162 bias_reg =
+      __float2bfloat162_rn(*reinterpret_cast<const float*>(&BIAS));
+
+  // Convert to bfloat162 and apply bias
+  typename ScalarType<nv_bfloat16>::FragB frag_b;
+  // Note: reverse indexing is intentional because weights are permuted
+  frag_b[1] = __hmul2(*reinterpret_cast<const nv_bfloat162*>(&Out1), bias_reg);
+  frag_b[0] = __hmul2(*reinterpret_cast<const nv_bfloat162*>(&Out2), bias_reg);
+  return frag_b;
+}
+
 }  // namespace marlin

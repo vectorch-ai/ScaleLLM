@@ -97,7 +97,7 @@ __global__ void Marlin(
 
   int k_tiles = prob_k / 16 / thread_k_blocks;
   int n_tiles = prob_n / 16 / thread_n_blocks;
-  int iters = div_ceil(k_tiles * n_tiles * parallel, gridDim.x);
+  int iters = ceil_div(k_tiles * n_tiles * parallel, gridDim.x);
 
   if constexpr (!has_act_order && group_blocks != -1) {
     if (group_blocks >= thread_k_blocks) {
@@ -105,7 +105,7 @@ __global__ void Marlin(
       // groupsize; this avoids an annoying special case where a stripe starts
       // in the middle of group.
       iters = (group_blocks / thread_k_blocks) *
-              div_ceil(iters, (group_blocks / thread_k_blocks));
+              ceil_div(iters, (group_blocks / thread_k_blocks));
     }
   }
 
@@ -140,10 +140,10 @@ __global__ void Marlin(
     if (slice_row + slice_iters > k_tiles) slice_iters = k_tiles - slice_row;
     slice_count = 1;
     slice_idx = 0;
-    int col_first = iters * div_ceil(k_tiles * slice_col_par, iters);
+    int col_first = iters * ceil_div(k_tiles * slice_col_par, iters);
     if (col_first <= k_tiles * (slice_col_par + 1)) {
       int col_off = col_first - k_tiles * slice_col_par;
-      slice_count = div_ceil(k_tiles - col_off, iters);
+      slice_count = ceil_div(k_tiles - col_off, iters);
       if (col_off > 0) slice_count++;
       int delta_first = iters * blockIdx.x - col_first;
       if (delta_first < 0 || (col_off == 0 && delta_first == 0))
@@ -182,7 +182,7 @@ __global__ void Marlin(
   // overall size of a tile
   constexpr int a_sh_stage = a_sh_stride * (16 * thread_m_blocks);
   // number of shared write iterations for a tile
-  constexpr int a_sh_wr_iters = div_ceil(a_sh_stage, a_sh_wr_delta);
+  constexpr int a_sh_wr_iters = ceil_div(a_sh_stage, a_sh_wr_delta);
 
   // B sizes/strides
   int b_gl_stride = 16 * prob_n / (pack_factor * 4);
@@ -1037,7 +1037,7 @@ __global__ void Marlin(
 
 #pragma unroll
     for (int i = 0;
-         i < div_ceil(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
+         i < ceil_div(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
          i++) {
       if (c_gl_wr < c_gl_wr_end) {
         C[c_gl_wr] = sh[c_sh_rd];

@@ -894,7 +894,7 @@ void marlin_dense(const void* A,
   // int cols = prob_n / thread_n;
   int* locks = (int*)workspace;
 
-  int ret = 0;
+  // int ret = 0;
   for (int i = 0; i < tot_m_blocks; i += 4) {
     int thread_m_blocks = tot_m_blocks - i;
     prob_m = tot_m - 16 * i;

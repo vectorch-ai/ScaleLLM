@@ -25,342 +25,14 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include <string>
-
-#define STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t)               \
-  static_assert(std::is_same<scalar_t, half>::value ||          \
-                    std::is_same<scalar_t, nv_bfloat16>::value, \
-                "only float16 and bfloat16 is supported");
-
-template <typename T>
-inline std::string str(T x) {
-  return std::to_string(x);
-}
+#include "common.h"
+#include "memory.h"
+#include "mma.h"
+#include "numeric_conversion.h"
+#include "scale_type.h"
 
 namespace marlin {
 namespace {
-// Marlin params
-
-// 8 warps are a good choice since every SM has 4 schedulers and having more
-// than 1 warp per schedule allows some more latency hiding. At the same time,
-// we want relatively few warps to have many registers per warp and small tiles.
-static constexpr int default_threads = 256;
-
-static constexpr int pipe_stages =
-    4;  // 4 pipeline stages fit into shared memory
-
-static constexpr int min_thread_n = 64;
-static constexpr int min_thread_k = 64;
-
-static constexpr int tile_size = 16;
-static constexpr int max_par = 16;
-
-// Repack params
-static constexpr int repack_stages = 8;
-
-static constexpr int repack_threads = 256;
-
-static constexpr int tile_k_size = tile_size;
-static constexpr int tile_n_size = tile_k_size * 4;
-
-// Helpers
-template <typename T, int n>
-struct Vec {
-  T elems[n];
-  __device__ T& operator[](int i) { return elems[i]; }
-};
-
-using I4 = Vec<int, 4>;
-
-constexpr int div_ceil(int a, int b) { return (a + b - 1) / b; }
-
-__device__ inline void cp_async4_pred(void* smem_ptr,
-                                      const void* glob_ptr,
-                                      bool pred = true) {
-  const int BYTES = 16;
-  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
-  asm volatile(
-      "{\n"
-      "   .reg .pred p;\n"
-      "   setp.ne.b32 p, %0, 0;\n"
-      "   @p cp.async.cg.shared.global [%1], [%2], %3;\n"
-      "}\n" ::"r"((int)pred),
-      "r"(smem),
-      "l"(glob_ptr),
-      "n"(BYTES));
-}
-
-__device__ inline void cp_async4(void* smem_ptr, const void* glob_ptr) {
-  const int BYTES = 16;
-  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
-  asm volatile(
-      "{\n"
-      "   cp.async.cg.shared.global [%0], [%1], %2;\n"
-      "}\n" ::"r"(smem),
-      "l"(glob_ptr),
-      "n"(BYTES));
-}
-
-__device__ inline void cp_async_fence() {
-  asm volatile("cp.async.commit_group;\n" ::);
-}
-
-template <int n>
-__device__ inline void cp_async_wait() {
-  asm volatile("cp.async.wait_group %0;\n" ::"n"(n));
-}
-
-template <typename scalar_t>
-class ScalarType {};
-
-template <>
-class ScalarType<half> {
- public:
-  using scalar_t = half;
-  using scalar_t2 = half2;
-
-  // Matrix fragments for tensor core instructions; their precise layout is
-  // documented here:
-  // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k16-with-floating-point-type
-  using FragA = Vec<half2, 4>;
-  using FragB = Vec<half2, 2>;
-  using FragC = Vec<float, 4>;
-  using FragS = Vec<half2, 1>;
-  using FragZP = Vec<half2, 4>;
-
-  static __device__ float inline num2float(const half x) {
-    return __half2float(x);
-  }
-
-  static __device__ half2 inline num2num2(const half x) {
-    return __half2half2(x);
-  }
-
-  static __device__ half2 inline nums2num2(const half x1, const half x2) {
-    return __halves2half2(x1, x2);
-  }
-
-  static __host__ __device__ half inline float2num(const float x) {
-    return __float2half(x);
-  }
-};
-
-template <>
-class ScalarType<nv_bfloat16> {
- public:
-  using scalar_t = nv_bfloat16;
-  using scalar_t2 = nv_bfloat162;
-
-  using FragA = Vec<nv_bfloat162, 4>;
-  using FragB = Vec<nv_bfloat162, 2>;
-  using FragC = Vec<float, 4>;
-  using FragS = Vec<nv_bfloat162, 1>;
-  using FragZP = Vec<nv_bfloat162, 4>;
-
-  static __device__ float inline num2float(const nv_bfloat16 x) {
-    return __bfloat162float(x);
-  }
-
-  static __device__ nv_bfloat162 inline num2num2(const nv_bfloat16 x) {
-    return __bfloat162bfloat162(x);
-  }
-
-  static __device__ nv_bfloat162 inline nums2num2(const nv_bfloat16 x1,
-                                                  const nv_bfloat16 x2) {
-    return __halves2bfloat162(x1, x2);
-  }
-
-  static __host__ __device__ nv_bfloat16 inline float2num(const float x) {
-    return __float2bfloat16(x);
-  }
-};
-
-// m16n8k16 tensor core mma instruction with fp16 inputs and fp32
-// output/accumulation.
-template <typename scalar_t>
-__device__ inline void mma(const typename ScalarType<scalar_t>::FragA& a_frag,
-                           const typename ScalarType<scalar_t>::FragB& frag_b,
-                           typename ScalarType<scalar_t>::FragC& frag_c) {
-  const uint32_t* a = reinterpret_cast<const uint32_t*>(&a_frag);
-  const uint32_t* b = reinterpret_cast<const uint32_t*>(&frag_b);
-  float* c = reinterpret_cast<float*>(&frag_c);
-  if constexpr (std::is_same<scalar_t, half>::value) {
-    asm volatile(
-        "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
-        "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%11,%12,%13};\n"
-        : "=f"(c[0]), "=f"(c[1]), "=f"(c[2]), "=f"(c[3])
-        : "r"(a[0]),
-          "r"(a[1]),
-          "r"(a[2]),
-          "r"(a[3]),
-          "r"(b[0]),
-          "r"(b[1]),
-          "f"(c[0]),
-          "f"(c[1]),
-          "f"(c[2]),
-          "f"(c[3]));
-  } else if constexpr (std::is_same<scalar_t, nv_bfloat16>::value) {
-    asm volatile(
-        "mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 "
-        "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%11,%12,%13};\n"
-        : "=f"(c[0]), "=f"(c[1]), "=f"(c[2]), "=f"(c[3])
-        : "r"(a[0]),
-          "r"(a[1]),
-          "r"(a[2]),
-          "r"(a[3]),
-          "r"(b[0]),
-          "r"(b[1]),
-          "f"(c[0]),
-          "f"(c[1]),
-          "f"(c[2]),
-          "f"(c[3]));
-  } else {
-    STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-  }
-}
-
-// Instruction for loading a full 16x16 matrix fragment of operand A from shared
-// memory, directly in tensor core layout.
-template <typename scalar_t>
-__device__ inline void ldsm4(typename ScalarType<scalar_t>::FragA& frag_a,
-                             const void* smem_ptr) {
-  uint32_t* a = reinterpret_cast<uint32_t*>(&frag_a);
-  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
-  asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n"
-               : "=r"(a[0]), "=r"(a[1]), "=r"(a[2]), "=r"(a[3])
-               : "r"(smem));
-}
-
-// Fast FP8ToFp16/FP8ToBf16: Efficiently dequantize 8bit fp8_e4m3 values to fp16
-// bf16 Reference:
-// - FP16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L53-L85
-// - BF16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L125-L175
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_8bit(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
-template <>
-__device__ inline typename ScalarType<half>::FragB dequant_8bit<half>(int q) {
-  // Constants for FP8 (E4M3) and FP16 formats
-  constexpr int FP8_EXPONENT = 4, FP8_MANTISSA = 3, FP16_EXPONENT = 5;
-  constexpr int RIGHT_SHIFT = FP16_EXPONENT - FP8_EXPONENT;
-
-  // Calculate MASK for extracting mantissa and exponent
-  constexpr int MASK1 = 0x80000000;
-  constexpr int MASK2 = MASK1 >> (FP8_EXPONENT + FP8_MANTISSA);
-  constexpr int MASK3 = MASK2 & 0x7fffffff;
-  constexpr int MASK = MASK3 | (MASK3 >> 16);
-  // Final MASK value: 0x7F007F00
-
-  // Extract and shift FP8 values to FP16 format
-  int Out1 = (q & 0x80008000) | ((q & MASK) >> RIGHT_SHIFT);
-  int Out2 = ((q << 8) & 0x80008000) | (((q << 8) & MASK) >> RIGHT_SHIFT);
-
-  // Construct and apply exponent bias
-  constexpr int BIAS_OFFSET =
-      (1 << (FP16_EXPONENT - 1)) - (1 << (FP8_EXPONENT - 1));
-  const half2 bias_reg = __float2half2_rn(float(1 << BIAS_OFFSET));
-
-  // Convert to half2 and apply bias
-  typename ScalarType<half>::FragB frag_b;
-  // Note: reverse indexing is intentional because weights are permuted
-  frag_b[1] = __hmul2(*reinterpret_cast<const half2*>(&Out1), bias_reg);
-  frag_b[0] = __hmul2(*reinterpret_cast<const half2*>(&Out2), bias_reg);
-  return frag_b;
-}
-
-template <>
-__device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_8bit<nv_bfloat16>(int q) {
-  // Constants for FP8 (E4M3) and BF16 formats
-  constexpr int FP8_EXPONENT = 4, FP8_MANTISSA = 3, BF16_EXPONENT = 8;
-  constexpr int RIGHT_SHIFT = BF16_EXPONENT - FP8_EXPONENT;
-
-  // Calculate MASK for extracting mantissa and exponent
-  constexpr int MASK1 = 0x80000000;
-  constexpr int MASK2 = MASK1 >> (FP8_EXPONENT + FP8_MANTISSA);
-  constexpr int MASK3 = MASK2 & 0x7fffffff;
-  constexpr int MASK = MASK3 | (MASK3 >> 16);
-  // Final MASK value: 0x7F007F00
-
-  // Extract and shift FP8 values to BF16 format
-  int Out1 = (q & 0x80008000) | ((q & MASK) >> RIGHT_SHIFT);
-  int Out2 = ((q << 8) & 0x80008000) | (((q << 8) & MASK) >> RIGHT_SHIFT);
-
-  // Construct and apply exponent bias
-  constexpr int BIAS_OFFSET =
-      (1 << (BF16_EXPONENT - 1)) - (1 << (FP8_EXPONENT - 1));
-  // Add 127 (float exponent bias) to BIAS_OFFSET and shift to float exponent
-  // position
-  constexpr uint32_t BIAS = (BIAS_OFFSET + 127) << 23;
-  const nv_bfloat162 bias_reg =
-      __float2bfloat162_rn(*reinterpret_cast<const float*>(&BIAS));
-
-  // Convert to bfloat162 and apply bias
-  typename ScalarType<nv_bfloat16>::FragB frag_b;
-  // Note: reverse indexing is intentional because weights are permuted
-  frag_b[1] = __hmul2(*reinterpret_cast<const nv_bfloat162*>(&Out1), bias_reg);
-  frag_b[0] = __hmul2(*reinterpret_cast<const nv_bfloat162*>(&Out2), bias_reg);
-  return frag_b;
-}
-
-// Multiply dequantized values by the corresponding quantization scale; used
-// only for grouped quantization.
-template <typename scalar_t>
-__device__ inline void scale(typename ScalarType<scalar_t>::FragB& frag_b,
-                             typename ScalarType<scalar_t>::FragS& frag_s,
-                             int i) {
-  using scalar_t2 = typename ScalarType<scalar_t>::scalar_t2;
-  scalar_t2 s =
-      ScalarType<scalar_t>::num2num2(reinterpret_cast<scalar_t*>(&frag_s)[i]);
-  frag_b[0] = __hmul2(frag_b[0], s);
-  frag_b[1] = __hmul2(frag_b[1], s);
-}
-
-// Given 2 floats multiply by 2 scales (halves)
-template <typename scalar_t>
-__device__ inline void scale_float(float* c,
-                                   typename ScalarType<scalar_t>::FragS& s) {
-  scalar_t* s_ptr = reinterpret_cast<scalar_t*>(&s);
-  c[0] = __fmul_rn(c[0], ScalarType<scalar_t>::num2float(s_ptr[0]));
-  c[1] = __fmul_rn(c[1], ScalarType<scalar_t>::num2float(s_ptr[1]));
-}
-
-// Wait until barrier reaches `count`, then lock for current threadblock.
-__device__ inline void barrier_acquire(int* lock, int count) {
-  if (threadIdx.x == 0) {
-    int state = -1;
-    do
-      // Guarantee that subsequent writes by this threadblock will be visible
-      // globally.
-      asm volatile("ld.global.acquire.gpu.b32 %0, [%1];\n"
-                   : "=r"(state)
-                   : "l"(lock));
-    while (state != count);
-  }
-  __syncthreads();
-}
-
-// Release barrier and increment visitation count.
-__device__ inline void barrier_release(int* lock, bool reset = false) {
-  __syncthreads();
-  if (threadIdx.x == 0) {
-    if (reset) {
-      lock[0] = 0;
-      return;
-    }
-    int val = 1;
-    // Make sure that all writes since acquiring this barrier are visible
-    // globally, while releasing the barrier.
-    asm volatile("fence.acq_rel.gpu;\n");
-    asm volatile("red.relaxed.gpu.global.add.s32 [%0], %1;\n"
-                 :
-                 : "l"(lock), "r"(val));
-  }
-}
 
 template <typename scalar_t,          // compute dtype, half or nv_float16
           const int num_bits,         // number of bits used for weights
@@ -417,7 +89,7 @@ __global__ void Marlin(
 
   int k_tiles = prob_k / 16 / thread_k_blocks;
   int n_tiles = prob_n / 16 / thread_n_blocks;
-  int iters = div_ceil(k_tiles * n_tiles * parallel, gridDim.x);
+  int iters = ceil_div(k_tiles * n_tiles * parallel, gridDim.x);
 
   int slice_row = (iters * blockIdx.x) % k_tiles;
   int slice_col_par = (iters * blockIdx.x) / k_tiles;
@@ -447,10 +119,10 @@ __global__ void Marlin(
     if (slice_row + slice_iters > k_tiles) slice_iters = k_tiles - slice_row;
     slice_count = 1;
     slice_idx = 0;
-    int col_first = iters * div_ceil(k_tiles * slice_col_par, iters);
+    int col_first = iters * ceil_div(k_tiles * slice_col_par, iters);
     if (col_first <= k_tiles * (slice_col_par + 1)) {
       int col_off = col_first - k_tiles * slice_col_par;
-      slice_count = div_ceil(k_tiles - col_off, iters);
+      slice_count = ceil_div(k_tiles - col_off, iters);
       if (col_off > 0) slice_count++;
       int delta_first = iters * blockIdx.x - col_first;
       if (delta_first < 0 || (col_off == 0 && delta_first == 0))
@@ -488,7 +160,7 @@ __global__ void Marlin(
   // overall size of a tile
   constexpr int a_sh_stage = a_sh_stride * (16 * thread_m_blocks);
   // number of shared write iterations for a tile
-  constexpr int a_sh_wr_iters = div_ceil(a_sh_stage, a_sh_wr_delta);
+  constexpr int a_sh_wr_iters = ceil_div(a_sh_stage, a_sh_wr_delta);
 
   // B sizes/strides
   int b_gl_stride = 16 * prob_n / (pack_factor * 4);
@@ -727,8 +399,8 @@ __global__ void Marlin(
       int b_quant_0 = frag_b_quant_ptr[j * 2 + 0];
       int b_quant_1 = frag_b_quant_ptr[j * 2 + 1];
 
-      frag_b0 = dequant_8bit<scalar_t>(b_quant_0);
-      frag_b1 = dequant_8bit<scalar_t>(b_quant_1);
+      frag_b0 = dequant_fp8<scalar_t>(b_quant_0);
+      frag_b1 = dequant_fp8<scalar_t>(b_quant_1);
 
 #pragma unroll
       for (int i = 0; i < thread_m_blocks; i++) {
@@ -920,7 +592,7 @@ __global__ void Marlin(
 
 #pragma unroll
     for (int i = 0;
-         i < div_ceil(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
+         i < ceil_div(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
          i++) {
       if (c_gl_wr < c_gl_wr_end) {
         C[c_gl_wr] = sh[c_sh_rd];
@@ -1157,7 +829,7 @@ bool is_valid_cache_size(thread_config_t const& th_config,
   int b_size = (tb_k * tb_n / pack_factor) * 4;
 
   // Get A size
-  int m_blocks = div_ceil(prob_m, 16);
+  int m_blocks = ceil_div(prob_m, 16);
   int tb_max_m = 16;
 
   while (true) {
@@ -1300,7 +972,7 @@ void marlin_mm_f16i4(const void* A,
 
   constexpr int num_bits = 8;
   int tot_m = prob_m;
-  int tot_m_blocks = div_ceil(tot_m, 16);
+  int tot_m_blocks = ceil_div(tot_m, 16);
   int pad = 16 * tot_m_blocks - tot_m;
 
   if (sms == -1) {

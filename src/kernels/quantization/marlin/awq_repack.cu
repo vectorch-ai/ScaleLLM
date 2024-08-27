@@ -17,7 +17,7 @@ static constexpr int tile_size = 16;
 
 static constexpr int tile_k_size = tile_size;
 static constexpr int tile_n_size = tile_k_size * 4;
-constexpr int div_ceil(int a, int b) { return (a + b - 1) / b; }
+constexpr int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 __device__ inline void cp_async_fence() {
   asm volatile("cp.async.commit_group;\n" ::);
@@ -49,7 +49,7 @@ __global__ void awq_marlin_repack_kernel(
 
   int k_tiles = size_k / tile_k_size;
   int n_tiles = size_n / tile_n_size;
-  int block_k_tiles = div_ceil(k_tiles, gridDim.x);
+  int block_k_tiles = ceil_div(k_tiles, gridDim.x);
 
   int start_k_tile = blockIdx.x * block_k_tiles;
   if (start_k_tile >= k_tiles) {

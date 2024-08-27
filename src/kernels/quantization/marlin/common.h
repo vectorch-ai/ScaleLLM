@@ -32,6 +32,6 @@ static constexpr int repack_threads = 256;
 static constexpr int tile_k_size = tile_size;
 static constexpr int tile_n_size = tile_k_size * 4;
 
-constexpr int div_ceil(int a, int b) { return (a + b - 1) / b; }
+constexpr int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 }  // namespace marlin
