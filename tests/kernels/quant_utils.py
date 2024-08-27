@@ -1,5 +1,4 @@
-
-import numpy
+import numpy as np
 import torch
 
 
@@ -25,7 +24,7 @@ def sort_rows(
     g_idx: torch.Tensor,  # group indices (k,)
 ):
     assert q_w.size(0) == g_idx.size(0)
-    
+
     perm = torch.argsort(g_idx).to(torch.int32)
     q_w = q_w[perm, :].contiguous()
     g_idx = g_idx[perm].contiguous()
@@ -108,12 +107,12 @@ def pack_rows(
     assert k % pack_factor == 0
 
     # use numpy for bit manipulation
-    w = q_w.cpu().numpy().astype(numpy.uint32)
-    p_w = numpy.zeros((k // pack_factor, n), dtype=numpy.uint32)
+    w = q_w.cpu().numpy().astype(np.uint32)
+    p_w = np.zeros((k // pack_factor, n), dtype=np.uint32)
     for i in range(pack_factor):
         p_w |= w[i::pack_factor, :] << num_bits * i
     # convert back to torch tensor
-    return torch.from_numpy(p_w.astype(numpy.int32)).to(q_w.device)
+    return torch.from_numpy(p_w.astype(np.int32)).to(q_w.device)
 
 
 def unpack_rows(
@@ -125,8 +124,8 @@ def unpack_rows(
     k *= pack_factor
 
     # use numpy for bit manipulation
-    p_w = packed_q_w.cpu().numpy().astype(numpy.uint32)
-    w = numpy.zeros((k, n), dtype=numpy.uint32)
+    p_w = packed_q_w.cpu().numpy().astype(np.uint32)
+    w = np.zeros((k, n), dtype=np.uint32)
 
     mask = (1 << num_bits) - 1
     for i in range(pack_factor):
@@ -134,7 +133,7 @@ def unpack_rows(
         p_w >>= num_bits
 
     # convert back to torch tensor
-    return torch.from_numpy(w.astype(numpy.int32)).to(packed_q_w.device)
+    return torch.from_numpy(w.astype(np.int32)).to(packed_q_w.device)
 
 
 def pack_cols(
@@ -146,12 +145,12 @@ def pack_cols(
     assert n % pack_factor == 0
 
     # use numpy for bit manipulation
-    w = q_w.cpu().numpy().astype(numpy.uint32)
-    p_w = numpy.zeros((k, n // pack_factor), dtype=numpy.uint32)
+    w = q_w.cpu().numpy().astype(np.uint32)
+    p_w = np.zeros((k, n // pack_factor), dtype=np.uint32)
     for i in range(pack_factor):
         p_w |= w[:, i::pack_factor] << num_bits * i
     # convert back to torch tensor
-    return torch.from_numpy(p_w.astype(numpy.int32)).to(q_w.device)
+    return torch.from_numpy(p_w.astype(np.int32)).to(q_w.device)
 
 
 def unpack_cols(
@@ -163,8 +162,8 @@ def unpack_cols(
     n *= pack_factor
 
     # use numpy for bit manipulation
-    p_w = packed_q_w.cpu().numpy().astype(numpy.uint32)
-    w = numpy.zeros((k, n), dtype=numpy.uint32)
+    p_w = packed_q_w.cpu().numpy().astype(np.uint32)
+    w = np.zeros((k, n), dtype=np.uint32)
 
     mask = (1 << num_bits) - 1
     for i in range(pack_factor):
@@ -172,7 +171,20 @@ def unpack_cols(
         p_w >>= num_bits
 
     # convert back to torch tensor
-    return torch.from_numpy(w.astype(numpy.int32)).to(packed_q_w.device)
+    return torch.from_numpy(w.astype(np.int32)).to(packed_q_w.device)
+
+
+# permute for fast interleaved_numeric_conversion
+def fast_conversion_interleave(num_bits):
+    if num_bits == 4:
+        # [0, 1, 2, 3, 4, 5, 6, 7] -> [0, 2, 4, 6, 1, 3, 5, 7]
+        interleave = np.array([0, 2, 4, 6, 1, 3, 5, 7])
+    elif num_bits == 8:
+        # [0, 1, 2, 3] -> [0, 2, 1, 3]
+        interleave = np.array([0, 2, 1, 3])
+    else:
+        raise NotImplementedError(f"num_bits={num_bits} not implemented")
+    return interleave
 
 
 if __name__ == "__main__":

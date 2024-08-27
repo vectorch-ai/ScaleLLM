@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from quant_utils import quantize_weights
+from quant_utils import quantize_weights, fast_conversion_interleave
 
 # Adapted from https://github.com/IST-DASLab/marlin/blob/master/test.py
 
@@ -28,13 +28,7 @@ def marlin_weight_perm(num_bits: int):
     perm = np.array(perm)
 
     # permute for fast interleaved_numeric_conversion
-    if num_bits == 4:
-        # [0, 1, 2, 3, 4, 5, 6, 7] -> [0, 2, 4, 6, 1, 3, 5, 7]
-        interleave = np.array([0, 2, 4, 6, 1, 3, 5, 7])
-    elif num_bits == 8:
-        interleave = np.array([0, 2, 1, 3])
-    else:
-        raise NotImplementedError(f"num_bits={num_bits} not implemented")
+    interleave = fast_conversion_interleave(num_bits)
 
     perm = perm.reshape((-1, len(interleave)))[:, interleave].ravel()
     # return as torch tensor
@@ -64,7 +58,7 @@ def pack_marlin_weights(
     k, n = q_w.shape
     assert k % tile == 0
     assert n % tile == 0
-    
+
     # tile the weights to 16x16 blocks
     # [m/16, 16, n/16, 16]
     q_w = q_w.reshape(k // tile, tile, n // tile, tile)

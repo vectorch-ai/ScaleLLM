@@ -3,9 +3,25 @@ import sys
 import pytest
 import torch
 from marlin_utils import pack_marlin_weights
-from quant_utils import pack_rows, quantize_weights, sort_rows
+from quant_utils import (
+    pack_rows,
+    pack_cols,
+    quantize_weights,
+    sort_rows,
+    fast_conversion_interleave,
+)
 
 import scalellm._C.kernels as kernels
+
+
+def pack_gptq_weights(q_w: torch.Tensor, num_bits: int):
+    return pack_rows(q_w, num_bits=num_bits)
+
+
+def pack_awq_weights(q_w: torch.Tensor, num_bits: int):
+    interleave = fast_conversion_interleave(num_bits)
+    q_w = q_w.reshape(-1, len(interleave))[:, interleave].reshape(q_w.shape)
+    return pack_cols(q_w, num_bits=num_bits)
 
 
 @pytest.mark.parametrize("k", [128, 256])
@@ -24,7 +40,7 @@ def test_gptq_repack(k, n, num_bits, group_size, act_order):
 
     # pack weights to gptq format then repack to marlin format
     # (k/pack_factor, n)
-    gptq_q_w = pack_rows(q_w, num_bits=num_bits)
+    gptq_q_w = pack_gptq_weights(q_w, num_bits=num_bits)
     if act_order:
         q_w, g_idx, perm = sort_rows(q_w, g_idx)
     else:
@@ -42,7 +58,42 @@ def test_gptq_repack(k, n, num_bits, group_size, act_order):
         num_bits=num_bits,
     )
     torch.cuda.synchronize()
-    
+
+    # pack weights to marlin format
+    # (k/16, n*16/pack_factor)
+    marlin_q_w = pack_marlin_weights(q_w, num_bits=num_bits)
+    assert torch.equal(marlin_q_w, marlin_out)
+
+
+@pytest.mark.parametrize("k", [128, 256])
+@pytest.mark.parametrize("n", [64, 128, 256])
+@pytest.mark.parametrize("num_bits", [4, 8])
+@pytest.mark.parametrize("group_size", [-1, 32, 64, 128])
+def test_awq_repack(k, n, num_bits, group_size):
+    # generate random weights
+    w = torch.randn((k, n), dtype=torch.half, device="cuda")
+
+    # quantize weights
+    w_ref, q_w, s, g_idx, perm = quantize_weights(
+        w, num_bits=num_bits, group_size=group_size, act_order=False
+    )
+
+    # pack weights to gptq format then repack to marlin format
+    # (k/pack_factor, n)
+    awq_q_w = pack_awq_weights(q_w, num_bits=num_bits)
+
+    # (k/tile, n*tile/pack_factor)
+    pack_factor = 32 // num_bits
+    marlin_out = torch.empty(
+        k // 16, n * 16 // pack_factor, dtype=torch.int32, device="cuda"
+    )
+    kernels.marlin_awq_repack(
+        awq_q_w,
+        out=marlin_out,
+        num_bits=num_bits,
+    )
+    torch.cuda.synchronize()
+
     # pack weights to marlin format
     # (k/16, n*16/pack_factor)
     marlin_q_w = pack_marlin_weights(q_w, num_bits=num_bits)
