@@ -6,38 +6,11 @@
 
 #include <cstdint>
 
+#include "common.h"
+#include "memory.h"
+
 namespace marlin {
 namespace {
-// Repack params
-static constexpr int repack_stages = 8;
-
-static constexpr int repack_threads = 256;
-
-static constexpr int tile_size = 16;
-
-static constexpr int tile_k_size = tile_size;
-static constexpr int tile_n_size = tile_k_size * 4;
-constexpr int ceil_div(int a, int b) { return (a + b - 1) / b; }
-
-__device__ inline void cp_async_fence() {
-  asm volatile("cp.async.commit_group;\n" ::);
-}
-
-template <int n>
-__device__ inline void cp_async_wait() {
-  asm volatile("cp.async.wait_group %0;\n" ::"n"(n));
-}
-
-__device__ inline void cp_async4(void* smem_ptr, const void* glob_ptr) {
-  const int BYTES = 16;
-  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
-  asm volatile(
-      "{\n"
-      "   cp.async.cg.shared.global [%0], [%1], %2;\n"
-      "}\n" ::"r"(smem),
-      "l"(glob_ptr),
-      "n"(BYTES));
-}
 
 template <int const num_threads, int const num_bits>
 __global__ void awq_marlin_repack_kernel(
@@ -212,15 +185,13 @@ __global__ void awq_marlin_repack_kernel(
   }
 }
 
-#define CALL_IF(NUM_BITS)                                                   \
-  else if (num_bits == NUM_BITS) {                                          \
-    cudaFuncSetAttribute(                                                   \
-        marlin::awq_marlin_repack_kernel<marlin::repack_threads, NUM_BITS>, \
-        cudaFuncAttributeMaxDynamicSharedMemorySize,                        \
-        max_shared_mem);                                                    \
-    marlin::awq_marlin_repack_kernel<marlin::repack_threads, NUM_BITS>      \
-        <<<blocks, marlin::repack_threads, max_shared_mem, stream>>>(       \
-            q_weight_ptr, out_ptr, size_k, size_n);                         \
+#define CALL_IF(NUM_BITS)                                                     \
+  else if (num_bits == NUM_BITS) {                                            \
+    auto kernel = &awq_marlin_repack_kernel<repack_threads, NUM_BITS>;        \
+    cudaFuncSetAttribute(                                                     \
+        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_shared_mem); \
+    kernel<<<blocks, repack_threads, max_shared_mem, stream>>>(               \
+        q_weight_ptr, out_ptr, size_k, size_n);                               \
   }
 
 }  // namespace

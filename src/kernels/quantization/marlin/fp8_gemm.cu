@@ -42,10 +42,8 @@ template <typename scalar_t,          // compute dtype, half or nv_float16
                                       // threadblock
           const int thread_n_blocks,  // same for n dimension (output)
           const int thread_k_blocks,  // same for k dimension (reduction)
-          const int stages,  // number of stages for the async global->shared
-                             // fetch pipeline
-          const int group_blocks = -1  // number of consecutive 16x16 blocks
-                                       // with a separate quantization scale
+          const int stages  // number of stages for the async global->shared
+                            // fetch pipeline
           >
 __global__ void Marlin(
     const int4* __restrict__ A,  // fp16 input matrix of shape mxk
@@ -727,55 +725,41 @@ __global__ void Marlin(
   }
 }
 
-#define __CALL_IF(NUM_BITS,                                              \
-                  THREAD_M_BLOCKS,                                       \
-                  THREAD_N_BLOCKS,                                       \
-                  THREAD_K_BLOCKS,                                       \
-                  GROUP_BLOCKS,                                          \
-                  NUM_THREADS)                                           \
-  else if (num_bits == NUM_BITS && thread_m_blocks == THREAD_M_BLOCKS && \
-           thread_n_blocks == THREAD_N_BLOCKS &&                         \
-           thread_k_blocks == THREAD_K_BLOCKS &&                         \
-           group_blocks == GROUP_BLOCKS && num_threads == NUM_THREADS) { \
-    cudaFuncSetAttribute(Marlin<scalar_t,                                \
-                                NUM_BITS,                                \
-                                NUM_THREADS,                             \
-                                THREAD_M_BLOCKS,                         \
-                                THREAD_N_BLOCKS,                         \
-                                THREAD_K_BLOCKS,                         \
-                                pipe_stages,                             \
-                                GROUP_BLOCKS>,                           \
-                         cudaFuncAttributeMaxDynamicSharedMemorySize,    \
-                         max_shared_mem);                                \
-    Marlin<scalar_t,                                                     \
-           NUM_BITS,                                                     \
-           NUM_THREADS,                                                  \
-           THREAD_M_BLOCKS,                                              \
-           THREAD_N_BLOCKS,                                              \
-           THREAD_K_BLOCKS,                                              \
-           pipe_stages,                                                  \
-           GROUP_BLOCKS>                                                 \
-        <<<blocks, NUM_THREADS, max_shared_mem, stream>>>(A_ptr,         \
-                                                          B_ptr,         \
-                                                          C_ptr,         \
-                                                          s_ptr,         \
-                                                          num_groups,    \
-                                                          prob_m,        \
-                                                          prob_n,        \
-                                                          prob_k,        \
-                                                          locks);        \
+#define __CALL_IF(                                                             \
+    NUM_BITS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, NUM_THREADS)  \
+  else if (num_bits == NUM_BITS && thread_m_blocks == THREAD_M_BLOCKS &&       \
+           thread_n_blocks == THREAD_N_BLOCKS &&                               \
+           thread_k_blocks == THREAD_K_BLOCKS && num_threads == NUM_THREADS) { \
+    auto kernel = &Marlin<scalar_t,                                            \
+                          NUM_BITS,                                            \
+                          NUM_THREADS,                                         \
+                          THREAD_M_BLOCKS,                                     \
+                          THREAD_N_BLOCKS,                                     \
+                          THREAD_K_BLOCKS,                                     \
+                          pipe_stages>;                                        \
+    cudaFuncSetAttribute(                                                      \
+        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_shared_mem);  \
+    kernel<<<blocks, NUM_THREADS, max_shared_mem, stream>>>(A_ptr,             \
+                                                            B_ptr,             \
+                                                            C_ptr,             \
+                                                            s_ptr,             \
+                                                            num_groups,        \
+                                                            prob_m,            \
+                                                            prob_n,            \
+                                                            prob_k,            \
+                                                            locks);            \
   }
 
-typedef struct {
+using thread_config_t = struct {
   int thread_k;
   int thread_n;
   int num_threads;
-} thread_config_t;
+};
 
-typedef struct {
+using exec_config_t = struct {
   int max_m_blocks;
   thread_config_t tb_cfg;
-} exec_config_t;
+};
 
 thread_config_t small_batch_thread_configs[] = {
     // Ordered by priority
@@ -944,11 +928,11 @@ exec_config_t determine_thread_config(int prob_m,
   return exec_config_t{0, {-1, -1, -1}};
 }
 
-#define CALL_IF(NUM_BITS, N_BLOCKS, K_BLOCKS, NUM_THREADS)    \
-  __CALL_IF(NUM_BITS, 1, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
-  __CALL_IF(NUM_BITS, 2, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
-  __CALL_IF(NUM_BITS, 3, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS) \
-  __CALL_IF(NUM_BITS, 4, N_BLOCKS, K_BLOCKS, -1, NUM_THREADS)
+#define CALL_IF(NUM_BITS, N_BLOCKS, K_BLOCKS, NUM_THREADS) \
+  __CALL_IF(NUM_BITS, 1, N_BLOCKS, K_BLOCKS, NUM_THREADS)  \
+  __CALL_IF(NUM_BITS, 2, N_BLOCKS, K_BLOCKS, NUM_THREADS)  \
+  __CALL_IF(NUM_BITS, 3, N_BLOCKS, K_BLOCKS, NUM_THREADS)  \
+  __CALL_IF(NUM_BITS, 4, N_BLOCKS, K_BLOCKS, NUM_THREADS)
 
 template <typename scalar_t>
 void marlin_mm_f16i4(const void* A,
@@ -1030,8 +1014,6 @@ void marlin_mm_f16i4(const void* A,
   CHECK(prob_k % thread_k == 0)
       << "prob_k = " << prob_k
       << ", is not divisible by thread_k = " << thread_k;
-
-  int group_blocks = -1;
 
   const int4* A_ptr = (const int4*)A;
   const int4* B_ptr = (const int4*)B;
