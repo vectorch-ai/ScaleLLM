@@ -2,21 +2,10 @@ import sys
 
 import pytest
 import torch
-from marlin_utils import pack_marlin_weights
-from quant_utils import (fast_conversion_interleave, pack_cols, pack_rows,
-                         quantize_weights, sort_rows)
+from quant_utils import (pack_awq_weights, pack_gptq_weights,
+                         pack_marlin_weights, quantize_weights, sort_rows)
 
-import scalellm._C.kernels as kernels
-
-
-def pack_gptq_weights(q_w: torch.Tensor, num_bits: int):
-    return pack_rows(q_w, num_bits=num_bits)
-
-
-def pack_awq_weights(q_w: torch.Tensor, num_bits: int):
-    interleave = fast_conversion_interleave(num_bits)
-    q_w = q_w.reshape(-1, len(interleave))[:, interleave].reshape(q_w.shape)
-    return pack_cols(q_w, num_bits=num_bits)
+import scalellm._C.kernels as kernels  # type: ignore
 
 
 @pytest.mark.parametrize("k", [128, 256])
