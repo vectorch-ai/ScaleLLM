@@ -26,7 +26,6 @@
 #include <torch/torch.h>
 
 #include "gemm_kernel_launch.cuh"
-#include "marlin.h"
 
 namespace marlin {
 namespace {
