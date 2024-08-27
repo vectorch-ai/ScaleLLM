@@ -41,7 +41,7 @@ __device__ inline void cp_async4(void* smem_ptr, const void* glob_ptr) {
 
 template <int const num_threads, int const num_bits, bool const has_perm>
 __global__ void gptq_marlin_repack_kernel(
-    uint32_t const* __restrict__ b_q_weight_ptr,
+    uint32_t const* __restrict__ q_weight_ptr,
     uint32_t const* __restrict__ perm_ptr,
     uint32_t* __restrict__ out_ptr,
     int size_k,
@@ -120,8 +120,8 @@ __global__ void gptq_marlin_repack_kernel(
 
         cp_async4(
             &sh_ptr[k_id * stage_n_threads + n_id],
-            reinterpret_cast<int4 const*>(&(
-                b_q_weight_ptr[src_k_packed * size_n + first_n + (n_id * 4)])));
+            reinterpret_cast<int4 const*>(
+                &(q_weight_ptr[src_k_packed * size_n + first_n + (n_id * 4)])));
       }
 
     } else {
@@ -134,8 +134,8 @@ __global__ void gptq_marlin_repack_kernel(
 
         cp_async4(&sh_ptr[k_id * stage_n_threads + n_id],
                   reinterpret_cast<int4 const*>(
-                      &(b_q_weight_ptr[(first_k_packed + k_id) * size_n +
-                                       first_n + (n_id * 4)])));
+                      &(q_weight_ptr[(first_k_packed + k_id) * size_n +
+                                     first_n + (n_id * 4)])));
       }
     }
 
@@ -284,44 +284,44 @@ __global__ void gptq_marlin_repack_kernel(
     marlin::                                                                  \
         gptq_marlin_repack_kernel<marlin::repack_threads, NUM_BITS, HAS_PERM> \
         <<<blocks, marlin::repack_threads, max_shared_mem, stream>>>(         \
-            b_q_weight_ptr, perm_ptr, out_ptr, size_k, size_n);               \
+            q_weight_ptr, perm_ptr, out_ptr, size_k, size_n);                 \
   }
 
 }  // namespace
 
-void gptq_repack(const torch::Tensor& b_q_weight,  // (k/pack_factor, n)
-                 const torch::Tensor& perm,        // ?
-                 torch::Tensor& out,               // (k/16, n*16/pack_factor)
+void gptq_repack(const torch::Tensor& q_weight,  // (k/pack_factor, n)
+                 const torch::Tensor& perm,      // (k)
+                 torch::Tensor& out,             // (k/16, n*16/pack_factor)
                  int64_t num_bits) {
   CHECK(num_bits == 4 || num_bits == 8);
 
   const int64_t pack_factor = 32 / num_bits;
-  const int64_t size_k = b_q_weight.size(0) * pack_factor;
-  const int64_t size_n = b_q_weight.size(1);
+  const int64_t size_k = q_weight.size(0) * pack_factor;
+  const int64_t size_n = q_weight.size(1);
 
   // Verify compatibility with marlin tile of 16x64
   CHECK(size_k % 16 == 0);
   CHECK(size_n % 64 == 0);
 
   // Verify device and strides
-  CHECK(b_q_weight.device().is_cuda());
-  CHECK(b_q_weight.is_contiguous());
-  CHECK(b_q_weight.dtype() == torch::kInt);
+  CHECK(q_weight.device().is_cuda());
+  CHECK(q_weight.is_contiguous());
+  CHECK(q_weight.dtype() == torch::kInt);
   CHECK(perm.device().is_cuda());
   CHECK(perm.is_contiguous());
   CHECK(perm.dtype() == torch::kInt);
 
   // Detect if there is act_order
-  bool has_perm = perm.defined();
+  const bool has_perm = perm.defined() && perm.size(0) != 0;
 
   // Get ptrs
-  const uint32_t* b_q_weight_ptr =
-      reinterpret_cast<const uint32_t*>(b_q_weight.data_ptr());
+  const uint32_t* q_weight_ptr =
+      reinterpret_cast<const uint32_t*>(q_weight.data_ptr());
   const uint32_t* perm_ptr = reinterpret_cast<const uint32_t*>(perm.data_ptr());
   uint32_t* out_ptr = reinterpret_cast<uint32_t*>(out.data_ptr());
 
   // Get dev info
-  int dev = b_q_weight.get_device();
+  int dev = q_weight.get_device();
   cudaStream_t stream = at::cuda::getCurrentCUDAStream(dev);
   int blocks = 0;
   cudaDeviceGetAttribute(&blocks, cudaDevAttrMultiProcessorCount, dev);

@@ -120,7 +120,7 @@ ColumnParallelQLinearGPTQMarlinImpl::ColumnParallelQLinearGPTQMarlinImpl(
   }
 
   const int64_t max_workspace_size = out_features_per_partition / 64 * 16;
-  workspace_ = torch::zeros({max_workspace_size}, options);
+  workspace_ = torch::zeros({max_workspace_size}, options.dtype(torch::kInt32));
 }
 
 // load the weight from the checkpoint
@@ -256,7 +256,7 @@ RowParallelQLinearGPTQMarlinImpl::RowParallelQLinearGPTQMarlinImpl(
   }
 
   const int64_t max_workspace_size = out_features / 64 * 16;
-  workspace_ = torch::zeros({max_workspace_size}, options);
+  workspace_ = torch::zeros({max_workspace_size}, options.dtype(torch::kInt32));
 }
 
 // load the weight from the checkpoint
