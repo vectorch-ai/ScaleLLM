@@ -2,12 +2,8 @@ import sys
 
 import pytest
 import torch
-from quant_utils import (
-    pack_marlin_weights,
-    permute_marlin_scales,
-    quantize_weights,
-    sort_rows,
-)
+from quant_utils import (pack_marlin_weights, permute_marlin_scales,
+                         quantize_weights, sort_rows)
 
 import scalellm._C.kernels as kernels  # type: ignore
 
@@ -47,9 +43,9 @@ def test_marlin_fp16_int4_gemm(m, n, k, num_bits, group_size, device):
     assert max_diff < 0.001
 
 
-@pytest.mark.parametrize("m", [64])
-@pytest.mark.parametrize("n", [64, 128, 256])
-@pytest.mark.parametrize("k", [128])
+@pytest.mark.parametrize("m", [16, 32, 64])
+@pytest.mark.parametrize("n", [64, 128, 256, 512])
+@pytest.mark.parametrize("k", [128, 256])
 @pytest.mark.parametrize("num_bits", [4, 8])
 @pytest.mark.parametrize("group_size", [-1, 32, 64, 128])
 @pytest.mark.parametrize("act_order", [False, True])
@@ -59,7 +55,8 @@ def test_marlin_gemm(
     m, n, k, num_bits, group_size, act_order, is_k_full, use_fp32_reduce
 ):
     if act_order and (group_size == -1 or group_size == k):
-        pytest.skip("act_order=True requires group_size < k")
+        # act_order=True requires group_size < k
+        return
 
     # generate random inputs and weights
     a = torch.randn((m, k), dtype=torch.half, device="cuda")

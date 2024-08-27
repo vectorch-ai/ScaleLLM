@@ -280,7 +280,7 @@ def pack_marlin_weights(
 
 # permute the scales
 def permute_marlin_scales(
-    s: torch.Tensor,  # scales, float32 (k, n)
+    s: torch.Tensor,  # scales, float32 (n_groups, n)
 ):
     n_groups, n = s.shape
     perm, perm_single = marlin_scales_perm()
