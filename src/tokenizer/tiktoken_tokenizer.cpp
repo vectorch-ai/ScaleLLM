@@ -14,9 +14,67 @@
 #include <string>
 #include <string_view>
 
-#include "sentencepiece/util.h"
-
 namespace llm {
+namespace {
+constexpr uint32_t kUnicodeError = 0xFFFD;
+
+// copied from #include "sentencepiece/util.h" to avoid build warnings
+using char32 = uint32_t;
+
+// Return (x & 0xC0) == 0x80;
+// Since trail bytes are always in [0x80, 0xBF], we can optimize:
+inline bool is_trail_byte(char x) {
+  return static_cast<signed char>(x) < -0x40;
+}
+
+inline bool is_valid_codepoint(char32 c) {
+  return (static_cast<uint32_t>(c) < 0xD800) || (c >= 0xE000 && c <= 0x10FFFF);
+}
+
+// mblen sotres the number of bytes consumed after decoding.
+char32 decode_utf8(const char* begin, const char* end, size_t* mblen) {
+  const size_t len = end - begin;
+
+  if (static_cast<unsigned char>(begin[0]) < 0x80) {
+    *mblen = 1;
+    return static_cast<unsigned char>(begin[0]);
+  }
+  if (len >= 2 && (begin[0] & 0xE0) == 0xC0) {
+    const char32 cp = (((begin[0] & 0x1F) << 6) | ((begin[1] & 0x3F)));
+    if (is_trail_byte(begin[1]) && cp >= 0x0080 && is_valid_codepoint(cp)) {
+      *mblen = 2;
+      return cp;
+    }
+  } else if (len >= 3 && (begin[0] & 0xF0) == 0xE0) {
+    const char32 cp = (((begin[0] & 0x0F) << 12) | ((begin[1] & 0x3F) << 6) |
+                       ((begin[2] & 0x3F)));
+    if (is_trail_byte(begin[1]) && is_trail_byte(begin[2]) && cp >= 0x0800 &&
+        is_valid_codepoint(cp)) {
+      *mblen = 3;
+      return cp;
+    }
+  } else if (len >= 4 && (begin[0] & 0xf8) == 0xF0) {
+    const char32 cp = (((begin[0] & 0x07) << 18) | ((begin[1] & 0x3F) << 12) |
+                       ((begin[2] & 0x3F) << 6) | ((begin[3] & 0x3F)));
+    if (is_trail_byte(begin[1]) && is_trail_byte(begin[2]) &&
+        is_trail_byte(begin[3]) && cp >= 0x10000 && is_valid_codepoint(cp)) {
+      *mblen = 4;
+      return cp;
+    }
+  }
+
+  // Invalid UTF-8.
+  *mblen = 1;
+  return kUnicodeError;
+}
+
+inline bool is_valid_decode_utf8(std::string_view input, size_t* mblen) {
+  const char32 c =
+      decode_utf8(input.data(), input.data() + input.size(), mblen);
+  return c != kUnicodeError || *mblen == 3;
+}
+
+}  // namespace
 
 TiktokenTokenizer::TiktokenTokenizer(const std::string_view& dir_path,
                                      const TokenizerArgs& args)
@@ -300,15 +358,14 @@ std::string TiktokenTokenizer::decode(const Slice<int32_t>& ids,
   }
 
   std::string data = ss.str();
-  absl::string_view bytes(data);
+  std::string_view bytes(data);
 
   // replace unfinished utf8 bytes with � (U+FFFD)
   std::stringstream utf8_ss;
   size_t offset = 0;
   while (offset < bytes.size()) {
     size_t consumed = 0;
-    const bool is_valid = sentencepiece::string_util::IsValidDecodeUTF8(
-        bytes.substr(offset), &consumed);
+    const bool is_valid = is_valid_decode_utf8(bytes.substr(offset), &consumed);
     if (is_valid) {
       utf8_ss << bytes.substr(offset, consumed);
     } else {
