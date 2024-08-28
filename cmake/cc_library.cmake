@@ -68,6 +68,7 @@ function(cc_library)
     target_include_directories(${CC_LIB_NAME}
       PUBLIC 
         "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>"
+      PRIVATE
         ${CC_LIB_INCLUDES}
     )
     target_compile_options(${CC_LIB_NAME} PRIVATE ${CC_LIB_COPTS})

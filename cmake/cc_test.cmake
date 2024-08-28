@@ -57,6 +57,7 @@ function(cc_test)
   target_include_directories(${CC_TEST_NAME}
     PUBLIC 
       "$<BUILD_INTERFACE:${COMMON_INCLUDE_DIRS}>" 
+    PRIVATE
       ${CC_TEST_INCLUDES}
   )
 
