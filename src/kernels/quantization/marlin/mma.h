@@ -3,6 +3,8 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
+#include <cstdint>
+
 #include "scale_type.h"
 
 namespace marlin {

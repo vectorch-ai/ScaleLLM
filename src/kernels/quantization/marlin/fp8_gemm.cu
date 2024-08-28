@@ -249,9 +249,10 @@ __global__ void Marlin(
 #pragma unroll
   for (int i = 0; i < b_sh_wr_iters; i++) {
 #pragma unroll
-    for (int j = 0; j < thread_m_blocks; j++)
+    for (int j = 0; j < thread_m_blocks; j++) {
       a_sh_rd_trans[i][j] =
           transform_a(a_sh_rd_delta_o * i + a_sh_rd_delta_i * j + a_sh_rd);
+    }
   }
 
   // Since B-accesses have non-constant stride they have to be computed at

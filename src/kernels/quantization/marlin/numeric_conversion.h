@@ -1,24 +1,22 @@
 #pragma once
+#include <cstdint>
 
 #include "memory.h"
 #include "scale_type.h"
 
 namespace marlin {
 
-// Efficiently dequantize an int32 value into a full B-fragment of 4 fp16
-// values. We mostly follow the strategy in the link below, with some small
-// changes:
-// - FP16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L215-L287
-// - BF16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L327-L385
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_4bit(int q) {
+// Dequantize an int32 value into a full B-fragment of 4 fp16 values.
+template <typename scalar_t, const int num_bits, const bool has_zp>
+__device__ inline typename ScalarType<scalar_t>::FragB dequant(int q) {
   STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
 }
 
+// Dequantize 4-bit values to fp16
+// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L215-L287
 template <>
-__device__ inline typename ScalarType<half>::FragB dequant_4bit<half>(int q) {
+__device__ inline typename ScalarType<half>::FragB dequant<half, 4, false>(
+    int q) {
   const int LO = 0x000f000f;
   const int HI = 0x00f000f0;
   const int EX = 0x64006400;
@@ -39,9 +37,11 @@ __device__ inline typename ScalarType<half>::FragB dequant_4bit<half>(int q) {
   return frag_b;
 }
 
+// Dequantize 4-bit values to bf16
+// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L327-L385
 template <>
 __device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_4bit<nv_bfloat16>(int q) {
+dequant<nv_bfloat16, 4, false>(int q) {
   static constexpr uint32_t MASK = 0x000f000f;
   static constexpr uint32_t EX = 0x43004300;
 
@@ -64,19 +64,11 @@ dequant_4bit<nv_bfloat16>(int q) {
   return frag_b;
 }
 
-// Fast Int8ToFp16/Int8ToBf16: Efficiently dequantize 8bit int values to fp16 or
-// bf16 Reference:
-// - FP16:
+// Dequantize 8-bit values to fp16
 // https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L53-L85
-// - BF16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L125-L175
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_8bit(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
 template <>
-__device__ inline typename ScalarType<half>::FragB dequant_8bit<half>(int q) {
+__device__ inline typename ScalarType<half>::FragB dequant<half, 8, false>(
+    int q) {
   static constexpr uint32_t mask_for_elt_01 = 0x5250;
   static constexpr uint32_t mask_for_elt_23 = 0x5351;
   static constexpr uint32_t start_byte_for_fp16 = 0x64646464;
@@ -94,9 +86,11 @@ __device__ inline typename ScalarType<half>::FragB dequant_8bit<half>(int q) {
   return frag_b;
 }
 
+// Dequantize 8-bit values to bf16
+// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L125-L175
 template <>
 __device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_8bit<nv_bfloat16>(int q) {
+dequant<nv_bfloat16, 8, false>(int q) {
   typename ScalarType<nv_bfloat16>::FragB frag_b;
 
   float fp32_intermediates[4];
@@ -123,15 +117,9 @@ dequant_8bit<nv_bfloat16>(int q) {
   return frag_b;
 }
 
-// Zero-point dequantizers
-
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_4bit_zp(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
+// Dequantize 4-bit values with zero points to fp16
 template <>
-__device__ inline typename ScalarType<half>::FragB dequant_4bit_zp<half>(
+__device__ inline typename ScalarType<half>::FragB dequant<half, 4, true>(
     int q) {
   const int LO = 0x000f000f;
   const int HI = 0x00f000f0;
@@ -152,9 +140,10 @@ __device__ inline typename ScalarType<half>::FragB dequant_4bit_zp<half>(
   return frag_b;
 }
 
+// Dequantize 4-bit values with zero points to bf16
 template <>
 __device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_4bit_zp<nv_bfloat16>(int q) {
+dequant<nv_bfloat16, 4, true>(int q) {
   static constexpr uint32_t MASK = 0x000f000f;
   static constexpr uint32_t EX = 0x43004300;
 
@@ -177,13 +166,8 @@ dequant_4bit_zp<nv_bfloat16>(int q) {
   return frag_b;
 }
 
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_8bit_zp(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
 template <>
-__device__ inline typename ScalarType<half>::FragB dequant_8bit_zp<half>(
+__device__ inline typename ScalarType<half>::FragB dequant<half, 8, true>(
     int q) {
   static constexpr uint32_t mask_for_elt_01 = 0x5250;
   static constexpr uint32_t mask_for_elt_23 = 0x5351;
@@ -204,7 +188,7 @@ __device__ inline typename ScalarType<half>::FragB dequant_8bit_zp<half>(
 
 template <>
 __device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_8bit_zp<nv_bfloat16>(int q) {
+dequant<nv_bfloat16, 8, true>(int q) {
   typename ScalarType<nv_bfloat16>::FragB frag_b;
 
   float fp32_intermediates[4];
@@ -285,7 +269,7 @@ __device__ inline void scale_float(float* c,
   c[1] = __fmul_rn(c[1], ScalarType<scalar_t>::num2float(s_ptr[1]));
 }
 
-///////////////////////////////////////// Fp8 conversion /////////////////////////////////////////
+///////////////////////////// Fp8 conversion /////////////////////////////
 
 // Fast FP8ToFp16/FP8ToBf16: Efficiently dequantize 8bit fp8_e4m3 values to fp16
 // bf16 Reference:

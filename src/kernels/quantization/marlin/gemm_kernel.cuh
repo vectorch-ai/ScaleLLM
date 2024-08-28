@@ -20,11 +20,8 @@
  */
 #pragma once
 
-#include <c10/cuda/CUDAGuard.h>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <glog/logging.h>
-#include <torch/torch.h>
 
 #include "common.h"
 #include "memory.h"
@@ -280,12 +277,13 @@ __global__ void Marlin(
   // we scale a `half2` tile in column-major layout in the former and in
   // row-major in the latter case.
   int s_sh_rd;
-  if constexpr (group_blocks != -1)
+  if constexpr (group_blocks != -1) {
     s_sh_rd = 8 * ((threadIdx.x / 32) % (thread_n_blocks / 4)) +
               (threadIdx.x % 32) / 4;
-  else
+  } else {
     s_sh_rd = 8 * ((threadIdx.x / 32) % (thread_n_blocks / 4)) +
               (threadIdx.x % 32) % 4;
+  }
 
   // Zero-points have the same read layout as the scales
   // (without column-wise case)
@@ -304,8 +302,9 @@ __global__ void Marlin(
   // when the batchsize is not a multiple of 16.
   bool a_sh_wr_pred[a_sh_wr_iters];
 #pragma unroll
-  for (int i = 0; i < a_sh_wr_iters; i++)
+  for (int i = 0; i < a_sh_wr_iters; i++) {
     a_sh_wr_pred[i] = a_sh_wr_delta * i + a_sh_wr < a_sh_stride * prob_m;
+  }
 
   // To ensure that writing and reading A tiles to/from shared memory, the
   // latter in fragment format, is fully bank conflict free, we need to use a
@@ -328,9 +327,10 @@ __global__ void Marlin(
 #pragma unroll
   for (int i = 0; i < b_sh_wr_iters; i++) {
 #pragma unroll
-    for (int j = 0; j < thread_m_blocks; j++)
+    for (int j = 0; j < thread_m_blocks; j++) {
       a_sh_rd_trans[i][j] =
           transform_a(a_sh_rd_delta_o * i + a_sh_rd_delta_i * j + a_sh_rd);
+    }
   }
 
   // Since B-accesses have non-constant stride they have to be computed at
@@ -339,8 +339,9 @@ __global__ void Marlin(
   // optimization.
   const int4* B_ptr[b_sh_wr_iters];
 #pragma unroll
-  for (int i = 0; i < b_sh_wr_iters; i++)
+  for (int i = 0; i < b_sh_wr_iters; i++) {
     B_ptr[i] = B + b_gl_rd_delta_i * i + b_gl_rd;
+  }
 
   extern __shared__ int4 sh[];
   // Shared memory storage for global fetch pipelines.
@@ -701,20 +702,18 @@ __global__ void Marlin(
   // Execute the actual tensor core matmul of a sub-tile.
   auto matmul = [&](int k) {
     if constexpr (has_zp) {
-      FragB frag_zp_0;
-      FragB frag_zp_1;
+      int zp_quant_0;
+      int zp_quant_1;
       if constexpr (num_bits == 4) {
-        int zp_quant = frag_qzp[k % 2][0];
-        int zp_quant_shift = zp_quant >> 8;
-        frag_zp_0 = dequant_4bit_zp<scalar_t>(zp_quant);
-        frag_zp_1 = dequant_4bit_zp<scalar_t>(zp_quant_shift);
-
+        zp_quant_0 = frag_qzp[k % 2][0];
+        zp_quant_1 = zp_quant_0 >> 8;
       } else {
-        int zp_quant_0 = frag_qzp[k % 2][0];
-        int zp_quant_1 = frag_qzp[k % 2][1];
-        frag_zp_0 = dequant_8bit_zp<scalar_t>(zp_quant_0);
-        frag_zp_1 = dequant_8bit_zp<scalar_t>(zp_quant_1);
+        zp_quant_0 = frag_qzp[k % 2][0];
+        zp_quant_1 = frag_qzp[k % 2][1];
       }
+
+      FragB frag_zp_0 = dequant<scalar_t, num_bits, has_zp>(zp_quant_0);
+      FragB frag_zp_1 = dequant<scalar_t, num_bits, has_zp>(zp_quant_1);
 
       frag_zp[0] = frag_zp_0[0];
       frag_zp[1] = frag_zp_0[1];
@@ -726,41 +725,27 @@ __global__ void Marlin(
     // overlapping dequantization and matmul operations.
 #pragma unroll
     for (int j = 0; j < 4; j++) {
-      FragB frag_b0;
-      FragB frag_b1;
+      int b_quant_0;
+      int b_quant_1;
       if constexpr (num_bits == 4) {
-        int b_quant = frag_b_quant[k % 2][0][j];
-        int b_quant_shift = b_quant >> 8;
-
-        if constexpr (has_zp) {
-          frag_b0 = dequant_4bit_zp<scalar_t>(b_quant);
-          frag_b1 = dequant_4bit_zp<scalar_t>(b_quant_shift);
-
-        } else {
-          frag_b0 = dequant_4bit<scalar_t>(b_quant);
-          frag_b1 = dequant_4bit<scalar_t>(b_quant_shift);
-        }
-
+        b_quant_0 = frag_b_quant[k % 2][0][j];
+        b_quant_1 = b_quant_0 >> 8;
       } else {
         int* frag_b_quant_ptr = reinterpret_cast<int*>(frag_b_quant[k % 2]);
-        int b_quant_0 = frag_b_quant_ptr[j * 2 + 0];
-        int b_quant_1 = frag_b_quant_ptr[j * 2 + 1];
-
-        if constexpr (has_zp) {
-          frag_b0 = dequant_8bit_zp<scalar_t>(b_quant_0);
-          frag_b1 = dequant_8bit_zp<scalar_t>(b_quant_1);
-        } else {
-          frag_b0 = dequant_8bit<scalar_t>(b_quant_0);
-          frag_b1 = dequant_8bit<scalar_t>(b_quant_1);
-        }
+        b_quant_0 = frag_b_quant_ptr[j * 2 + 0];
+        b_quant_1 = frag_b_quant_ptr[j * 2 + 1];
       }
 
-      // Apply zero-point to frag_b0
+      FragB frag_b0 = dequant<scalar_t, num_bits, has_zp>(b_quant_0);
+      FragB frag_b1 = dequant<scalar_t, num_bits, has_zp>(b_quant_1);
+
+      // Apply zero-point to frag
       if constexpr (has_zp) {
         sub_zp<scalar_t>(frag_b0, frag_zp[j], 0);
+        sub_zp<scalar_t>(frag_b1, frag_zp[j], 1);
       }
 
-      // Apply scale to frag_b0
+      // Apply scale to frag
       if constexpr (has_act_order) {
         scale4<scalar_t>(frag_b0,
                          act_frag_s[k % 2][0][j],
@@ -768,28 +753,15 @@ __global__ void Marlin(
                          act_frag_s[k % 2][2][j],
                          act_frag_s[k % 2][3][j],
                          0);
-      } else {
-        if constexpr (group_blocks != -1) {
-          scale<scalar_t>(frag_b0, frag_s[k % 2][j], 0);
-        }
-      }
-
-      // Apply zero-point to frag_b1
-      if constexpr (has_zp) {
-        sub_zp<scalar_t>(frag_b1, frag_zp[j], 1);
-      }
-
-      // Apply scale to frag_b1
-      if constexpr (has_act_order) {
         scale4<scalar_t>(frag_b1,
                          act_frag_s[k % 2][0][j],
                          act_frag_s[k % 2][1][j],
                          act_frag_s[k % 2][2][j],
                          act_frag_s[k % 2][3][j],
                          1);
-
       } else {
         if constexpr (group_blocks != -1) {
+          scale<scalar_t>(frag_b0, frag_s[k % 2][j], 0);
           scale<scalar_t>(frag_b1, frag_s[k % 2][j], 1);
         }
       }
