@@ -20,529 +20,16 @@
  */
 #pragma once
 
-#include <c10/cuda/CUDAGuard.h>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <glog/logging.h>
-#include <torch/torch.h>
 
-#include <string>
-
-#define STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t)                              \
-  static_assert(                                                               \
-      std::is_same_v<scalar_t, half> || std::is_same_v<scalar_t, nv_bfloat16>, \
-      "only float16 and bfloat16 is supported");
-
-template <typename T>
-inline std::string str(T x) {
-  return std::to_string(x);
-}
+#include "common.h"
+#include "memory.h"
+#include "mma.h"
+#include "numeric_conversion.h"
+#include "scale_type.h"
 
 namespace marlin {
-
-// Helpers
-template <typename T, int n>
-struct Vec {
-  T elems[n];
-  __device__ T& operator[](int i) { return elems[i]; }
-};
-
-using I4 = Vec<int, 4>;
-
-constexpr int div_ceil(int a, int b) { return (a + b - 1) / b; }
-
-__device__ inline void cp_async4_pred(void* smem_ptr,
-                                      const void* glob_ptr,
-                                      bool pred = true) {
-  const int BYTES = 16;
-  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
-  asm volatile(
-      "{\n"
-      "   .reg .pred p;\n"
-      "   setp.ne.b32 p, %0, 0;\n"
-      "   @p cp.async.cg.shared.global [%1], [%2], %3;\n"
-      "}\n" ::"r"((int)pred),
-      "r"(smem),
-      "l"(glob_ptr),
-      "n"(BYTES));
-}
-
-__device__ inline void cp_async4(void* smem_ptr, const void* glob_ptr) {
-  const int BYTES = 16;
-  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
-  asm volatile(
-      "{\n"
-      "   cp.async.cg.shared.global [%0], [%1], %2;\n"
-      "}\n" ::"r"(smem),
-      "l"(glob_ptr),
-      "n"(BYTES));
-}
-
-__device__ inline void cp_async_fence() {
-  asm volatile("cp.async.commit_group;\n" ::);
-}
-
-template <int n>
-__device__ inline void cp_async_wait() {
-  asm volatile("cp.async.wait_group %0;\n" ::"n"(n));
-}
-
-template <typename scalar_t>
-class ScalarType {};
-
-template <>
-class ScalarType<half> {
- public:
-  using scalar_t = half;
-  using scalar_t2 = half2;
-
-  // Matrix fragments for tensor core instructions; their precise layout is
-  // documented here:
-  // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k16-with-floating-point-type
-  using FragA = Vec<half2, 4>;
-  using FragB = Vec<half2, 2>;
-  using FragC = Vec<float, 4>;
-  using FragS = Vec<half2, 1>;
-  using FragZP = Vec<half2, 4>;
-
-  static __device__ float inline num2float(const half x) {
-    return __half2float(x);
-  }
-
-  static __device__ half2 inline num2num2(const half x) {
-    return __half2half2(x);
-  }
-
-  static __device__ half2 inline nums2num2(const half x1, const half x2) {
-    return __halves2half2(x1, x2);
-  }
-
-  static __host__ __device__ half inline float2num(const float x) {
-    return __float2half(x);
-  }
-};
-
-template <>
-class ScalarType<nv_bfloat16> {
- public:
-  using scalar_t = nv_bfloat16;
-  using scalar_t2 = nv_bfloat162;
-
-  using FragA = Vec<nv_bfloat162, 4>;
-  using FragB = Vec<nv_bfloat162, 2>;
-  using FragC = Vec<float, 4>;
-  using FragS = Vec<nv_bfloat162, 1>;
-  using FragZP = Vec<nv_bfloat162, 4>;
-
-  static __device__ float inline num2float(const nv_bfloat16 x) {
-    return __bfloat162float(x);
-  }
-
-  static __device__ nv_bfloat162 inline num2num2(const nv_bfloat16 x) {
-    return __bfloat162bfloat162(x);
-  }
-
-  static __device__ nv_bfloat162 inline nums2num2(const nv_bfloat16 x1,
-                                                  const nv_bfloat16 x2) {
-    return __halves2bfloat162(x1, x2);
-  }
-
-  static __host__ __device__ nv_bfloat16 inline float2num(const float x) {
-    return __float2bfloat16(x);
-  }
-};
-
-// m16n8k16 tensor core mma instruction with fp16 inputs and fp32
-// output/accumulation.
-template <typename scalar_t>
-__device__ inline void mma(const typename ScalarType<scalar_t>::FragA& a_frag,
-                           const typename ScalarType<scalar_t>::FragB& frag_b,
-                           typename ScalarType<scalar_t>::FragC& frag_c) {
-  const uint32_t* a = reinterpret_cast<const uint32_t*>(&a_frag);
-  const uint32_t* b = reinterpret_cast<const uint32_t*>(&frag_b);
-  float* c = reinterpret_cast<float*>(&frag_c);
-  if constexpr (std::is_same<scalar_t, half>::value) {
-    asm volatile(
-        "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
-        "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%11,%12,%13};\n"
-        : "=f"(c[0]), "=f"(c[1]), "=f"(c[2]), "=f"(c[3])
-        : "r"(a[0]),
-          "r"(a[1]),
-          "r"(a[2]),
-          "r"(a[3]),
-          "r"(b[0]),
-          "r"(b[1]),
-          "f"(c[0]),
-          "f"(c[1]),
-          "f"(c[2]),
-          "f"(c[3]));
-  } else if constexpr (std::is_same<scalar_t, nv_bfloat16>::value) {
-    asm volatile(
-        "mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 "
-        "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%11,%12,%13};\n"
-        : "=f"(c[0]), "=f"(c[1]), "=f"(c[2]), "=f"(c[3])
-        : "r"(a[0]),
-          "r"(a[1]),
-          "r"(a[2]),
-          "r"(a[3]),
-          "r"(b[0]),
-          "r"(b[1]),
-          "f"(c[0]),
-          "f"(c[1]),
-          "f"(c[2]),
-          "f"(c[3]));
-  } else {
-    STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-  }
-}
-
-// Instruction for loading a full 16x16 matrix fragment of operand A from shared
-// memory, directly in tensor core layout.
-template <typename scalar_t>
-__device__ inline void ldsm4(typename ScalarType<scalar_t>::FragA& frag_a,
-                             const void* smem_ptr) {
-  uint32_t* a = reinterpret_cast<uint32_t*>(&frag_a);
-  uint32_t smem = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
-  asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n"
-               : "=r"(a[0]), "=r"(a[1]), "=r"(a[2]), "=r"(a[3])
-               : "r"(smem));
-}
-
-// Lookup-table based 3-input logical operation; explicitly used for
-// dequantization as the compiler does not seem to automatically recognize it in
-// all cases.
-template <int lut>
-__device__ inline int lop3(int a, int b, int c) {
-  int res;
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(res)
-               : "r"(a), "r"(b), "r"(c), "n"(lut));
-  return res;
-}
-
-// Constructs destination register by taking bytes from 2 sources (based on
-// mask)
-template <int start_byte, int mask>
-__device__ inline uint32_t prmt(uint32_t a) {
-  uint32_t res;
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n"
-               : "=r"(res)
-               : "r"(a), "n"(start_byte), "n"(mask));
-  return res;
-}
-
-// Efficiently dequantize an int32 value into a full B-fragment of 4 fp16
-// values. We mostly follow the strategy in the link below, with some small
-// changes:
-// - FP16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L215-L287
-// - BF16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L327-L385
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_4bit(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
-template <>
-__device__ inline typename ScalarType<half>::FragB dequant_4bit<half>(int q) {
-  const int LO = 0x000f000f;
-  const int HI = 0x00f000f0;
-  const int EX = 0x64006400;
-  // Guarantee that the `(a & b) | c` operations are LOP3s.
-  int lo = lop3<(0xf0 & 0xcc) | 0xaa>(q, LO, EX);
-  int hi = lop3<(0xf0 & 0xcc) | 0xaa>(q, HI, EX);
-  // We want signed int4 outputs, hence we fuse the `-8` symmetric zero point
-  // directly into `SUB` and `ADD`.
-  const int SUB = 0x64086408;
-  const int MUL = 0x2c002c00;
-  const int ADD = 0xd480d480;
-  typename ScalarType<half>::FragB frag_b;
-  frag_b[0] = __hsub2(*reinterpret_cast<half2*>(&lo),
-                      *reinterpret_cast<const half2*>(&SUB));
-  frag_b[1] = __hfma2(*reinterpret_cast<half2*>(&hi),
-                      *reinterpret_cast<const half2*>(&MUL),
-                      *reinterpret_cast<const half2*>(&ADD));
-  return frag_b;
-}
-
-template <>
-__device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_4bit<nv_bfloat16>(int q) {
-  static constexpr uint32_t MASK = 0x000f000f;
-  static constexpr uint32_t EX = 0x43004300;
-
-  // Guarantee that the `(a & b) | c` operations are LOP3s.
-
-  int lo = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
-  q >>= 4;
-  int hi = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
-
-  typename ScalarType<nv_bfloat16>::FragB frag_b;
-  static constexpr uint32_t MUL = 0x3F803F80;
-  static constexpr uint32_t ADD = 0xC308C308;
-
-  frag_b[0] = __hfma2(*reinterpret_cast<nv_bfloat162*>(&lo),
-                      *reinterpret_cast<const nv_bfloat162*>(&MUL),
-                      *reinterpret_cast<const nv_bfloat162*>(&ADD));
-  frag_b[1] = __hfma2(*reinterpret_cast<nv_bfloat162*>(&hi),
-                      *reinterpret_cast<const nv_bfloat162*>(&MUL),
-                      *reinterpret_cast<const nv_bfloat162*>(&ADD));
-  return frag_b;
-}
-
-// Fast Int8ToFp16/Int8ToBf16: Efficiently dequantize 8bit int values to fp16 or
-// bf16 Reference:
-// - FP16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L53-L85
-// - BF16:
-// https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h#L125-L175
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_8bit(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
-template <>
-__device__ inline typename ScalarType<half>::FragB dequant_8bit<half>(int q) {
-  static constexpr uint32_t mask_for_elt_01 = 0x5250;
-  static constexpr uint32_t mask_for_elt_23 = 0x5351;
-  static constexpr uint32_t start_byte_for_fp16 = 0x64646464;
-
-  uint32_t lo = prmt<start_byte_for_fp16, mask_for_elt_01>(q);
-  uint32_t hi = prmt<start_byte_for_fp16, mask_for_elt_23>(q);
-
-  static constexpr uint32_t I8s_TO_F16s_MAGIC_NUM = 0x64806480;
-
-  typename ScalarType<half>::FragB frag_b;
-  frag_b[0] = __hsub2(*reinterpret_cast<half2*>(&lo),
-                      *reinterpret_cast<const half2*>(&I8s_TO_F16s_MAGIC_NUM));
-  frag_b[1] = __hsub2(*reinterpret_cast<half2*>(&hi),
-                      *reinterpret_cast<const half2*>(&I8s_TO_F16s_MAGIC_NUM));
-  return frag_b;
-}
-
-template <>
-__device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_8bit<nv_bfloat16>(int q) {
-  typename ScalarType<nv_bfloat16>::FragB frag_b;
-
-  float fp32_intermediates[4];
-  uint32_t* fp32_intermediates_casted =
-      reinterpret_cast<uint32_t*>(fp32_intermediates);
-
-  static constexpr uint32_t fp32_base = 0x4B000000;
-  fp32_intermediates_casted[0] = __byte_perm(q, fp32_base, 0x7650);
-  fp32_intermediates_casted[1] = __byte_perm(q, fp32_base, 0x7652);
-  fp32_intermediates_casted[2] = __byte_perm(q, fp32_base, 0x7651);
-  fp32_intermediates_casted[3] = __byte_perm(q, fp32_base, 0x7653);
-
-  fp32_intermediates[0] -= 8388736.f;
-  fp32_intermediates[1] -= 8388736.f;
-  fp32_intermediates[2] -= 8388736.f;
-  fp32_intermediates[3] -= 8388736.f;
-
-  uint32_t* bf16_result_ptr = reinterpret_cast<uint32_t*>(&frag_b);
-  bf16_result_ptr[0] = __byte_perm(
-      fp32_intermediates_casted[0], fp32_intermediates_casted[1], 0x7632);
-  bf16_result_ptr[1] = __byte_perm(
-      fp32_intermediates_casted[2], fp32_intermediates_casted[3], 0x7632);
-
-  return frag_b;
-}
-
-// Zero-point dequantizers
-
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_4bit_zp(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
-template <>
-__device__ inline typename ScalarType<half>::FragB dequant_4bit_zp<half>(
-    int q) {
-  const int LO = 0x000f000f;
-  const int HI = 0x00f000f0;
-  const int EX = 0x64006400;
-  // Guarantee that the `(a & b) | c` operations are LOP3s.
-  int lo = lop3<(0xf0 & 0xcc) | 0xaa>(q, LO, EX);
-  int hi = lop3<(0xf0 & 0xcc) | 0xaa>(q, HI, EX);
-
-  const int SUB = 0x64006400;
-  const int MUL = 0x2c002c00;
-  const int ADD = 0xd400d400;
-  typename ScalarType<half>::FragB frag_b;
-  frag_b[0] = __hsub2(*reinterpret_cast<half2*>(&lo),
-                      *reinterpret_cast<const half2*>(&SUB));
-  frag_b[1] = __hfma2(*reinterpret_cast<half2*>(&hi),
-                      *reinterpret_cast<const half2*>(&MUL),
-                      *reinterpret_cast<const half2*>(&ADD));
-  return frag_b;
-}
-
-template <>
-__device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_4bit_zp<nv_bfloat16>(int q) {
-  static constexpr uint32_t MASK = 0x000f000f;
-  static constexpr uint32_t EX = 0x43004300;
-
-  // Guarantee that the `(a & b) | c` operations are LOP3s.
-
-  int lo = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
-  q >>= 4;
-  int hi = lop3<(0xf0 & 0xcc) | 0xaa>(q, MASK, EX);
-
-  typename ScalarType<nv_bfloat16>::FragB frag_b;
-  static constexpr uint32_t MUL = 0x3F803F80;
-  static constexpr uint32_t ADD = 0xC300C300;
-
-  frag_b[0] = __hfma2(*reinterpret_cast<nv_bfloat162*>(&lo),
-                      *reinterpret_cast<const nv_bfloat162*>(&MUL),
-                      *reinterpret_cast<const nv_bfloat162*>(&ADD));
-  frag_b[1] = __hfma2(*reinterpret_cast<nv_bfloat162*>(&hi),
-                      *reinterpret_cast<const nv_bfloat162*>(&MUL),
-                      *reinterpret_cast<const nv_bfloat162*>(&ADD));
-  return frag_b;
-}
-
-template <typename scalar_t>
-__device__ inline typename ScalarType<scalar_t>::FragB dequant_8bit_zp(int q) {
-  STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t);
-}
-
-template <>
-__device__ inline typename ScalarType<half>::FragB dequant_8bit_zp<half>(
-    int q) {
-  static constexpr uint32_t mask_for_elt_01 = 0x5250;
-  static constexpr uint32_t mask_for_elt_23 = 0x5351;
-  static constexpr uint32_t start_byte_for_fp16 = 0x64646464;
-
-  uint32_t lo = prmt<start_byte_for_fp16, mask_for_elt_01>(q);
-  uint32_t hi = prmt<start_byte_for_fp16, mask_for_elt_23>(q);
-
-  static constexpr uint32_t I8s_TO_F16s_MAGIC_NUM = 0x64006400;
-
-  typename ScalarType<half>::FragB frag_b;
-  frag_b[0] = __hsub2(*reinterpret_cast<half2*>(&lo),
-                      *reinterpret_cast<const half2*>(&I8s_TO_F16s_MAGIC_NUM));
-  frag_b[1] = __hsub2(*reinterpret_cast<half2*>(&hi),
-                      *reinterpret_cast<const half2*>(&I8s_TO_F16s_MAGIC_NUM));
-  return frag_b;
-}
-
-template <>
-__device__ inline typename ScalarType<nv_bfloat16>::FragB
-dequant_8bit_zp<nv_bfloat16>(int q) {
-  typename ScalarType<nv_bfloat16>::FragB frag_b;
-
-  float fp32_intermediates[4];
-  uint32_t* fp32_intermediates_casted =
-      reinterpret_cast<uint32_t*>(fp32_intermediates);
-
-  static constexpr uint32_t fp32_base = 0x4B000000;
-  fp32_intermediates_casted[0] = __byte_perm(q, fp32_base, 0x7650);
-  fp32_intermediates_casted[1] = __byte_perm(q, fp32_base, 0x7652);
-  fp32_intermediates_casted[2] = __byte_perm(q, fp32_base, 0x7651);
-  fp32_intermediates_casted[3] = __byte_perm(q, fp32_base, 0x7653);
-
-  fp32_intermediates[0] -= 8388608.f;
-  fp32_intermediates[1] -= 8388608.f;
-  fp32_intermediates[2] -= 8388608.f;
-  fp32_intermediates[3] -= 8388608.f;
-
-  uint32_t* bf16_result_ptr = reinterpret_cast<uint32_t*>(&frag_b);
-  bf16_result_ptr[0] = __byte_perm(
-      fp32_intermediates_casted[0], fp32_intermediates_casted[1], 0x7632);
-  bf16_result_ptr[1] = __byte_perm(
-      fp32_intermediates_casted[2], fp32_intermediates_casted[3], 0x7632);
-
-  return frag_b;
-}
-
-// Multiply dequantized values by the corresponding quantization scale; used
-// only for grouped quantization.
-template <typename scalar_t>
-__device__ inline void scale(typename ScalarType<scalar_t>::FragB& frag_b,
-                             typename ScalarType<scalar_t>::FragS& frag_s,
-                             int i) {
-  using scalar_t2 = typename ScalarType<scalar_t>::scalar_t2;
-  scalar_t2 s =
-      ScalarType<scalar_t>::num2num2(reinterpret_cast<scalar_t*>(&frag_s)[i]);
-  frag_b[0] = __hmul2(frag_b[0], s);
-  frag_b[1] = __hmul2(frag_b[1], s);
-}
-
-template <typename scalar_t>
-__device__ inline void sub_zp(typename ScalarType<scalar_t>::FragB& frag_b,
-                              typename ScalarType<scalar_t>::scalar_t2& frag_zp,
-                              int i) {
-  using scalar_t2 = typename ScalarType<scalar_t>::scalar_t2;
-  scalar_t2 zp =
-      ScalarType<scalar_t>::num2num2(reinterpret_cast<scalar_t*>(&frag_zp)[i]);
-  frag_b[0] = __hsub2(frag_b[0], zp);
-  frag_b[1] = __hsub2(frag_b[1], zp);
-}
-
-// Same as above, but for act_order (each K is multiplied individually)
-template <typename scalar_t>
-__device__ inline void scale4(typename ScalarType<scalar_t>::FragB& frag_b,
-                              typename ScalarType<scalar_t>::FragS& frag_s_1,
-                              typename ScalarType<scalar_t>::FragS& frag_s_2,
-                              typename ScalarType<scalar_t>::FragS& frag_s_3,
-                              typename ScalarType<scalar_t>::FragS& frag_s_4,
-                              int i) {
-  using scalar_t2 = typename ScalarType<scalar_t>::scalar_t2;
-  scalar_t2 s_val_1_2;
-  s_val_1_2.x = reinterpret_cast<scalar_t*>(&frag_s_1)[i];
-  s_val_1_2.y = reinterpret_cast<scalar_t*>(&frag_s_2)[i];
-
-  scalar_t2 s_val_3_4;
-  s_val_3_4.x = reinterpret_cast<scalar_t*>(&frag_s_3)[i];
-  s_val_3_4.y = reinterpret_cast<scalar_t*>(&frag_s_4)[i];
-
-  frag_b[0] = __hmul2(frag_b[0], s_val_1_2);
-  frag_b[1] = __hmul2(frag_b[1], s_val_3_4);
-}
-
-// Given 2 floats multiply by 2 scales (halves)
-template <typename scalar_t>
-__device__ inline void scale_float(float* c,
-                                   typename ScalarType<scalar_t>::FragS& s) {
-  scalar_t* s_ptr = reinterpret_cast<scalar_t*>(&s);
-  c[0] = __fmul_rn(c[0], ScalarType<scalar_t>::num2float(s_ptr[0]));
-  c[1] = __fmul_rn(c[1], ScalarType<scalar_t>::num2float(s_ptr[1]));
-}
-
-// Wait until barrier reaches `count`, then lock for current threadblock.
-__device__ inline void barrier_acquire(int* lock, int count) {
-  if (threadIdx.x == 0) {
-    int state = -1;
-    do
-      // Guarantee that subsequent writes by this threadblock will be visible
-      // globally.
-      asm volatile("ld.global.acquire.gpu.b32 %0, [%1];\n"
-                   : "=r"(state)
-                   : "l"(lock));
-    while (state != count);
-  }
-  __syncthreads();
-}
-
-// Release barrier and increment visitation count.
-__device__ inline void barrier_release(int* lock, bool reset = false) {
-  __syncthreads();
-  if (threadIdx.x == 0) {
-    if (reset) {
-      lock[0] = 0;
-      return;
-    }
-    int val = 1;
-    // Make sure that all writes since acquiring this barrier are visible
-    // globally, while releasing the barrier.
-    asm volatile("fence.acq_rel.gpu;\n");
-    asm volatile("red.relaxed.gpu.global.add.s32 [%0], %1;\n"
-                 :
-                 : "l"(lock), "r"(val));
-  }
-}
 
 template <typename scalar_t,          // compute dtype, half or nv_float16
           const int num_bits,         // number of bits used for weights
@@ -607,7 +94,7 @@ __global__ void Marlin(
 
   int k_tiles = prob_k / 16 / thread_k_blocks;
   int n_tiles = prob_n / 16 / thread_n_blocks;
-  int iters = div_ceil(k_tiles * n_tiles * parallel, gridDim.x);
+  int iters = ceil_div(k_tiles * n_tiles * parallel, gridDim.x);
 
   if constexpr (!has_act_order && group_blocks != -1) {
     if (group_blocks >= thread_k_blocks) {
@@ -615,7 +102,7 @@ __global__ void Marlin(
       // groupsize; this avoids an annoying special case where a stripe starts
       // in the middle of group.
       iters = (group_blocks / thread_k_blocks) *
-              div_ceil(iters, (group_blocks / thread_k_blocks));
+              ceil_div(iters, (group_blocks / thread_k_blocks));
     }
   }
 
@@ -650,10 +137,10 @@ __global__ void Marlin(
     if (slice_row + slice_iters > k_tiles) slice_iters = k_tiles - slice_row;
     slice_count = 1;
     slice_idx = 0;
-    int col_first = iters * div_ceil(k_tiles * slice_col_par, iters);
+    int col_first = iters * ceil_div(k_tiles * slice_col_par, iters);
     if (col_first <= k_tiles * (slice_col_par + 1)) {
       int col_off = col_first - k_tiles * slice_col_par;
-      slice_count = div_ceil(k_tiles - col_off, iters);
+      slice_count = ceil_div(k_tiles - col_off, iters);
       if (col_off > 0) slice_count++;
       int delta_first = iters * blockIdx.x - col_first;
       if (delta_first < 0 || (col_off == 0 && delta_first == 0))
@@ -692,7 +179,7 @@ __global__ void Marlin(
   // overall size of a tile
   constexpr int a_sh_stage = a_sh_stride * (16 * thread_m_blocks);
   // number of shared write iterations for a tile
-  constexpr int a_sh_wr_iters = div_ceil(a_sh_stage, a_sh_wr_delta);
+  constexpr int a_sh_wr_iters = ceil_div(a_sh_stage, a_sh_wr_delta);
 
   // B sizes/strides
   int b_gl_stride = 16 * prob_n / (pack_factor * 4);
@@ -790,12 +277,13 @@ __global__ void Marlin(
   // we scale a `half2` tile in column-major layout in the former and in
   // row-major in the latter case.
   int s_sh_rd;
-  if constexpr (group_blocks != -1)
+  if constexpr (group_blocks != -1) {
     s_sh_rd = 8 * ((threadIdx.x / 32) % (thread_n_blocks / 4)) +
               (threadIdx.x % 32) / 4;
-  else
+  } else {
     s_sh_rd = 8 * ((threadIdx.x / 32) % (thread_n_blocks / 4)) +
               (threadIdx.x % 32) % 4;
+  }
 
   // Zero-points have the same read layout as the scales
   // (without column-wise case)
@@ -814,8 +302,9 @@ __global__ void Marlin(
   // when the batchsize is not a multiple of 16.
   bool a_sh_wr_pred[a_sh_wr_iters];
 #pragma unroll
-  for (int i = 0; i < a_sh_wr_iters; i++)
+  for (int i = 0; i < a_sh_wr_iters; i++) {
     a_sh_wr_pred[i] = a_sh_wr_delta * i + a_sh_wr < a_sh_stride * prob_m;
+  }
 
   // To ensure that writing and reading A tiles to/from shared memory, the
   // latter in fragment format, is fully bank conflict free, we need to use a
@@ -838,9 +327,10 @@ __global__ void Marlin(
 #pragma unroll
   for (int i = 0; i < b_sh_wr_iters; i++) {
 #pragma unroll
-    for (int j = 0; j < thread_m_blocks; j++)
+    for (int j = 0; j < thread_m_blocks; j++) {
       a_sh_rd_trans[i][j] =
           transform_a(a_sh_rd_delta_o * i + a_sh_rd_delta_i * j + a_sh_rd);
+    }
   }
 
   // Since B-accesses have non-constant stride they have to be computed at
@@ -849,8 +339,9 @@ __global__ void Marlin(
   // optimization.
   const int4* B_ptr[b_sh_wr_iters];
 #pragma unroll
-  for (int i = 0; i < b_sh_wr_iters; i++)
+  for (int i = 0; i < b_sh_wr_iters; i++) {
     B_ptr[i] = B + b_gl_rd_delta_i * i + b_gl_rd;
+  }
 
   extern __shared__ int4 sh[];
   // Shared memory storage for global fetch pipelines.
@@ -1211,20 +702,18 @@ __global__ void Marlin(
   // Execute the actual tensor core matmul of a sub-tile.
   auto matmul = [&](int k) {
     if constexpr (has_zp) {
-      FragB frag_zp_0;
-      FragB frag_zp_1;
+      int zp_quant_0;
+      int zp_quant_1;
       if constexpr (num_bits == 4) {
-        int zp_quant = frag_qzp[k % 2][0];
-        int zp_quant_shift = zp_quant >> 8;
-        frag_zp_0 = dequant_4bit_zp<scalar_t>(zp_quant);
-        frag_zp_1 = dequant_4bit_zp<scalar_t>(zp_quant_shift);
-
+        zp_quant_0 = frag_qzp[k % 2][0];
+        zp_quant_1 = zp_quant_0 >> 8;
       } else {
-        int zp_quant_0 = frag_qzp[k % 2][0];
-        int zp_quant_1 = frag_qzp[k % 2][1];
-        frag_zp_0 = dequant_8bit_zp<scalar_t>(zp_quant_0);
-        frag_zp_1 = dequant_8bit_zp<scalar_t>(zp_quant_1);
+        zp_quant_0 = frag_qzp[k % 2][0];
+        zp_quant_1 = frag_qzp[k % 2][1];
       }
+
+      FragB frag_zp_0 = dequant<scalar_t, num_bits, has_zp>(zp_quant_0);
+      FragB frag_zp_1 = dequant<scalar_t, num_bits, has_zp>(zp_quant_1);
 
       frag_zp[0] = frag_zp_0[0];
       frag_zp[1] = frag_zp_0[1];
@@ -1236,41 +725,27 @@ __global__ void Marlin(
     // overlapping dequantization and matmul operations.
 #pragma unroll
     for (int j = 0; j < 4; j++) {
-      FragB frag_b0;
-      FragB frag_b1;
+      int b_quant_0;
+      int b_quant_1;
       if constexpr (num_bits == 4) {
-        int b_quant = frag_b_quant[k % 2][0][j];
-        int b_quant_shift = b_quant >> 8;
-
-        if constexpr (has_zp) {
-          frag_b0 = dequant_4bit_zp<scalar_t>(b_quant);
-          frag_b1 = dequant_4bit_zp<scalar_t>(b_quant_shift);
-
-        } else {
-          frag_b0 = dequant_4bit<scalar_t>(b_quant);
-          frag_b1 = dequant_4bit<scalar_t>(b_quant_shift);
-        }
-
+        b_quant_0 = frag_b_quant[k % 2][0][j];
+        b_quant_1 = b_quant_0 >> 8;
       } else {
         int* frag_b_quant_ptr = reinterpret_cast<int*>(frag_b_quant[k % 2]);
-        int b_quant_0 = frag_b_quant_ptr[j * 2 + 0];
-        int b_quant_1 = frag_b_quant_ptr[j * 2 + 1];
-
-        if constexpr (has_zp) {
-          frag_b0 = dequant_8bit_zp<scalar_t>(b_quant_0);
-          frag_b1 = dequant_8bit_zp<scalar_t>(b_quant_1);
-        } else {
-          frag_b0 = dequant_8bit<scalar_t>(b_quant_0);
-          frag_b1 = dequant_8bit<scalar_t>(b_quant_1);
-        }
+        b_quant_0 = frag_b_quant_ptr[j * 2 + 0];
+        b_quant_1 = frag_b_quant_ptr[j * 2 + 1];
       }
 
-      // Apply zero-point to frag_b0
+      FragB frag_b0 = dequant<scalar_t, num_bits, has_zp>(b_quant_0);
+      FragB frag_b1 = dequant<scalar_t, num_bits, has_zp>(b_quant_1);
+
+      // Apply zero-point to frag
       if constexpr (has_zp) {
         sub_zp<scalar_t>(frag_b0, frag_zp[j], 0);
+        sub_zp<scalar_t>(frag_b1, frag_zp[j], 1);
       }
 
-      // Apply scale to frag_b0
+      // Apply scale to frag
       if constexpr (has_act_order) {
         scale4<scalar_t>(frag_b0,
                          act_frag_s[k % 2][0][j],
@@ -1278,28 +753,15 @@ __global__ void Marlin(
                          act_frag_s[k % 2][2][j],
                          act_frag_s[k % 2][3][j],
                          0);
-      } else {
-        if constexpr (group_blocks != -1) {
-          scale<scalar_t>(frag_b0, frag_s[k % 2][j], 0);
-        }
-      }
-
-      // Apply zero-point to frag_b1
-      if constexpr (has_zp) {
-        sub_zp<scalar_t>(frag_b1, frag_zp[j], 1);
-      }
-
-      // Apply scale to frag_b1
-      if constexpr (has_act_order) {
         scale4<scalar_t>(frag_b1,
                          act_frag_s[k % 2][0][j],
                          act_frag_s[k % 2][1][j],
                          act_frag_s[k % 2][2][j],
                          act_frag_s[k % 2][3][j],
                          1);
-
       } else {
         if constexpr (group_blocks != -1) {
+          scale<scalar_t>(frag_b0, frag_s[k % 2][j], 0);
           scale<scalar_t>(frag_b1, frag_s[k % 2][j], 1);
         }
       }
@@ -1547,7 +1009,7 @@ __global__ void Marlin(
 
 #pragma unroll
     for (int i = 0;
-         i < div_ceil(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
+         i < ceil_div(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
          i++) {
       if (c_gl_wr < c_gl_wr_end) {
         C[c_gl_wr] = sh[c_sh_rd];

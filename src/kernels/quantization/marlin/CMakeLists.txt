@@ -19,7 +19,6 @@ cc_library(
   NAME
     marlin.kernels
   HDRS
-    marlin.h
     gemm_kernel_launch.cuh
   SRCS
     ${GENERATED_SRC_FILES}

@@ -23,12 +23,10 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "marlin.h"
-
 namespace marlin {
 
 namespace {
-constexpr int ceildiv(int a, int b) { return (a + b - 1) / b; }
+constexpr int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 // Instances of `Vec` are used to organize groups of >>registers<<, as needed
 // for instance as inputs to tensor core operations. Consequently, all
@@ -253,13 +251,14 @@ __global__ void Marlin(
 
   int k_tiles = prob_k / 16 / thread_k_blocks;
   int n_tiles = prob_n / 16 / thread_n_blocks;
-  int iters = ceildiv(k_tiles * n_tiles * parallel, gridDim.x);
+  int iters = ceil_div(k_tiles * n_tiles * parallel, gridDim.x);
   // Ensure that the number of tiles in each stripe is a multiple of the
   // groupsize; this avoids an annoying special case where a stripe starts in
   // the middle of group.
-  if (group_blocks != -1)
+  if constexpr (group_blocks != -1) {
     iters = (group_blocks / thread_k_blocks) *
-            ceildiv(iters, (group_blocks / thread_k_blocks));
+            ceil_div(iters, (group_blocks / thread_k_blocks));
+  }
 
   int slice_row = (iters * blockIdx.x) % k_tiles;
   int slice_col_par = (iters * blockIdx.x) / k_tiles;
@@ -289,10 +288,10 @@ __global__ void Marlin(
     if (slice_row + slice_iters > k_tiles) slice_iters = k_tiles - slice_row;
     slice_count = 1;
     slice_idx = 0;
-    int col_first = iters * ceildiv(k_tiles * slice_col_par, iters);
+    int col_first = iters * ceil_div(k_tiles * slice_col_par, iters);
     if (col_first <= k_tiles * (slice_col_par + 1)) {
       int col_off = col_first - k_tiles * slice_col_par;
-      slice_count = ceildiv(k_tiles - col_off, iters);
+      slice_count = ceil_div(k_tiles - col_off, iters);
       if (col_off > 0) slice_count++;
       int delta_first = iters * blockIdx.x - col_first;
       if (delta_first < 0 || (col_off == 0 && delta_first == 0))
@@ -311,30 +310,24 @@ __global__ void Marlin(
   };
   init_slice();
 
-  int a_gl_stride = prob_k / 8;  // stride of the A matrix in global memory
-  // We typically use `constexpr` to indicate that this value is a compile-time
-  // constant
-  constexpr int a_sh_stride =
-      16 * thread_k_blocks / 8;  // stride of an A matrix tile in shared memory
-  constexpr int a_gl_rd_delta_o =
-      16 * thread_k_blocks /
-      8;  // delta between subsequent A tiles in global memory
-  int a_gl_rd_delta_i =
-      a_gl_stride *
-      (threads / a_gl_rd_delta_o);  // between subsequent accesses within a tile
-  constexpr int a_sh_wr_delta =
-      a_sh_stride *
-      (threads / a_gl_rd_delta_o);  // between shared memory writes
-  constexpr int a_sh_rd_delta_o =
-      2 * ((threads / 32) /
-           (thread_n_blocks / 4));  // between shared memory tile reads
-  constexpr int a_sh_rd_delta_i =
-      a_sh_stride * 16;  // within a shared memory tile
-  constexpr int a_sh_stage =
-      a_sh_stride * (16 * thread_m_blocks);  // overall size of a tile
-  constexpr int a_sh_wr_iters =
-      ceildiv(a_sh_stage,
-              a_sh_wr_delta);  // number of shared write iterations for a tile
+  // stride of the A matrix in global memory
+  int a_gl_stride = prob_k / 8;
+  // stride of an A matrix tile in shared memory
+  constexpr int a_sh_stride = 16 * thread_k_blocks / 8;
+  // delta between subsequent A tiles in global memory
+  constexpr int a_gl_rd_delta_o = 16 * thread_k_blocks / 8;
+  // between subsequent accesses within a tile
+  int a_gl_rd_delta_i = a_gl_stride * (threads / a_gl_rd_delta_o);
+  // between shared memory writes
+  constexpr int a_sh_wr_delta = a_sh_stride * (threads / a_gl_rd_delta_o);
+  // between shared memory tile reads
+  constexpr int a_sh_rd_delta_o = 2 * ((threads / 32) / (thread_n_blocks / 4));
+  // within a shared memory tile
+  constexpr int a_sh_rd_delta_i = a_sh_stride * 16;
+  // overall size of a tile
+  constexpr int a_sh_stage = a_sh_stride * (16 * thread_m_blocks);
+  // number of shared write iterations for a tile
+  constexpr int a_sh_wr_iters = ceil_div(a_sh_stage, a_sh_wr_delta);
 
   int b_gl_stride = 16 * prob_n / 32;
   constexpr int b_sh_stride = 32 * thread_n_blocks / 4;
@@ -376,12 +369,13 @@ __global__ void Marlin(
   // We use a different scale layout for grouped and column-wise quantization as
   // we scale a `half2` tile in column-major layout in the former and in
   // row-major in the latter case.
-  if (group_blocks != -1)
+  if constexpr (group_blocks != -1) {
     s_sh_rd = 8 * ((threadIdx.x / 32) % (thread_n_blocks / 4)) +
               (threadIdx.x % 32) / 4;
-  else
+  } else {
     s_sh_rd = 8 * ((threadIdx.x / 32) % (thread_n_blocks / 4)) +
               (threadIdx.x % 32) % 4;
+  }
 
   // Precompute which thread should not read memory in which iterations; this is
   // needed if there are more threads than required for a certain tilesize or
@@ -421,13 +415,14 @@ __global__ void Marlin(
   }
 
   // Since B-accesses have non-constant stride they have to be computed at
-  // runtime; we break dependicies between subsequent accesses with a tile by
+  // runtime; we break dependencies between subsequent accesses with a tile by
   // maintining multiple pointers (we have enough registers), a tiny
   // optimization.
   const int4* B_ptr[b_sh_wr_iters];
 #pragma unroll
-  for (int i = 0; i < b_sh_wr_iters; i++)
+  for (int i = 0; i < b_sh_wr_iters; i++) {
     B_ptr[i] = B + b_gl_rd_delta_i * i + b_gl_rd;
+  }
 
   extern __shared__ int4 sh[];
   // Shared memory storage for global fetch pipelines.
@@ -465,11 +460,16 @@ __global__ void Marlin(
         cp_async4_stream(&sh_b_stage[b_sh_wr_delta * i + b_sh_wr], B_ptr[i]);
         B_ptr[i] += b_gl_rd_delta_o;
       }
-      // Only fetch scales if this tile starts a new group
-      if (group_blocks != -1 && pipe % (group_blocks / thread_k_blocks) == 0) {
-        int4* sh_s_stage = sh_s + s_sh_stage * pipe;
-        if (s_sh_wr_pred) cp_async4_stream(&sh_s_stage[s_sh_wr], &s[s_gl_rd]);
-        s_gl_rd += s_gl_rd_delta;
+
+      if constexpr (group_blocks != -1) {
+        // Only fetch scales if this tile starts a new group
+        if (pipe % (group_blocks / thread_k_blocks) == 0) {
+          int4* sh_s_stage = sh_s + s_sh_stage * pipe;
+          if (s_sh_wr_pred) {
+            cp_async4_stream(&sh_s_stage[s_sh_wr], &s[s_gl_rd]);
+          }
+          s_gl_rd += s_gl_rd_delta;
+        }
       }
     }
     // Insert a fence even when we are winding down the pipeline to ensure that
@@ -494,7 +494,7 @@ __global__ void Marlin(
     // however, this does not seem to be a significant bottleneck, while some
     // theoretically better attempts have lead to bad instruction ordering by
     // the compiler and correspondingly a noticable drop in performance.
-    if (group_blocks != -1) {
+    if constexpr (group_blocks != -1) {
       int4* sh_s_stage =
           sh_s + s_sh_stage * ((group_blocks / thread_k_blocks) *
                                (pipe / (group_blocks / thread_k_blocks)));
@@ -519,11 +519,15 @@ __global__ void Marlin(
       int b_quant = frag_b_quant[k % 2][j];
       int b_quant_shift = b_quant >> 8;
       FragB frag_b0 = dequant(b_quant);
+      FragB frag_b1 = dequant(b_quant_shift);
+
       // If there are no groups, we can just scale the final output once and can
       // avoid doing so for each weight.
-      if (group_blocks != -1) scale(frag_b0, frag_s[k % 2][j], 0);
-      FragB frag_b1 = dequant(b_quant_shift);
-      if (group_blocks != -1) scale(frag_b1, frag_s[k % 2][j], 1);
+
+      if constexpr (group_blocks != -1) {
+        scale(frag_b0, frag_s[k % 2][j], 0);
+        scale(frag_b1, frag_s[k % 2][j], 1);
+      }
 #pragma unroll
       for (int i = 0; i < thread_m_blocks; i++) {
         mma(frag_a[k % 2][i], frag_b0, frag_c[i][j][0]);
@@ -589,9 +593,9 @@ __global__ void Marlin(
   };
 
   // Since multiple threadblocks may process parts of the same column slice, we
-  // finally have to globally reduce over the results. As the striped partioning
-  // minimizes the number of such reductions and our outputs are usually rather
-  // small, we perform this reduction serially in L2 cache.
+  // finally have to globally reduce over the results. As the striped
+  // partitioning minimizes the number of such reductions and our outputs are
+  // usually rather small, we perform this reduction serially in L2 cache.
   auto global_reduce = [&](bool first = false, bool last = false) {
     // We are very careful here to reduce directly in the output buffer to
     // maximize L2 cache utilization in this step. To do this, we write out
@@ -610,9 +614,9 @@ __global__ void Marlin(
       int row = (threadIdx.x % 32) / 4;
 
       if (!first) {
-// Interestingly, doing direct global accesses here really seems to mess up the
-// compiler and lead to slowdowns, hence we also use async-copies even though
-// these fetches are not actually asynchronous.
+        // Interestingly, doing direct global accesses here really seems to mess
+        // up the compiler and lead to slowdowns, hence we also use async-copies
+        // even though these fetches are not actually asynchronous.
 #pragma unroll
         for (int i = 0; i < thread_m_blocks * 4; i++) {
           cp_async4_pred(
@@ -678,9 +682,10 @@ __global__ void Marlin(
     // global write patterns
     auto write = [&](int idx, float c0, float c1, FragS& s) {
       half2 res = __halves2half2(__float2half(c0), __float2half(c1));
-      if (group_blocks ==
-          -1)  // for per-column quantization we finally apply the scale here
+      if constexpr (group_blocks == -1) {
+        // for per-column quantization we finally apply the scale here
         res = __hmul2(res, s[0]);
+      }
       ((half2*)sh)[idx] = res;
     };
     if (threadIdx.x / 32 < thread_n_blocks / 4) {
@@ -713,7 +718,7 @@ __global__ void Marlin(
 
 #pragma unroll
     for (int i = 0;
-         i < ceildiv(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
+         i < ceil_div(16 * thread_m_blocks, threads / (2 * thread_n_blocks));
          i++) {
       if (c_gl_wr < c_gl_wr_end) {
         C[c_gl_wr] = sh[c_sh_rd];
@@ -726,7 +731,9 @@ __global__ void Marlin(
   // Start global fetch and register load pipelines.
   auto start_pipes = [&]() {
 #pragma unroll
-    for (int i = 0; i < stages - 1; i++) fetch_to_shared(i, i, i < slice_iters);
+    for (int i = 0; i < stages - 1; i++) {
+      fetch_to_shared(i, i, i < slice_iters);
+    }
     zero_accums();
     wait_for_stage();
     fetch_to_registers(0, 0);
@@ -736,9 +743,11 @@ __global__ void Marlin(
 
   // Main loop.
   while (slice_iters) {
-// We unroll over both the global fetch and the register load pipeline to ensure
-// all shared memory accesses are static. Note that both pipelines have even
-// length meaning that the next iteration will always start at index 0.
+    // We unroll over both the global fetch and the register load pipeline to
+    // ensure all shared memory accesses are static. Note that both pipelines
+    // have even length meaning that the next iteration will always start at
+    // index 0.
+
 #pragma unroll
     for (int pipe = 0; pipe < stages;) {
 #pragma unroll
@@ -753,29 +762,37 @@ __global__ void Marlin(
         matmul(k);
       }
       slice_iters--;
-      if (slice_iters == 0) break;
+      if (slice_iters == 0) {
+        break;
+      }
     }
     a_gl_rd += a_gl_rd_delta_o * stages;
 
     // Process results and, if necessary, proceed to the next column slice.
     // While this pattern may not be the most readable, other ways of writing
-    // the loop seemed to noticeably worse performance after compliation.
+    // the loop seemed to noticeably worse performance after compilation.
     if (slice_iters == 0) {
       cp_async_wait<0>();
       bool last = slice_idx == slice_count - 1;
       // For per-column scales, we only fetch them here in the final step before
       // write-out
-      if (group_blocks == -1 && last) {
-        if (s_sh_wr_pred) cp_async4_stream(&sh_s[s_sh_wr], &s[s_gl_rd]);
-        cp_async_fence();
+      if constexpr (group_blocks == -1) {
+        if (last) {
+          if (s_sh_wr_pred) {
+            cp_async4_stream(&sh_s[s_sh_wr], &s[s_gl_rd]);
+          }
+          cp_async_fence();
+        }
       }
       thread_block_reduce();
-      if (group_blocks == -1 && last) {
-        cp_async_wait<0>();
-        __syncthreads();
-        if (threadIdx.x / 32 < thread_n_blocks / 4) {
-          reinterpret_cast<int4*>(&frag_s)[0] = sh_s[s_sh_rd + 0];
-          reinterpret_cast<int4*>(&frag_s)[1] = sh_s[s_sh_rd + 4];
+      if constexpr (group_blocks == -1) {
+        if (last) {
+          cp_async_wait<0>();
+          __syncthreads();
+          if (threadIdx.x / 32 < thread_n_blocks / 4) {
+            reinterpret_cast<int4*>(&frag_s)[0] = sh_s[s_sh_rd + 0];
+            reinterpret_cast<int4*>(&frag_s)[1] = sh_s[s_sh_rd + 4];
+          }
         }
       }
       if (slice_count > 1) {  // only globally reduce if there is more than one
@@ -858,7 +875,7 @@ void marlin_dense(const void* A,
   }
 
   int tot_m = prob_m;
-  int tot_m_blocks = ceildiv(tot_m, 16);
+  int tot_m_blocks = ceil_div(tot_m, 16);
   int pad = 16 * tot_m_blocks - tot_m;
 
   if (sms == -1) {
@@ -896,7 +913,7 @@ void marlin_dense(const void* A,
   // int cols = prob_n / thread_n;
   int* locks = (int*)workspace;
 
-  int ret = 0;
+  // int ret = 0;
   for (int i = 0; i < tot_m_blocks; i += 4) {
     int thread_m_blocks = tot_m_blocks - i;
     prob_m = tot_m - 16 * i;

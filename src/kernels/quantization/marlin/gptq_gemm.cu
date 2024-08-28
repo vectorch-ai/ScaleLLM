@@ -25,37 +25,11 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "common.h"
 #include "gemm_kernel_launch.cuh"
-#include "marlin.h"
 
 namespace marlin {
 namespace {
-
-// Marlin params
-
-// 8 warps are a good choice since every SM has 4 schedulers and having more
-// than 1 warp per schedule allows some more latency hiding. At the same time,
-// we want relatively few warps to have many registers per warp and small tiles.
-static constexpr int default_threads = 256;
-
-static constexpr int pipe_stages =
-    4;  // 4 pipeline stages fit into shared memory
-
-static constexpr int min_thread_n = 64;
-static constexpr int min_thread_k = 64;
-
-static constexpr int tile_size = 16;
-static constexpr int max_par = 16;
-
-// Repack params
-static constexpr int repack_stages = 8;
-
-static constexpr int repack_threads = 256;
-
-static constexpr int tile_k_size = tile_size;
-static constexpr int tile_n_size = tile_k_size * 4;
-
-constexpr int div_ceil(int a, int b) { return (a + b - 1) / b; }
 
 // For a given "a" of size [M,K] performs a permutation of the K columns based
 // on the given "perm" indices.
@@ -160,9 +134,9 @@ int get_scales_cache_size(thread_config_t const& th_config,
   if (group_size == -1) {
     tb_groups = 1;
   } else if (group_size == 0) {
-    tb_groups = div_ceil(tb_k, 32);  // Worst case is 32 group size
+    tb_groups = ceil_div(tb_k, 32);  // Worst case is 32 group size
   } else {
-    tb_groups = div_ceil(tb_k, group_size);
+    tb_groups = ceil_div(tb_k, group_size);
   }
 
   if (cache_scales_chunk) {
@@ -195,7 +169,7 @@ bool is_valid_cache_size(thread_config_t const& th_config,
   int b_size = (tb_k * tb_n / pack_factor) * 4;
 
   // Get A size
-  int m_blocks = div_ceil(prob_m, 16);
+  int m_blocks = ceil_div(prob_m, 16);
   int tb_max_m = 16;
 
   while (true) {
@@ -291,7 +265,7 @@ int determine_reduce_max_m(int prob_m, int max_par) {
     return tile_m_size * 4;
 
   } else {
-    int cur_par = min(div_ceil(prob_m, tile_m_size * 4), max_par);
+    int cur_par = min(ceil_div(prob_m, tile_m_size * 4), max_par);
     return tile_m_size * 4 * cur_par;
   }
 }
@@ -379,7 +353,7 @@ void marlin_mm(const void* A,
 
   // TODO: remove alias when we start supporting other 8bit types
   int tot_m = prob_m;
-  int tot_m_blocks = div_ceil(tot_m, 16);
+  int tot_m_blocks = ceil_div(tot_m, 16);
   int pad = 16 * tot_m_blocks - tot_m;
 
   if (sms == -1) {
@@ -486,7 +460,7 @@ void marlin_mm(const void* A,
 
   if (has_act_order) {
     // Permute A columns
-    int block_rows = div_ceil(prob_m, blocks);
+    int block_rows = ceil_div(prob_m, blocks);
     permute_cols_kernel<<<blocks, default_threads, 0, stream>>>(
         A_ptr, perm_ptr, a_tmp_ptr, prob_m, prob_k, block_rows);
     A_ptr = a_tmp_ptr;
@@ -567,7 +541,7 @@ void gptq_gemm(
   CHECK(num_bits == 4 || num_bits == 8)
       << "num_bits must be 4 or 8. Got = " << num_bits;
 
-  int pack_factor = 32 / num_bits;
+  // int pack_factor = 32 / num_bits;
 
   int prob_m = A.size(0);
   int prob_n = C.size(1);

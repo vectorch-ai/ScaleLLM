@@ -1,7 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <torch/extension.h>
 
-#include "kernels/quantization/marlin/marlin.h"
+#include "kernels/quantization/marlin.h"
 
 namespace llm::csrc {
 namespace py = pybind11;
