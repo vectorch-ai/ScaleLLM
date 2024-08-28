@@ -29,7 +29,7 @@ cc_library(
     awq_repack.cu
     # sparse.cu
   INCLUDES
-    .
+    ${CMAKE_CURRENT_SOURCE_DIR}
   DEPS
     torch
 )
