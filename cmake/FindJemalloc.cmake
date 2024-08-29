@@ -43,14 +43,10 @@ find_package_handle_standard_args(
 )
 
 if(NOT Jemalloc_FOUND)
-  if(Jemalloc_FIND_REQUIRED)
-    message(FATAL_ERROR "Cannot find jemalloc!")
-  else()
-    message(STATUS "Jemalloc is not found!")
-  endif()
+    message(WARNING "Jemalloc not found")
 else()
-  if(Jemalloc_FOUND AND NOT TARGET Jemalloc::jemalloc)
-    add_library(Jemalloc::jemalloc UNKNOWN IMPORTED)
+  if(NOT TARGET Jemalloc::jemalloc)
+    add_library(Jemalloc::jemalloc SHARED IMPORTED)
     set_target_properties(Jemalloc::jemalloc PROPERTIES
       IMPORTED_LOCATION "${Jemalloc_LIBRARY}"
       INTERFACE_INCLUDE_DIRECTORIES "${Jemalloc_INCLUDE_DIR}"

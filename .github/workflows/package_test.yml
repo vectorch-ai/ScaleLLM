@@ -64,9 +64,10 @@ jobs:
         mkdir -p $CI_CACHE_DIR/.ccache
       
     - name: Build wheel
+      timeout-minutes: 60
       run: |
         docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
-        docker run --rm -t --gpus all \
+        docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
             -e PYTHON_VERSION=${PYTHON_VERSION} \
@@ -77,12 +78,12 @@ jobs:
             -u $(id -u):$(id -g) \
             vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
             bash /ScaleLLM/scripts/build_wheel.sh
-      timeout-minutes: 60
 
     - name: Show whl package size
       run: du -h dist/*
 
     - name: Install the package and run pytest
+      timeout-minutes: 10
       shell: bash -l {0}
       run: |
         # define the environment name based on the python and torch versions

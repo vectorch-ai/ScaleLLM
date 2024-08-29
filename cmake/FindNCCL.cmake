@@ -91,13 +91,7 @@ find_package_handle_standard_args(NCCL
   REQUIRED_VARS NCCL_INCLUDE_DIRS NCCL_LIBRARIES
   VERSION_VAR   NCCL_VERSION)
 
-if(NOT NCCL_FOUND)
-  if(NCCL_FIND_REQUIRED)
-    message(FATAL_ERROR "Cannot find NCCL!")
-  else()
-    message(WARNING "NCCL is not found!")
-  endif()
-else()
+if(NCCL_FOUND)
   message(STATUS "Found NCCL ${NCCL_VERSION} (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})")
   if(NOT TARGET NCCL::nccl)
     add_library(NCCL::nccl UNKNOWN IMPORTED)

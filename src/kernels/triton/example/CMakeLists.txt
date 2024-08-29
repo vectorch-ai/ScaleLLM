@@ -13,8 +13,7 @@ cc_library(
   SRCS 
     ${AOT_SOURCES}
   DEPS
-    cuda
-    CUDA::toolkit
+    CUDA::driver
 )
 
 cc_test(
