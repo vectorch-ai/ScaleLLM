@@ -1,13 +1,13 @@
-# Find the cuda driver libraries
+# Find the CUDA driver libraries
 #
 #
 # The following are set after configuration is done:
-#  CUDA_DRIVER_FOUND
-#  CUDA_DRIVER_INCLUDE_DIRS
-#  CUDA_DRIVER_LIBRARIES
+#  CUDADriver_FOUND
+#  CUDADriver_INCLUDE_DIR
+#  CUDADriver_LIBRARY
 #
 
-find_path(CUDA_DRIVER_INCLUDE_DIRS
+find_path(CUDADriver_INCLUDE_DIR
   NAMES cuda.h
   HINTS
     $ENV{CUDA_HOME}
@@ -18,7 +18,9 @@ find_path(CUDA_DRIVER_INCLUDE_DIRS
     include
 )
 
-find_library(CUDA_DRIVER_LIBRARIES 
+mark_as_advanced(CUDADriver_INCLUDE_DIR)
+
+find_library(CUDADriver_LIBRARY 
   NAMES cuda
   HINTS 
     /usr/local/cuda/lib64
@@ -30,18 +32,20 @@ find_library(CUDA_DRIVER_LIBRARIES
     /usr/local/cuda/lib64/stubs
 )
 
+mark_as_advanced(CUDADriver_LIBRARY)
+
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(CUDA_DRIVER
-  REQUIRED_VARS CUDA_DRIVER_INCLUDE_DIRS CUDA_DRIVER_LIBRARIES
+find_package_handle_standard_args(CUDADriver
+  REQUIRED_VARS CUDADriver_INCLUDE_DIR CUDADriver_LIBRARY
 )
 
-if(CUDA_DRIVER_FOUND)
-  message(STATUS "Found CUDA driver (include: ${CUDA_DRIVER_INCLUDE_DIRS}, library: ${CUDA_DRIVER_LIBRARIES})")
+if(CUDADriver_FOUND)
+  message(STATUS "Found CUDA driver : ${CUDADriver_LIBRARY}")
   if(NOT TARGET CUDA::driver)
     add_library(CUDA::driver SHARED IMPORTED)
     set_target_properties(CUDA::driver PROPERTIES
-      IMPORTED_LOCATION "${CUDA_DRIVER_LIBRARIES}"
-      INTERFACE_INCLUDE_DIRECTORIES "${CUDA_DRIVER_INCLUDE_DIRS}"
+      IMPORTED_LOCATION "${CUDADriver_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${CUDADriver_INCLUDE_DIR}"
     )
   endif()
 endif()

@@ -42,9 +42,7 @@ find_package_handle_standard_args(
     Jemalloc_INCLUDE_DIR
 )
 
-if(NOT Jemalloc_FOUND)
-    message(WARNING "Jemalloc not found")
-else()
+if(Jemalloc_FOUND)
   if(NOT TARGET Jemalloc::jemalloc)
     add_library(Jemalloc::jemalloc SHARED IMPORTED)
     set_target_properties(Jemalloc::jemalloc PROPERTIES
