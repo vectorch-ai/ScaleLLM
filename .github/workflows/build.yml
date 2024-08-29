@@ -65,6 +65,7 @@ jobs:
         mkdir -p $DEPENDENCES_ROOT
 
     - name: CMake Build in the 'build' subdirectory
+      timeout-minutes: 60
       run: |
         ./tools/run_in_docker.sh -ni ccache -M 25Gi
         ./tools/run_in_docker.sh -ni cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80
@@ -75,6 +76,7 @@ jobs:
     #   run: ./build/src/benchmark/micro_benchmark
 
     - name: Run unit tests
+      timeout-minutes: 10
       working-directory: ${{github.workspace}}/build
       # Execute tests defined by the CMake configuration.
-      run: ../tools/run_in_docker.sh -ni ctest --output-on-failure -C ${{env.BUILD_TYPE}}
+      run: ../tools/run_in_docker.sh -ni -o --gpus=all ctest --output-on-failure -C ${{env.BUILD_TYPE}}

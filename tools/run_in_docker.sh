@@ -38,8 +38,7 @@ function usage() {
 (( $# < 1 )) && usage
 
 IMAGE="vectorchai/scalellm_devel:latest"
-# by default use all GPUs, can be overridden by -o
-RUN_OPTS=("--gpus all")
+RUN_OPTS=()
 
 INTERACTIVE=1
 while [[ $# > 1 ]]; do

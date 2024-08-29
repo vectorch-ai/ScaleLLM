@@ -49,9 +49,10 @@ jobs:
           mkdir -p $CI_CACHE_DIR/.ccache
       
       - name: Build wheel
+        timeout-minutes: 60
         run: |
           docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
-          docker run --rm -t --gpus all \
+          docker run --rm -t \
               -v "$CI_CACHE_DIR":/ci_cache \
               -v "$GITHUB_WORKSPACE":/ScaleLLM \
               -e PYTHON_VERSION=${PYTHON_VERSION} \
@@ -64,7 +65,6 @@ jobs:
               -u $(id -u):$(id -g) \
               vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
               bash /ScaleLLM/scripts/build_wheel.sh
-        timeout-minutes: 60
 
       - name: show wheel size
         run: du -h dist/*
