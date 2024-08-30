@@ -3,7 +3,8 @@ import os
 import queue
 from typing import List, Optional
 
-from scalellm._C import LLMHandler, Message, Priority, RequestOutput, SamplingParams
+from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
+                         SamplingParams)
 from scalellm.downloader import download_hf_model
 from scalellm.errors import ValidationError
 
