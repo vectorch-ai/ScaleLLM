@@ -54,10 +54,16 @@ class OutputAsyncStream:
     """A stream of RequestOutput objects, which can be used to
     send responses to the client asynchronously."""
 
-    def __init__(self) -> None:
-        # asyncio.Queue is used to store the items in the stream
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        # asyncio.Queue is used to store the items in the stream, not thread-safe
         self._queue = asyncio.Queue()
+        # event loop used to schedule callbacks from other threads
+        self._loop = loop
         self._cancelled = False
+
+    def _put_nowait(self, item):
+        # put item into asyncio.queue in a thread-safe way
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, item)
 
     # put item into the stream
     # None to indicate the end of the stream
@@ -67,15 +73,13 @@ class OutputAsyncStream:
             return False
 
         if item.status is not None and not item.status.ok:
-            self._queue.put_nowait(
-                ValidationError(item.status.code, item.status.message)
-            )
+            self._put_nowait(ValidationError(item.status.code, item.status.message))
             return False
 
         # put the item into the queue
-        self._queue.put_nowait(item)
+        self._put_nowait(item)
         if item.finished:
-            self._queue.put_nowait(StopAsyncIteration())
+            self._put_nowait(StopAsyncIteration())
         return True
 
     # report an error to the stream, rerais as an exception
@@ -113,7 +117,7 @@ class AsyncLLMEngine:
         devices: Optional[str] = None,
         draft_devices: Optional[str] = None,
         block_size: int = 16,
-        max_cache_size: int = 0, # 0 means that cache size is caculated by available memory
+        max_cache_size: int = 0,  # 0 means that cache size is caculated by available memory
         max_memory_utilization: float = 0.9,
         enable_prefix_cache: bool = True,
         enable_cuda_graph: bool = True,
@@ -166,6 +170,14 @@ class AsyncLLMEngine:
         options.num_handling_threads = num_handling_threads
         # create the LLM handler
         self._handler = LLMHandler(options)
+        # event loop for async stream callbacks
+        self._loop = None
+
+    def _ensure_event_loop(self):
+        # get running event loop if not set
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+            assert self._loop is not None, "No event loop found"
 
     # schedule a request to the engine, and return a stream to receive output
     async def schedule_async(
@@ -175,7 +187,9 @@ class AsyncLLMEngine:
         priority: Priority = Priority.NORMAL,
         stream: bool = False,
     ) -> OutputAsyncStream:
-        output_stream = OutputAsyncStream()
+        self._ensure_event_loop()
+
+        output_stream = OutputAsyncStream(self._loop)
 
         def callback(output: RequestOutput) -> bool:
             output.prompt = prompt
@@ -195,7 +209,9 @@ class AsyncLLMEngine:
         priority: Priority = Priority.NORMAL,
         stream: bool = False,
     ) -> OutputAsyncStream:
-        output_stream = OutputAsyncStream()
+        self._ensure_event_loop()
+
+        output_stream = OutputAsyncStream(self._loop)
 
         def callback(output: RequestOutput) -> bool:
             return output_stream.put(output)
@@ -277,8 +293,10 @@ class AsyncLLMEngine:
         self.stop()
         self.__del__()
         return False
-    
+
     def __repr__(self) -> str:
         if self._draft_model:
-            return f"AsyncLLMEngine(model={self._model}, draft_model={self._draft_model})"
+            return (
+                f"AsyncLLMEngine(model={self._model}, draft_model={self._draft_model})"
+            )
         return f"AsyncLLMEngine(model={self._model})"

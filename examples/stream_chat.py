@@ -1,9 +1,7 @@
-import asyncio
-
 from scalellm import AsyncLLMEngine, Message, SamplingParams
 
 
-async def main():
+def main():
     # Create an LLM engine.
     with AsyncLLMEngine(
         model="meta-llama/Meta-Llama-3.1-8B-Instruct", devices="cuda"
@@ -28,14 +26,14 @@ async def main():
             messages.append(Message(role="user", content=prompt))
 
             try:
-                output_stream = await engine.schedule_chat_async(
+                output_stream = engine.schedule_chat(
                     messages=messages,
                     sampling_params=sampling_params,
                     stream=True,
                 )
                 assistant_response = ""
                 print("\n[Assistant]: ", end="", flush=True)
-                async for output in output_stream:
+                for output in output_stream:
                     if len(output.outputs) > 0:
                         response = output.outputs[0].text
                         assistant_response += response
@@ -51,4 +49,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
