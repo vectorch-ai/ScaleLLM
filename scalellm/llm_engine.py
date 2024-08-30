@@ -3,8 +3,7 @@ import os
 import queue
 from typing import List, Optional
 
-from scalellm._C import (LLMHandler, Message, Priority, RequestOutput,
-                         SamplingParams)
+from scalellm._C import LLMHandler, Message, Priority, RequestOutput, SamplingParams
 from scalellm.downloader import download_hf_model
 from scalellm.errors import ValidationError
 
@@ -54,30 +53,32 @@ class OutputAsyncStream:
     """A stream of RequestOutput objects, which can be used to
     send responses to the client asynchronously."""
 
-    def __init__(self) -> None:
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         # asyncio.Queue is used to store the items in the stream, not thread-safe
         self._queue = asyncio.Queue()
+        # event loop used to schedule callbacks from other threads
+        self._loop = loop
         self._cancelled = False
+
+    def _put_nowait(self, item):
+        # put item into asyncio.queue in a thread-safe way
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, item)
 
     # put item into the stream
     # None to indicate the end of the stream
-    def put(self, item: RequestOutput, loop: asyncio.AbstractEventLoop) -> bool:
+    def put(self, item: RequestOutput) -> bool:
         # if the stream is cancelled, return False
         if self._cancelled:
             return False
 
-        # put the item into the queue in a thread-safe way
-        def put_nowait(item):
-            loop.call_soon_threadsafe(self._queue.put_nowait, item)
-
         if item.status is not None and not item.status.ok:
-            put_nowait(ValidationError(item.status.code, item.status.message))
+            self._put_nowait(ValidationError(item.status.code, item.status.message))
             return False
 
         # put the item into the queue
-        put_nowait(item)
+        self._put_nowait(item)
         if item.finished:
-            put_nowait(StopAsyncIteration())
+            self._put_nowait(StopAsyncIteration())
         return True
 
     # report an error to the stream, rerais as an exception
@@ -187,11 +188,11 @@ class AsyncLLMEngine:
     ) -> OutputAsyncStream:
         self._ensure_event_loop()
 
-        output_stream = OutputAsyncStream()
+        output_stream = OutputAsyncStream(self._loop)
 
         def callback(output: RequestOutput) -> bool:
             output.prompt = prompt
-            return output_stream.put(output, self._loop)
+            return output_stream.put(output)
 
         # use default sampling parameters if not provided
         sampling_params = sampling_params or SamplingParams()
@@ -209,10 +210,10 @@ class AsyncLLMEngine:
     ) -> OutputAsyncStream:
         self._ensure_event_loop()
 
-        output_stream = OutputAsyncStream()
+        output_stream = OutputAsyncStream(self._loop)
 
         def callback(output: RequestOutput) -> bool:
-            return output_stream.put(output, self._loop)
+            return output_stream.put(output)
 
         # use default sampling parameters if not provided
         sampling_params = sampling_params or SamplingParams()
