@@ -1,8 +1,7 @@
-import asyncio
 from scalellm import AsyncLLMEngine, SamplingParams
 
 
-async def main():
+def main():
     # Create an LLM engine.
     with AsyncLLMEngine(model="meta-llama/Meta-Llama-3.1-8B", devices="cuda") as engine:
         sampling_params = SamplingParams(
@@ -17,12 +16,12 @@ async def main():
             if prompt == "exit":
                 break
             try:
-                output_stream = await engine.schedule_async(
+                output_stream = engine.schedule(
                     prompt=prompt,
                     sampling_params=sampling_params,
                     stream=True,
                 )
-                async for output in output_stream:
+                for output in output_stream:
                     if len(output.outputs) > 0:
                         print(output.outputs[0].text, end="", flush=True)
                 print()
@@ -33,4 +32,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
