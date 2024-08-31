@@ -30,6 +30,7 @@
 #include "mma.h"
 #include "numeric_conversion.h"
 #include "scale_type.h"
+#include "static_switch.h"
 
 namespace marlin {
 namespace {
@@ -1038,6 +1039,7 @@ void marlin_mm_f16i4(const void* A,
       thread_m_blocks = exec_cfg.max_m_blocks;
     }
 
+    // (16, 4, 256), (8, 8, 256), (8, 4, 128), (4, 8, 128)
     // Define kernel configurations
     // NOLINTNEXTLINE
     if (false) {
@@ -1098,43 +1100,24 @@ void fp8_gemm(const torch::Tensor& A,       // (m, k)
       << " is below min_workspace_size = " << min_workspace_size;
 
   int dev = A.get_device();
-  if (A.scalar_type() == at::ScalarType::Half) {
-    marlin_mm_f16i4<half>(A.data_ptr(),
-                          B.data_ptr(),
-                          C.data_ptr(),
-                          scales.data_ptr(),
-                          prob_m,
-                          prob_n,
-                          prob_k,
-                          workspace.data_ptr(),
-                          num_groups,
-                          group_size,
-                          dev,
-                          at::cuda::getCurrentCUDAStream(dev),
-                          thread_k,
-                          thread_n,
-                          sms,
-                          marlin::max_par);
-  } else if (A.scalar_type() == at::ScalarType::BFloat16) {
-    marlin_mm_f16i4<nv_bfloat16>(A.data_ptr(),
-                                 B.data_ptr(),
-                                 C.data_ptr(),
-                                 scales.data_ptr(),
-                                 prob_m,
-                                 prob_n,
-                                 prob_k,
-                                 workspace.data_ptr(),
-                                 num_groups,
-                                 group_size,
-                                 dev,
-                                 at::cuda::getCurrentCUDAStream(dev),
-                                 thread_k,
-                                 thread_n,
-                                 sms,
-                                 marlin::max_par);
-  } else {
-    LOG(FATAL) << "Unsupported data type: " << A.scalar_type();
-  }
+  FLOAT_TYPE_SWITCH(A.scalar_type(), [&] {
+    marlin_mm_f16i4<scalar_t>(A.data_ptr(),
+                              B.data_ptr(),
+                              C.data_ptr(),
+                              scales.data_ptr(),
+                              prob_m,
+                              prob_n,
+                              prob_k,
+                              workspace.data_ptr(),
+                              num_groups,
+                              group_size,
+                              dev,
+                              at::cuda::getCurrentCUDAStream(dev),
+                              thread_k,
+                              thread_n,
+                              sms,
+                              marlin::max_par);
+  });
 }
 
 }  // namespace marlin

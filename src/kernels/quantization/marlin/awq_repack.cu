@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "memory.h"
+#include "static_switch.h"
 
 namespace marlin {
 namespace {
@@ -185,15 +186,6 @@ __global__ void awq_marlin_repack_kernel(
   }
 }
 
-#define CALL_IF(NUM_BITS)                                                     \
-  else if (num_bits == NUM_BITS) {                                            \
-    auto kernel = &awq_marlin_repack_kernel<repack_threads, NUM_BITS>;        \
-    cudaFuncSetAttribute(                                                     \
-        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_shared_mem); \
-    kernel<<<blocks, repack_threads, max_shared_mem, stream>>>(               \
-        q_weight_ptr, out_ptr, size_k, size_n);                               \
-  }
-
 }  // namespace
 
 void awq_repack(const torch::Tensor& q_weight,  // (k, n/pack_factor)
@@ -230,14 +222,13 @@ void awq_repack(const torch::Tensor& q_weight,  // (k, n/pack_factor)
       &max_shared_mem, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
   TORCH_CHECK(max_shared_mem > 0);
 
-  // NOLINTNEXTLINE
-  if (false) {
-  }
-  CALL_IF(4)
-  CALL_IF(8)
-  else {
-    TORCH_CHECK(false, "Unsupported repack config: num_bits = ", num_bits);
-  }
+  NUM_BITS_SWITCH(num_bits, [&] {
+    auto kernel = &awq_marlin_repack_kernel<repack_threads, NUM_BITS>;
+    cudaFuncSetAttribute(
+        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_shared_mem);
+    kernel<<<blocks, repack_threads, max_shared_mem, stream>>>(
+        q_weight_ptr, out_ptr, size_k, size_n);
+  });
 }
 
 }  // namespace marlin
