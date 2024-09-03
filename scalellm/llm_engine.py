@@ -54,11 +54,12 @@ class OutputAsyncStream:
     """A stream of RequestOutput objects, which can be used to
     send responses to the client asynchronously."""
 
-    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(self) -> None:
         # asyncio.Queue is used to store the items in the stream, not thread-safe
         self._queue = asyncio.Queue()
         # event loop used to schedule callbacks from other threads
-        self._loop = loop
+        self._loop = asyncio.get_running_loop()
+        assert self._loop is not None
         self._cancelled = False
 
     def _put_nowait(self, item):
@@ -170,14 +171,6 @@ class AsyncLLMEngine:
         options.num_handling_threads = num_handling_threads
         # create the LLM handler
         self._handler = LLMHandler(options)
-        # event loop for async stream callbacks
-        self._loop = None
-
-    def _ensure_event_loop(self):
-        # get running event loop if not set
-        if self._loop is None:
-            self._loop = asyncio.get_running_loop()
-            assert self._loop is not None, "No event loop found"
 
     # schedule a request to the engine, and return a stream to receive output
     async def schedule_async(
@@ -187,9 +180,7 @@ class AsyncLLMEngine:
         priority: Priority = Priority.NORMAL,
         stream: bool = False,
     ) -> OutputAsyncStream:
-        self._ensure_event_loop()
-
-        output_stream = OutputAsyncStream(self._loop)
+        output_stream = OutputAsyncStream()
 
         def callback(output: RequestOutput) -> bool:
             output.prompt = prompt
@@ -209,9 +200,7 @@ class AsyncLLMEngine:
         priority: Priority = Priority.NORMAL,
         stream: bool = False,
     ) -> OutputAsyncStream:
-        self._ensure_event_loop()
-
-        output_stream = OutputAsyncStream(self._loop)
+        output_stream = OutputAsyncStream()
 
         def callback(output: RequestOutput) -> bool:
             return output_stream.put(output)
