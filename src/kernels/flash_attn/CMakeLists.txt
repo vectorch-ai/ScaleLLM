@@ -8,7 +8,7 @@ configure_file(
 
 # execute the script to generate the instantiation of the kernels
 execute_process(
-  COMMAND "${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiation_cu.py"
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiation_cu.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
 )
 
