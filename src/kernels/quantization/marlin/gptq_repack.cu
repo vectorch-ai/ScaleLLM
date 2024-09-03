@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "memory.h"
+#include "static_switch.h"
 
 namespace marlin {
 namespace {
@@ -246,16 +247,6 @@ __global__ void gptq_marlin_repack_kernel(
   }
 }
 
-#define CALL_IF(NUM_BITS, HAS_PERM)                                           \
-  else if (num_bits == NUM_BITS && has_perm == HAS_PERM) {                    \
-    auto kernel =                                                             \
-        &gptq_marlin_repack_kernel<repack_threads, NUM_BITS, HAS_PERM>;       \
-    cudaFuncSetAttribute(                                                     \
-        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_shared_mem); \
-    kernel<<<blocks, repack_threads, max_shared_mem, stream>>>(               \
-        q_weight_ptr, perm_ptr, out_ptr, size_k, size_n);                     \
-  }
-
 }  // namespace
 
 void gptq_repack(const torch::Tensor& q_weight,  // (k/pack_factor, n)
@@ -300,17 +291,16 @@ void gptq_repack(const torch::Tensor& q_weight,  // (k/pack_factor, n)
       &max_shared_mem, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
   TORCH_CHECK(max_shared_mem > 0);
 
-  // NOLINTNEXTLINE
-  if (false) {
-  }
-  CALL_IF(4, false)
-  CALL_IF(4, true)
-  CALL_IF(8, false)
-  CALL_IF(8, true)
-  else {
-    LOG(FATAL) << "Unsupported repack config: num_bits = " << num_bits
-               << ", has_perm = " << has_perm;
-  }
+  NUM_BITS_SWITCH(num_bits, [&] {
+    BOOL_SWITCH(has_perm, HAS_PERM, [&] {
+      auto kernel =
+          &gptq_marlin_repack_kernel<repack_threads, NUM_BITS, HAS_PERM>;
+      cudaFuncSetAttribute(
+          kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_shared_mem);
+      kernel<<<blocks, repack_threads, max_shared_mem, stream>>>(
+          q_weight_ptr, perm_ptr, out_ptr, size_k, size_n);
+    });
+  });
 }
 
 }  // namespace marlin

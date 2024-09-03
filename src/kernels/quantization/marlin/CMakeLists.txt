@@ -18,8 +18,6 @@ file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/*.cu")
 cc_library(
   NAME
     marlin.kernels
-  HDRS
-    gemm_kernel_launch.cuh
   SRCS
     ${GENERATED_SRC_FILES}
     fp16_int4_gemm.cu
