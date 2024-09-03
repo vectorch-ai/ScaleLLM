@@ -106,62 +106,33 @@ class Kernel:
     def filename(self) -> str:
         return f"marlin_b{self.num_bits}_t{self.threads}_m{self.m_blocks}_n{self.n_blocks}_k{self.k_blocks}_s{self.stages}_{self.has_act_order}_{self.has_zp}_g{self.group_blocks}.cu"
 
-
-def gptq_kernels():
-    for num_bits in [4, 8]:
-        for m_blocks in [1, 2, 3, 4]:
-            for n_blocks, k_blocks, threads in [
-                (16, 4, 256),
-                (8, 8, 256),
-                (8, 4, 128),
-                (4, 8, 128),
-            ]:
-                for has_act_order, group_blocks in [
-                    (True, 0),
-                    (False, -1),
-                    (False, 2),
-                    (False, 4),
-                    (False, 8),
-                ]:
-                    yield Kernel(
-                        num_bits=num_bits,
-                        threads=threads,
-                        m_blocks=m_blocks,
-                        n_blocks=n_blocks,
-                        k_blocks=k_blocks,
-                        stages=4,
-                        has_act_order=has_act_order,
-                        has_zp=False,
-                        group_blocks=group_blocks,
-                    )
-
-
-def awq_kernels():
-    for num_bits in [4, 8]:
-        for m_blocks in [1, 2, 3, 4]:
-            for n_blocks, k_blocks, threads in [
-                (16, 4, 256),
-                (8, 8, 256),
-                (8, 4, 128),
-                (4, 8, 128),
-            ]:
-                for group_blocks in [-1, 2, 4, 8]:
-                    yield Kernel(
-                        num_bits=num_bits,
-                        threads=threads,
-                        m_blocks=m_blocks,
-                        n_blocks=n_blocks,
-                        k_blocks=k_blocks,
-                        stages=4,
-                        has_act_order=False,
-                        has_zp=True,
-                        group_blocks=group_blocks,
-                    )
-
-
 def all_kernels():
-    yield from gptq_kernels()
-    yield from awq_kernels()
+    for num_bits in [4, 8]:
+        for m_blocks in [1, 2, 3, 4]:
+            for n_blocks, k_blocks, threads in [
+                (16, 4, 256),
+                (8, 8, 256),
+                (8, 4, 128),
+                (4, 8, 128),
+            ]:
+                for has_zp in [False, True]:
+                    # has_act_order, group_blocks
+                    candidates = [(False, -1), (False, 2), (False, 4), (False, 8)]
+                    if not has_zp:
+                        candidates.append((True, 0))
+
+                    for has_act_order, group_blocks in candidates:
+                        yield Kernel(
+                            num_bits=num_bits,
+                            threads=threads,
+                            m_blocks=m_blocks,
+                            n_blocks=n_blocks,
+                            k_blocks=k_blocks,
+                            stages=4,
+                            has_act_order=has_act_order,
+                            has_zp=has_zp,
+                            group_blocks=group_blocks,
+                        )
 
 
 def write_kernel(kernel: Kernel, output_dir: Path) -> None:

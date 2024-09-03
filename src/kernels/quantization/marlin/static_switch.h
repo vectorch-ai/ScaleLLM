@@ -2,9 +2,9 @@
 
 #include <glog/logging.h>
 
-#define BOOL_SWITCH(COND, CONST_NAME, ...)      \
+#define BOOL_SWITCH(cond, CONST_NAME, ...)      \
   [&] {                                         \
-    if (COND) {                                 \
+    if (cond) {                                 \
       constexpr static bool CONST_NAME = true;  \
       return __VA_ARGS__();                     \
     } else {                                    \
@@ -14,78 +14,66 @@
   }()
 
 // FLOAT_TYPE: [Half, BFloat16]
-#define FLOAT_TYPE_SWITCH(TYPE, ...)                    \
+#define FLOAT_TYPE_SWITCH(type, ...)                    \
   [&] {                                                 \
-    if (TYPE == at::ScalarType::Half) {                 \
+    if (type == at::ScalarType::Half) {                 \
       using scalar_t = half;                            \
       return __VA_ARGS__();                             \
-    } else if (TYPE == at::ScalarType::BFloat16) {      \
+    } else if (type == at::ScalarType::BFloat16) {      \
       using scalar_t = nv_bfloat16;                     \
       return __VA_ARGS__();                             \
     } else {                                            \
-      LOG(FATAL) << "Unsupported FLOAT_TYPE: " << TYPE; \
+      LOG(FATAL) << "Unsupported FLOAT_TYPE: " << type; \
     }                                                   \
   }()
 
 // NUM_BITS: [4, 8]
-#define NUM_BITS_SWITCH(BITS, ...)                    \
-  [&] {                                               \
-    if (BITS == 4) {                                  \
-      constexpr static int NUM_BITS = 4;              \
-      return __VA_ARGS__();                           \
-    } else if (BITS == 8) {                           \
-      constexpr static int NUM_BITS = 8;              \
-      return __VA_ARGS__();                           \
-    } else {                                          \
-      LOG(FATAL) << "Unsupported NUM_BITS: " << BITS; \
-    }                                                 \
-  }()
-
-// M_BLOCKS: 1, 2, 3, 4
-#define M_BLOCKS_SWITCH(BLOCKS, ...)                      \
+#define NUM_BITS_SWITCH(num_bits, ...)                    \
   [&] {                                                   \
-    if (BLOCKS == 1) {                                    \
-      constexpr static int THREAD_M_BLOCKS = 1;           \
+    if (num_bits == 4) {                                  \
+      constexpr static int NUM_BITS = 4;                  \
       return __VA_ARGS__();                               \
-    } else if (M_BLOCKS == 2) {                           \
-      constexpr static int THREAD_M_BLOCKS = 2;           \
-      return __VA_ARGS__();                               \
-    } else if (M_BLOCKS == 3) {                           \
-      constexpr static int THREAD_M_BLOCKS = 3;           \
-      return __VA_ARGS__();                               \
-    } else if (M_BLOCKS == 4) {                           \
-      constexpr static int THREAD_M_BLOCKS = 4;           \
+    } else if (num_bits == 8) {                           \
+      constexpr static int NUM_BITS = 8;                  \
       return __VA_ARGS__();                               \
     } else {                                              \
-      LOG(FATAL) << "Unsupported M_BLOCKS: " << M_BLOCKS; \
+      LOG(FATAL) << "Unsupported num_bits: " << num_bits; \
     }                                                     \
   }()
 
-#define DISPATCH_NK_BLOCKS(n_blocks, k_blocks, n_threads, ...) \
-  if (N_BLOCKS == n_blocks && K_BLOCKS == k_blocks &&          \
-      NUM_THREADS == n_threads) {                              \
-    constexpr static int THREAD_N_BLOCKS = n_blocks;           \
-    constexpr static int THREAD_K_BLOCKS = k_blocks;           \
-    constexpr static int THREADS = n_threads;                  \
-    return __VA_ARGS__();                                      \
-  }
-
-// (N_BLOCKS, K_BLOCKS, NUM_THREADS) :
-//  (16, 4, 256), (8, 8, 256), (8, 4, 128), (4, 8, 128)
-#define NK_BLOCKS_SWITCH(N_BLOCKS, K_BLOCKS, NUM_THREADS, ...)         \
-  [&] {                                                                \
-    DISPATCH_NK_BLOCKS(16, 4, 256, __VA_ARGS__);                       \
-    DISPATCH_NK_BLOCKS(8, 8, 256, __VA_ARGS__);                        \
-    DISPATCH_NK_BLOCKS(8, 4, 128, __VA_ARGS__);                        \
-    DISPATCH_NK_BLOCKS(4, 8, 128, __VA_ARGS__);                        \
-    LOG(FATAL) << "Unsupported (N_BLOCKS, K_BLOCKS, NUM_THREADS): "    \
-               << N_BLOCKS << ", " << K_BLOCKS << ", " << NUM_THREADS; \
+// M_BLOCKS: 1, 2, 3, 4
+#define M_BLOCKS_SWITCH(thread_m_blocks, ...)                           \
+  [&] {                                                                 \
+    if (thread_m_blocks == 1) {                                         \
+      constexpr static int THREAD_M_BLOCKS = 1;                         \
+      return __VA_ARGS__();                                             \
+    } else if (thread_m_blocks == 2) {                                  \
+      constexpr static int THREAD_M_BLOCKS = 2;                         \
+      return __VA_ARGS__();                                             \
+    } else if (thread_m_blocks == 3) {                                  \
+      constexpr static int THREAD_M_BLOCKS = 3;                         \
+      return __VA_ARGS__();                                             \
+    } else if (thread_m_blocks == 4) {                                  \
+      constexpr static int THREAD_M_BLOCKS = 4;                         \
+      return __VA_ARGS__();                                             \
+    } else {                                                            \
+      LOG(FATAL) << "Unsupported thread_m_blocks: " << thread_m_blocks; \
+    }                                                                   \
   }()
 
+#define DISPATCH_NK_BLOCKS_THREADS(N_BLOCKS, K_BLOCKS, THREADS, ...) \
+  if (N_BLOCKS == thread_n_blocks && K_BLOCKS == thread_k_blocks &&  \
+      THREADS == num_threads) {                                      \
+    constexpr static int THREAD_N_BLOCKS = N_BLOCKS;                 \
+    constexpr static int THREAD_K_BLOCKS = K_BLOCKS;                 \
+    constexpr static int NUM_THREADS = THREADS;                      \
+    return __VA_ARGS__();                                            \
+  }
+
 // HAS_ZP: [true, false]
-#define HAS_ZP_SWITCH(HAS_ZP, ...)          \
+#define HAS_ZP_SWITCH(has_zp, ...)          \
   [&] {                                     \
-    if (HAS_ZP) {                           \
+    if (has_zp) {                           \
       constexpr static bool HAS_ZP = true;  \
       return __VA_ARGS__();                 \
     } else {                                \
@@ -95,52 +83,32 @@
   }()
 
 // (ACT_ORDER, GROUP): (true, 0), (false, [-1, 2, 4, 8])
-#define ACT_ORDER_SWITCH(ACT_ORDER, GROUP, ...)       \
-  [&] {                                               \
-    if (ACT_ORDER) {                                  \
-      constexpr static bool HAS_ACT_ORDER = true;     \
-      if (GROUP == 0) {                               \
-        constexpr static int GROUP_BLOCKS = 0;        \
-        return __VA_ARGS__();                         \
-      } else {                                        \
-        LOG(FATAL) << "Unsupported GROUP: " << GROUP; \
-      }                                               \
-    } else {                                          \
-      constexpr static bool HAS_ACT_ORDER = false;    \
-      if (GROUP == -1) {                              \
-        constexpr static int GROUP_BLOCKS = -1;       \
-        return __VA_ARGS__();                         \
-      } else if (GROUP == 2) {                        \
-        constexpr static int GROUP_BLOCKS = 2;        \
-        return __VA_ARGS__();                         \
-      } else if (GROUP == 4) {                        \
-        constexpr static int GROUP_BLOCKS = 4;        \
-        return __VA_ARGS__();                         \
-      } else if (GROUP == 8) {                        \
-        constexpr static int GROUP_BLOCKS = 8;        \
-        return __VA_ARGS__();                         \
-      } else {                                        \
-        LOG(FATAL) << "Unsupported GROUP: " << GROUP; \
-      }                                               \
-    }                                                 \
+#define ACT_ORDER_GROUP_BLOCKS_SWITCH(act_order, group_blocks, ...) \
+  [&] {                                                             \
+    if (!HAS_ZP && act_order) {                                     \
+      constexpr static bool HAS_ACT_ORDER = true;                   \
+      if (group_blocks == 0) {                                      \
+        constexpr static int GROUP_BLOCKS = 0;                      \
+        return __VA_ARGS__();                                       \
+      } else {                                                      \
+        LOG(FATAL) << "Unsupported group_blocks: " << group_blocks; \
+      }                                                             \
+    } else {                                                        \
+      constexpr static bool HAS_ACT_ORDER = false;                  \
+      if (group_blocks == -1) {                                     \
+        constexpr static int GROUP_BLOCKS = -1;                     \
+        return __VA_ARGS__();                                       \
+      } else if (group_blocks == 2) {                               \
+        constexpr static int GROUP_BLOCKS = 2;                      \
+        return __VA_ARGS__();                                       \
+      } else if (group_blocks == 4) {                               \
+        constexpr static int GROUP_BLOCKS = 4;                      \
+        return __VA_ARGS__();                                       \
+      } else if (group_blocks == 8) {                               \
+        constexpr static int GROUP_BLOCKS = 8;                      \
+        return __VA_ARGS__();                                       \
+      } else {                                                      \
+        LOG(FATAL) << "Unsupported group_blocks: " << group_blocks; \
+      }                                                             \
+    }                                                               \
   }()
-
-// GPTQ
-// 2: NUM_BITS: [4, 8]
-// 4: (N_BLOCKS, K_BLOCKS, NUM_THREADS) : (16, 4, 256), (8, 8, 256), (8, 4,
-// 128), (4, 8, 128)
-
-// 4: M_BLOCKS: 1, 2, 3, 4
-// 1: HAS_ZP: false
-
-// 5 : (ACT_ORDER, GROUP): (true, 0), (false, [-1, 2, 4, 8])
-
-// AWQ
-// 2: NUM_BITS: [4, 8]
-// 4: (N_BLOCKS, K_BLOCKS, NUM_THREADS) : (16, 4, 256), (8, 8, 256), (8, 4,
-// 128), (4, 8, 128)
-
-// 4: M_BLOCKS: 1, 2, 3, 4
-// 1: HAS_ZP: true
-
-// 4 : (ACT_ORDER, GROUP): (false, [-1, 2, 4, 8])

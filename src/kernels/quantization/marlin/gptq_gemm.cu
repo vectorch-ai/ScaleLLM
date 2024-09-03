@@ -26,9 +26,41 @@
 #include <torch/torch.h>
 
 #include "common.h"
-#include "gemm_kernel_launch.cuh"
+#include "static_switch.h"
 
 namespace marlin {
+template <typename scalar_t,          // compute dtype, half or nv_float16
+          const int num_bits,         // number of bits used for weights
+          const int threads,          // number of threads in a threadblock
+          const int thread_m_blocks,  // number of 16x16 blocks in the m
+                                      // dimension (batchsize) of the
+                                      // threadblock
+          const int thread_n_blocks,  // same for n dimension (output)
+          const int thread_k_blocks,  // same for k dimension (reduction)
+          const int stages,  // number of stages for the async global->shared
+                             // fetch pipeline
+          const bool has_act_order,  // whether act_order is enabled
+          const bool has_zp,         // whether zero-points are enabled
+          const int group_blocks     // number of consecutive 16x16 blocks
+                                     // with a separate quantization scale
+          >
+void Marlin(
+    const int4* __restrict__ A,  // fp16 input matrix of shape mxk
+    const int4* __restrict__ B,  // 4bit quantized weight matrix of shape kxn
+    int4* __restrict__ C,        // fp16 output buffer of shape mxn
+    int4* __restrict__ C_tmp,    // fp32 tmp output buffer (for reduce)
+    const int4* __restrict__ scales_ptr,  // fp16 quantization scales of shape
+                                          // (k/groupsize)xn
+    const int4* __restrict__ zp_ptr,      // 4bit packed zero-points of shape
+                                          // (k/groupsize)x(n/pack_factor)
+    const int* __restrict__ g_idx,        // int32 group indices of shape k
+    int num_groups,       // number of scale groups per output channel
+    int prob_m,           // batch dimension m
+    int prob_n,           // output dimension n
+    int prob_k,           // reduction dimension k
+    int* locks,           // extra global storage for barrier synchronization
+    bool use_fp32_reduce  // whether to use fp32 global reduce
+);
 namespace {
 
 // For a given "a" of size [M,K] performs a permutation of the K columns based
@@ -319,6 +351,20 @@ exec_config_t determine_thread_config(int prob_m,
   return exec_config_t{0, {-1, -1, -1}};
 }
 
+// (N_BLOCKS, K_BLOCKS, NUM_THREADS) :
+//  (16, 4, 256), (8, 8, 256), (8, 4, 128), (4, 8, 128)
+#define NK_BLOCKS_THREADS_SWITCH(                                    \
+    thread_n_blocks, thread_k_blocks, num_threads, ...)              \
+  [&] {                                                              \
+    DISPATCH_NK_BLOCKS_THREADS(16, 4, 256, __VA_ARGS__);             \
+    DISPATCH_NK_BLOCKS_THREADS(8, 8, 256, __VA_ARGS__);              \
+    DISPATCH_NK_BLOCKS_THREADS(8, 4, 128, __VA_ARGS__);              \
+    DISPATCH_NK_BLOCKS_THREADS(4, 8, 128, __VA_ARGS__);              \
+    LOG(FATAL) << "Unsupported (N_BLOCKS, K_BLOCKS, NUM_THREADS): "  \
+               << thread_n_blocks << ", " << thread_k_blocks << ", " \
+               << num_threads;                                       \
+  }()
+
 template <typename scalar_t>
 void marlin_mm(const void* A,
                const void* B,
@@ -488,35 +534,46 @@ void marlin_mm(const void* A,
       thread_m_blocks = exec_cfg.max_m_blocks;
     }
 
-    if (false) {
-    }
-    GPTQ_CALL_IF(4, 16, 4, 256)
-    GPTQ_CALL_IF(4, 8, 8, 256)
-    GPTQ_CALL_IF(4, 8, 4, 128)
-    GPTQ_CALL_IF(4, 4, 8, 128)
-    GPTQ_CALL_IF(8, 16, 4, 256)
-    GPTQ_CALL_IF(8, 8, 8, 256)
-    GPTQ_CALL_IF(8, 8, 4, 128)
-    GPTQ_CALL_IF(8, 4, 8, 128)
+    NUM_BITS_SWITCH(num_bits, [&] {
+      M_BLOCKS_SWITCH(thread_m_blocks, [&] {
+        NK_BLOCKS_THREADS_SWITCH(
+            thread_n_blocks, thread_k_blocks, num_threads, [&] {
+              HAS_ZP_SWITCH(has_zp, [&] {
+                ACT_ORDER_GROUP_BLOCKS_SWITCH(has_act_order, group_blocks, [&] {
+                  auto kernel = &Marlin<scalar_t,
+                                        NUM_BITS,
+                                        NUM_THREADS,
+                                        THREAD_M_BLOCKS,
+                                        THREAD_N_BLOCKS,
+                                        THREAD_K_BLOCKS,
+                                        pipe_stages,
+                                        HAS_ACT_ORDER,
+                                        HAS_ZP,
+                                        GROUP_BLOCKS>;
+                  cudaFuncSetAttribute(
+                      kernel,
+                      cudaFuncAttributeMaxDynamicSharedMemorySize,
+                      max_shared_mem);
 
-    AWQ_CALL_IF(4, 16, 4, 256)
-    AWQ_CALL_IF(4, 8, 8, 256)
-    AWQ_CALL_IF(4, 8, 4, 128)
-    AWQ_CALL_IF(4, 4, 8, 128)
-    AWQ_CALL_IF(8, 16, 4, 256)
-    AWQ_CALL_IF(8, 8, 8, 256)
-    AWQ_CALL_IF(8, 8, 4, 128)
-    AWQ_CALL_IF(8, 4, 8, 128)
-    else {
-      LOG(FATAL) << "Unsupported shapes: MNK = [" << prob_m << ", " << prob_n
-                 << ", " << prob_k << "], has_act_order = " << has_act_order
-                 << ", num_groups = " << num_groups
-                 << ", group_size = " << group_size
-                 << ", thread_m_blocks = " << thread_m_blocks
-                 << ", thread_n_blocks = " << thread_n_blocks
-                 << ", thread_k_blocks = " << thread_k_blocks
-                 << ", num_bits = " << num_bits;
-    }
+                  kernel<<<blocks, NUM_THREADS, max_shared_mem, stream>>>(
+                      A_ptr,
+                      B_ptr,
+                      C_ptr,
+                      C_tmp_ptr,
+                      s_ptr,
+                      zp_ptr,
+                      g_idx_ptr,
+                      num_groups,
+                      prob_m,
+                      prob_n,
+                      prob_k,
+                      locks,
+                      use_fp32_reduce);
+                });
+              });
+            });
+      });
+    });
 
     A_ptr += 16 * thread_m_blocks * (prob_k / 8) * par;
     C_ptr += 16 * thread_m_blocks * (prob_n / 8) * par;
@@ -540,8 +597,6 @@ void gptq_gemm(
     bool use_fp32_reduce) {
   CHECK(num_bits == 4 || num_bits == 8)
       << "num_bits must be 4 or 8. Got = " << num_bits;
-
-  // int pack_factor = 32 / num_bits;
 
   int prob_m = A.size(0);
   int prob_n = C.size(1);
@@ -624,63 +679,34 @@ void gptq_gemm(
       << " is below min_workspace_size = " << min_workspace_size;
 
   int dev = A.get_device();
-  if (A.scalar_type() == at::ScalarType::Half) {
-    marlin_mm<half>(A.data_ptr(),
-                    B.data_ptr(),
-                    C.data_ptr(),
-                    c_tmp.data_ptr(),
-                    scales.data_ptr(),
-                    zeros.data_ptr(),
-                    g_idx.data_ptr(),
-                    perm.data_ptr(),
-                    a_tmp.data_ptr(),
-                    prob_m,
-                    prob_n,
-                    prob_k,
-                    workspace.data_ptr(),
-                    num_bits,
-                    has_act_order,
-                    is_k_full,
-                    has_zp,
-                    num_groups,
-                    group_size,
-                    dev,
-                    at::cuda::getCurrentCUDAStream(dev),
-                    thread_k,
-                    thread_n,
-                    sms,
-                    marlin::max_par,
-                    use_fp32_reduce);
-  } else if (A.scalar_type() == at::ScalarType::BFloat16) {
-    marlin_mm<nv_bfloat16>(A.data_ptr(),
-                           B.data_ptr(),
-                           C.data_ptr(),
-                           c_tmp.data_ptr(),
-                           scales.data_ptr(),
-                           zeros.data_ptr(),
-                           g_idx.data_ptr(),
-                           perm.data_ptr(),
-                           a_tmp.data_ptr(),
-                           prob_m,
-                           prob_n,
-                           prob_k,
-                           workspace.data_ptr(),
-                           num_bits,
-                           has_act_order,
-                           is_k_full,
-                           has_zp,
-                           num_groups,
-                           group_size,
-                           dev,
-                           at::cuda::getCurrentCUDAStream(dev),
-                           thread_k,
-                           thread_n,
-                           sms,
-                           marlin::max_par,
-                           use_fp32_reduce);
-  } else {
-    LOG(FATAL) << "Unsupported scalar type = " << A.scalar_type();
-  }
+  FLOAT_TYPE_SWITCH(A.scalar_type(), [&] {
+    marlin_mm<scalar_t>(A.data_ptr(),
+                        B.data_ptr(),
+                        C.data_ptr(),
+                        c_tmp.data_ptr(),
+                        scales.data_ptr(),
+                        zeros.data_ptr(),
+                        g_idx.data_ptr(),
+                        perm.data_ptr(),
+                        a_tmp.data_ptr(),
+                        prob_m,
+                        prob_n,
+                        prob_k,
+                        workspace.data_ptr(),
+                        num_bits,
+                        has_act_order,
+                        is_k_full,
+                        has_zp,
+                        num_groups,
+                        group_size,
+                        dev,
+                        at::cuda::getCurrentCUDAStream(dev),
+                        thread_k,
+                        thread_n,
+                        sms,
+                        marlin::max_par,
+                        use_fp32_reduce);
+  });
 }
 
 }  // namespace marlin

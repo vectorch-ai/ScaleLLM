@@ -727,31 +727,6 @@ __global__ void Marlin(
   }
 }
 
-#define __CALL_IF(                                                             \
-    NUM_BITS, THREAD_M_BLOCKS, THREAD_N_BLOCKS, THREAD_K_BLOCKS, NUM_THREADS)  \
-  else if (num_bits == NUM_BITS && thread_m_blocks == THREAD_M_BLOCKS &&       \
-           thread_n_blocks == THREAD_N_BLOCKS &&                               \
-           thread_k_blocks == THREAD_K_BLOCKS && num_threads == NUM_THREADS) { \
-    auto kernel = &Marlin<scalar_t,                                            \
-                          NUM_BITS,                                            \
-                          NUM_THREADS,                                         \
-                          THREAD_M_BLOCKS,                                     \
-                          THREAD_N_BLOCKS,                                     \
-                          THREAD_K_BLOCKS,                                     \
-                          pipe_stages>;                                        \
-    cudaFuncSetAttribute(                                                      \
-        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_shared_mem);  \
-    kernel<<<blocks, NUM_THREADS, max_shared_mem, stream>>>(A_ptr,             \
-                                                            B_ptr,             \
-                                                            C_ptr,             \
-                                                            s_ptr,             \
-                                                            num_groups,        \
-                                                            prob_m,            \
-                                                            prob_n,            \
-                                                            prob_k,            \
-                                                            locks);            \
-  }
-
 using thread_config_t = struct {
   int thread_k;
   int thread_n;
@@ -930,11 +905,18 @@ exec_config_t determine_thread_config(int prob_m,
   return exec_config_t{0, {-1, -1, -1}};
 }
 
-#define CALL_IF(NUM_BITS, N_BLOCKS, K_BLOCKS, NUM_THREADS) \
-  __CALL_IF(NUM_BITS, 1, N_BLOCKS, K_BLOCKS, NUM_THREADS)  \
-  __CALL_IF(NUM_BITS, 2, N_BLOCKS, K_BLOCKS, NUM_THREADS)  \
-  __CALL_IF(NUM_BITS, 3, N_BLOCKS, K_BLOCKS, NUM_THREADS)  \
-  __CALL_IF(NUM_BITS, 4, N_BLOCKS, K_BLOCKS, NUM_THREADS)
+#define NK_BLOCKS_THREADS_SWITCH(                                    \
+    thread_n_blocks, thread_k_blocks, num_threads, ...)              \
+  [&] {                                                              \
+    DISPATCH_NK_BLOCKS_THREADS(32, 2, 256, __VA_ARGS__);             \
+    DISPATCH_NK_BLOCKS_THREADS(16, 4, 256, __VA_ARGS__);             \
+    DISPATCH_NK_BLOCKS_THREADS(8, 8, 256, __VA_ARGS__);              \
+    DISPATCH_NK_BLOCKS_THREADS(8, 4, 128, __VA_ARGS__);              \
+    DISPATCH_NK_BLOCKS_THREADS(4, 8, 128, __VA_ARGS__);              \
+    LOG(FATAL) << "Unsupported (N_BLOCKS, K_BLOCKS, NUM_THREADS): "  \
+               << thread_n_blocks << ", " << thread_k_blocks << ", " \
+               << num_threads;                                       \
+  }()
 
 template <typename scalar_t>
 void marlin_mm_f16i4(const void* A,
@@ -1039,25 +1021,31 @@ void marlin_mm_f16i4(const void* A,
       thread_m_blocks = exec_cfg.max_m_blocks;
     }
 
-    // (16, 4, 256), (8, 8, 256), (8, 4, 128), (4, 8, 128)
-    // Define kernel configurations
-    // NOLINTNEXTLINE
-    if (false) {
-    }
-    CALL_IF(8, 32, 2, 256)
-    CALL_IF(8, 16, 4, 256)
-    CALL_IF(8, 8, 8, 256)
-    CALL_IF(8, 8, 4, 128)
-    CALL_IF(8, 4, 8, 128)
-    else {
-      LOG(FATAL) << "Unsupported shapes: MNK = [" << prob_m << ", " << prob_n
-                 << ", " << prob_k << "]"
-                 << ", num_groups = " << num_groups
-                 << ", group_size = " << group_size
-                 << ", thread_m_blocks = " << thread_m_blocks
-                 << ", thread_n_blocks = " << thread_n_blocks
-                 << ", thread_k_blocks = " << thread_k_blocks;
-    }
+    M_BLOCKS_SWITCH(thread_m_blocks, [&] {
+      NK_BLOCKS_THREADS_SWITCH(
+          thread_n_blocks, thread_k_blocks, num_threads, [&] {
+            constexpr static int NUM_BITS = 8;
+            auto kernel = &Marlin<scalar_t,
+                                  NUM_BITS,
+                                  NUM_THREADS,
+                                  THREAD_M_BLOCKS,
+                                  THREAD_N_BLOCKS,
+                                  THREAD_K_BLOCKS,
+                                  pipe_stages>;
+            cudaFuncSetAttribute(kernel,
+                                 cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                 max_shared_mem);
+            kernel<<<blocks, NUM_THREADS, max_shared_mem, stream>>>(A_ptr,
+                                                                    B_ptr,
+                                                                    C_ptr,
+                                                                    s_ptr,
+                                                                    num_groups,
+                                                                    prob_m,
+                                                                    prob_n,
+                                                                    prob_k,
+                                                                    locks);
+          });
+    });
 
     A_ptr += 16 * thread_m_blocks * (prob_k / 8) * par;
     C_ptr += 16 * thread_m_blocks * (prob_n / 8) * par;

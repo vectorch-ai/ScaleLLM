@@ -87,7 +87,7 @@ find_package_handle_standard_args(NCCL
   VERSION_VAR   NCCL_VERSION)
 
 if(NCCL_FOUND)
-  message(STATUS "Found NCCL ${NCCL_VERSION} (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})")
+  message(STATUS "Found NCCL ${NCCL_VERSION} (include: ${NCCL_INCLUDE_DIR}, library: ${NCCL_LIBRARY})")
   if(NOT TARGET NCCL::nccl)
     add_library(NCCL::nccl UNKNOWN IMPORTED)
     set_target_properties(NCCL::nccl PROPERTIES

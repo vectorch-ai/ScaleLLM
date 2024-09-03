@@ -40,7 +40,7 @@ find_package_handle_standard_args(CUDADriver
 )
 
 if(CUDADriver_FOUND)
-  message(STATUS "Found CUDA driver : ${CUDADriver_LIBRARY}")
+  message(STATUS "Found CUDADriver : ${CUDADriver_LIBRARY}")
   if(NOT TARGET CUDA::driver)
     add_library(CUDA::driver SHARED IMPORTED)
     set_target_properties(CUDA::driver PROPERTIES
