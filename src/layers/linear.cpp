@@ -8,10 +8,10 @@
 
 #include "linear_impl.h"
 #include "quantization/qlinear_awq_impl.h"
+#include "quantization/qlinear_awq_marlin_impl.h"
 #include "quantization/qlinear_exllamav2_impl.h"
 #include "quantization/qlinear_gptq_impl.h"
 #include "quantization/qlinear_gptq_marlin_impl.h"
-#include "quantization/qlinear_awq_marlin_impl.h"
 
 DEFINE_string(
     qlinear_gptq_impl,
