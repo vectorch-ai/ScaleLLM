@@ -28,6 +28,7 @@ Checks: >
   -readability-use-anyofallof,
   -readability-magic-numbers,
   -readability-else-after-return,
+  -readability-isolate-declaration,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-avoid-non-const-global-variables,
   -cppcoreguidelines-special-member-functions,
@@ -40,6 +41,7 @@ Checks: >
   -cppcoreguidelines-macro-usage,
   -cppcoreguidelines-owning-memory,
   -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-init-variables,
   -cppcoreguidelines-pro-bounds-constant-array-index,
 
 

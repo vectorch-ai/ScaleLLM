@@ -19,15 +19,10 @@ cc_library(
   NAME 
     flash_infer.kernels
   HDRS
-    flashinfer_ops.h
+    attention_kernel.h
   SRCS
-    single_decode.cu
-    single_prefill.cu
-    batch_decode.cu
-    batch_prefill.cu
-    cascade.cu
-    page.cu
-    ${GENERATED_SRC_FILES}
+    # ${GENERATED_SRC_FILES}
+    batch_paged_prefill_instance.cu
   INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
