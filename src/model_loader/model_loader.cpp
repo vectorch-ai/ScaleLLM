@@ -148,6 +148,9 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     if (auto v = reader.value<bool>("quantization_config.sym")) {
       quant_args_.is_sym() = v.value();
     }
+    if (auto v = reader.value<bool>("quantization_config.zero_point")) {
+      quant_args_.zero_point() = v.value();
+    }
   }
 
   // load quantization args for awq if exists
@@ -187,6 +190,9 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
     }
     if (auto v = gptq_reader.value<bool>("sym")) {
       quant_args_.is_sym() = v.value();
+    }
+    if (auto v = gptq_reader.value<bool>("zero_point")) {
+      quant_args_.zero_point() = v.value();
     }
   }
 

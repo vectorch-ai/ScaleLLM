@@ -11,6 +11,7 @@
 #include "quantization/qlinear_exllamav2_impl.h"
 #include "quantization/qlinear_gptq_impl.h"
 #include "quantization/qlinear_gptq_marlin_impl.h"
+#include "quantization/qlinear_awq_marlin_impl.h"
 
 DEFINE_string(
     qlinear_gptq_impl,
@@ -133,7 +134,8 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
   if (boost::iequals(quant_args.quant_method(), "awq") ||
       boost::iequals(quant_args.quant_method(), "GEMM")) {
     // default to use awq implementation for gemm
-    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearAWQImpl);
+    // return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearAWQImpl);
+    return MAKE_COLUMN_PARALLEL_QLINEAR(ColumnParallelQLinearAWQMarlinImpl);
   }
   // not supported quant method
   LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
@@ -163,7 +165,8 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
   if (boost::iequals(quant_args.quant_method(), "awq") ||
       boost::iequals(quant_args.quant_method(), "GEMM")) {
     // default to use awq implementation for gemm
-    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearAWQImpl);
+    // return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearAWQImpl);
+    return MAKE_ROW_PARALLEL_QLINEAR(RowParallelQLinearAWQMarlinImpl);
   }
   // not supported quant method
   LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();

@@ -6,7 +6,7 @@ from scalellm import AsyncLLMEngine, Message, SamplingParams
 async def main():
     # Create an LLM engine.
     with AsyncLLMEngine(
-        model="meta-llama/Meta-Llama-3.1-8B-Instruct", devices="cuda"
+        model="hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4", devices="cuda"
     ) as engine:
         sampling_params = SamplingParams(temperature=0.7, max_tokens=1000)
 
