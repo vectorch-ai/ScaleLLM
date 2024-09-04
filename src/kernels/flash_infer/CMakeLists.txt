@@ -19,7 +19,7 @@ cc_library(
   NAME 
     flash_infer.kernels
   HDRS
-    attn_kernel.h
+    attention_kernel.h
   SRCS
     # ${GENERATED_SRC_FILES}
     batch_paged_prefill_instance.cu
