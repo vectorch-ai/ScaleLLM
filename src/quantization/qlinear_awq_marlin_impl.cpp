@@ -19,16 +19,16 @@ int64_t round_up(int64_t num, int64_t multiple) {
 }
 
 void check_awq_quant_args(const QuantArgs& quant_args) {
-  CHECK(quant_args.is_sym())
-      << "Only symmetric quantization is supported for GPTQ";
+  CHECK(quant_args.zero_point() && !quant_args.is_sym())
+      << "Only zero_point is supported for AWQ";
 
   const auto bits = quant_args.bits();
-  CHECK(bits == 4 || bits == 8) << "Only 4 and 8 bits are supported for GPTQ";
+  CHECK(bits == 4 || bits == 8) << "Only 4 and 8 bits are supported for AWQ";
 
   const auto group_size = quant_args.group_size();
   CHECK(group_size == -1 || group_size == 32 || group_size == 64 ||
         group_size == 128)
-      << "Only group_size of -1, 32, 64, 128 are supported for GPTQ";
+      << "Only group_size of -1, 32, 64, 128 are supported for AWQ";
 }
 
 const std::vector<int64_t> kScalesPerm = {
@@ -104,10 +104,12 @@ void repack_weight(torch::Tensor& qweight,
   auto marlin_qweights = torch::empty(
       {qweight.size(0) / 16, qweight.size(1) * 16}, qweight.options());
   marlin::awq_repack(qweight, marlin_qweights, num_bits);
+  // (k, n/pack_factor) -> (k/16, n*16/pack_factor)
   qweight.set_data(marlin_qweights);
 
   // permute and repack qzeros
   auto marlin_qzeros = repack_qzeros(qzeros, num_bits);
+  // (n_groups, n/pack_factor) -> (n_groups, n/pack_factor)
   qzeros.set_data(marlin_qzeros);
 
   // permute scales
@@ -118,6 +120,7 @@ void repack_weight(torch::Tensor& qweight,
       scales.reshape({-1, perm_len})
           .index_select(/*dim=*/1, torch::tensor(scale_perm, scales.device()));
   marlin_scales = marlin_scales.reshape(scales.sizes()).contiguous();
+  // (n_groups, n) -> (n_groups, n)
   scales.set_data(marlin_scales);
 }
 
@@ -231,8 +234,7 @@ torch::Tensor ColumnParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
     weight_repacked_ = true;
   }
 
-  auto output =
-      torch::empty({input.size(0), qweight_.size(1)}, input.options());
+  auto output = torch::empty({input.size(0), scales_.size(1)}, input.options());
   marlin::gptq_gemm(input,
                     qweight_,
                     output,
@@ -338,8 +340,7 @@ torch::Tensor RowParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
   }
 
-  auto output =
-      torch::empty({input.size(0), qweight_.size(1)}, input.options());
+  auto output = torch::empty({input.size(0), scales_.size(1)}, input.options());
   marlin::gptq_gemm(input,
                     qweight_,
                     output,

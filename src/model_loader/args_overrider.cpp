@@ -57,6 +57,7 @@ DEFINE_string(bits, "", "number of bits for quantization");
 DEFINE_string(group_size, "", "group size for quantization");
 DEFINE_string(desc_act, "", "desc_act for quantization");
 DEFINE_string(is_sym, "", "is_sym for quantization");
+DEFINE_string(zero_point, "", "zero_point for quantization");
 
 // define gflags for all tokenizer args defined in
 DEFINE_string(tokenizer_type,
@@ -189,6 +190,7 @@ void override_args_from_gflag(ModelArgs& args,
   OVERRIDE_ARG_FROM_GFLAG(quant_args, group_size);
   OVERRIDE_ARG_FROM_GFLAG(quant_args, desc_act);
   OVERRIDE_ARG_FROM_GFLAG(quant_args, is_sym);
+  OVERRIDE_ARG_FROM_GFLAG(quant_args, zero_point);
 
   // override tokenizer args from gflag
   OVERRIDE_ARG_FROM_GFLAG(tokenizer_args, tokenizer_type);
