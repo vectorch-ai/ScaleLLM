@@ -199,177 +199,64 @@ def generate_instantiation_cu(group_sizes,
     shutil.rmtree(root / prefix, ignore_errors=True)
     (root / prefix).mkdir(parents=True, exist_ok=True)
 
-    # dispatch.inc
-    path = root / prefix / "dispatch.inc"
-    if not path.exists():
-        with open(root / prefix / "dispatch.inc", "w") as f:
-            f.write("#define _DISPATCH_CASES_group_size(...)      \\\n")
-            for x in group_sizes:
-                f.write(f"  _DISPATCH_CASE({x}, GROUP_SIZE, __VA_ARGS__) \\\n")
-            f.write("// EOL\n")
+    # # dispatch.inc
+    # path = root / prefix / "dispatch.inc"
+    # if not path.exists():
+    #     with open(root / prefix / "dispatch.inc", "w") as f:
+    #         f.write("#define _DISPATCH_CASES_group_size(...)      \\\n")
+    #         for x in group_sizes:
+    #             f.write(f"  _DISPATCH_CASE({x}, GROUP_SIZE, __VA_ARGS__) \\\n")
+    #         f.write("// EOL\n")
 
-            f.write("#define _DISPATCH_CASES_head_dim(...)        \\\n")
-            for x in head_dims:
-                f.write(f"  _DISPATCH_CASE({x}, HEAD_DIM, __VA_ARGS__) \\\n")
-            f.write("// EOL\n")
-            f.write("\n")
+    #         f.write("#define _DISPATCH_CASES_head_dim(...)        \\\n")
+    #         for x in head_dims:
+    #             f.write(f"  _DISPATCH_CASE({x}, HEAD_DIM, __VA_ARGS__) \\\n")
+    #         f.write("// EOL\n")
+    #         f.write("\n")
 
     idtypes = ["i32"]
     prefill_dtypes = ["f16"]
     if enable_bf16:
         prefill_dtypes.append("bf16")
-    decode_dtypes = ["f16", "bf16"]
-    fp8_dtypes = []
     if enable_fp8:
         fp8_dtypes = ["e4m3", "e5m2"]
 
     files = []
-    # single decode files
-    for (
-        group_size,
-        head_dim,
-        kv_layout,
-        pos_encoding_mode,
-    ) in itertools.product(
-        group_sizes,
-        head_dims,
-        kv_layouts,
-        pos_encoding_modes,
-    ):
-        for dtype in decode_dtypes:
-            fname = f"single_decode_group_{group_size}_head_{head_dim}_layout_{kv_layout}_posenc_{pos_encoding_mode}_dtypein_{dtype}_dtypeout_{dtype}.cu"
-            files.append(prefix + "/" + fname)
-            content = get_single_decode_inst_str(
-                group_size,
-                head_dim,
-                kv_layout,
-                pos_encoding_mode,
-                dtype,
-                dtype,
-            )
-            write_if_different(root / prefix / fname, content)
 
-        for dtype_in in fp8_dtypes:
-            dtype_out = "f16"
-            fname = f"single_decode_group_{group_size}_head_{head_dim}_layout_{kv_layout}_posenc_{pos_encoding_mode}_dtypein_{dtype_in}_dtypeout_{dtype_out}.cu"
-            files.append(prefix + "/" + fname)
-            content = get_single_decode_inst_str(
-                group_size,
-                head_dim,
-                kv_layout,
-                pos_encoding_mode,
-                dtype_in,
-                dtype_out,
-            )
-            write_if_different(root / prefix / fname, content)
-
-    # batch decode files
-    for (
-        group_size,
-        head_dim,
-        kv_layout,
-        pos_encoding_mode,
-    ) in itertools.product(
-        group_sizes,
-        head_dims,
-        kv_layouts,
-        pos_encoding_modes,
-    ):
-        for idtype in idtypes:
-            for dtype in decode_dtypes:
-                fname = f"batch_paged_decode_group_{group_size}_head_{head_dim}_layout_{kv_layout}_posenc_{pos_encoding_mode}_dtypein_{dtype}_dtypeout_{dtype}_idtype_{idtype}.cu"
-                files.append(prefix + "/" + fname)
-                content = get_batch_paged_decode_inst_str(
-                    group_size,
-                    head_dim,
-                    kv_layout,
-                    pos_encoding_mode,
-                    dtype,
-                    dtype,
-                    idtype,
-                )
-                write_if_different(root / prefix / fname, content)
-
-            for dtype_in in fp8_dtypes:
-                dtype_out = "f16"
-                fname = f"batch_paged_decode_group_{group_size}_head_{head_dim}_layout_{kv_layout}_posenc_{pos_encoding_mode}_dtypein_{dtype_in}_dtypeout_{dtype_out}_idtype_{idtype}.cu"
-                files.append(prefix + "/" + fname)
-                content = get_batch_paged_decode_inst_str(
-                    group_size,
-                    head_dim,
-                    kv_layout,
-                    pos_encoding_mode,
-                    dtype_in,
-                    dtype_out,
-                    idtype,
-                )
-                write_if_different(root / prefix / fname, content)
-
-    # single prefill files
-    for (
-        group_size,
-        head_dim,
-        kv_layout,
-        pos_encoding_mode,
-        allow_fp16_qk_reduction,
-        causal,
-    ) in itertools.product(
-        group_sizes,
-        head_dims,
-        kv_layouts,
-        pos_encoding_modes,
-        allow_fp16_qk_reduction_options,
-        causal_options,
-    ):
-        for dtype in prefill_dtypes:
-            fname = f"single_prefill_group_{group_size}_head_{head_dim}_layout_{kv_layout}_posenc_{pos_encoding_mode}_fp16qkred_{allow_fp16_qk_reduction}_causal_{causal}_dtypein_{dtype}_dtypeout_{dtype}.cu"
-            files.append(prefix + "/" + fname)
-            content = get_single_prefill_inst_str(
-                group_size,
-                head_dim,
-                kv_layout,
-                pos_encoding_mode,
-                allow_fp16_qk_reduction,
-                causal,
-                dtype,
-                dtype,
-            )
-            write_if_different(root / prefix / fname, content)
-
-    # batch paged prefill files
-    for (
-        group_size,
-        head_dim,
-        kv_layout,
-        pos_encoding_mode,
-        allow_fp16_qk_reduction,
-        causal,
-        idtype,
-    ) in itertools.product(
-        group_sizes,
-        head_dims,
-        kv_layouts,
-        pos_encoding_modes,
-        allow_fp16_qk_reduction_options,
-        causal_options,
-        idtypes,
-    ):
-        for dtype in prefill_dtypes:
-            fname = f"batch_paged_prefill_group_{group_size}_head_{head_dim}_layout_{kv_layout}_posenc_{pos_encoding_mode}_fp16qkred_{allow_fp16_qk_reduction}_causal_{causal}_dtypein_{dtype}_dtypeout_{dtype}_idtype_{idtype}.cu"
-            files.append(prefix + "/" + fname)
-            content = get_batch_paged_prefill_inst_str(
-                group_size,
-                head_dim,
-                kv_layout,
-                pos_encoding_mode,
-                allow_fp16_qk_reduction,
-                causal,
-                dtype,
-                dtype,
-                idtype,
-                page_size_choices=[1, 16, 32],
-            )
-            write_if_different(root / prefix / fname, content)
+    # # batch paged prefill files
+    # for (
+    #     group_size,
+    #     head_dim,
+    #     kv_layout,
+    #     pos_encoding_mode,
+    #     allow_fp16_qk_reduction,
+    #     causal,
+    #     idtype,
+    # ) in itertools.product(
+    #     group_sizes,
+    #     head_dims,
+    #     kv_layouts,
+    #     pos_encoding_modes,
+    #     allow_fp16_qk_reduction_options,
+    #     causal_options,
+    #     idtypes,
+    # ):
+    #     for dtype in prefill_dtypes:
+    #         fname = f"batch_paged_prefill_group_{group_size}_head_{head_dim}_layout_{kv_layout}_posenc_{pos_encoding_mode}_fp16qkred_{allow_fp16_qk_reduction}_causal_{causal}_dtypein_{dtype}_dtypeout_{dtype}_idtype_{idtype}.cu"
+    #         files.append(prefix + "/" + fname)
+    #         content = get_batch_paged_prefill_inst_str(
+    #             group_size,
+    #             head_dim,
+    #             kv_layout,
+    #             pos_encoding_mode,
+    #             allow_fp16_qk_reduction,
+    #             causal,
+    #             dtype,
+    #             dtype,
+    #             idtype,
+    #             page_size_choices=[1, 16, 32],
+    #         )
+    #         write_if_different(root / prefix / fname, content)
 
 if __name__ == "__main__":
     generate_instantiation_cu(group_sizes=[1, 4, 8], 
