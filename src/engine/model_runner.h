@@ -65,6 +65,7 @@ class ModelRunner final {
   torch::Tensor kv_cu_seq_lens_;
   torch::Tensor new_cache_slots_;
   torch::Tensor block_tables_;
+  torch::Tensor cu_block_lens_;
 
   // graph pool handler
   at::cuda::MempoolId_t mem_pool_;
@@ -99,6 +100,7 @@ class ModelRunner final {
     torch::Tensor flatten_positions_;
     torch::Tensor new_cache_slots_;
     torch::Tensor block_tables_;
+    torch::Tensor cu_block_lens_;
     torch::Tensor q_cu_seq_lens_;
     torch::Tensor kv_cu_seq_lens_;
 

@@ -99,7 +99,8 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
   std::vector<int32_t> q_cu_seq_lens = {0};
   // slot ids for new token
   std::vector<int32_t> new_token_slot_ids;
-  std::vector<std::vector<int32_t>> block_tables_vec;
+  std::vector<int32_t> block_tables;
+  std::vector<int32_t> cu_block_lens = {0};
   const int32_t num_sequences = static_cast<int32_t>(sequences_.size());
   for (int32_t i = 0; i < num_sequences; ++i) {
     auto* sequence = sequences_[i];
@@ -205,13 +206,11 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
     new_token_slot_ids.insert(
         new_token_slot_ids.end(), slot_ids.begin(), slot_ids.end());
 
-    // construct block ids for each sequence
-    std::vector<int32_t> block_ids;
-    block_ids.reserve(blocks.size());
+    // add block ids for each sequence
     for (const auto& block : blocks) {
-      block_ids.push_back(block.id());
+      block_tables.push_back(block.id());
     }
-    block_tables_vec.push_back(block_ids);
+    cu_block_lens.push_back(static_cast<int32_t>(block_tables.size()));
   }
 
   if (flatten_tokens_vec.empty()) {
@@ -235,10 +234,11 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
           flatten_tokens_vec.push_back(0);
           flatten_positions_vec.push_back(0);
           new_token_slot_ids.push_back(0);
+          block_tables.push_back(0);
         }
         cu_seq_lens.push_back(cu_seq_lens.back() + num_decoding_tokens);
         q_cu_seq_lens.push_back(q_cu_seq_lens.back() + num_decoding_tokens);
-        block_tables_vec.emplace_back();
+        cu_block_lens.push_back(cu_block_lens.back() + num_decoding_tokens);
       }
     }
   }
@@ -256,8 +256,8 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
   input_params.q_cu_seq_lens = torch::tensor(q_cu_seq_lens, torch::kInt);
   input_params.new_cache_slots = torch::tensor(new_token_slot_ids, torch::kInt);
 
-  pad_2d_vector(block_tables_vec, /*pad_value=*/0);
-  input_params.block_tables = create_2d_tensor(block_tables_vec, torch::kInt);
+  input_params.block_tables = torch::tensor(block_tables, torch::kInt);
+  input_params.cu_block_lens = torch::tensor(cu_block_lens, torch::kInt);
 
   CHECK_EQ(sampling_params.size(), selected_token_idxes.size());
   if (!selected_token_idxes.empty()) {

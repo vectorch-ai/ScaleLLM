@@ -20,6 +20,7 @@ mha_varlen_fwd(at::Tensor& out,             // [n_tokens, n_heads, head_dim]
                const at::Tensor& cu_seqlens_q,  // [batch + 1]
                const at::Tensor& cu_seqlens_k,  // [batch + 1]
                const c10::optional<at::Tensor>& block_table_, // [batch, max_blocks_per_seq]
+               const c10::optional<at::Tensor>& cu_block_lens, // [batch + 1]
                const c10::optional<at::Tensor>& alibi_slopes, // [num_heads]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V

@@ -23,6 +23,7 @@ struct InputParameters {
 
     params.new_cache_slots = safe_to(new_cache_slots, device);
     params.block_tables = safe_to(block_tables, device);
+    params.cu_block_lens = safe_to(cu_block_lens, device);
     return params;
   }
 
@@ -50,10 +51,12 @@ struct InputParameters {
   // IntTensor: [n_tokens]
   torch::Tensor new_cache_slots;
 
-  // block ids for each sequence.
-  // used in attention kernel to fetch cached key-value.
-  // IntTensor: [n_seq, max_n_blocks]
+  // block ids for each sequence, flattend into 1D tensor.
+  // IntTensor: [n_blocks]
   torch::Tensor block_tables;
+  // cumulative block length for each sequence.
+  // IntTensor: [n_seq + 1]
+  torch::Tensor cu_block_lens;
 };
 
 }  // namespace llm
