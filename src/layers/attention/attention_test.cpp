@@ -259,7 +259,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
     }
     block_tables_vec.insert(
         block_tables_vec.end(), block_table.begin(), block_table.end());
-    cu_block_lens_vec.push_back(block_tables_vec.size());
+    cu_block_lens_vec.push_back(static_cast<int32_t>(block_tables_vec.size()));
 
     // assign slots for each sequence
     for (int j = 0; j < kv_len; ++j) {
@@ -269,7 +269,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
     }
   }
 
-  // ASSERT_EQ(block_tables_vec.size(), batch_size);
+  ASSERT_EQ(cu_block_lens_vec.size(), batch_size + 1);
   ASSERT_EQ(slot_ids.size(), n_kv_tokens);
 
   // allocate memory for input tensors

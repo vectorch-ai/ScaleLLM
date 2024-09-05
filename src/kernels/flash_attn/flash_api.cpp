@@ -342,7 +342,6 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
         params.block_table = block_table.data_ptr<int>();
         params.cu_block_lens = cu_block_lens.data_ptr<int>();
 
-        // params.block_table_batch_stride = block_table.stride(0);
         // kv: [n_blocks, block_size, n_kv_heads, head_dim]
         params.k_batch_stride = k.stride(0);
         params.v_batch_stride = v.stride(0);

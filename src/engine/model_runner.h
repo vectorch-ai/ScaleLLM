@@ -2,7 +2,6 @@
 
 #include <ATen/cuda/CUDAGraph.h>
 #include <absl/container/flat_hash_map.h>
-#include <c10/core/TensorImpl.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <torch/torch.h>
 

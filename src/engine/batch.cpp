@@ -234,11 +234,11 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
           flatten_tokens_vec.push_back(0);
           flatten_positions_vec.push_back(0);
           new_token_slot_ids.push_back(0);
+          block_tables.push_back(0);
         }
         cu_seq_lens.push_back(cu_seq_lens.back() + num_decoding_tokens);
         q_cu_seq_lens.push_back(q_cu_seq_lens.back() + num_decoding_tokens);
-        // empty block table for padding sequences?
-        cu_block_lens.push_back(cu_block_lens.back());
+        cu_block_lens.push_back(cu_block_lens.back() + num_decoding_tokens);
       }
     }
   }
