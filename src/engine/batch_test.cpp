@@ -105,10 +105,12 @@ TEST(BatchTest, Basic) {
   EXPECT_TRUE(equal(input_params.new_cache_slots, new_cache_slots));
 
   const std::vector<int32_t> block_tables = {
-    /*seq1*/ 1, 2, 3,  0,  0,
-    /*seq2*/ 4, 5, 6,  7,  0,
+    /*seq1*/ 1, 2, 3,
+    /*seq2*/ 4, 5, 6,  7,
     /*seq3*/ 8, 9, 10, 11, 12};
   EXPECT_TRUE(equal(input_params.block_tables, block_tables));
+  const std::vector<int32_t> cu_block_lens = {0, 3, 7, 12};
+  EXPECT_TRUE(equal(input_params.cu_block_lens, cu_block_lens));
 
   // const std::vector<int32_t> last_token_idxes = {8, 9, 10};
   // EXPECT_TRUE(equal(input_params.last_token_idxes, last_token_idxes));

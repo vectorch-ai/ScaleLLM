@@ -210,7 +210,7 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
     for (const auto& block : blocks) {
       block_tables.push_back(block.id());
     }
-    cu_block_lens.push_back(static_cast<int32_t>(cu_block_lens.size()));
+    cu_block_lens.push_back(static_cast<int32_t>(block_tables.size()));
   }
 
   if (flatten_tokens_vec.empty()) {
