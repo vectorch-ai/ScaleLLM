@@ -217,7 +217,8 @@ TEST_P(AttentionDecodeTest, KVCache) {
   const int32_t max_n_blocks_per_seq =
       (kv_max_seq_len + block_size - 1) / block_size;
 
-  std::vector<std::vector<int32_t>> block_tables_vec;
+  std::vector<int32_t> block_tables_vec;
+  std::vector<int32_t> cu_block_lens_vec = {0};
   std::vector<int> slot_ids;
 
   // generate random seq lens with size in [1, q/kv_max_seq_len]
@@ -246,14 +247,19 @@ TEST_P(AttentionDecodeTest, KVCache) {
     k_cu_seq_lens_vec.push_back(n_kv_tokens);
 
     // assign blocks for each sequence
-    std::vector<int32_t> block_table(max_n_blocks_per_seq);
     const int32_t n_blocks_per_seq = (kv_len + block_size - 1) / block_size;
+    std::vector<int32_t> block_table;
+    block_table.reserve(n_blocks_per_seq);
     for (int j = 0; j < n_blocks_per_seq; ++j) {
       ASSERT_FALSE(available_block_ids.empty());
-      block_table[j] = available_block_ids.back();
+      const int32_t block_id = available_block_ids.back();
       available_block_ids.pop_back();
+
+      block_table.push_back(block_id);
     }
-    block_tables_vec.push_back(block_table);
+    block_tables_vec.insert(
+        block_tables_vec.end(), block_table.begin(), block_table.end());
+    cu_block_lens_vec.push_back(block_tables_vec.size());
 
     // assign slots for each sequence
     for (int j = 0; j < kv_len; ++j) {
@@ -263,7 +269,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
     }
   }
 
-  ASSERT_EQ(block_tables_vec.size(), batch_size);
+  // ASSERT_EQ(block_tables_vec.size(), batch_size);
   ASSERT_EQ(slot_ids.size(), n_kv_tokens);
 
   // allocate memory for input tensors
@@ -292,14 +298,10 @@ TEST_P(AttentionDecodeTest, KVCache) {
   torch::Tensor k_cu_seq_lens = torch::tensor(
       k_cu_seq_lens_vec, torch::dtype(torch::kInt32).device(device));
 
-  // construct block tables with padding=0
-  auto block_tables = torch::empty(
-      {static_cast<int32_t>(block_tables_vec.size()), max_n_blocks_per_seq},
-      torch::dtype(torch::kInt32).device(device));
-  for (int64_t i = 0; i < block_tables_vec.size(); ++i) {
-    block_tables.index_put_({i, ISlice()},
-                            torch::tensor(block_tables_vec[i], torch::kInt));
-  }
+  auto block_tables = torch::tensor(
+      block_tables_vec, torch::dtype(torch::kInt32).device(device));
+  auto cu_block_lens = torch::tensor(
+      cu_block_lens_vec, torch::dtype(torch::kInt32).device(device));
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
@@ -330,6 +332,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
   torch::Tensor output_with_cache = torch::empty_like(query);
 
   input_params.block_tables = block_tables;
+  input_params.cu_block_lens = cu_block_lens;
   flash_attn_handler.batch_decode(query,
                                   {k_cache, v_cache},
                                   input_params,

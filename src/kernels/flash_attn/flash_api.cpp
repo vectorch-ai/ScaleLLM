@@ -220,7 +220,8 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
                const at::Tensor& v,   // [n_tokens, n_kv_heads, head_dim]
                const at::Tensor& cu_seqlens_q,  // [batch + 1]
                const at::Tensor& cu_seqlens_k,  // [batch + 1]
-               const c10::optional<at::Tensor>& block_table_, // [batch, max_blocks_per_seq]
+               const c10::optional<at::Tensor>& block_table_, // [n_blocks]
+               const c10::optional<at::Tensor>& cu_block_lens_, // [batch + 1]
                const c10::optional<at::Tensor>& alibi_slopes, // [num_heads]
                int max_seqlen_q,      // max sequence length for Q
                int max_seqlen_k,      // max sequence length for K/V
@@ -250,12 +251,18 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
     CHECK_CONTIGUOUS(cu_seqlens_k);
 
     at::Tensor block_table;
+    at::Tensor cu_block_lens;
     const bool paged_KV = block_table_.has_value();
     if (paged_KV) {
         block_table = block_table_.value();
+        TORCH_CHECK(cu_block_lens_.has_value());
+        cu_block_lens = cu_block_lens_.value();
+
         CHECK_DEVICE(block_table);
-        TORCH_CHECK(block_table.dtype() == torch::kInt32, "block_table must have dtype torch.int32");
+        TORCH_CHECK(block_table.dtype() == torch::kInt32);
         TORCH_CHECK(block_table.stride(-1) == 1, "block_table must have contiguous last dimension");
+        CHECK_DEVICE(cu_block_lens);
+        TORCH_CHECK(cu_block_lens.dtype() == torch::kInt32);
     }
     const int n_blocks = !paged_KV ? 0 : k.size(0);
     const int block_size = !paged_KV ? 1 : k.size(1);
@@ -333,7 +340,9 @@ mha_varlen_fwd(at::Tensor& out,       // [n_tokens, n_heads, head_dim]
     if (paged_KV) {
         // [batch_size, max_blocks_per_seq]
         params.block_table = block_table.data_ptr<int>();
-        params.block_table_batch_stride = block_table.stride(0);
+        params.cu_block_lens = cu_block_lens.data_ptr<int>();
+
+        // params.block_table_batch_stride = block_table.stride(0);
         // kv: [n_blocks, block_size, n_kv_heads, head_dim]
         params.k_batch_stride = k.stride(0);
         params.v_batch_stride = v.stride(0);

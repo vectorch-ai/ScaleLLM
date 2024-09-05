@@ -97,7 +97,8 @@ struct Flash_fwd_params : public Qkv_params {
 
     // Paged KV cache
     int * __restrict__ block_table;
-    index_t block_table_batch_stride;
+    int * __restrict__ cu_block_lens;
+    // index_t block_table_batch_stride;
     int page_block_size;
 
     // Local window size
