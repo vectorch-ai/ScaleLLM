@@ -57,7 +57,8 @@ ModelRunner::ModelRunner(CausalLM* model,
     const int64_t max_block_table_len =
         (max_seq_len + block_size - 1) / block_size + 1;
     block_tables_ =
-        torch::zeros({max_batch_size_, max_block_table_len}, tensor_options);
+        torch::zeros({max_batch_size_ * max_block_table_len}, tensor_options);
+    cu_block_lens_ = torch::zeros({max_batch_size_ + 1}, tensor_options);
 
     mem_pool_ = at::cuda::graph_pool_handle();
   }
@@ -91,8 +92,9 @@ void ModelRunner::capture_cuda_graphs(uint32_t batch_size,
       /*dim=*/0, /*start=*/0, /*end=*/batch_size + 1);
   params.kv_cu_seq_lens = kv_cu_seq_lens_.slice(
       /*dim=*/0, /*start=*/0, /*end=*/batch_size + 1);
-  params.block_tables = block_tables_.slice(
-      /*dim=*/0, /*start=*/0, /*end=*/batch_size);
+  params.block_tables = block_tables_;
+  params.cu_block_lens = cu_block_lens_.slice(
+      /*dim=*/0, /*start=*/0, /*end=*/batch_size + 1);
   params.new_cache_slots = new_cache_slots_.slice(
       /*dim=*/0, /*start=*/0, /*end=*/n_tokens);
 
@@ -156,6 +158,7 @@ void ModelRunner::CudaGraph::capture(at::cuda::MempoolId_t mem_pool,
   flatten_positions_ = flatten_positions;
   new_cache_slots_ = params.new_cache_slots;
   block_tables_ = params.block_tables;
+  cu_block_lens_ = params.cu_block_lens;
   q_cu_seq_lens_ = params.q_cu_seq_lens;
   kv_cu_seq_lens_ = params.kv_cu_seq_lens;
 
@@ -184,8 +187,8 @@ torch::Tensor ModelRunner::CudaGraph::replay(torch::Tensor flatten_tokens,
 
   const int64_t batch_size = params.num_sequences;
   const int64_t num_tokens = flatten_tokens.size(/*dim=*/0);
-  const int64_t block_table_len = params.block_tables.size(/*dim=*/1);
-  const int64_t max_block_table_len = block_tables_.size(/*dim=*/1);
+  const int64_t block_table_len = params.block_tables.size(/*dim=*/0);
+  const int64_t max_block_table_len = block_tables_.size(/*dim=*/0);
   CHECK_EQ(batch_size, batch_size_) << "batch size mismatch";
   CHECK_EQ(num_tokens, num_tokens_) << "num tokens mismatch";
   CHECK_GE(max_block_table_len, block_table_len) << "block table size mismatch";
@@ -198,8 +201,9 @@ torch::Tensor ModelRunner::CudaGraph::replay(torch::Tensor flatten_tokens,
   new_cache_slots_.copy_(params.new_cache_slots, /*non_blocking=*/true);
 
   // it is possible that the block table with different padding length
-  block_tables_.slice(/*dim=*/1, /*start=*/0, /*end=*/block_table_len)
+  block_tables_.slice(/*dim=*/0, /*start=*/0, /*end=*/block_table_len)
       .copy_(params.block_tables, /*non_blocking=*/true);
+  cu_block_lens_.copy_(params.cu_block_lens, /*non_blocking=*/true);
 
   // replay the graph
   graph_->replay();
