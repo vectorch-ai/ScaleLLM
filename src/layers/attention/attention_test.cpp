@@ -298,8 +298,8 @@ TEST_P(AttentionDecodeTest, KVCache) {
   torch::Tensor k_cu_seq_lens = torch::tensor(
       k_cu_seq_lens_vec, torch::dtype(torch::kInt32).device(device));
 
-  auto block_tables = torch::tensor(
-      block_tables_vec, torch::dtype(torch::kInt32).device(device));
+  auto block_tables = torch::tensor(block_tables_vec,
+                                    torch::dtype(torch::kInt32).device(device));
   auto cu_block_lens = torch::tensor(
       cu_block_lens_vec, torch::dtype(torch::kInt32).device(device));
 
