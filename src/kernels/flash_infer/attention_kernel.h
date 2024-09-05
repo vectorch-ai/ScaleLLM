@@ -19,10 +19,11 @@
 #include <flashinfer/layout.cuh>
 #include <flashinfer/math.cuh>
 #include <flashinfer/mma.cuh>
-#include <flashinfer/page.cuh>
 #include <flashinfer/permuted_smem.cuh>
 #include <flashinfer/pos_enc.cuh>
 #include <flashinfer/utils.cuh>
+
+#include "kv_cache.h"
 
 namespace flashinfer {
 
@@ -32,6 +33,7 @@ using mma::MMAMode;
 
 constexpr uint32_t warp_size = 32;
 
+// NOLINTNEXTLINE
 namespace {
 
 template <PosEncodingMode pos_encoding_mode,
@@ -81,14 +83,13 @@ template <bool produce_v,
           uint32_t num_warps_z,
           uint32_t num_frags_y,
           uint32_t num_frags_z,
-          PageStorage page_storage,
           SwizzleMode swizzle_mode,
           typename DType,
           typename IdType>
 __device__ __forceinline__ void page_produce_kv(
     smem_t<swizzle_mode> smem,
     uint32_t* smem_offset,
-    paged_kv_t<page_storage, DType, IdType>& paged_kv,
+    paged_kv_t<DType, IdType>& paged_kv,
     const uint32_t kv_idx_base,
     const size_t* kv_offset,
     const uint32_t kv_len) {
@@ -854,7 +855,6 @@ template <LogitsPostHook logits_post_hook,
           uint32_t num_frags_z,
           uint32_t num_warps_x,
           uint32_t num_warps_z,
-          PageStorage page_storage,
           typename DTypeQ,
           typename DTypeKV,
           typename DTypeQKAccum,
@@ -866,7 +866,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
     IdType* __restrict__ q_tile_indices,
     IdType* __restrict__ kv_tile_indices,
     DTypeQ* __restrict__ q,
-    paged_kv_t<page_storage, DTypeKV, IdType> paged_kv,
+    paged_kv_t<DTypeKV, IdType> paged_kv,
     IdType* __restrict__ q_indptr,
     uint8_t* __restrict__ custom_mask,
     IdType* __restrict__ qk_indptr,
@@ -1265,8 +1265,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
   }
 }
 
-template <PageStorage page_storage,
-          WarpLayout WARP_LAYOUT,
+template <WarpLayout WARP_LAYOUT,
           uint32_t HEAD_DIM,
           LogitsPostHook LOGITS_POST_HOOK,
           PosEncodingMode pos_encoding_mode,
@@ -1276,31 +1275,30 @@ template <PageStorage page_storage,
           typename DTypeKV,
           typename DTypeOut,
           typename IdType>
-cudaError_t mha_varlen_dispatch(
-    DTypeQ* q,
-    IdType* request_indices,
-    IdType* q_tile_indices,
-    IdType* kv_tile_indices,
-    IdType* q_indptr,
-    IdType* q_offset,
-    paged_kv_t<page_storage, DTypeKV, IdType> paged_kv,
-    uint8_t* custom_mask,
-    IdType* qk_indptr,
-    IdType* o_indptr,
-    DTypeOut* o,
-    DTypeOut* tmp_v,
-    float* tmp_s,
-    float* lse,
-    IdType* merge_indptr,
-    bool* block_valid_mask,
-    IdType* kv_chunk_size_ptr,
-    uint32_t total_num_rows,
-    uint32_t num_qo_heads,
-    uint32_t padded_batch_size,
-    int32_t window_left,
-    float logits_soft_cap,
-    float sm_scale,
-    cudaStream_t stream) {
+cudaError_t mha_varlen_dispatch(DTypeQ* q,
+                                IdType* request_indices,
+                                IdType* q_tile_indices,
+                                IdType* kv_tile_indices,
+                                IdType* q_indptr,
+                                IdType* q_offset,
+                                paged_kv_t<DTypeKV, IdType> paged_kv,
+                                uint8_t* custom_mask,
+                                IdType* qk_indptr,
+                                IdType* o_indptr,
+                                DTypeOut* o,
+                                DTypeOut* tmp_v,
+                                float* tmp_s,
+                                float* lse,
+                                IdType* merge_indptr,
+                                bool* block_valid_mask,
+                                IdType* kv_chunk_size_ptr,
+                                uint32_t total_num_rows,
+                                uint32_t num_qo_heads,
+                                uint32_t padded_batch_size,
+                                int32_t window_left,
+                                float logits_soft_cap,
+                                float sm_scale,
+                                cudaStream_t stream) {
 #if (__CUDA_ARCH__ < 800)
   if constexpr (std::is_same_v<DTypeQ, nv_bfloat16>) {
     FLASHINFER_RUNTIME_ASSERT("Prefill kernels do not support bf16 on sm75.");
@@ -1388,7 +1386,6 @@ cudaError_t mha_varlen_dispatch(
                                          num_frags_z,
                                          num_warps_x,
                                          num_warps_z,
-                                         page_storage,
                                          DTypeQ,
                                          DTypeKV,
                                          DTypeQKAccum,

@@ -2,13 +2,13 @@ include(cc_library)
 
 # copy the file to binary dir in order to force re-configuration when the file changes
 configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiation_cu.py
-  ${CMAKE_CURRENT_BINARY_DIR}/generate_instantiation_cu.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiations.py
+  ${CMAKE_CURRENT_BINARY_DIR}/generate_instantiations.py
 )
 
 # execute the script to generate the instantiation of the kernels
 execute_process(
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiation_cu.py
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiations.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -19,19 +19,15 @@ cc_library(
   NAME 
     flash_infer.kernels
   HDRS
+    kv_cache.h
     attention_kernel.h
   SRCS
-    # ${GENERATED_SRC_FILES}
-    batch_paged_prefill_instance.cu
+    ${GENERATED_SRC_FILES}
   INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_BINARY_DIR}
-  DEFINES
-    FLASHINFER_ENABLE_BF16
-    # FLASHINFER_ENABLE_FP8
   DEPS
     flashinfer
-    torch
+    # torch
 )
 
 
