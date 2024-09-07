@@ -22,5 +22,4 @@
 #define _DISPATCH_CASES_mask_mode(case_var, ...)           \
   _DISPATCH_CASE(MaskMode::kNone, case_var, __VA_ARGS__)   \
   _DISPATCH_CASE(MaskMode::kCausal, case_var, __VA_ARGS__) \
-  _DISPATCH_CASE(MaskMode::kCustom, case_var, __VA_ARGS__) \
 // EOL
