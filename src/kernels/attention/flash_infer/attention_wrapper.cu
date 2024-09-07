@@ -1,6 +1,4 @@
 //  Adapted from https://github.com/flashinfer-ai/flashinfer/
-#include "attention_wrapper.h"
-
 #include <c10/cuda/CUDAStream.h>
 #include <torch/torch.h>
 
@@ -8,6 +6,7 @@
 #include <flashinfer/attention/mask.cuh>
 #include <flashinfer/attention/warp_layout.cuh>
 
+#include "attention_wrapper.h"
 #include "kv_cache.h"
 #include "static_switch.h"
 
