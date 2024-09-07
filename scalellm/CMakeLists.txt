@@ -18,7 +18,7 @@ pybind_extension(
   DEPS
     :llm_handler
     :marlin.kernels
-    # :flash_infer.kernels
+    :flash_infer.kernels
     torch
     torch_python
     absl::strings
