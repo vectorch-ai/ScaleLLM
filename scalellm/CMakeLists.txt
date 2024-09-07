@@ -10,7 +10,7 @@ pybind_extension(
     csrc/output.cpp
     csrc/llm_handler.cpp
     csrc/module.cpp
-    csrc/kernels.cpp
+    csrc/kernels.cu
   DEFINES 
     PYBIND11_DETAILED_ERROR_MESSAGES=1
   LINKDIRS
@@ -18,6 +18,7 @@ pybind_extension(
   DEPS
     :llm_handler
     :marlin.kernels
+    # :flash_infer.kernels
     torch
     torch_python
     absl::strings
