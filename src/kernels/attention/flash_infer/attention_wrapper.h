@@ -1,3 +1,4 @@
+//  Adapted from https://github.com/flashinfer-ai/flashinfer/
 #pragma once
 
 #include <torch/torch.h>
@@ -8,9 +9,9 @@
 
 namespace flashinfer {
 
-class BatchPrefillWithPagedKVCachePyTorchWrapper {
+class BatchPrefillWrapper {
  public:
-  BatchPrefillWithPagedKVCachePyTorchWrapper(bool enable_cuda_graph)
+  BatchPrefillWrapper(bool enable_cuda_graph)
       : handler_(std::make_shared<flashinfer::BatchPrefillHandler>(
             enable_cuda_graph)) {}
 

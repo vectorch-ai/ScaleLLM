@@ -1,3 +1,4 @@
+//  Adapted from https://github.com/flashinfer-ai/flashinfer/
 #pragma once
 // clang-format off
 #include <cuda_runtime_api.h>
