@@ -3,7 +3,7 @@
 #include <cuda_runtime.h>
 #include <torch/torch.h>
 
-#include "kernels/flash_attn/flash_api.h"
+#include "kernels/attention/flash_attn/flash_api.h"
 #include "memory/kv_cache.h"
 #include "models/parameters.h"
 
