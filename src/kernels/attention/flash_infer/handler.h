@@ -1,5 +1,5 @@
 #pragma once
-
+// clang-format off
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
 
@@ -18,6 +18,8 @@
 #include <flashinfer/attention/warp_layout.cuh>
 
 // #include "kv_cache.h"
+
+// clang-format on
 
 namespace flashinfer {
 
@@ -407,4 +409,3 @@ class BatchPrefillHandler {
 };
 
 }  // namespace flashinfer
-#endif  // FLASHINFER_ATTENTION_HANDLER_CUH_

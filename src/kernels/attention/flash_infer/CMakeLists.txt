@@ -20,14 +20,15 @@ cc_library(
     flash_infer.kernels
   HDRS
     kv_cache.h
-    attention_kernel.h
+    attention_wrapper.h
   SRCS
     ${GENERATED_SRC_FILES}
+    attention_wrapper.cu
   INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
   DEPS
     flashinfer
-    # torch
+    torch
 )
 
 

@@ -15,7 +15,6 @@
  */
 #pragma once
 
-// #include <c10/cuda/CUDAStream.h>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
@@ -24,7 +23,8 @@
 #include <flashinfer/layout.cuh>
 #include <flashinfer/pos_enc.cuh>
 
-#include "generated/dispatch.inc"
+// TODO: generate dispatch.inc from python script
+#include "dispatch.inc"
 
 namespace flashinfer {
 
