@@ -26,8 +26,6 @@ cc_library(
     __CUDA_NO_HALF_OPERATORS__
 )
 
-add_subdirectory(flash_attn)
-add_subdirectory(flash_infer)
 add_subdirectory(attention)
 add_subdirectory(quantization)
 add_subdirectory(bench)

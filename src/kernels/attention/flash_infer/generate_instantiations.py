@@ -162,7 +162,7 @@ if __name__ == "__main__":
     output_dir.mkdir(parents=True, exist_ok=True)
     for kernel in all_kernels(
         warp_layouts=["WarpLayout::k4x1x2", "WarpLayout::k4x1x1", "WarpLayout::k1x4x1"],
-        head_dims=[64, 96, 128, 256],
+        head_dims=[64, 128, 256],
         logits_hooks=["LogitsPostHook::kNone", "LogitsPostHook::kSoftCap"],
         pos_encoding_modes=["PosEncodingMode::kNone", "PosEncodingMode::kALiBi"],
         qk_fp16_reduction_options=[True],
