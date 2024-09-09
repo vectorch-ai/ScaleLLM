@@ -165,7 +165,7 @@ if __name__ == "__main__":
         head_dims=[64, 128, 256],
         logits_hooks=["LogitsPostHook::kNone", "LogitsPostHook::kSoftCap"],
         pos_encoding_modes=["PosEncodingMode::kNone", "PosEncodingMode::kALiBi"],
-        qk_fp16_reduction_options=[True],
+        qk_fp16_reduction_options=[False],
         mask_modes=["MaskMode::kCausal"],
         dtypes=["f16", "bf16"],
         fp8_dtypes=["e4m3", "e5m2"],

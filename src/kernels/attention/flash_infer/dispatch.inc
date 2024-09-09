@@ -16,10 +16,8 @@
 
 #define _DISPATCH_CASES_allow_fp16_qk_reduction(case_var, ...) \
   _DISPATCH_CASE(false, case_var, __VA_ARGS__)                 \
-  _DISPATCH_CASE(true, case_var, __VA_ARGS__)                  \
   // EOL
 
 #define _DISPATCH_CASES_mask_mode(case_var, ...)           \
-  _DISPATCH_CASE(MaskMode::kNone, case_var, __VA_ARGS__)   \
   _DISPATCH_CASE(MaskMode::kCausal, case_var, __VA_ARGS__) \
 // EOL
