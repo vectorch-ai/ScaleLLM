@@ -1,11 +1,10 @@
 from typing import List, Optional, Tuple
 
-import scalellm._C.kernels as kernels  # type: ignore
-
 import pytest
 import torch
-
 from ref_attention import varlen_masked_self_attention
+
+import scalellm._C.kernels as kernels  # type: ignore
 
 
 @pytest.mark.parametrize("seq_lens", [[(1, 100), (5, 15), (111, 234)]])
@@ -15,7 +14,7 @@ from ref_attention import varlen_masked_self_attention
 @pytest.mark.parametrize("block_size", [4, 8, 16, 32])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("logits_soft_cap", [0.0, 30.0, 50.0])
-# @pytest.mark.parametrize("sliding_window", [-1, 128])
+# @pytest.mark.parametrize("sliding_window", [-1, 28])
 # @pytest.mark.parametrize("alibi", [False, True])
 @torch.inference_mode
 def test_flashinfer_varlen_masked_self_attention(
