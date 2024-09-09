@@ -55,14 +55,14 @@ void init_kernels(py::module_& m) {
         py::arg("num_bits"));
 
   // flashinfer kernels
-    py::class_<flashinfer::BatchPrefillWrapper>(m, "BatchPrefillWrapper")
-        .def(py::init<bool>())
-        .def("plan", &flashinfer::BatchPrefillWrapper::Plan)
-        .def("is_cuda_graph_enabled",
-             &flashinfer::BatchPrefillWrapper::IsCUDAGraphEnabled)
-        .def("update_page_locked_buffer_size",
-             &flashinfer::BatchPrefillWrapper::UpdatePageLockedBufferSize)
-        .def("run", &flashinfer::BatchPrefillWrapper::Run);
+  py::class_<flashinfer::BatchPrefillWrapper>(m, "BatchPrefillWrapper")
+      .def(py::init<bool>())
+      .def("plan", &flashinfer::BatchPrefillWrapper::Plan)
+      .def("is_cuda_graph_enabled",
+           &flashinfer::BatchPrefillWrapper::IsCUDAGraphEnabled)
+      .def("update_page_locked_buffer_size",
+           &flashinfer::BatchPrefillWrapper::UpdatePageLockedBufferSize)
+      .def("run", &flashinfer::BatchPrefillWrapper::Run);
 }
 
 }  // namespace llm::csrc

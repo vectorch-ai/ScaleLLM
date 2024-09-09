@@ -30,20 +30,17 @@ class BatchPrefillWrapper {
 
   void UpdatePageLockedBufferSize(uint32_t int_workspace_size_in_bytes);
 
-  std::vector<torch::Tensor> Run(torch::Tensor q,
-                                 torch::Tensor qo_indptr,
-                                 std::optional<torch::Tensor> paged_k_cache,
-                                 std::optional<torch::Tensor> paged_v_cache,
-                                 torch::Tensor paged_kv_indptr,
-                                 torch::Tensor paged_kv_indices,
-                                 torch::Tensor paged_kv_last_page_len,
-                                 bool causal,
-                                 unsigned int pos_encoding_mode,
-                                 bool allow_fp16_qk_reduction,
-                                 int window_left,
-                                 float logits_soft_cap,
-                                 float sm_scale,
-                                 bool return_lse);
+  torch::Tensor Run(torch::Tensor q,
+                    torch::Tensor qo_indptr,
+                    std::optional<torch::Tensor> paged_k_cache,
+                    std::optional<torch::Tensor> paged_v_cache,
+                    torch::Tensor paged_kv_indptr,
+                    torch::Tensor paged_kv_indices,
+                    torch::Tensor paged_kv_last_page_len,
+                    unsigned int pos_encoding_mode,
+                    int window_left,
+                    float logits_soft_cap,
+                    float sm_scale);
 
  private:
   std::shared_ptr<flashinfer::BatchPrefillHandler> handler_;
