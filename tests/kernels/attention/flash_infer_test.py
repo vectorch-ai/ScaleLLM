@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import pytest
 import torch
@@ -28,7 +28,6 @@ def test_flashinfer_varlen_masked_self_attention(
     sliding_window: int,
 ) -> None:
     torch.set_default_device("cuda")
-    
 
     n_seqs = len(seq_lens)
     q_lens = [x[0] for x in seq_lens]
@@ -60,12 +59,10 @@ def test_flashinfer_varlen_masked_self_attention(
 
         seq_len = kv_lens[i]
         assert seq_len > 0
-        
-        
+
         num_blocks = (seq_len + block_size - 1) // block_size
         paged_kv_indices.extend(block_tables[i, :num_blocks])
         paged_kv_indptr.append(len(paged_kv_indices))
-        
 
     qo_indptr = torch.tensor(qo_indptr, dtype=torch.int32)
     kv_indptr = torch.tensor(kv_indptr, dtype=torch.int32)
