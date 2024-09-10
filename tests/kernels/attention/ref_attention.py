@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import torch
 
@@ -7,6 +7,7 @@ def masked_self_attention(
     query: torch.Tensor,  # [q_len, n_heads, head_dim]
     key: torch.Tensor,  # [kv_len, n_heads, head_dim]
     value: torch.Tensor,  # [kv_len, n_heads, head_dim]
+    alibi_bias: Optional[torch.Tensor], # [n_heads, 1, kv_len]
     mask: torch.Tensor,  # [n_heads, q_len, kv_len]
     sm_scale: float,
     logits_soft_cap: float,
@@ -20,6 +21,10 @@ def masked_self_attention(
     # apply soft_cap
     if logits_soft_cap > 0.0:
         scores = torch.tanh(scores / logits_soft_cap) * logits_soft_cap
+        
+    # apply alibi bias
+    if alibi_bias is not None:
+        scores += alibi_bias
 
     # apply mask
     scores.masked_fill_(mask == 0, float("-inf"))
@@ -40,6 +45,7 @@ def varlen_masked_self_attention(
     sm_scale: float,
     logits_soft_cap: float = 0.0,
     sliding_window: int = -1,
+    alibi_slopes: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     assert key_cache.shape == value_cache.shape
 
@@ -84,12 +90,21 @@ def varlen_masked_self_attention(
         # returns the lower triangular part of a matrix
         mask = mask.tril(diagonal=kv_len - q_len).to(query)
 
-        # TODO: add alibi bias support
+        # calculate alibi attention bias
+        alibi_bias = None
+        if alibi_slopes is not None:
+            assert alibi_slopes.shape == (n_heads,)
+            # since it's causal mask, we can just use [0, 1, ...,, kv_len)
+            distance = torch.arange(kv_len, dtype=torch.float32)
+            # [n_heads, 1, kv_len]
+            alibi_bias = distance.view(1, 1, -1) * alibi_slopes.view(n_heads, 1, 1)
+            
 
         out = masked_self_attention(
             query=q,
             key=k,
             value=v,
+            alibi_bias=alibi_bias,
             mask=mask,
             sm_scale=sm_scale,
             logits_soft_cap=logits_soft_cap,

@@ -871,7 +871,6 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
     IdType* __restrict__ kv_indptr,
     uint8_t* __restrict__ custom_mask,
     IdType* __restrict__ qk_indptr,
-    IdType* __restrict__ q_offset,
     IdType* __restrict__ o_indptr,
     DTypeOut* __restrict__ o,
     float* __restrict__ lse,
@@ -881,7 +880,8 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
     const uint_fastdiv group_size,
     int32_t maybe_window_left,
     const float logits_soft_cap,
-    float sm_scale) {
+    float sm_scale,
+    float* __restrict__ alibi_slopes) {
   static_assert(sizeof(DTypeQ) == 2);
   static_assert(sizeof(DTypeOut) == 2);
   sm_scale *= (logits_post_hook == LogitsPostHook::kNone
@@ -898,7 +898,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
   }
   const uint32_t num_kv_heads = gridDim.z,
                  num_qo_heads = num_kv_heads * group_size;
-  float alibi_slopes[num_frags_x][2];
+  float alibi_slopes_frag[num_frags_x][2];
 
   const uint32_t request_idx = request_indices[bx],
                  qo_tile_idx = q_tile_indices[bx],
@@ -994,8 +994,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
         const uint32_t qo_head_idx =
             kv_head_idx * group_size +
             (qo_packed_idx_base + lane_idx / 4 + j * 8 + fx * 16) % group_size;
-        alibi_slopes[fx][j] =
-            get_alibi_slope(qo_head_idx, num_qo_heads) * math::log2e;
+        alibi_slopes_frag[fx][j] = alibi_slopes[qo_head_idx] * math::log2e;
       }
     }
   }
@@ -1126,7 +1125,6 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
                         logits_soft_cap);
 
     if constexpr (pos_encoding_mode == PosEncodingMode::kALiBi) {
-      // TODO(Zihao): handle the case that q_offset is specified
       apply_alibi_bias<num_frags_x, num_frags_z>(
           qo_packed_idx_base,
           chunk_start + (iter * num_warps_z +
@@ -1134,7 +1132,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
                             num_frags_z * 16,
           int(kv_len) - int(qo_len),
           group_size,
-          alibi_slopes,
+          alibi_slopes_frag,
           s_frag);
     }
     // apply mask
@@ -1277,7 +1275,6 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                                 IdType* kv_tile_indices,
                                 IdType* q_indptr,
                                 IdType* kv_indptr,
-                                IdType* q_offset,
                                 paged_kv_t<DTypeKV, IdType> paged_kv,
                                 uint8_t* custom_mask,
                                 IdType* qk_indptr,
@@ -1295,6 +1292,7 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                                 int32_t window_left,
                                 float logits_soft_cap,
                                 float sm_scale,
+                                float* alibi_slopes,
                                 cudaStream_t stream) {
 #if (__CUDA_ARCH__ < 800)
   if constexpr (std::is_same_v<DTypeQ, nv_bfloat16>) {
@@ -1402,7 +1400,6 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                             (void*)&kv_indptr,
                             (void*)&custom_mask,
                             (void*)&qk_indptr,
-                            (void*)&q_offset,
                             (void*)&o_indptr,
                             (void*)&o,
                             (void*)&lse,
@@ -1412,7 +1409,8 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                             (void*)&group_size_fastdiv,
                             (void*)&window_left,
                             (void*)&logits_soft_cap,
-                            (void*)&sm_scale};
+                            (void*)&sm_scale,
+                            (void*)&alibi_slopes};
             FLASHINFER_CUDA_CALL(cudaLaunchKernel(
                 (void*)kernel, nblks, nthrs, args, smem_size, stream));
           } else {
@@ -1426,7 +1424,6 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                             (void*)&kv_indptr,
                             (void*)&custom_mask,
                             (void*)&qk_indptr,
-                            (void*)&q_offset,
                             (void*)&o_indptr,
                             (void*)&tmp_v,
                             (void*)&tmp_s,
@@ -1436,7 +1433,8 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                             (void*)&group_size_fastdiv,
                             (void*)&window_left,
                             (void*)&logits_soft_cap,
-                            (void*)&sm_scale};
+                            (void*)&sm_scale,
+                            (void*)&alibi_slopes};
             FLASHINFER_CUDA_CALL(cudaLaunchKernel(
                 (void*)kernel, nblks, nthrs, args, smem_size, stream));
             FLASHINFER_CUDA_CALL(VariableLengthMergeStates(tmp_v,

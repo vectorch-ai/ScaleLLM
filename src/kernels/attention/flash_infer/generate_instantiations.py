@@ -58,12 +58,12 @@ template cudaError_t mha_varlen_dispatch<{WARP_LAYOUT},
                                          {DType}, 
                                          {IDType}>(
     {QDType}* q, {IDType}* request_indices, {IDType}* q_tile_indices, {IDType}* kv_tile_indices,
-    {IDType}* q_indptr, {IDType}* kv_indptr, {IDType}* q_offset,
+    {IDType}* q_indptr, {IDType}* kv_indptr,
     paged_kv_t<{KVDType}, {IDType}> paged_kv, uint8_t* custom_mask,
     {IDType}* qk_indptr, {IDType}* o_indptr, {DType}* o, {DType}* tmp_v, float* tmp_s, float* lse,
     {IDType}* merge_indptr, bool* block_valid_mask, {IDType}* kv_chunk_size_ptr, uint32_t max_num_rows,
     uint32_t num_qo_heads, uint32_t padded_batch_size, int32_t window_left,
-    float logits_soft_cap, float sm_scale, cudaStream_t stream);
+    float logits_soft_cap, float sm_scale, float* alibi_slopes, cudaStream_t stream);
 """
 
 FILE_TEMPLATE = """#include "attention_kernel.h"

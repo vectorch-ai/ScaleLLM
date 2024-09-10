@@ -37,10 +37,10 @@ class BatchPrefillWrapper {
                     std::optional<torch::Tensor> paged_v_cache,
                     torch::Tensor paged_kv_indptr,
                     torch::Tensor paged_kv_indices,
-                    unsigned int pos_encoding_mode,
                     int window_left,
                     float logits_soft_cap,
-                    float sm_scale);
+                    float sm_scale,
+                    std::optional<torch::Tensor> alibi_slopes);
 
  private:
   std::shared_ptr<flashinfer::BatchPrefillHandler> handler_;
