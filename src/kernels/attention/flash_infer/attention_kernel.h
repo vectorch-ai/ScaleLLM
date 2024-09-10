@@ -868,6 +868,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
     DTypeQ* __restrict__ q,
     paged_kv_t<DTypeKV, IdType> paged_kv,
     IdType* __restrict__ q_indptr,
+    IdType* __restrict__ kv_indptr,
     uint8_t* __restrict__ custom_mask,
     IdType* __restrict__ qk_indptr,
     IdType* __restrict__ q_offset,
@@ -903,14 +904,9 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
                  qo_tile_idx = q_tile_indices[bx],
                  kv_tile_idx = kv_tile_indices[bx];
   constexpr uint32_t num_rows_per_cta = num_frags_x * num_warps_x * 16;
-  const uint32_t qo_len = q_indptr[request_idx + 1] - q_indptr[request_idx],
-                 kv_len = (paged_kv.indptr[request_idx + 1] !=
-                           paged_kv.indptr[request_idx])
-                              ? (paged_kv.indptr[request_idx + 1] -
-                                 paged_kv.indptr[request_idx] - 1) *
-                                        paged_kv.page_size +
-                                    paged_kv.last_page_len[request_idx]
-                              : 0;
+  const uint32_t qo_len = q_indptr[request_idx + 1] - q_indptr[request_idx];
+  const uint32_t kv_len = kv_indptr[request_idx + 1] - kv_indptr[request_idx];
+
   const uint32_t kv_len_safe = kv_len > 0 ? kv_len : 1;
   const uint32_t window_left =
       (maybe_window_left >= 0) ? maybe_window_left : kv_len;
@@ -1280,6 +1276,7 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                                 IdType* q_tile_indices,
                                 IdType* kv_tile_indices,
                                 IdType* q_indptr,
+                                IdType* kv_indptr,
                                 IdType* q_offset,
                                 paged_kv_t<DTypeKV, IdType> paged_kv,
                                 uint8_t* custom_mask,
@@ -1402,6 +1399,7 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                             (void*)&q,
                             (void*)&paged_kv,
                             (void*)&q_indptr,
+                            (void*)&kv_indptr,
                             (void*)&custom_mask,
                             (void*)&qk_indptr,
                             (void*)&q_offset,
@@ -1425,6 +1423,7 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                             (void*)&q,
                             (void*)&paged_kv,
                             (void*)&q_indptr,
+                            (void*)&kv_indptr,
                             (void*)&custom_mask,
                             (void*)&qk_indptr,
                             (void*)&q_offset,

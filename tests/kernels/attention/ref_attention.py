@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 import torch
 
@@ -9,7 +9,7 @@ def masked_self_attention(
     value: torch.Tensor,  # [kv_len, n_heads, head_dim]
     mask: torch.Tensor,  # [n_heads, q_len, kv_len]
     sm_scale: float,
-    logits_soft_cap: Optional[float] = None,
+    logits_soft_cap: float,
 ) -> torch.Tensor:
     # => [n_heads, q_len, kv_len]
     scores = torch.einsum("qhd,khd->hqk", query.float(), key.float())
@@ -18,7 +18,7 @@ def masked_self_attention(
     scores *= sm_scale
 
     # apply soft_cap
-    if logits_soft_cap is not None and logits_soft_cap > 0:
+    if logits_soft_cap > 0.0:
         scores = torch.tanh(scores / logits_soft_cap) * logits_soft_cap
 
     # apply mask
@@ -38,8 +38,8 @@ def varlen_masked_self_attention(
     kv_lens: List[int],  # [batch_size]
     block_tables: torch.Tensor,  # block ids for each sequence, [batch_size, max_num_blocks]
     sm_scale: float,
-    sliding_window: Optional[int] = None,
-    logits_soft_cap: Optional[float] = None,
+    logits_soft_cap: float = 0.0,
+    sliding_window: int = -1,
 ) -> torch.Tensor:
     assert key_cache.shape == value_cache.shape
 
@@ -76,7 +76,7 @@ def varlen_masked_self_attention(
 
         # create mask [1, q_len, kv_len]
         mask = torch.ones(1, q_len, kv_len).bool()
-        if sliding_window is not None:
+        if sliding_window >= 0:
             # returns the upper triangular part of a matrix
             mask = torch.triu(mask, diagonal=kv_len - q_len - sliding_window)
 

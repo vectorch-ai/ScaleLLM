@@ -28,6 +28,7 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                                 IdType* q_tile_indices,
                                 IdType* kv_tile_indices,
                                 IdType* q_indptr,
+                                IdType* kv_indptr,
                                 IdType* q_offset,
                                 paged_kv_t<DTypeKV, IdType> paged_kv,
                                 uint8_t* custom_mask,
@@ -56,21 +57,21 @@ template <uint32_t HEAD_DIM,
           typename DTypeKV,
           typename DTypeOut,
           typename IdType>
-cudaError_t BatchPrefillWithPagedKVCacheWrapperDispatched(
-    BatchPrefillHandler* handler,
-    DTypeQ* q,
-    IdType* q_indptr,
-    IdType* q_offset,
-    paged_kv_t<DTypeKV, IdType> paged_kv,
-    uint8_t* custom_mask,
-    IdType* qk_indptr,
-    DTypeOut* o,
-    float* lse,
-    uint32_t num_qo_heads,
-    int32_t window_left,
-    float logits_soft_cap,
-    float sm_scale,
-    cudaStream_t stream) {
+cudaError_t mha_varlen_wrapper_dispatch(BatchPrefillHandler* handler,
+                                        DTypeQ* q,
+                                        IdType* q_indptr,
+                                        IdType* kv_indptr,
+                                        IdType* q_offset,
+                                        paged_kv_t<DTypeKV, IdType> paged_kv,
+                                        uint8_t* custom_mask,
+                                        IdType* qk_indptr,
+                                        DTypeOut* o,
+                                        float* lse,
+                                        uint32_t num_qo_heads,
+                                        int32_t window_left,
+                                        float logits_soft_cap,
+                                        float sm_scale,
+                                        cudaStream_t stream) {
   DTypeOut* tmp_v = nullptr;
   float* tmp_s = nullptr;
   IdType *request_indices = nullptr, *qo_tile_indices = nullptr,
@@ -108,6 +109,7 @@ cudaError_t BatchPrefillWithPagedKVCacheWrapperDispatched(
                                        qo_tile_indices,
                                        kv_tile_indices,
                                        q_indptr,
+                                       kv_indptr,
                                        q_offset,
                                        paged_kv,
                                        custom_mask,
@@ -193,29 +195,29 @@ void BatchPrefillWrapper::UpdatePageLockedBufferSize(
 torch::Tensor BatchPrefillWrapper::Run(
     torch::Tensor q,
     torch::Tensor qo_indptr,
+    torch::Tensor kv_indptr,
     std::optional<torch::Tensor> paged_k_cache,
     std::optional<torch::Tensor> paged_v_cache,
     torch::Tensor paged_kv_indptr,
     torch::Tensor paged_kv_indices,
-    torch::Tensor paged_kv_last_page_len,
     unsigned int pos_encoding_mode,
     int window_left,
     float logits_soft_cap,
     float sm_scale) {
   CHECK_INPUT(q);
   CHECK_INPUT(qo_indptr);
+  CHECK_INPUT(kv_indptr);
   CHECK_INPUT(paged_k_cache.value());
   CHECK_INPUT(paged_v_cache.value());
   CHECK_INPUT(paged_kv_indptr);
   CHECK_INPUT(paged_kv_indices);
-  CHECK_INPUT(paged_kv_last_page_len);
   auto device = q.device();
   CHECK_EQ(device, qo_indptr.device());
+  CHECK_EQ(device, kv_indptr.device());
   CHECK_EQ(device, paged_k_cache->device());
   CHECK_EQ(device, paged_v_cache->device());
   CHECK_EQ(device, paged_kv_indptr.device());
   CHECK_EQ(device, paged_kv_indices.device());
-  CHECK_EQ(device, paged_kv_last_page_len.device());
   CHECK_DIM(3, q);          // (nnz_qo, H_qo, D)
   CHECK_DIM(1, qo_indptr);  // (B + 1,)
 
@@ -226,7 +228,6 @@ torch::Tensor BatchPrefillWrapper::Run(
 
   CHECK_DIM(1, paged_kv_indptr);         // (B + 1,)
   CHECK_DIM(1, paged_kv_indices);        // (nnz_kv,)
-  CHECK_DIM(1, paged_kv_last_page_len);  // (B,)
   int64_t batch_size = qo_indptr.size(0) - 1;
   int64_t nnz_qo = q.size(0);
   int64_t num_qo_heads = q.size(1);
@@ -240,12 +241,12 @@ torch::Tensor BatchPrefillWrapper::Run(
 
   CHECK_GQA_HEAD_DIVISIBLE(num_qo_heads, num_kv_heads);
   CHECK_GE(qo_indptr.size(0), batch_size + 1);
+  CHECK_GE(kv_indptr.size(0), batch_size + 1);
   CHECK_GE(paged_kv_indptr.size(0), batch_size + 1);
-  CHECK_GE(paged_kv_last_page_len.size(0), batch_size);
   qo_indptr = qo_indptr.to(torch::kInt32);
+  kv_indptr = kv_indptr.to(torch::kInt32);
   paged_kv_indptr = paged_kv_indptr.to(torch::kInt32);
   paged_kv_indices = paged_kv_indices.to(torch::kInt32);
-  paged_kv_last_page_len = paged_kv_last_page_len.to(torch::kInt32);
 
   cudaStream_t torch_current_stream =
       c10::cuda::getCurrentCUDAStream(device.index());
@@ -269,35 +270,35 @@ torch::Tensor BatchPrefillWrapper::Run(
             static_cast<c_type*>(paged_k_cache->data_ptr()),
             static_cast<c_type*>(paged_v_cache->data_ptr()),
             paged_kv_indices.data_ptr<int32_t>(),
-            paged_kv_indptr.data_ptr<int32_t>(),
-            paged_kv_last_page_len.data_ptr<int32_t>());
+            paged_kv_indptr.data_ptr<int32_t>());
         return DISPATCH_head_dim(head_dim, HEAD_DIM, [&] {
           return DISPATCH_mask_mode(mask_mode, MASK_MODE, [&] {
             return DISPATCH_pos_encoding_mode(
                 PosEncodingMode(pos_encoding_mode), POS_ENCODING_MODE, [&] {
                   cudaError_t status =
-                      BatchPrefillWithPagedKVCacheWrapperDispatched<
-                          HEAD_DIM,
-                          LOGITS_POST_HOOK,
-                          POS_ENCODING_MODE,
-                          MASK_MODE,
-                          c_type,
-                          c_type,
-                          c_type,
-                          int32_t>(handler_.get(),
-                                   static_cast<c_type*>(q.data_ptr()),
-                                   static_cast<int32_t*>(qo_indptr.data_ptr()),
-                                   /*q_offset=*/nullptr,
-                                   paged_kv,
-                                   /*custom_mask=*/nullptr,
-                                   /*qk_indptr=*/nullptr,
-                                   static_cast<c_type*>(o.data_ptr()),
-                                   /*lse=*/nullptr,
-                                   num_qo_heads,
-                                   window_left,
-                                   logits_soft_cap,
-                                   sm_scale,
-                                   /*stream=*/torch_current_stream);
+                      mha_varlen_wrapper_dispatch<HEAD_DIM,
+                                                  LOGITS_POST_HOOK,
+                                                  POS_ENCODING_MODE,
+                                                  MASK_MODE,
+                                                  c_type,
+                                                  c_type,
+                                                  c_type,
+                                                  int32_t>(
+                          handler_.get(),
+                          static_cast<c_type*>(q.data_ptr()),
+                          qo_indptr.data_ptr<int32_t>(),
+                          kv_indptr.data_ptr<int32_t>(),
+                          /*q_offset=*/nullptr,
+                          paged_kv,
+                          /*custom_mask=*/nullptr,
+                          /*qk_indptr=*/nullptr,
+                          static_cast<c_type*>(o.data_ptr()),
+                          /*lse=*/nullptr,
+                          num_qo_heads,
+                          window_left,
+                          logits_soft_cap,
+                          sm_scale,
+                          /*stream=*/torch_current_stream);
                   TORCH_CHECK(status == cudaSuccess,
                               "BatchPrefillWithPagedKVCache failed with "
                               "error code ",
@@ -321,8 +322,7 @@ torch::Tensor BatchPrefillWrapper::Run(
                   static_cast<kv_type*>(paged_k_cache->data_ptr()),
                   static_cast<kv_type*>(paged_v_cache->data_ptr()),
                   paged_kv_indices.data_ptr<int32_t>(),
-                  paged_kv_indptr.data_ptr<int32_t>(),
-                  paged_kv_last_page_len.data_ptr<int32_t>());
+                  paged_kv_indptr.data_ptr<int32_t>());
               return DISPATCH_head_dim(head_dim, HEAD_DIM, [&] {
                 return DISPATCH_mask_mode(mask_mode, MASK_MODE, [&] {
                   return DISPATCH_pos_encoding_mode(
@@ -330,28 +330,29 @@ torch::Tensor BatchPrefillWrapper::Run(
                       POS_ENCODING_MODE,
                       [&] {
                         cudaError_t status =
-                            BatchPrefillWithPagedKVCacheWrapperDispatched<
-                                HEAD_DIM,
-                                LOGITS_POST_HOOK,
-                                POS_ENCODING_MODE,
-                                MASK_MODE,
-                                q_type,
-                                kv_type,
-                                q_type,
-                                int32_t>(handler_.get(),
-                                         static_cast<q_type*>(q.data_ptr()),
-                                         qo_indptr.data_ptr<int32_t>(),
-                                         /*q_offset=*/nullptr,
-                                         paged_kv,
-                                         /*custom_mask=*/nullptr,
-                                         /*qk_indptr=*/nullptr,
-                                         static_cast<q_type*>(o.data_ptr()),
-                                         /*lse=*/nullptr,
-                                         num_qo_heads,
-                                         window_left,
-                                         logits_soft_cap,
-                                         sm_scale,
-                                         /*stream=*/torch_current_stream);
+                            mha_varlen_wrapper_dispatch<HEAD_DIM,
+                                                        LOGITS_POST_HOOK,
+                                                        POS_ENCODING_MODE,
+                                                        MASK_MODE,
+                                                        q_type,
+                                                        kv_type,
+                                                        q_type,
+                                                        int32_t>(
+                                handler_.get(),
+                                static_cast<q_type*>(q.data_ptr()),
+                                qo_indptr.data_ptr<int32_t>(),
+                                kv_indptr.data_ptr<int32_t>(),
+                                /*q_offset=*/nullptr,
+                                paged_kv,
+                                /*custom_mask=*/nullptr,
+                                /*qk_indptr=*/nullptr,
+                                static_cast<q_type*>(o.data_ptr()),
+                                /*lse=*/nullptr,
+                                num_qo_heads,
+                                window_left,
+                                logits_soft_cap,
+                                sm_scale,
+                                /*stream=*/torch_current_stream);
                         TORCH_CHECK(status == cudaSuccess,
                                     "BatchPrefillWithPagedKVCache failed "
                                     "with error code ",
