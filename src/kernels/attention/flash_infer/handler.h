@@ -74,7 +74,7 @@ cudaError_t PrefillSplitQOKVIndptr(bool& split_kv,
                                    std::vector<IdType>& merge_indptr,
                                    std::vector<IdType>& o_indptr,
                                    IdType* qo_indptr_h,
-                                   IdType* kv_indptr_h,
+                                   IdType* paged_kv_indptr_h,
                                    uint32_t batch_size,
                                    uint32_t num_qo_heads,
                                    uint32_t num_kv_heads,
@@ -107,7 +107,7 @@ cudaError_t PrefillSplitQOKVIndptr(bool& split_kv,
   for (uint32_t i = 0; i < batch_size; ++i) {
     packed_qo_len_arr[i] =
         int64_t(qo_indptr_h[i + 1] - qo_indptr_h[i]) * int64_t(gqa_group_size);
-    kv_len_arr[i] = int64_t(kv_indptr_h[i + 1] - kv_indptr_h[i]);
+    kv_len_arr[i] = int64_t(paged_kv_indptr_h[i + 1] - paged_kv_indptr_h[i]);
     sum_packed_qo_len += packed_qo_len_arr[i];
   }
   int64_t avg_packed_qo_len = sum_packed_qo_len / batch_size;
@@ -231,7 +231,7 @@ class BatchPrefillHandler {
                    void* int_buffer,
                    size_t int_workspace_size_in_bytes,
                    IdType* qo_indptr_h,
-                   IdType* kv_indptr_h,
+                   IdType* paged_kv_indptr_h,
                    uint32_t batch_size,
                    uint32_t num_qo_heads,
                    uint32_t num_kv_heads,
@@ -262,7 +262,7 @@ class BatchPrefillHandler {
                                                 merge_indptr_vec,
                                                 o_indptr_vec,
                                                 qo_indptr_h,
-                                                kv_indptr_h,
+                                                paged_kv_indptr_h,
                                                 batch_size,
                                                 num_qo_heads,
                                                 num_kv_heads,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <flashinfer/fastdiv.cuh>
 
 namespace flashinfer {
@@ -11,45 +12,27 @@ namespace flashinfer {
  */
 template <typename DType, typename IdType>
 struct paged_kv_t {
-  // number of samples in the batch
-  uint32_t batch_size;
+  // number of sequences in the batch
+  uint32_t batch_size_;
 
-  uint_fastdiv page_size;
-  uint32_t num_heads;
-  uint32_t head_dim;
-
-  // strides for page, entry and head
-  uint32_t stride_page;
-  uint32_t stride_n;
-  uint32_t stride_h;
+  uint_fastdiv page_size_;
 
   // The flattened key-value cache
   // [n_pages, page_size, n_heads, head_dim]
-  DType* k_data;
-  DType* v_data;
+  DType* k_data_;
+  DType* v_data_;
 
   // [nnz_pages] The page indices array
-  IdType* indices;
+  IdType* indices_;
 
   // [batch_size + 1] The page indptr array, with the first element 0, the last
   // element nnz_pages
-  IdType* indptr;
+  IdType* indptr_;
 
-  /*!
-   * \brief Construct an empty paged key-value cache
-   */
-  __host__ __device__ __forceinline__ paged_kv_t()
-      : num_heads(0),
-        page_size(0),
-        head_dim(0),
-        batch_size(0),
-        stride_page(0),
-        stride_n(0),
-        stride_h(0),
-        k_data(nullptr),
-        v_data(nullptr),
-        indices(nullptr),
-        indptr(nullptr) {}
+  // strides for page, entry and head
+  size_t stride_page_;
+  size_t stride_n_;
+  size_t stride_h_;
 
   /*!
    * \brief Construct a paged key-value cache
@@ -63,8 +46,6 @@ struct paged_kv_t {
    * \param v_data The flattened value cache
    * \param indices The page indices array
    * \param indptr The page indptr array
-   * \note This constructor should only be used when page_storage ==
-   * kIndices
    */
   __host__ __forceinline__ paged_kv_t(uint32_t num_heads,
                                       uint32_t page_size,
@@ -74,55 +55,39 @@ struct paged_kv_t {
                                       DType* v_data,
                                       IdType* indices,
                                       IdType* indptr)
-      : num_heads(num_heads),
-        page_size(page_size),
-        head_dim(head_dim),
-        batch_size(batch_size),
-        k_data(k_data),
-        v_data(v_data),
-        indices(indices),
-        indptr(indptr) {
-    stride_page = page_size * num_heads * head_dim;
-    stride_n = num_heads * head_dim;
-    stride_h = head_dim;
+      : page_size_(page_size),
+        batch_size_(batch_size),
+        k_data_(k_data),
+        v_data_(v_data),
+        indices_(indices),
+        indptr_(indptr) {
+    stride_h_ = head_dim;
+    stride_n_ = stride_h_ * num_heads;
+    stride_page_ = stride_n_ * page_size;
   }
 
-  __host__ __device__ __forceinline__ int64_t kv_ptr_delta() const {
-    return num_heads * page_size * head_dim;
+  // get the kv offset for given request, kv_idx, kv_head_idx and feat_idx
+  __device__ __forceinline__ size_t get_kv_offset(uint32_t request_idx,
+                                                  uint32_t kv_idx,
+                                                  uint32_t kv_head_idx,
+                                                  uint32_t feat_idx) const {
+    uint32_t page_idx, page_offset;
+    page_size_.divmod(kv_idx, page_idx, page_offset);
+
+    // get the page id from block table
+    const auto page_idx_base = __ldg(indptr_ + request_idx);
+    const auto page_id = __ldg(indices_ + page_idx_base + page_idx);
+
+    return page_id * stride_page_ + page_offset * stride_n_ +
+           kv_head_idx * stride_h_ + feat_idx;
   }
 
-  /*!
-   * \brief Compute the offset of element in the allocated buffer.
-   * \param page_idx The page index
-   * \param head_idx The head index
-   * \param entry_idx The page entry index
-   * \param feat_idx The feature index
-   */
-  __host__ __device__ __forceinline__ size_t
-  get_elem_offset(size_t page_idx,
-                  size_t head_idx,
-                  size_t entry_idx,
-                  size_t feat_idx) const {
-    return page_idx * stride_page + head_idx * stride_h + entry_idx * stride_n +
-           feat_idx;
+  __device__ __forceinline__ DType* k_data(size_t offset) const {
+    return k_data_ + offset;
   }
 
-  __device__ __forceinline__ DType* get_k_ptr(IdType page_iter,
-                                              uint32_t head_idx,
-                                              uint32_t entry_idx,
-                                              uint32_t feat_idx) const {
-    return k_data +
-           get_elem_offset(
-               __ldg(indices + page_iter), head_idx, entry_idx, feat_idx);
-  }
-
-  __device__ __forceinline__ DType* get_v_ptr(IdType page_iter,
-                                              uint32_t head_idx,
-                                              uint32_t entry_idx,
-                                              uint32_t feat_idx) const {
-    return v_data +
-           get_elem_offset(
-               __ldg(indices + page_iter), head_idx, entry_idx, feat_idx);
+  __device__ __forceinline__ DType* v_data(size_t offset) const {
+    return v_data_ + offset;
   }
 };
 

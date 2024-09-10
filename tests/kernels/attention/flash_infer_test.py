@@ -7,7 +7,7 @@ from ref_attention import varlen_masked_self_attention
 import scalellm._C.kernels as kernels  # type: ignore
 
 
-@pytest.mark.parametrize("seq_lens", [[(1, 100), (5, 15), (111, 234)]])
+@pytest.mark.parametrize("seq_lens", [[(1, 100), (15, 15), (111, 234), (1000, 10000)]])
 @pytest.mark.parametrize("num_heads", [(8, 8), (8, 4), (8, 2), (8, 1)])
 @pytest.mark.parametrize("head_size", [64, 128, 256])
 @pytest.mark.parametrize("n_blocks", [100])
@@ -29,6 +29,7 @@ def test_flashinfer_varlen_masked_self_attention(
     alibi: bool,
 ) -> None:
     torch.set_default_device("cuda")
+    torch.cuda.manual_seed_all(0)
 
     n_seqs = len(seq_lens)
     q_lens = [x[0] for x in seq_lens]
