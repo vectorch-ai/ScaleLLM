@@ -29,7 +29,6 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                                 IdType* kv_tile_indices,
                                 IdType* q_indptr,
                                 IdType* kv_indptr,
-                                IdType* q_offset,
                                 paged_kv_t<DTypeKV, IdType> paged_kv,
                                 uint8_t* custom_mask,
                                 IdType* qk_indptr,
@@ -47,6 +46,7 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                                 int32_t window_left,
                                 float logits_soft_cap,
                                 float sm_scale,
+                                float* alibi_slopes,
                                 cudaStream_t stream);
 
 template <uint32_t HEAD_DIM,
@@ -61,7 +61,6 @@ cudaError_t mha_varlen_wrapper_dispatch(BatchPrefillHandler* handler,
                                         DTypeQ* q,
                                         IdType* q_indptr,
                                         IdType* kv_indptr,
-                                        IdType* q_offset,
                                         paged_kv_t<DTypeKV, IdType> paged_kv,
                                         uint8_t* custom_mask,
                                         IdType* qk_indptr,
@@ -71,6 +70,7 @@ cudaError_t mha_varlen_wrapper_dispatch(BatchPrefillHandler* handler,
                                         int32_t window_left,
                                         float logits_soft_cap,
                                         float sm_scale,
+                                        float* alibi_slopes,
                                         cudaStream_t stream) {
   DTypeOut* tmp_v = nullptr;
   float* tmp_s = nullptr;
@@ -110,7 +110,6 @@ cudaError_t mha_varlen_wrapper_dispatch(BatchPrefillHandler* handler,
                                        kv_tile_indices,
                                        q_indptr,
                                        kv_indptr,
-                                       q_offset,
                                        paged_kv,
                                        custom_mask,
                                        qk_indptr,
@@ -128,6 +127,7 @@ cudaError_t mha_varlen_wrapper_dispatch(BatchPrefillHandler* handler,
                                        window_left,
                                        logits_soft_cap,
                                        sm_scale,
+                                       alibi_slopes,
                                        stream);
   });
   return cudaSuccess;
@@ -200,10 +200,10 @@ torch::Tensor BatchPrefillWrapper::Run(
     std::optional<torch::Tensor> paged_v_cache,
     torch::Tensor paged_kv_indptr,
     torch::Tensor paged_kv_indices,
-    unsigned int pos_encoding_mode,
     int window_left,
     float logits_soft_cap,
-    float sm_scale) {
+    float sm_scale,
+    std::optional<torch::Tensor> alibi_slopes) {
   CHECK_INPUT(q);
   CHECK_INPUT(qo_indptr);
   CHECK_INPUT(kv_indptr);
@@ -226,8 +226,8 @@ torch::Tensor BatchPrefillWrapper::Run(
   CHECK_DIM(4, paged_k_cache.value());
   CHECK_DIM(4, paged_v_cache.value());
 
-  CHECK_DIM(1, paged_kv_indptr);         // (B + 1,)
-  CHECK_DIM(1, paged_kv_indices);        // (nnz_kv,)
+  CHECK_DIM(1, paged_kv_indptr);   // (B + 1,)
+  CHECK_DIM(1, paged_kv_indices);  // (nnz_kv,)
   int64_t batch_size = qo_indptr.size(0) - 1;
   int64_t nnz_qo = q.size(0);
   int64_t num_qo_heads = q.size(1);
@@ -255,6 +255,9 @@ torch::Tensor BatchPrefillWrapper::Run(
   TORCH_CHECK(logits_soft_cap >= 0.f, "logits_soft_cap must be non-negative");
   const LogitsPostHook logits_post_hook =
       logits_soft_cap > 0.f ? LogitsPostHook::kSoftCap : LogitsPostHook::kNone;
+  const auto pos_encoding_mode = alibi_slopes.has_value()
+                                     ? PosEncodingMode::kALiBi
+                                     : PosEncodingMode::kNone;
 
   auto q_scalar_type = q.scalar_type();
   auto kv_scalar_type = paged_k_cache->scalar_type();
@@ -288,7 +291,6 @@ torch::Tensor BatchPrefillWrapper::Run(
                           static_cast<c_type*>(q.data_ptr()),
                           qo_indptr.data_ptr<int32_t>(),
                           kv_indptr.data_ptr<int32_t>(),
-                          /*q_offset=*/nullptr,
                           paged_kv,
                           /*custom_mask=*/nullptr,
                           /*qk_indptr=*/nullptr,
@@ -298,6 +300,9 @@ torch::Tensor BatchPrefillWrapper::Run(
                           window_left,
                           logits_soft_cap,
                           sm_scale,
+                          alibi_slopes.has_value()
+                              ? alibi_slopes->data_ptr<float>()
+                              : nullptr,
                           /*stream=*/torch_current_stream);
                   TORCH_CHECK(status == cudaSuccess,
                               "BatchPrefillWithPagedKVCache failed with "
@@ -342,7 +347,6 @@ torch::Tensor BatchPrefillWrapper::Run(
                                 static_cast<q_type*>(q.data_ptr()),
                                 qo_indptr.data_ptr<int32_t>(),
                                 kv_indptr.data_ptr<int32_t>(),
-                                /*q_offset=*/nullptr,
                                 paged_kv,
                                 /*custom_mask=*/nullptr,
                                 /*qk_indptr=*/nullptr,
@@ -352,6 +356,9 @@ torch::Tensor BatchPrefillWrapper::Run(
                                 window_left,
                                 logits_soft_cap,
                                 sm_scale,
+                                alibi_slopes.has_value()
+                                    ? alibi_slopes->data_ptr<float>()
+                                    : nullptr,
                                 /*stream=*/torch_current_stream);
                         TORCH_CHECK(status == cudaSuccess,
                                     "BatchPrefillWithPagedKVCache failed "
