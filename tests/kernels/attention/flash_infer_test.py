@@ -29,6 +29,7 @@ def test_flashinfer_varlen_masked_self_attention(
     alibi: bool,
 ) -> None:
     torch.set_default_device("cuda")
+    torch.cuda.manual_seed_all(0)
 
     n_seqs = len(seq_lens)
     q_lens = [x[0] for x in seq_lens]
