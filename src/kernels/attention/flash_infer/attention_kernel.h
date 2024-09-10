@@ -110,8 +110,8 @@ __device__ __forceinline__ void page_produce_kv(
     static_assert(num_frags_z * 4 % num_warps_x == 0);
 #pragma unroll
     for (uint32_t i = 0; i < num_frags_z * 4 / num_warps_x; ++i) {
-      DType* gptr = produce_v ? paged_kv.v_data + kv_offset[i]
-                              : paged_kv.k_data + kv_offset[i];
+      DType* gptr = produce_v ? paged_kv.v_data(kv_offset[i])
+                              : paged_kv.k_data(kv_offset[i]);
 #pragma unroll
       for (uint32_t j = 0; j < num_frags_y / (8 / sizeof(DType)); ++j) {
         smem.load_128b_async<fill_mode>(*smem_offset, gptr, kv_idx < kv_len);
@@ -133,8 +133,8 @@ __device__ __forceinline__ void page_produce_kv(
     static_assert(num_frags_z * 2 % num_warps_x == 0);
 #pragma unroll
     for (uint32_t i = 0; i < num_frags_z * 2 / num_warps_x; ++i) {
-      DType* gptr = produce_v ? paged_kv.v_data + kv_offset[i]
-                              : paged_kv.k_data + kv_offset[i];
+      DType* gptr = produce_v ? paged_kv.v_data(kv_offset[i])
+                              : paged_kv.k_data(kv_offset[i]);
       smem.load_128b_async<fill_mode>(*smem_offset, gptr, kv_idx < kv_len);
       kv_idx += num_warps * 8;
       *smem_offset = smem.template advance_offset_by_row<num_warps * 8,
@@ -1026,30 +1026,26 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
            kv_smem_offset_w = k_smem.get_permuted_offset<channel_size_128b_kv>(
                warp_idx * kv_frag_rows + lane_idx / kv_frag_cols,
                lane_idx % kv_frag_cols);
-  const IdType last_indptr = paged_kv.indptr[paged_kv.batch_size];
 
-  uint32_t packed_page_iter_base =
-      paged_kv.indptr[request_idx] * paged_kv.page_size + chunk_start;
+  // kv_idx of current sequence
+  uint32_t kv_idx_base = chunk_start;
+
 #pragma unroll
   for (uint32_t i = 0;
        i < num_frags_z * (swizzle_mode_kv == SwizzleMode::k128B ? 4 : 2) /
                num_warps_x;
        ++i) {
-    uint32_t page_iter, entry_idx;
-    paged_kv.page_size.divmod(packed_page_iter_base + warp_idx * kv_frag_rows +
-                                  lane_idx / kv_frag_cols +
-                                  kv_frag_rows * num_warps_x * num_warps_z * i,
-                              page_iter,
-                              entry_idx);
+    const uint32_t kv_idx = kv_idx_base + warp_idx * kv_frag_rows +
+                            lane_idx / kv_frag_cols +
+                            kv_frag_rows * num_warps_x * num_warps_z * i;
+    const uint32_t feat_idx =
+        (lane_idx % kv_frag_cols) * num_elems_per_128b<DTypeKV>();
     kv_offset[i] =
-        page_iter < last_indptr
-            ? paged_kv.get_elem_offset(
-                  __ldg(paged_kv.indices + page_iter),
-                  kv_head_idx,
-                  entry_idx,
-                  (lane_idx % kv_frag_cols) * num_elems_per_128b<DTypeKV>())
+        kv_idx < kv_len
+            ? paged_kv.get_kv_offset(request_idx, kv_idx, kv_head_idx, feat_idx)
             : 0;
   }
+
   page_produce_kv<false, num_warps_x, num_warps_z, num_frags_y, num_frags_z>(
       k_smem, &kv_smem_offset_w, paged_kv, 0, kv_offset, chunk_size);
   cp_async::commit_group();
@@ -1084,27 +1080,21 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
 
 #pragma unroll 1
   for (uint32_t iter = 0; iter < num_iterations; ++iter) {
-    packed_page_iter_base += 16 * num_warps_z * num_frags_z;
+    kv_idx_base += 16 * num_warps_z * num_frags_z;
 #pragma unroll
     for (uint32_t i = 0;
          i < num_frags_z * (swizzle_mode_kv == SwizzleMode::k128B ? 4 : 2) /
                  num_warps_x;
          ++i) {
-      uint32_t page_iter, entry_idx;
-      paged_kv.page_size.divmod(
-          packed_page_iter_base + warp_idx * kv_frag_rows +
-              lane_idx / kv_frag_cols +
-              kv_frag_rows * num_warps_x * num_warps_z * i,
-          page_iter,
-          entry_idx);
-      kv_offset[i] =
-          page_iter < last_indptr
-              ? paged_kv.get_elem_offset(
-                    __ldg(paged_kv.indices + page_iter),
-                    kv_head_idx,
-                    entry_idx,
-                    (lane_idx % kv_frag_cols) * num_elems_per_128b<DTypeKV>())
-              : 0;
+      const uint32_t kv_idx = kv_idx_base + warp_idx * kv_frag_rows +
+                              lane_idx / kv_frag_cols +
+                              kv_frag_rows * num_warps_x * num_warps_z * i;
+      const uint32_t feat_idx =
+          (lane_idx % kv_frag_cols) * num_elems_per_128b<DTypeKV>();
+      kv_offset[i] = kv_idx < kv_len
+                         ? paged_kv.get_kv_offset(
+                               request_idx, kv_idx, kv_head_idx, feat_idx)
+                         : 0;
     }
     cp_async::wait_group<1>();
     block.sync();
@@ -1288,6 +1278,7 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
                                 IdType* kv_chunk_size_ptr,
                                 uint32_t total_num_rows,
                                 uint32_t num_qo_heads,
+                                uint32_t num_kv_heads,
                                 uint32_t padded_batch_size,
                                 int32_t window_left,
                                 float logits_soft_cap,
@@ -1303,7 +1294,6 @@ cudaError_t mha_varlen_dispatch(DTypeQ* q,
   constexpr uint32_t num_frags_x = get_num_frags_x<WARP_LAYOUT>();
   constexpr uint32_t num_warps_x = get_num_warps_x<WARP_LAYOUT>();
   constexpr uint32_t num_warps_z = get_num_warps_z<WARP_LAYOUT>();
-  const uint32_t num_kv_heads = paged_kv.num_heads;
   const uint32_t group_size = num_qo_heads / num_kv_heads;
   const uint_fastdiv group_size_fastdiv(group_size);
 
