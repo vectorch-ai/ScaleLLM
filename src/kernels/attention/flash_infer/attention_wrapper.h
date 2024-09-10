@@ -32,11 +32,11 @@ class BatchPrefillWrapper {
 
   torch::Tensor Run(torch::Tensor q,
                     torch::Tensor qo_indptr,
+                    torch::Tensor kv_indptr,
                     std::optional<torch::Tensor> paged_k_cache,
                     std::optional<torch::Tensor> paged_v_cache,
                     torch::Tensor paged_kv_indptr,
                     torch::Tensor paged_kv_indices,
-                    torch::Tensor paged_kv_last_page_len,
                     unsigned int pos_encoding_mode,
                     int window_left,
                     float logits_soft_cap,

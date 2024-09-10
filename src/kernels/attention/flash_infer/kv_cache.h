@@ -35,10 +35,6 @@ struct paged_kv_t {
   // element nnz_pages
   IdType* indptr;
 
-  // TODO: replace with cu_kv_seq_lens
-  // [batch_size] The offset of the last page for each request in the batch
-  IdType* last_page_len;
-
   /*!
    * \brief Construct an empty paged key-value cache
    */
@@ -53,8 +49,7 @@ struct paged_kv_t {
         k_data(nullptr),
         v_data(nullptr),
         indices(nullptr),
-        indptr(nullptr),
-        last_page_len(nullptr) {}
+        indptr(nullptr) {}
 
   /*!
    * \brief Construct a paged key-value cache
@@ -68,7 +63,6 @@ struct paged_kv_t {
    * \param v_data The flattened value cache
    * \param indices The page indices array
    * \param indptr The page indptr array
-   * \param last_page_len The offset of the last page for each sequence
    * \note This constructor should only be used when page_storage ==
    * kIndices
    */
@@ -79,8 +73,7 @@ struct paged_kv_t {
                                       DType* k_data,
                                       DType* v_data,
                                       IdType* indices,
-                                      IdType* indptr,
-                                      IdType* last_page_len)
+                                      IdType* indptr)
       : num_heads(num_heads),
         page_size(page_size),
         head_dim(head_dim),
@@ -88,8 +81,7 @@ struct paged_kv_t {
         k_data(k_data),
         v_data(v_data),
         indices(indices),
-        indptr(indptr),
-        last_page_len(last_page_len) {
+        indptr(indptr) {
     stride_page = page_size * num_heads * head_dim;
     stride_n = num_heads * head_dim;
     stride_h = head_dim;

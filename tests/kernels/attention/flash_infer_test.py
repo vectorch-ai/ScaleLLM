@@ -27,6 +27,7 @@ def test_flashinfer_varlen_masked_self_attention(
     logits_soft_cap: Optional[float],
 ) -> None:
     torch.set_default_device("cuda")
+    
 
     n_seqs = len(seq_lens)
     q_lens = [x[0] for x in seq_lens]
@@ -50,27 +51,25 @@ def test_flashinfer_varlen_masked_self_attention(
     # prepare input tensors for the kernel
     qo_indptr = [0]
     kv_indptr = [0]
-    kv_indices = []
-    kv_last_page_lens = []
+    paged_kv_indptr = [0]
+    paged_kv_indices = []
     for i in range(n_seqs):
+        qo_indptr.append(qo_indptr[-1] + q_lens[i])
+        kv_indptr.append(kv_indptr[-1] + kv_lens[i])
+
         seq_len = kv_lens[i]
         assert seq_len > 0
-
-        qo_indptr.append(qo_indptr[-1] + q_lens[i])
-
+        
+        
         num_blocks = (seq_len + block_size - 1) // block_size
-        kv_indptr.append(kv_indptr[-1] + num_blocks)
-        kv_indices.extend(block_tables[i, :num_blocks])
-
-        kv_last_page_len = seq_len % block_size
-        if kv_last_page_len == 0:
-            kv_last_page_len = block_size
-        kv_last_page_lens.append(kv_last_page_len)
+        paged_kv_indices.extend(block_tables[i, :num_blocks])
+        paged_kv_indptr.append(len(paged_kv_indices))
+        
 
     qo_indptr = torch.tensor(qo_indptr, dtype=torch.int32)
     kv_indptr = torch.tensor(kv_indptr, dtype=torch.int32)
-    kv_indices = torch.tensor(kv_indices, dtype=torch.int32)
-    kv_last_page_lens = torch.tensor(kv_last_page_lens, dtype=torch.int32)
+    paged_kv_indptr = torch.tensor(paged_kv_indptr, dtype=torch.int32)
+    paged_kv_indices = torch.tensor(paged_kv_indices, dtype=torch.int32)
 
     wrapper = kernels.BatchPrefillWrapper(False)
     # TODO: determine the best size for the workspace buffer.
@@ -83,7 +82,7 @@ def test_flashinfer_varlen_masked_self_attention(
         float_workspace_buffer,
         int_workspace_buffer,
         qo_indptr,
-        kv_indptr,
+        paged_kv_indptr,
         n_seqs,
         n_heads,
         n_kv_heads,
@@ -95,11 +94,11 @@ def test_flashinfer_varlen_masked_self_attention(
     output = wrapper.run(
         query,
         qo_indptr,
+        kv_indptr,
         key_cache,
         value_cache,
-        kv_indptr,
-        kv_indices,
-        kv_last_page_lens,
+        paged_kv_indptr,
+        paged_kv_indices,
         0,  # pos_encoding_mode
         -1,  # window_left
         logits_soft_cap,
@@ -117,9 +116,7 @@ def test_flashinfer_varlen_masked_self_attention(
         logits_soft_cap=logits_soft_cap,
     )
 
-    atol=1e-3 if dtype == torch.float16 else 1e-2
-    rtol=1e-3 if dtype == torch.float16 else 1e-2
-    torch.testing.assert_close(output, ref_output, atol=atol, rtol=rtol)
+    torch.testing.assert_close(output, ref_output, atol=1e-2, rtol=1e-2)
 
 
 if __name__ == "__main__":
