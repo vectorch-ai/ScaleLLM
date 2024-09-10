@@ -14,7 +14,7 @@ import scalellm._C.kernels as kernels  # type: ignore
 @pytest.mark.parametrize("block_size", [4, 8, 16, 32])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("logits_soft_cap", [0.0, 30.0, 50.0])
-# @pytest.mark.parametrize("sliding_window", [-1, 28])
+@pytest.mark.parametrize("sliding_window", [-1, 40])
 # @pytest.mark.parametrize("alibi", [False, True])
 @torch.inference_mode
 def test_flashinfer_varlen_masked_self_attention(
@@ -24,7 +24,8 @@ def test_flashinfer_varlen_masked_self_attention(
     dtype: torch.dtype,
     n_blocks: int,
     block_size: int,
-    logits_soft_cap: Optional[float],
+    logits_soft_cap: float,
+    sliding_window: int,
 ) -> None:
     torch.set_default_device("cuda")
     
@@ -91,6 +92,7 @@ def test_flashinfer_varlen_masked_self_attention(
         empty_q_data,
     )
 
+    pos_encoding_mode = 0
     output = wrapper.run(
         query,
         qo_indptr,
@@ -99,8 +101,8 @@ def test_flashinfer_varlen_masked_self_attention(
         value_cache,
         paged_kv_indptr,
         paged_kv_indices,
-        0,  # pos_encoding_mode
-        -1,  # window_left
+        pos_encoding_mode,
+        sliding_window,
         logits_soft_cap,
         sm_scale,
     )
@@ -114,6 +116,7 @@ def test_flashinfer_varlen_masked_self_attention(
         block_tables=block_tables,
         sm_scale=sm_scale,
         logits_soft_cap=logits_soft_cap,
+        sliding_window=sliding_window,
     )
 
     torch.testing.assert_close(output, ref_output, atol=1e-2, rtol=1e-2)
