@@ -46,7 +46,7 @@ jobs:
             -e TORCH_VERSION=${TORCH_VERSION} \
             -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
             -e CCACHE_DIR=/ci_cache/.ccache \
-            -e PIP_DOWNLOAD_CACHE=/ci_cache/.pip \
+            -e PIP_CACHE_DIR=/ci_cache/.pip \
             -u $(id -u):$(id -g) \
             vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
             bash /ScaleLLM/scripts/build_wheel.sh
