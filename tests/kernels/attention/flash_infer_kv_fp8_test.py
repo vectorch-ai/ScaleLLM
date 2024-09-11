@@ -12,7 +12,7 @@ import scalellm._C.kernels as kernels  # type: ignore
 @pytest.mark.parametrize("head_size", [64, 128, 256])
 @pytest.mark.parametrize("n_blocks", [100])
 @pytest.mark.parametrize("block_size", [4, 8, 16])
-@pytest.mark.parametrize("dtype", [torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("kv_dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
 @pytest.mark.parametrize("logits_soft_cap", [0.0, 50.0])
 @pytest.mark.parametrize("sliding_window", [-1, 50])
@@ -105,7 +105,7 @@ def test_flashinfer_varlen_masked_self_attention_fp8_kv(
 
     key_cache_fp8 = (key_cache / k_scale).to(kv_dtype)
     value_cache_fp8 = (value_cache / v_scale).to(kv_dtype)
-    
+
     output_fp8 = wrapper.run(
         query,
         qo_indptr,
@@ -116,7 +116,7 @@ def test_flashinfer_varlen_masked_self_attention_fp8_kv(
         paged_kv_indices,
         sliding_window,
         logits_soft_cap,
-        sm_scale * k_scale, # scaled key by k_scale
+        sm_scale * k_scale,  # scaled key by k_scale
         alibi_slopes,
     )
     output_fp8 *= v_scale
