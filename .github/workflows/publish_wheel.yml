@@ -41,6 +41,7 @@ jobs:
         run: |
           mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
           mkdir -p $CI_CACHE_DIR/.ccache
+          mkdir -p $CI_CACHE_DIR/.pip
 
       - name: Build wheel
         timeout-minutes: 60
@@ -55,6 +56,7 @@ jobs:
               -e SCALELLM_VERSION=${SCALELLM_VERSION} \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
+              -e PIP_DOWNLOAD_CACHE=/ci_cache/.pip \
               -u $(id -u):$(id -g) \
               vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
               bash /ScaleLLM/scripts/build_wheel.sh
