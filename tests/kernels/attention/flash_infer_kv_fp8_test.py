@@ -12,16 +12,18 @@ import scalellm._C.kernels as kernels  # type: ignore
 @pytest.mark.parametrize("head_size", [64, 128, 256])
 @pytest.mark.parametrize("n_blocks", [100])
 @pytest.mark.parametrize("block_size", [4, 8, 16])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float16])
+@pytest.mark.parametrize("kv_dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
 @pytest.mark.parametrize("logits_soft_cap", [0.0, 50.0])
 @pytest.mark.parametrize("sliding_window", [-1, 50])
 @pytest.mark.parametrize("alibi", [False, True])
 @torch.inference_mode
-def test_flashinfer_varlen_masked_self_attention(
+def test_flashinfer_varlen_masked_self_attention_fp8_kv(
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
     dtype: torch.dtype,
+    kv_dtype: torch.dtype,
     n_blocks: int,
     block_size: int,
     logits_soft_cap: float,
@@ -42,8 +44,12 @@ def test_flashinfer_varlen_masked_self_attention(
 
     # Generate random query, key, and value tensors.
     query = torch.randn(sum(q_lens), n_heads, head_size, dtype=dtype)
-    key_cache = torch.randn(n_blocks, block_size, n_kv_heads, head_size, dtype=dtype)
-    value_cache = torch.randn(n_blocks, block_size, n_kv_heads, head_size, dtype=dtype)
+    key_cache = 0.05 * torch.randn(
+        n_blocks, block_size, n_kv_heads, head_size, dtype=dtype
+    )
+    value_cache = 0.05 * torch.randn(
+        n_blocks, block_size, n_kv_heads, head_size, dtype=dtype
+    )
 
     max_n_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
     block_tables = torch.randint(
@@ -93,19 +99,27 @@ def test_flashinfer_varlen_masked_self_attention(
 
     alibi_slopes = torch.randn(n_heads, dtype=torch.float32) if alibi else None
 
-    output = wrapper.run(
+    # The calibration scale of key/value for fp8 input
+    k_scale = key_cache.amax().item() / 256.0
+    v_scale = value_cache.amax().item() / 256.0
+
+    key_cache_fp8 = (key_cache / k_scale).to(kv_dtype)
+    value_cache_fp8 = (value_cache / v_scale).to(kv_dtype)
+    
+    output_fp8 = wrapper.run(
         query,
         qo_indptr,
         kv_indptr,
-        key_cache,
-        value_cache,
+        key_cache_fp8,
+        value_cache_fp8,
         paged_kv_indptr,
         paged_kv_indices,
         sliding_window,
         logits_soft_cap,
-        sm_scale,
+        sm_scale * k_scale, # scaled key by k_scale
         alibi_slopes,
     )
+    output_fp8 *= v_scale
 
     ref_output = varlen_masked_self_attention(
         query=query,
@@ -120,10 +134,7 @@ def test_flashinfer_varlen_masked_self_attention(
         alibi_slopes=alibi_slopes,
     )
 
-    if alibi and dtype == torch.bfloat16:
-        torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=1e-2)
-    else:
-        torch.testing.assert_close(output, ref_output, atol=1e-2, rtol=1e-2)
+    torch.testing.assert_close(output_fp8, ref_output, atol=2e-2, rtol=2e-2)
 
 
 if __name__ == "__main__":
