@@ -74,27 +74,18 @@ cudaError_t mha_varlen_wrapper_dispatch(BatchPrefillHandler* handler,
                                         float sm_scale,
                                         float* alibi_slopes,
                                         cudaStream_t stream) {
-  DTypeOut* tmp_v = nullptr;
-  float* tmp_s = nullptr;
-  IdType *request_indices = nullptr, *qo_tile_indices = nullptr,
-         *kv_tile_indices = nullptr, *o_indptr = nullptr,
-         *merge_indptr = nullptr, *kv_chunk_size_ptr = nullptr;
-  bool* block_valid_mask = nullptr;
-  WarpLayout warp_layout;
-  uint32_t padded_batch_size = 0U;
-  uint32_t total_num_rows = 0U;
-  tmp_v = handler->GetTempV<DTypeOut>();
-  tmp_s = handler->GetTempS();
-  request_indices = handler->GetRequestIndices<IdType>();
-  qo_tile_indices = handler->GetQOTileIndices<IdType>();
-  kv_tile_indices = handler->GetKVTileIndices<IdType>();
-  block_valid_mask = handler->GetBlockValidMask();
-  o_indptr = handler->GetOIndptr<IdType>();
-  merge_indptr = handler->GetMergeIndptr<IdType>();
-  kv_chunk_size_ptr = handler->GetKVChunkSizePtr<IdType>();
-  warp_layout = handler->GetWarpLayout();
-  padded_batch_size = handler->GetPaddedBatchSize();
-  total_num_rows = handler->GetTotalNumRows();
+  DTypeOut* tmp_v = handler->GetTempV<DTypeOut>();
+  float* tmp_s = handler->GetTempS();
+  IdType * request_indices = handler->GetRequestIndices<IdType>();
+  IdType * qo_tile_indices = handler->GetQOTileIndices<IdType>();
+  IdType * kv_tile_indices = handler->GetKVTileIndices<IdType>();
+  bool* block_valid_mask = handler->GetBlockValidMask();
+  IdType * o_indptr = handler->GetOIndptr<IdType>();
+  IdType * merge_indptr = handler->GetMergeIndptr<IdType>();
+  IdType * kv_chunk_size_ptr = handler->GetKVChunkSizePtr<IdType>();
+  WarpLayout warp_layout = handler->GetWarpLayout();
+  uint32_t padded_batch_size = handler->GetPaddedBatchSize();
+  uint32_t total_num_rows = handler->GetTotalNumRows();
 
   DISPATCH_WARP_LAYOUT(warp_layout, WARP_LAYOUT, {
     return mha_varlen_dispatch<WARP_LAYOUT,
