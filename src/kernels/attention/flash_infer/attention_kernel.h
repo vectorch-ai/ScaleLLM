@@ -188,7 +188,7 @@ __device__ __forceinline__ void load_q_global_smem(
       head_dim / num_elems_per_128b<DTypeQ>();
   const uint32_t lane_idx = threadIdx.x,
                  warp_idx_x = get_warp_idx_x<num_warps_x, num_warps_z>();
-
+  // let warp in first column load q
   if (get_warp_idx_z<num_warps_x, num_warps_z>() == 0) {
     uint32_t q_smem_offset_w = q_smem->get_permuted_offset<channel_size_128b_q>(
         warp_idx_x * num_frags_x * 16 + lane_idx / 8, lane_idx % 8);
@@ -915,9 +915,12 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
   const uint32_t chunk_end =
       partition_kv ? min((kv_tile_idx + 1) * max_chunk_size, kv_len) : kv_len;
   const uint32_t chunk_size = chunk_end - chunk_start;
+  // heads in query are flattened to first dimension, so we need to div
+  // group_size to get original request_idx
   const uint32_t qo_upper_bound =
       min(qo_len, ceil_div((qo_tile_idx + 1) * num_rows_per_cta, group_size));
 
+  // head_dim handled by each thread, 16 bytes (128 bits) each fragment
   constexpr uint32_t head_dim = num_frags_y * 16;
   constexpr uint32_t channel_size_128b_q =
       head_dim / num_elems_per_128b<DTypeQ>();
@@ -928,44 +931,61 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
 
   extern __shared__ uint8_t smem[];
 
+  // TODO: Figure out frag layout
   DTypeQKAccum s_frag[num_frags_x][num_frags_z][8];
   float o_frag[num_frags_x][num_frags_y][8];
   DTypeQKAccum m[num_frags_x][2];
   float d[num_frags_x][2];
 
+  // initialize o = 0, m = -5e4, d = 1
   init_states<num_frags_x, num_frags_y>(o_frag, m, d);
 
+  // base index for flattened qo
   const uint32_t qo_packed_idx_base =
       (qo_tile_idx * num_warps_x + get_warp_idx_x<num_warps_x, num_warps_z>()) *
       num_frags_x * 16;
+
+  // TODO: use cute for offset calculation?
   const uint32_t q_stride_n = num_qo_heads * head_dim, q_stride_h = head_dim;
+  // swizzle_mode_q: 128B for 16-bit Q,
+  // 64B for 8-bit Q is not supported yet
   constexpr SwizzleMode swizzle_mode_q = SwizzleMode::k128B;
+  // [n_q_frags, 16, head_dim]
   smem_t<swizzle_mode_q> qo_smem(smem);
+
+  // [n_tokens, n_heads, head_dim]
   DTypeQ* q_ptr_base =
-      q + get_elem_offset_impl(q_indptr[request_idx],
-                               kv_head_idx * group_size,
-                               (lane_idx % 8) * num_elems_per_128b<DTypeQ>(),
-                               q_stride_n,
-                               q_stride_h);
-  DTypeOut* o_ptr_base =
-      partition_kv ? o + kv_tile_idx * num_qo_heads * head_dim +
-                         get_elem_offset_impl(
-                             o_indptr[request_idx],
-                             kv_head_idx * group_size,
-                             (lane_idx % 8) * num_elems_per_128b<DTypeOut>(),
-                             num_qo_heads * head_dim,
-                             head_dim)
-                   : o + get_elem_offset_impl(
-                             o_indptr[request_idx],
-                             kv_head_idx * group_size,
-                             (lane_idx % 8) * num_elems_per_128b<DTypeOut>(),
-                             num_qo_heads * head_dim,
-                             head_dim);
+      q + get_elem_offset_impl(
+              /*elem_idx=*/q_indptr[request_idx],
+              /*head_idx=*/kv_head_idx * group_size,
+              /*feat_idx=*/(lane_idx % 8) * num_elems_per_128b<DTypeQ>(),
+              q_stride_n,
+              q_stride_h);
+
+  //  partition_kv: [n_tokens*n_kv_tiles, n_heads, head_dim]
+  //  !partition_kv: [n_tokens*1, n_heads, head_dim]
+  DTypeOut* o_ptr_base = partition_kv
+                             ? o + kv_tile_idx * num_qo_heads * head_dim +
+                                   get_elem_offset_impl(
+                                       /*elem_idx=*/o_indptr[request_idx],
+                                       /*head_idx=*/kv_head_idx * group_size,
+                                       /*feat_idx=*/(lane_idx % 8) *
+                                           num_elems_per_128b<DTypeOut>(),
+                                       num_qo_heads * head_dim,
+                                       head_dim)
+                             : o + get_elem_offset_impl(
+                                       /*elem_idx=*/o_indptr[request_idx],
+                                       /*head_idx=*/kv_head_idx * group_size,
+                                       /*feat_idx=*/(lane_idx % 8) *
+                                           num_elems_per_128b<DTypeOut>(),
+                                       num_qo_heads * head_dim,
+                                       head_dim);
   uint32_t q_smem_offset_r = qo_smem.get_permuted_offset<channel_size_128b_q>(
       get_warp_idx_x<num_warps_x, num_warps_z>() * num_frags_x * 16 +
           lane_idx % 16,
       lane_idx / 16);
 
+  // load q to shared memory once
   load_q_global_smem<num_warps_x, num_warps_z, num_frags_x, num_frags_y>(
       qo_packed_idx_base,
       qo_upper_bound,
@@ -979,6 +999,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
   cp_async::wait_group<0>();
   block.sync();
 
+  // TODO: can we do this in register?
   q_smem_inplace_multiply_sm_scale<num_warps_x,
                                    num_warps_z,
                                    num_frags_x,
@@ -1006,26 +1027,29 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
       swizzle_mode_kv == SwizzleMode::k128B ? 4 : 8;
   constexpr uint32_t kv_frag_cols =
       swizzle_mode_kv == SwizzleMode::k128B ? 8 : 4;
+  // [n_k_frags, 16, head_dim]?
   smem_t<swizzle_mode_kv> k_smem(
-      smem + (num_warps_x * num_frags_x * sizeof(DTypeQ)) * 16 * head_dim),
-      v_smem(smem + (num_warps_x * num_frags_x * sizeof(DTypeQ) +
-                     num_warps_z * num_frags_z * sizeof(DTypeKV)) *
-                        16 * head_dim);
+      smem + (num_warps_x * num_frags_x * sizeof(DTypeQ)) * 16 * head_dim);
+  // [n_v_frags, 16, head_dim]?
+  smem_t<swizzle_mode_kv> v_smem(smem +
+                                 (num_warps_x * num_frags_x * sizeof(DTypeQ) +
+                                  num_warps_z * num_frags_z * sizeof(DTypeKV)) *
+                                     16 * head_dim);
   size_t kv_offset[num_frags_z *
                    (swizzle_mode_kv == SwizzleMode::k128B ? 4 : 2) /
                    num_warps_x];
 
   uint32_t k_smem_offset_r = k_smem.get_permuted_offset<channel_size_128b_kv>(
-               get_warp_idx_z<num_warps_x, num_warps_z>() * num_frags_z * 16 +
-                   8 * (lane_idx / 16) + lane_idx % 8,
-               (lane_idx % 16) / 8),
-           v_smem_offset_r = v_smem.get_permuted_offset<channel_size_128b_kv>(
-               get_warp_idx_z<num_warps_x, num_warps_z>() * num_frags_z * 16 +
-                   lane_idx % 16,
-               lane_idx / 16),
-           kv_smem_offset_w = k_smem.get_permuted_offset<channel_size_128b_kv>(
-               warp_idx * kv_frag_rows + lane_idx / kv_frag_cols,
-               lane_idx % kv_frag_cols);
+      get_warp_idx_z<num_warps_x, num_warps_z>() * num_frags_z * 16 +
+          8 * (lane_idx / 16) + lane_idx % 8,
+      (lane_idx % 16) / 8);
+  uint32_t v_smem_offset_r = v_smem.get_permuted_offset<channel_size_128b_kv>(
+      get_warp_idx_z<num_warps_x, num_warps_z>() * num_frags_z * 16 +
+          lane_idx % 16,
+      lane_idx / 16);
+  uint32_t kv_smem_offset_w = k_smem.get_permuted_offset<channel_size_128b_kv>(
+      warp_idx * kv_frag_rows + lane_idx / kv_frag_cols,
+      lane_idx % kv_frag_cols);
 
   // kv_idx of current sequence
   uint32_t kv_idx_base = chunk_start;
@@ -1078,6 +1102,7 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
            : chunk_size) /
       (16 * num_warps_z * num_frags_z);
 
+  // iterate over kv chunks
 #pragma unroll 1
   for (uint32_t iter = 0; iter < num_iterations; ++iter) {
     kv_idx_base += 16 * num_warps_z * num_frags_z;
@@ -1234,11 +1259,15 @@ __launch_bounds__(num_warps_x* num_warps_z* warp_size) void attention_kernel(
           const uint32_t qo_idx = q;
           if (qo_idx < qo_upper_bound) {
             if (partition_kv) {
+              // [n_tokens, n_kv_tiles, n_heads]
+              // lse = ((o_indptr[request_idx] + qo_idx * num_kv_chunks +
+              // kv_tile_idx) * num_qo_heads + qo_head_idx)
               lse[(o_indptr[request_idx] + qo_idx * num_kv_chunks +
                    kv_tile_idx) *
                       num_qo_heads +
                   qo_head_idx] = math::ptx_log2(d[fx][j]) + float(m[fx][j]);
             } else {
+              // [n_tokens, n_heads]
               lse[(o_indptr[request_idx] + qo_idx) * num_qo_heads +
                   qo_head_idx] = math::ptx_log2(d[fx][j]) + float(m[fx][j]);
             }
