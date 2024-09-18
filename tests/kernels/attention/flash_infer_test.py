@@ -128,3 +128,4 @@ def test_flashinfer_varlen_masked_self_attention(
 
 if __name__ == "__main__":
     pytest.main([__file__])
+    # trigger package build and test

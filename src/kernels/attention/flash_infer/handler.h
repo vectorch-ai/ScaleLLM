@@ -265,14 +265,17 @@ class BatchPrefillHandler {
     FLASHINFER_CUDA_CALL(cudaDeviceGetAttribute(
         &num_sm, cudaDevAttrMultiProcessorCount, dev_id));
 
-    auto split_params = split_input(qo_indptr_h,
-                                    paged_kv_indptr_h,
-                                    batch_size,
-                                    num_qo_heads,
-                                    num_kv_heads,
-                                    head_dim,
-                                    page_size,
-                                    num_sm);
+    const auto split_params = split_input(qo_indptr_h,
+                                          paged_kv_indptr_h,
+                                          batch_size,
+                                          num_qo_heads,
+                                          num_kv_heads,
+                                          head_dim,
+                                          page_size,
+                                          num_sm);
+    warp_layout_ = split_params.warp_layout;
+    total_num_rows_ = split_params.total_num_rows;
+
     const uint32_t qo_tile_size = get_num_rows_per_cta(warp_layout_);
 
     if (IsCUDAGraphEnabled()) {
