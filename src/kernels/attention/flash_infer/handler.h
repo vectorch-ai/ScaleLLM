@@ -172,9 +172,11 @@ SplitParams<IdType> split_input(IdType* qo_indptr_h,
 
     int64_t qo_len = packed_qo_len / gqa_group_size;
     for (uint32_t row = 0; row < qo_len; ++row) {
+      // start index of flattened kv for each token
       split_params.merge_indptr.push_back(split_params.merge_indptr.back() +
                                           num_tiles_kv);
     }
+    // start index of flattened kv each sequence
     split_params.o_indptr.push_back(split_params.o_indptr.back() +
                                     qo_len * num_tiles_kv);
   }
