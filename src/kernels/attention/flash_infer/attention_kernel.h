@@ -9,7 +9,6 @@
 #include <cuda_runtime.h>
 
 #include <cstdint>
-#include <flashinfer/attention/cascade.cuh>
 #include <flashinfer/attention/logits_post_hook.cuh>
 #include <flashinfer/attention/mask.cuh>
 #include <flashinfer/attention/warp_layout.cuh>
@@ -24,6 +23,7 @@
 #include <flashinfer/utils.cuh>
 
 #include "kv_cache.h"
+#include "state_merge_kernel.h"
 
 namespace flashinfer {
 
@@ -847,6 +847,8 @@ __device__ __forceinline__ void write_o_reg_gmem(
 
 }  // namespace
 
+// dim3 nblks(n_splits, 1, num_kv_heads);
+// dim3 nthrs(32, num_warps_m, num_warps_n);
 template <LogitsPostHook logits_post_hook,
           MaskMode mask_mode,
           PosEncodingMode pos_encoding_mode,
@@ -884,45 +886,53 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
     float* __restrict__ alibi_slopes) {
   static_assert(sizeof(DTypeQ) == 2);
   static_assert(sizeof(DTypeOut) == 2);
+
+  // instead of using loge for softmax, we use log2 for better performance
+  // exp(x - max) == exp2(x * log_2(e) - max * log_2(e))
   sm_scale *= (logits_post_hook == LogitsPostHook::kNone
                    ? math::log2e
                    : math::ptx_rcp(logits_soft_cap));
   auto block = cg::this_thread_block();
   const uint32_t kv_chunk_size = *kv_chunk_size_ptr;
 
-  const uint32_t bx = blockIdx.x, lane_idx = threadIdx.x,
-                 warp_idx = get_warp_idx<num_warps_m, num_warps_n>(),
-                 kv_head_idx = blockIdx.z;
+  const uint32_t bx = blockIdx.x;
+
   if (block_valid_mask && !block_valid_mask[bx]) {
     return;
   }
-  const uint32_t num_kv_heads = gridDim.z,
-                 num_qo_heads = num_kv_heads * group_size;
-  //  alibi slopes for 2 iters(heads)
-  float alibi_slopes_frag[num_iters_m][2];
 
-  const uint32_t request_idx = request_indices[bx],
-                 qo_tile_idx = q_tile_indices[bx],
-                 kv_tile_idx = kv_tile_indices[bx];
+  const uint32_t kv_head_idx = blockIdx.z;
+  const uint32_t q_head_idx_base = kv_head_idx * group_size;
+  const uint32_t lane_idx = threadIdx.x;
+  const uint32_t warp_idx = get_warp_idx<num_warps_m, num_warps_n>();
+  const uint32_t num_kv_heads = gridDim.z;
+  const uint32_t num_qo_heads = num_kv_heads * group_size;
+
+  const uint32_t request_idx = request_indices[bx];
+  const uint32_t qo_tile_idx = q_tile_indices[bx];
+  const uint32_t kv_tile_idx = kv_tile_indices[bx];
+
   constexpr uint32_t num_rows_per_cta = num_iters_m * num_warps_m * 16;
   const uint32_t qo_len = q_indptr[request_idx + 1] - q_indptr[request_idx];
   const uint32_t kv_len = kv_indptr[request_idx + 1] - kv_indptr[request_idx];
 
+  // could kv_len be 0?
   const uint32_t kv_len_safe = kv_len > 0 ? kv_len : 1;
   const uint32_t window_left =
       (maybe_window_left >= 0) ? maybe_window_left : kv_len;
-  const uint32_t max_chunk_size = partition_kv ? kv_chunk_size : kv_len;
-  const uint32_t chunk_start = partition_kv ? kv_tile_idx * max_chunk_size : 0;
+
+  // kv idx range for this chunk
+  const uint32_t chunk_start = partition_kv ? kv_tile_idx * kv_chunk_size : 0;
   const uint32_t chunk_end =
-      partition_kv ? min((kv_tile_idx + 1) * max_chunk_size, kv_len) : kv_len;
+      partition_kv ? min((kv_tile_idx + 1) * kv_chunk_size, kv_len) : kv_len;
   const uint32_t chunk_size = chunk_end - chunk_start;
   // heads in query are flattened to first dimension, so we need to div
   // group_size to get original request_idx
   const uint32_t qo_upper_bound =
       min(qo_len, ceil_div((qo_tile_idx + 1) * num_rows_per_cta, group_size));
 
-  // head_dim handled by each thread, 16 bytes (128 bits) each fragment
   constexpr uint32_t head_dim = num_iters_k * 16;
+  // TODO: static_assert even division
   constexpr uint32_t channel_size_128b_q =
       head_dim / num_elems_per_128b<DTypeQ>();
   constexpr uint32_t channel_size_128b_kv =
@@ -930,13 +940,35 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
   constexpr uint32_t channel_size_128b_out =
       head_dim / num_elems_per_128b<DTypeOut>();
 
+  // define shared memory
   extern __shared__ uint8_t smem[];
+  // swizzle_mode_q: 128B for 16-bit Q,
+  // 64B for 8-bit Q is not supported yet
+  constexpr SwizzleMode swizzle_mode_q = SwizzleMode::k128B;
+  // [num_iters_m, num_warps_m, 16, head_dim]
+  // why 16? n_stages related?
+  smem_t<swizzle_mode_q> qo_smem(smem);
 
-  // TODO: Figure out frag layout
+  constexpr SwizzleMode swizzle_mode_kv =
+      (sizeof(DTypeKV) == 1 && head_dim == 64) ? SwizzleMode::k64B
+                                               : SwizzleMode::k128B;
+  // [num_iters_n, num_warps_n, 16, head_dim]?
+  smem_t<swizzle_mode_kv> k_smem(
+      smem + (num_warps_m * num_iters_m * sizeof(DTypeQ)) * 16 * head_dim);
+  // [num_iters_n, num_warps_n, 16, head_dim]?
+  smem_t<swizzle_mode_kv> v_smem(smem +
+                                 (num_warps_m * num_iters_m * sizeof(DTypeQ) +
+                                  num_warps_n * num_iters_n * sizeof(DTypeKV)) *
+                                     16 * head_dim);
+
+  // define fragments
   DTypeQKAccum s_frag[num_iters_m][num_iters_n][8];
   float o_frag[num_iters_m][num_iters_k][8];
   DTypeQKAccum m[num_iters_m][2];
   float d[num_iters_m][2];
+
+  // alibi slopes for 2 iters(heads)
+  float alibi_slopes_frag[num_iters_m][2];
 
   // initialize o = 0, m = -5e4, d = 1
   init_states<num_iters_m, num_iters_k>(o_frag, m, d);
@@ -947,18 +979,14 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
       num_iters_m * 16;
 
   // TODO: use cute for offset calculation?
-  const uint32_t q_stride_n = num_qo_heads * head_dim, q_stride_h = head_dim;
-  // swizzle_mode_q: 128B for 16-bit Q,
-  // 64B for 8-bit Q is not supported yet
-  constexpr SwizzleMode swizzle_mode_q = SwizzleMode::k128B;
-  // [n_q_frags, 16, head_dim]
-  smem_t<swizzle_mode_q> qo_smem(smem);
+  const uint32_t q_stride_n = num_qo_heads * head_dim;
+  const uint32_t q_stride_h = head_dim;
 
   // [n_tokens, n_heads, head_dim]
   DTypeQ* q_ptr_base =
       q + get_elem_offset_impl(
               /*elem_idx=*/q_indptr[request_idx],
-              /*head_idx=*/kv_head_idx * group_size,
+              /*head_idx=*/q_head_idx_base,
               /*feat_idx=*/(lane_idx % 8) * num_elems_per_128b<DTypeQ>(),
               q_stride_n,
               q_stride_h);
@@ -969,14 +997,14 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
                              ? o + kv_tile_idx * num_qo_heads * head_dim +
                                    get_elem_offset_impl(
                                        /*elem_idx=*/o_indptr[request_idx],
-                                       /*head_idx=*/kv_head_idx * group_size,
+                                       /*head_idx=*/q_head_idx_base,
                                        /*feat_idx=*/(lane_idx % 8) *
                                            num_elems_per_128b<DTypeOut>(),
                                        num_qo_heads * head_dim,
                                        head_dim)
                              : o + get_elem_offset_impl(
                                        /*elem_idx=*/o_indptr[request_idx],
-                                       /*head_idx=*/kv_head_idx * group_size,
+                                       /*head_idx=*/q_head_idx_base,
                                        /*feat_idx=*/(lane_idx % 8) *
                                            num_elems_per_128b<DTypeOut>(),
                                        num_qo_heads * head_dim,
@@ -1014,28 +1042,17 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
 #pragma unroll
       for (uint32_t j = 0; j < 2; ++j) {
         const uint32_t qo_head_idx =
-            kv_head_idx * group_size +
+            q_head_idx_base +
             (qo_packed_idx_base + lane_idx / 4 + j * 8 + fx * 16) % group_size;
         alibi_slopes_frag[fx][j] = alibi_slopes[qo_head_idx] * math::log2e;
       }
     }
   }
 
-  constexpr SwizzleMode swizzle_mode_kv =
-      (sizeof(DTypeKV) == 1 && head_dim == 64) ? SwizzleMode::k64B
-                                               : SwizzleMode::k128B;
   constexpr uint32_t kv_frag_rows =
       swizzle_mode_kv == SwizzleMode::k128B ? 4 : 8;
   constexpr uint32_t kv_frag_cols =
       swizzle_mode_kv == SwizzleMode::k128B ? 8 : 4;
-  // [n_k_frags, 16, head_dim]?
-  smem_t<swizzle_mode_kv> k_smem(
-      smem + (num_warps_m * num_iters_m * sizeof(DTypeQ)) * 16 * head_dim);
-  // [n_v_frags, 16, head_dim]?
-  smem_t<swizzle_mode_kv> v_smem(smem +
-                                 (num_warps_m * num_iters_m * sizeof(DTypeQ) +
-                                  num_warps_n * num_iters_n * sizeof(DTypeKV)) *
-                                     16 * head_dim);
   size_t kv_offset[num_iters_n *
                    (swizzle_mode_kv == SwizzleMode::k128B ? 4 : 2) /
                    num_warps_m];
@@ -1256,7 +1273,7 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
           uint32_t q, r;
           group_size.divmod(
               qo_packed_idx_base + lane_idx / 4 + j * 8 + fx * 16, q, r);
-          const uint32_t qo_head_idx = kv_head_idx * group_size + r;
+          const uint32_t qo_head_idx = q_head_idx_base + r;
           const uint32_t qo_idx = q;
           if (qo_idx < qo_upper_bound) {
             if (partition_kv) {

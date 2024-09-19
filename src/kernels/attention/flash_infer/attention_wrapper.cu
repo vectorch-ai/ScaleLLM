@@ -76,13 +76,13 @@ cudaError_t mha_varlen_wrapper_dispatch(BatchPrefillHandler* handler,
                                         cudaStream_t stream) {
   DTypeOut* tmp_v = handler->GetTempV<DTypeOut>();
   float* tmp_s = handler->GetTempS();
-  IdType * request_indices = handler->GetRequestIndices<IdType>();
-  IdType * qo_tile_indices = handler->GetQOTileIndices<IdType>();
-  IdType * kv_tile_indices = handler->GetKVTileIndices<IdType>();
+  IdType* request_indices = handler->GetRequestIndices<IdType>();
+  IdType* qo_tile_indices = handler->GetQOTileIndices<IdType>();
+  IdType* kv_tile_indices = handler->GetKVTileIndices<IdType>();
   bool* block_valid_mask = handler->GetBlockValidMask();
-  IdType * o_indptr = handler->GetOIndptr<IdType>();
-  IdType * merge_indptr = handler->GetMergeIndptr<IdType>();
-  IdType * kv_chunk_size_ptr = handler->GetKVChunkSizePtr<IdType>();
+  IdType* o_indptr = handler->GetOIndptr<IdType>();
+  IdType* merge_indptr = handler->GetMergeIndptr<IdType>();
+  IdType* kv_chunk_size_ptr = handler->GetKVChunkSizePtr<IdType>();
   WarpLayout warp_layout = handler->GetWarpLayout();
   uint32_t padded_batch_size = handler->GetPaddedBatchSize();
   uint32_t total_num_rows = handler->GetTotalNumRows();
