@@ -186,34 +186,63 @@ __device__ __forceinline__ void load_q_global_smem(
   constexpr uint32_t head_dim = num_iters_k * 16;
   constexpr uint32_t channel_size_128b_q =
       head_dim / num_elems_per_128b<DTypeQ>();
-  const uint32_t lane_idx = threadIdx.x,
-                 warp_idx_x = get_warp_idx_x<num_warps_m, num_warps_n>();
-  // let warp in first column load q
+  const uint32_t lane_idx = threadIdx.x;
+  const uint32_t warp_idx_x = get_warp_idx_x<num_warps_m, num_warps_n>();
+  // only let first column warps load q
+  // TODO: let all warps load q
   if (get_warp_idx_z<num_warps_m, num_warps_n>() == 0) {
-    uint32_t q_smem_offset_w = q_smem->get_permuted_offset<channel_size_128b_q>(
-        warp_idx_x * num_iters_m * 16 + lane_idx / 8, lane_idx % 8);
+    // rows to load: num_iters_m * 16
+    // threads layout in warp: 4 x 8
+    // | t0  | t1  | t2  | t3  | t4  | t5  | t6  | t7  |
+    // | t8  | t9  | t10 | t11 | t12 | t13 | t14 | t15 |
+    // | t16 | t17 | t18 | t19 | t20 | t21 | t22 | t23 |
+    // | t24 | t25 | t26 | t27 | t28 | t29 | t30 | t31 |
+    //
+
+    // q_smem: [num_iters_m, num_warps_m, 16, head_dim]
+    uint32_t q_smem_x = warp_idx_x * num_iters_m * 16 + lane_idx / 8;
+    uint32_t q_smem_y = lane_idx % 8;
 
 #pragma unroll
     for (uint32_t fx = 0; fx < num_iters_m; ++fx) {
+      // each wrap loads 4 rows, loading 16 rows needs 4(16/4) iters
 #pragma unroll
       for (uint32_t j = 0; j < 4; ++j) {
+        const uint32_t packed_q_idx =
+            packed_offset + fx * 16 + lane_idx / 8 + j * 4;
         uint32_t q, r;
-        group_size.divmod(packed_offset + lane_idx / 8 + fx * 16 + j * 4, q, r);
+        group_size.divmod(packed_q_idx, q, r);
+        // q_idx = packed_q_idx / group_size
+        // h_idx = packed_q_idx % group_size
         const uint32_t q_idx = q;
+        // q_ptr_base: [n_tokens, n_heads, head_dim]
+        // q_ptr for given header: [head_dim]
         DTypeQ* q_ptr = q_ptr_base + q * q_stride_n + r * q_stride_h;
+
+        // load head_dim from global memory to shared memory using 8 threads
+        // 8 threads load 8 * 16 bytes columns once
+        // iters: head_dim * 2 / (8 * 16) = head_dim / 16 / 4 = num_iters_k / 4
 #pragma unroll
         for (uint32_t fyo = 0; fyo < num_iters_k / 4; ++fyo) {
+          const uint32_t q_smem_offset_w =
+              q_smem->get_permuted_offset<channel_size_128b_q>(q_smem_x,
+                                                               q_smem_y);
+
           // load q fragment from gmem to smem
           q_smem->load_128b_async<SharedMemFillMode::kNoFill>(
               q_smem_offset_w, q_ptr, q_idx < qo_upper_bound);
-          q_smem_offset_w = q_smem->template advance_offset_by_column<8>(
-              q_smem_offset_w, fyo);
+          // move ahead by 8 int128_t
+          q_smem_y += 8;
+
+          // move ahead by 8 * 8 items
           q_ptr += 8 * num_elems_per_128b<DTypeQ>();
         }
-        q_smem_offset_w =
-            q_smem->template advance_offset_by_row<4, channel_size_128b_q>(
-                q_smem_offset_w) -
-            2 * num_iters_k;
+
+        // adjust offset for next iteration
+        // move row by 4
+        // move columns by -num_iters_k / 4 * 8 = -num_iters_k * 2
+        q_smem_x += 4;
+        q_smem_y -= num_iters_k * 2;
       }
     }
   }
@@ -945,17 +974,16 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
   // swizzle_mode_q: 128B for 16-bit Q,
   // 64B for 8-bit Q is not supported yet
   constexpr SwizzleMode swizzle_mode_q = SwizzleMode::k128B;
-  // [num_iters_m, num_warps_m, 16, head_dim]
-  // why 16? n_stages related?
+  // [num_iters_m, num_warps_m, MMA_M, head_dim]
   smem_t<swizzle_mode_q> qo_smem(smem);
 
   constexpr SwizzleMode swizzle_mode_kv =
       (sizeof(DTypeKV) == 1 && head_dim == 64) ? SwizzleMode::k64B
                                                : SwizzleMode::k128B;
-  // [num_iters_n, num_warps_n, 16, head_dim]?
+  // [num_iters_n, num_warps_n, MMA_M, head_dim]
   smem_t<swizzle_mode_kv> k_smem(
       smem + (num_warps_m * num_iters_m * sizeof(DTypeQ)) * 16 * head_dim);
-  // [num_iters_n, num_warps_n, 16, head_dim]?
+  // [num_iters_n, num_warps_n, MMA_M, head_dim]
   smem_t<swizzle_mode_kv> v_smem(smem +
                                  (num_warps_m * num_iters_m * sizeof(DTypeQ) +
                                   num_warps_n * num_iters_n * sizeof(DTypeKV)) *
@@ -975,11 +1003,12 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
 
   // base index of flattened qo for cur warp,
   // qo_packed: [n_tokens*n_heads, head_dim]
+  // per warp rows: num_iters_m * 16
   const uint32_t qo_packed_idx_base =
       (qo_tile_idx * num_warps_m + get_warp_idx_x<num_warps_m, num_warps_n>()) *
       num_iters_m * 16;
 
-  // load q to shared memory once
+  // load q to shared memory once for current wrap
   load_q_global_smem<num_warps_m, num_warps_n, num_iters_m, num_iters_k>(
       qo_packed_idx_base,
       qo_upper_bound,
@@ -990,7 +1019,6 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
       &qo_smem);
   // [] => [q]
   cp_async::commit_group();
-
 
   // load first k/v chunk to shared memory
   // calculate q/k/v offsets to reand and write
@@ -1229,7 +1257,7 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
         (iter + 1) * 16 * num_warps_n * num_iters_n,
         kv_offset,
         chunk_size);
-    
+
     // [k] => [k, v]
     cp_async::commit_group();
   }
