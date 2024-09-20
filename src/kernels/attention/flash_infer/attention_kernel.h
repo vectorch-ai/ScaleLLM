@@ -961,24 +961,6 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
                                   num_warps_n * num_iters_n * sizeof(DTypeKV)) *
                                      16 * head_dim);
 
-  // define fragments
-  DTypeQKAccum s_frag[num_iters_m][num_iters_n][8];
-  float o_frag[num_iters_m][num_iters_k][8];
-  DTypeQKAccum m[num_iters_m][2];
-  float d[num_iters_m][2];
-
-  // alibi slopes for 2 iters(heads)
-  float alibi_slopes_frag[num_iters_m][2];
-
-  // initialize o = 0, m = -5e4, d = 1
-  init_states<num_iters_m, num_iters_k>(o_frag, m, d);
-
-  // base index for flattened qo
-  const uint32_t qo_packed_idx_base =
-      (qo_tile_idx * num_warps_m + get_warp_idx_x<num_warps_m, num_warps_n>()) *
-      num_iters_m * 16;
-
-  // TODO: use cute for offset calculation?
   const uint32_t q_stride_n = num_qo_heads * head_dim;
   const uint32_t q_stride_h = head_dim;
 
@@ -991,28 +973,11 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
               q_stride_n,
               q_stride_h);
 
-  //  partition_kv: [n_tokens*n_kv_tiles, n_heads, head_dim]
-  //  !partition_kv: [n_tokens*1, n_heads, head_dim]
-  DTypeOut* o_ptr_base = partition_kv
-                             ? o + kv_tile_idx * num_qo_heads * head_dim +
-                                   get_elem_offset_impl(
-                                       /*elem_idx=*/o_indptr[request_idx],
-                                       /*head_idx=*/q_head_idx_base,
-                                       /*feat_idx=*/(lane_idx % 8) *
-                                           num_elems_per_128b<DTypeOut>(),
-                                       num_qo_heads * head_dim,
-                                       head_dim)
-                             : o + get_elem_offset_impl(
-                                       /*elem_idx=*/o_indptr[request_idx],
-                                       /*head_idx=*/q_head_idx_base,
-                                       /*feat_idx=*/(lane_idx % 8) *
-                                           num_elems_per_128b<DTypeOut>(),
-                                       num_qo_heads * head_dim,
-                                       head_dim);
-  uint32_t q_smem_offset_r = qo_smem.get_permuted_offset<channel_size_128b_q>(
-      get_warp_idx_x<num_warps_m, num_warps_n>() * num_iters_m * 16 +
-          lane_idx % 16,
-      lane_idx / 16);
+  // base index of flattened qo for cur warp,
+  // qo_packed: [n_tokens*n_heads, head_dim]
+  const uint32_t qo_packed_idx_base =
+      (qo_tile_idx * num_warps_m + get_warp_idx_x<num_warps_m, num_warps_n>()) *
+      num_iters_m * 16;
 
   // load q to shared memory once
   load_q_global_smem<num_warps_m, num_warps_n, num_iters_m, num_iters_k>(
@@ -1023,31 +988,16 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
       q_stride_h,
       group_size,
       &qo_smem);
-
+  // [] => [q]
   cp_async::commit_group();
-  cp_async::wait_group<0>();
-  block.sync();
 
-  // TODO: can we do this in register?
-  q_smem_inplace_multiply_sm_scale<num_warps_m,
-                                   num_warps_n,
-                                   num_iters_m,
-                                   num_iters_k,
-                                   swizzle_mode_q,
-                                   DTypeQ>(&qo_smem, sm_scale);
 
-  if constexpr (pos_encoding_mode == PosEncodingMode::kALiBi) {
-#pragma unroll
-    for (uint32_t fx = 0; fx < num_iters_m; ++fx) {
-#pragma unroll
-      for (uint32_t j = 0; j < 2; ++j) {
-        const uint32_t qo_head_idx =
-            q_head_idx_base +
-            (qo_packed_idx_base + lane_idx / 4 + j * 8 + fx * 16) % group_size;
-        alibi_slopes_frag[fx][j] = alibi_slopes[qo_head_idx] * math::log2e;
-      }
-    }
-  }
+  // load first k/v chunk to shared memory
+  // calculate q/k/v offsets to reand and write
+  uint32_t q_smem_offset_r = qo_smem.get_permuted_offset<channel_size_128b_q>(
+      get_warp_idx_x<num_warps_m, num_warps_n>() * num_iters_m * 16 +
+          lane_idx % 16,
+      lane_idx / 16);
 
   constexpr uint32_t kv_frag_rows =
       swizzle_mode_kv == SwizzleMode::k128B ? 4 : 8;
@@ -1093,7 +1043,20 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
   cp_async::commit_group();
   page_produce_kv<true, num_warps_m, num_warps_n, num_iters_k, num_iters_n>(
       v_smem, &kv_smem_offset_w, paged_kv, 0, kv_offset, chunk_size);
+  // [q] => [q, k, v]
   cp_async::commit_group();
+
+  // wait for q to be loaded: [q, k, v] => [k, v]
+  cp_async::wait_group<2>();
+  block.sync();
+
+  // TODO: can we do this in register?
+  q_smem_inplace_multiply_sm_scale<num_warps_m,
+                                   num_warps_n,
+                                   num_iters_m,
+                                   num_iters_k,
+                                   swizzle_mode_q,
+                                   DTypeQ>(&qo_smem, sm_scale);
 
   const uint32_t num_iterations = ceil_div(
       (mask_mode == MaskMode::kCausal
@@ -1120,10 +1083,38 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
            : chunk_size) /
       (16 * num_warps_n * num_iters_n);
 
+  // alibi slopes for 2 rows 0, 8
+  float alibi_slopes_frag[num_iters_m][2];
+  if constexpr (pos_encoding_mode == PosEncodingMode::kALiBi) {
+#pragma unroll
+    for (uint32_t fx = 0; fx < num_iters_m; ++fx) {
+#pragma unroll
+      for (uint32_t j = 0; j < 2; ++j) {
+        const uint32_t qo_head_idx =
+            q_head_idx_base +
+            (qo_packed_idx_base + lane_idx / 4 + j * 8 + fx * 16) % group_size;
+        alibi_slopes_frag[fx][j] = alibi_slopes[qo_head_idx] * math::log2e;
+      }
+    }
+  }
+
+  // define fragments for each thread
+  DTypeQKAccum s_frag[num_iters_m][num_iters_n][8];
+  // regesters hold a whole data in register? necessary?
+  float o_frag[num_iters_m][num_iters_k][8];
+
+  // max and sum for 2 rows 0, 8
+  DTypeQKAccum m[num_iters_m][2];
+  float d[num_iters_m][2];
+  // initialize o = 0, m = -5e4, d = 1
+  init_states<num_iters_m, num_iters_k>(o_frag, m, d);
+
   // iterate over kv chunks
 #pragma unroll 1
   for (uint32_t iter = 0; iter < num_iterations; ++iter) {
     kv_idx_base += 16 * num_warps_n * num_iters_n;
+
+    // calculate kv offsets to read before waiting for k ready
 #pragma unroll
     for (uint32_t i = 0;
          i < num_iters_n * (swizzle_mode_kv == SwizzleMode::k128B ? 4 : 2) /
@@ -1139,6 +1130,8 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
                                request_idx, kv_idx, kv_head_idx, feat_idx)
                          : 0;
     }
+
+    // wait for k ready: [k, v] => [v]
     cp_async::wait_group<1>();
     block.sync();
 
@@ -1202,8 +1195,9 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
     // compute m,d states in online softmax
     update_mdo_states<num_iters_m, num_iters_k, num_iters_n>(
         s_frag, o_frag, m, d);
-
     block.sync();
+
+    // produce k for next iteration
     page_produce_kv<false, num_warps_m, num_warps_n, num_iters_k, num_iters_n>(
         k_smem,
         &kv_smem_offset_w,
@@ -1211,7 +1205,10 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
         (iter + 1) * 16 * num_warps_n * num_iters_n,
         kv_offset,
         chunk_size);
+    // [v] => [v, k]
     cp_async::commit_group();
+
+    // wait for v ready, [v, k] => [k]
     cp_async::wait_group<1>();
     block.sync();
 
@@ -1222,8 +1219,9 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
                   swizzle_mode_kv,
                   DTypeQ,
                   DTypeKV>(&v_smem, &v_smem_offset_r, s_frag, o_frag, d);
-
     block.sync();
+
+    // produce v for next iteration
     page_produce_kv<true, num_warps_m, num_warps_n, num_iters_k, num_iters_n>(
         v_smem,
         &kv_smem_offset_w,
@@ -1231,8 +1229,12 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
         (iter + 1) * 16 * num_warps_n * num_iters_n,
         kv_offset,
         chunk_size);
+    
+    // [k] => [k, v]
     cp_async::commit_group();
   }
+
+  // wait for all data ready
   cp_async::wait_group<0>();
   block.sync();
 
@@ -1250,6 +1252,24 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
   const uint32_t num_kv_chunks =
       (kv_len_safe + kv_chunk_size - 1) / kv_chunk_size;
 
+  //  partition_kv: [n_tokens*n_kv_tiles, n_heads, head_dim]
+  //  !partition_kv: [n_tokens*1, n_heads, head_dim]
+  DTypeOut* o_ptr_base = partition_kv
+                             ? o + kv_tile_idx * num_qo_heads * head_dim +
+                                   get_elem_offset_impl(
+                                       /*elem_idx=*/o_indptr[request_idx],
+                                       /*head_idx=*/q_head_idx_base,
+                                       /*feat_idx=*/(lane_idx % 8) *
+                                           num_elems_per_128b<DTypeOut>(),
+                                       num_qo_heads * head_dim,
+                                       head_dim)
+                             : o + get_elem_offset_impl(
+                                       /*elem_idx=*/o_indptr[request_idx],
+                                       /*head_idx=*/q_head_idx_base,
+                                       /*feat_idx=*/(lane_idx % 8) *
+                                           num_elems_per_128b<DTypeOut>(),
+                                       num_qo_heads * head_dim,
+                                       head_dim);
   // write_back
   write_o_reg_gmem<num_warps_m, num_warps_n, num_iters_m, num_iters_k>(
       o_frag,
