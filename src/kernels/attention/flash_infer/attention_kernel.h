@@ -789,17 +789,11 @@ template <uint32_t num_warps_m,
           uint32_t num_warps_n,
           uint32_t num_iters_m,
           uint32_t num_iters_k,
-          SwizzleMode swizzle_mode,
-          typename DTypeOut>
-__device__ __forceinline__ void write_o_reg_gmem(
+          typename DTypeOut,
+          SwizzleMode swizzle_mode>
+__device__ __forceinline__ void write_o_reg_smem(
     float (*o_frag)[num_iters_k][8],
-    smem_t<swizzle_mode>* o_smem,
-    DTypeOut* o_ptr_base,
-    const uint32_t o_packed_idx_base,
-    const uint32_t qo_upper_bound,
-    const uint32_t o_stride_n,
-    const uint32_t o_stride_h,
-    const uint_fastdiv group_size) {
+    smem_t<swizzle_mode>* o_smem) {
   constexpr uint32_t head_dim = num_iters_k * 16;
   constexpr uint32_t channel_size_128b_out =
       head_dim / num_elems_per_128b<DTypeOut>();
@@ -808,7 +802,7 @@ __device__ __forceinline__ void write_o_reg_gmem(
   const uint32_t lane_idx = threadIdx.x;
 
   // o_frag: [num_iters_m, num_iters_k, 8]
-  if (get_warp_idx_z<num_warps_m, num_warps_n>() == 0) {
+  if (warp_idx_z == 0) {
     // write o from register to shared memory
     // why not every thread writes to shared memory?
 #pragma unroll
@@ -841,6 +835,28 @@ __device__ __forceinline__ void write_o_reg_gmem(
       }
     }
   }
+}
+
+template <uint32_t num_warps_m,
+          uint32_t num_warps_n,
+          uint32_t num_iters_m,
+          uint32_t num_iters_k,
+          SwizzleMode swizzle_mode,
+          typename DTypeOut>
+__device__ __forceinline__ void write_o_smem_gmem(
+    smem_t<swizzle_mode>* o_smem,
+    DTypeOut* o_ptr_base,
+    const uint32_t o_packed_idx_base,
+    const uint32_t qo_upper_bound,
+    const uint32_t o_stride_n,
+    const uint32_t o_stride_h,
+    const uint_fastdiv group_size) {
+  constexpr uint32_t head_dim = num_iters_k * 16;
+  constexpr uint32_t channel_size_128b_out =
+      head_dim / num_elems_per_128b<DTypeOut>();
+  const uint32_t warp_idx_x = get_warp_idx_x<num_warps_m, num_warps_n>();
+  const uint32_t warp_idx_z = get_warp_idx_z<num_warps_m, num_warps_n>();
+  const uint32_t lane_idx = threadIdx.x;
 
   // write o from shared memory to global memory
   // o_smem: [num_warps_m, num_iters_m, 16, head_dim]
@@ -1285,6 +1301,13 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
   // normalize d
   normalize_d<num_iters_m, num_iters_k>(o_frag, m, d);
 
+  // write o from register to shared memory
+  write_o_reg_smem<num_warps_m, num_warps_n, num_iters_m, num_iters_k, DTypeOut>(
+      o_frag, &qo_smem);
+
+  block.sync();
+
+  // write o from shared memory to global memory
   const uint32_t num_kv_chunks =
       (kv_len_safe + kv_chunk_size - 1) / kv_chunk_size;
 
@@ -1306,9 +1329,7 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
                                            num_elems_per_128b<DTypeOut>(),
                                        num_qo_heads * head_dim,
                                        head_dim);
-  // write_back
-  write_o_reg_gmem<num_warps_m, num_warps_n, num_iters_m, num_iters_k>(
-      o_frag,
+  write_o_smem_gmem<num_warps_m, num_warps_n, num_iters_m, num_iters_k>(
       &qo_smem,
       o_ptr_base,
       qo_packed_idx_base,

@@ -7,7 +7,7 @@ from ref_attention import varlen_masked_self_attention
 import scalellm._C.kernels as kernels  # type: ignore
 
 
-@pytest.mark.parametrize("seq_lens", [[(1, 100), (15, 15), (111, 234), (1000, 10000)]])
+@pytest.mark.parametrize("seq_lens", [[(1, 100)], [(100, 100)], [(1, 100), (15, 15), (111, 234), (1000, 10000)]])
 @pytest.mark.parametrize("num_heads", [(8, 8), (8, 4), (8, 2), (8, 1)])
 @pytest.mark.parametrize("head_size", [64, 128, 256])
 @pytest.mark.parametrize("n_blocks", [100])
@@ -128,4 +128,5 @@ def test_flashinfer_varlen_masked_self_attention(
 
 if __name__ == "__main__":
     pytest.main([__file__])
-    # trigger package build and test
+    
+    # test_flashinfer_varlen_masked_self_attention([(1, 100)], (8, 8), 128, torch.float16, 100, 4, 0.0, -1, False)
