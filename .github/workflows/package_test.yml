@@ -45,7 +45,7 @@ jobs:
       matrix:
         python: ["3.10"]
         cuda: ["12.4"]
-        torch: ["2.4.0"]
+        torch: ["2.4.1"]
     runs-on: [self-hosted, linux, build]
     env:
       PYTHON_VERSION: ${{ matrix.python }}
