@@ -62,6 +62,7 @@ jobs:
 
     - name: show nvcc version
       run: |
+        echo $PATH
         which nvcc
         nvcc --version
       
