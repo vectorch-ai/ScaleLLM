@@ -59,6 +59,11 @@ jobs:
         mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
         mkdir -p $CI_CACHE_DIR/.ccache
         mkdir -p $CI_CACHE_DIR/.pip
+
+    - name: show nvcc version
+      run: |
+        which nvcc
+        nvcc --version
       
     - name: Build wheel
       timeout-minutes: 60
