@@ -94,32 +94,15 @@ jobs:
 
     - name: Install the package and run pytest
       timeout-minutes: 10
-      shell: bash -l {0}
       run: |
-        # install the wheel package
-        # sudo apt install python3-venv
-
-        # extract cuda version
-        CUDA_VERSION=$(nvcc --version | grep "Cuda compilation tools" | cut -d ' ' -f 5 | cut -d ',' -f 1)
-
-        # Create and activate a virtual environment
-        python3 -m venv .venv
-        source .venv/bin/activate
-
-        # Install PyTorch
-        pip install torch==${TORCH_VERSION} -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
-
-        # Install the wheel package
-        pip install dist/*.whl
-
-        # Install the test requirements
-        pip install -r requirements-test.txt
-        
-        # Run pytest
-        printf "\n\nRunning pytest\n\n"
-        cd tests
-        python3 -m pytest || exit 1
-        printf "\n\n"
-
-        # Deactivate the virtual environment
-        deactivate
+        docker pull pytorch/manylinux-builder:cuda${CUDA_VERSION}
+        docker run --rm -t --gpus=all \
+            -v "$CI_CACHE_DIR":/ci_cache \
+            -v "$GITHUB_WORKSPACE":/ScaleLLM \
+            -e PYTHON_VERSION=${PYTHON_VERSION} \
+            -e CUDA_VERSION=${CUDA_VERSION} \
+            -e TORCH_VERSION=${TORCH_VERSION} \
+            -e PIP_CACHE_DIR=/ci_cache/.pip \
+            -u $(id -u):$(id -g) \
+            pytorch/manylinux-builder:cuda${CUDA_VERSION} \
+            bash /ScaleLLM/scripts/run_pytest.sh
