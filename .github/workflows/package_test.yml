@@ -63,22 +63,10 @@ jobs:
         mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
         mkdir -p $CI_CACHE_DIR/.ccache
         mkdir -p $CI_CACHE_DIR/.pip
-
-    - name: show nvcc version
-      run: |
-        echo $PATH
-        which nvcc
-        nvcc --version
       
     - name: Build wheel
       timeout-minutes: 60
       run: |
-        # extract python version
-        PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        # extract cuda version
-        CUDA_VERSION=$(nvcc --version | grep "Cuda compilation tools" | cut -d ' ' -f 5 | cut -d ',' -f 1)
-        printf "Python version: ${PYTHON_VERSION}\n"
-        printf "CUDA version: ${CUDA_VERSION}\n"
         docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
         docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
