@@ -43,13 +43,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.12"]
-        cuda: ["12.4"]
         torch: ["2.4.1"]
     runs-on: [self-hosted, linux, build]
     env:
-      PYTHON_VERSION: ${{ matrix.python }}
-      CUDA_VERSION: ${{ matrix.cuda }}
       TORCH_VERSION: ${{ matrix.torch }}
 
     steps:
@@ -67,6 +63,12 @@ jobs:
     - name: Build wheel
       timeout-minutes: 60
       run: |
+        # extract python version
+        PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        # extract cuda version
+        CUDA_VERSION=$(nvcc --version | grep "Cuda compilation tools" | cut -d ' ' -f 5 | cut -d ',' -f 1)
+        printf "Python version: ${PYTHON_VERSION}\n"
+        printf "CUDA version: ${CUDA_VERSION}\n"
         docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
         docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
@@ -88,28 +90,20 @@ jobs:
       timeout-minutes: 10
       shell: bash -l {0}
       run: |
-        # define the environment name based on the python and torch versions
-        ENV_NAME=pkg_test_py${PYTHON_VERSION//./}_cu${CUDA_VERSION//./}_torch${TORCH_VERSION//./}
-        
-        # Initialize conda environment
-        source ~/anaconda3/etc/profile.d/conda.sh
-        conda init --all && source ~/.bashrc 
+        # install the wheel package
+        # sudo apt install python3-venv
 
-        # Create a new conda environment
-        if conda info --envs | grep -q ${ENV_NAME}; then 
-          echo "${ENV_NAME} already exists"
-        else
-          conda create -y -n ${ENV_NAME} python=${PYTHON_VERSION}; 
-        fi
+        # extract cuda version
+        CUDA_VERSION=$(nvcc --version | grep "Cuda compilation tools" | cut -d ' ' -f 5 | cut -d ',' -f 1)
 
-        # Activate the conda environment
-        conda activate ${ENV_NAME}
+        # Create and activate a virtual environment
+        python3 -m venv .venv
+        source .venv/bin/activate
 
         # Install PyTorch
         pip install torch==${TORCH_VERSION} -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
-        # Uninstall previous version of the package and install the new one
-        pip uninstall -y scalellm
+        # Install the wheel package
         pip install dist/*.whl
 
         # Install the test requirements
@@ -121,5 +115,5 @@ jobs:
         python3 -m pytest || exit 1
         printf "\n\n"
 
-        # Deactivate the conda environment
-        conda deactivate || true
+        # Deactivate the virtual environment
+        deactivate
