@@ -12,8 +12,6 @@ jobs:
       matrix:
         cuda: ["11.8", "12.1", "12.4"]
     runs-on: [self-hosted, linux, release]
-    env:
-      CUDA_VERSION: ${{ matrix.cuda }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,7 +40,7 @@ jobs:
           cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
           cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
           build-args: |
-            CUDA_VERSION=${CUDA_VERSION}
+            CUDA_VERSION=${{ matrix.cuda }}
           tags: |
-            vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
+            vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }}
 
