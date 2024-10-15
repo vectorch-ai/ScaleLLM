@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10"]
+        python: ["3.12"]
         cuda: ["12.4"]
         torch: ["2.4.1"]
     runs-on: [self-hosted, linux, build]
@@ -86,40 +86,15 @@ jobs:
 
     - name: Install the package and run pytest
       timeout-minutes: 10
-      shell: bash -l {0}
       run: |
-        # define the environment name based on the python and torch versions
-        ENV_NAME=pkg_test_py${PYTHON_VERSION//./}_cu${CUDA_VERSION//./}_torch${TORCH_VERSION//./}
-        
-        # Initialize conda environment
-        source ~/anaconda3/etc/profile.d/conda.sh
-        conda init --all && source ~/.bashrc 
-
-        # Create a new conda environment
-        if conda info --envs | grep -q ${ENV_NAME}; then 
-          echo "${ENV_NAME} already exists"
-        else
-          conda create -y -n ${ENV_NAME} python=${PYTHON_VERSION}; 
-        fi
-
-        # Activate the conda environment
-        conda activate ${ENV_NAME}
-
-        # Install PyTorch
-        pip install torch==${TORCH_VERSION} -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
-
-        # Uninstall previous version of the package and install the new one
-        pip uninstall -y scalellm
-        pip install dist/*.whl
-
-        # Install the test requirements
-        pip install -r requirements-test.txt
-        
-        # Run pytest
-        printf "\n\nRunning pytest\n\n"
-        cd tests
-        python3 -m pytest || exit 1
-        printf "\n\n"
-
-        # Deactivate the conda environment
-        conda deactivate || true
+        docker pull pytorch/manylinux-builder:cuda${CUDA_VERSION}
+        docker run --rm -t --gpus=all \
+            -v "$CI_CACHE_DIR":/ci_cache \
+            -v "$GITHUB_WORKSPACE":/ScaleLLM \
+            -e PYTHON_VERSION=${PYTHON_VERSION} \
+            -e CUDA_VERSION=${CUDA_VERSION} \
+            -e TORCH_VERSION=${TORCH_VERSION} \
+            -e PIP_CACHE_DIR=/ci_cache/.pip \
+            -u $(id -u):$(id -g) \
+            pytorch/manylinux-builder:cuda${CUDA_VERSION} \
+            bash /ScaleLLM/scripts/run_pytest.sh
