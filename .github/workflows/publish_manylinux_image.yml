@@ -11,7 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         cuda: ["11.8", "12.1", "12.4"]
-    runs-on: [self-hosted, linux, release]
+    runs-on: [self-hosted, linux, build]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
