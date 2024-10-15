@@ -14,6 +14,7 @@ ensure_env TORCH_VERSION
 ensure_env CUDA_VERSION
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$PROJECT_ROOT"
 
 export HOME=/tmp/home
 mkdir -p $HOME
@@ -26,16 +27,12 @@ export PATH="/opt/python/cp${PYVER}-cp${PYVER}/bin:$PATH"
 # install PyTorch
 pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
-cd "$PROJECT_ROOT"
-
 # install dependencies
-pip install numpy
 pip install -r requirements-test.txt
 
 # install scalellm wheel
 pip install dist/*.whl
 
 # run pytest
-printf "\n\nRunning pytest\n\n"
-# cd tests
-python3 -m pytest
+cd tests
+pytest

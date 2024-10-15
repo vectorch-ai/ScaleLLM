@@ -13,6 +13,9 @@
 # deps
 /.deps
 
+# pip cache
+/.pip
+
 # libtorch
 /libtorch
 
