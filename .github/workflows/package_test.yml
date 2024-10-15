@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10"]
+        python: ["3.12"]
         cuda: ["12.4"]
         torch: ["2.4.1"]
     runs-on: [self-hosted, linux, build]
@@ -87,6 +87,7 @@ jobs:
     - name: Install the package and run pytest
       timeout-minutes: 10
       run: |
+        docker pull pytorch/manylinux-builder:cuda${CUDA_VERSION}
         docker run --rm -t --gpus=all \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
@@ -95,5 +96,5 @@ jobs:
             -e TORCH_VERSION=${TORCH_VERSION} \
             -e PIP_CACHE_DIR=/ci_cache/.pip \
             -u $(id -u):$(id -g) \
-            vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
+            pytorch/manylinux-builder:cuda${CUDA_VERSION} \
             bash /ScaleLLM/scripts/run_pytest.sh
