@@ -16,10 +16,8 @@ int64_t max_memory_allocated(const torch::Device& device) {
   const auto device_index =
       device.has_index() ? device.index() : current_device();
   const auto stats = CUDACachingAllocator::getDeviceStats(device_index);
-  return stats
-      .allocated_bytes[static_cast<size_t>(
-          CUDACachingAllocator::StatType::AGGREGATE)]
-      .peak;
+  // StatType::AGGREGATE
+  return stats.allocated_bytes[0].peak;
 }
 
 // returns the total memory in bytes of the device.
@@ -44,7 +42,8 @@ int64_t available_memory(const torch::Device& device) {
       << "Failed to set device to " << device_index;
   size_t free = 0;
   size_t total = 0;
-  CHECK(cudaMemGetInfo(&free, &total) == cudaSuccess) << "Failed to get memory info for " << device;
+  CHECK(cudaMemGetInfo(&free, &total) == cudaSuccess)
+      << "Failed to get memory info for " << device;
   return static_cast<int64_t>(free);
 }
 
