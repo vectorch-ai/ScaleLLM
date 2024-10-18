@@ -9,7 +9,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
-#include <tuple>
 #include <functional>
 
 
@@ -495,41 +494,29 @@ class BatchPrefillHandler {
 
   bool IsCUDAGraphEnabled() const { return enable_cuda_graph_; }
 
-  BatchPrefillHandler(bool enable_cuda_graph = false)
-      : request_indices_(nullptr),
-        qo_tile_indices_(nullptr),
-        kv_tile_indices_(nullptr),
-        merge_indptr_(nullptr),
-        o_indptr_(nullptr),
-        kv_chunk_size_ptr_(nullptr),
-        tmp_v_(nullptr),
-        tmp_s_(nullptr),
-        block_valid_mask_(nullptr),
-        total_num_rows_(0U),
-        padded_batch_size_(0U),
-        warp_layout_(WarpLayout::k4x1x2),
-        enable_cuda_graph_(enable_cuda_graph),
-        stream_(nullptr) {
+  BatchPrefillHandler(bool enable_cuda_graph)
+      : enable_cuda_graph_(enable_cuda_graph) {
     cudaMallocHost(&page_locked_buffer_, 8 * 1024 * 1024);
   }
+
   ~BatchPrefillHandler() { cudaFreeHost(page_locked_buffer_); }
 
  protected:
-  void* page_locked_buffer_;
-  void* request_indices_;
-  void* qo_tile_indices_;
-  void* kv_tile_indices_;
-  void* merge_indptr_;
-  void* o_indptr_;
-  void* kv_chunk_size_ptr_;
-  void* tmp_v_;
-  float* tmp_s_;
-  bool* block_valid_mask_;
-  uint32_t total_num_rows_;
-  uint32_t padded_batch_size_;
-  WarpLayout warp_layout_;
-  bool enable_cuda_graph_;
-  cudaStream_t stream_;
+  void* page_locked_buffer_ = nullptr;
+  void* request_indices_ = nullptr;
+  void* qo_tile_indices_ = nullptr;
+  void* kv_tile_indices_ = nullptr;
+  void* merge_indptr_ = nullptr;
+  void* o_indptr_ = nullptr;
+  void* kv_chunk_size_ptr_ = nullptr;
+  void* tmp_v_ = nullptr;
+  float* tmp_s_ = nullptr;
+  bool* block_valid_mask_ = nullptr;
+  uint32_t total_num_rows_ = 0;
+  uint32_t padded_batch_size_ = 0;
+  WarpLayout warp_layout_ = WarpLayout::k4x1x2;
+  bool enable_cuda_graph_ = false;
+  cudaStream_t stream_ = nullptr;
 };
 
 }  // namespace flashinfer

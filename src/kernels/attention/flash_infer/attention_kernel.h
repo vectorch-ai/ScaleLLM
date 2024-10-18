@@ -1302,8 +1302,11 @@ __launch_bounds__(num_warps_m* num_warps_n* warp_size) void attention_kernel(
   normalize_d<num_iters_m, num_iters_k>(o_frag, m, d);
 
   // write o from register to shared memory
-  write_o_reg_smem<num_warps_m, num_warps_n, num_iters_m, num_iters_k, DTypeOut>(
-      o_frag, &qo_smem);
+  write_o_reg_smem<num_warps_m,
+                   num_warps_n,
+                   num_iters_m,
+                   num_iters_k,
+                   DTypeOut>(o_frag, &qo_smem);
 
   block.sync();
 
