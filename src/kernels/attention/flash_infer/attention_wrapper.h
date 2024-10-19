@@ -22,7 +22,8 @@ class BatchPrefillWrapper {
             unsigned int num_kv_heads,
             unsigned int head_dim,
             unsigned page_size,
-            torch::Tensor empty_q_data);
+            torch::Tensor empty_q_data,
+            int32_t num_sm);
 
   bool IsCUDAGraphEnabled() const { return handler_->IsCUDAGraphEnabled(); }
 

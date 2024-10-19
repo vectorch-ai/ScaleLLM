@@ -249,7 +249,8 @@ class BatchPrefillHandler {
                    uint32_t num_qo_heads,
                    uint32_t num_kv_heads,
                    uint32_t head_dim,
-                   uint32_t page_size) {
+                   uint32_t page_size,
+                   int32_t num_sm) {
     Clear();
     if (num_qo_heads % num_kv_heads != 0) {
       std::ostringstream err_msg;
@@ -258,11 +259,12 @@ class BatchPrefillHandler {
       throw std::invalid_argument(err_msg.str());
     }
 
-    int num_sm = 0;
-    int dev_id = 0;
-    FLASHINFER_CUDA_CALL(cudaGetDevice(&dev_id));
-    FLASHINFER_CUDA_CALL(cudaDeviceGetAttribute(
-        &num_sm, cudaDevAttrMultiProcessorCount, dev_id));
+    if (num_sm <= 0) {
+      int dev_id = 0;
+      FLASHINFER_CUDA_CALL(cudaGetDevice(&dev_id));
+      FLASHINFER_CUDA_CALL(cudaDeviceGetAttribute(
+          &num_sm, cudaDevAttrMultiProcessorCount, dev_id));
+    }
 
     const auto split_params = split_input(qo_indptr_h,
                                           paged_kv_indptr_h,

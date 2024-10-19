@@ -136,7 +136,8 @@ void BatchPrefillWrapper::Plan(torch::Tensor float_workspace_buffer,
                                unsigned int num_kv_heads,
                                unsigned int head_dim,
                                unsigned int page_size,
-                               torch::Tensor empty_q_data) {
+                               torch::Tensor empty_q_data,
+                               int32_t num_sm) {
   CHECK_INPUT(float_workspace_buffer);
   CHECK_INPUT(int_workspace_buffer);
   // NOTE(Zihao): not necessary to be a CUDA tensor
@@ -173,7 +174,8 @@ void BatchPrefillWrapper::Plan(torch::Tensor float_workspace_buffer,
         num_qo_heads,
         num_kv_heads,
         head_dim,
-        page_size);
+        page_size,
+        num_sm);
     TORCH_CHECK(status == cudaSuccess,
                 "BatchPrefillWithPagedKVCache failed with error ",
                 cudaGetErrorString(status));
