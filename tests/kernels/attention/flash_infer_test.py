@@ -122,7 +122,7 @@ def test_flashinfer_varlen_masked_self_attention(
         alibi_slopes=alibi_slopes,
     )
 
-    if alibi and dtype == torch.bfloat16:
+    if alibi or dtype == torch.bfloat16:
         torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=1e-2)
     else:
         torch.testing.assert_close(output, ref_output, atol=1e-2, rtol=1e-2)
@@ -130,5 +130,3 @@ def test_flashinfer_varlen_masked_self_attention(
 
 if __name__ == "__main__":
     pytest.main([__file__])
-    
-    # test_flashinfer_varlen_masked_self_attention([(1, 100)], (8, 8), 128, torch.float16, 100, 4, 0.0, -1, False)
