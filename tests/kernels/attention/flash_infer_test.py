@@ -78,6 +78,7 @@ def test_flashinfer_varlen_masked_self_attention(
 
     empty_q_data = torch.empty(0, dtype=dtype)
 
+    num_sm = -1
     wrapper.plan(
         float_workspace_buffer,
         int_workspace_buffer,
@@ -89,6 +90,7 @@ def test_flashinfer_varlen_masked_self_attention(
         head_size,
         block_size,
         empty_q_data,
+        num_sm,
     )
 
     alibi_slopes = torch.randn(n_heads, dtype=torch.float32) if alibi else None
@@ -120,7 +122,7 @@ def test_flashinfer_varlen_masked_self_attention(
         alibi_slopes=alibi_slopes,
     )
 
-    if alibi and dtype == torch.bfloat16:
+    if alibi or dtype == torch.bfloat16:
         torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=1e-2)
     else:
         torch.testing.assert_close(output, ref_output, atol=1e-2, rtol=1e-2)

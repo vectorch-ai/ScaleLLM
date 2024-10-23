@@ -27,7 +27,7 @@ def masked_self_attention(
         scores += alibi_bias
 
     # apply mask
-    scores.masked_fill_(mask == 0, float("-inf"))
+    scores.masked_fill_(mask == 0, -5e4)
 
     # softmax => [n_heads, q_len, kv_len]
     scores = torch.softmax(scores, dim=-1)

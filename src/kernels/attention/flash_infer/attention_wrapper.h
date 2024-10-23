@@ -3,8 +3,6 @@
 
 #include <torch/torch.h>
 
-#include <flashinfer/attention/warp_layout.cuh>
-
 #include "handler.h"
 
 namespace flashinfer {
@@ -12,7 +10,7 @@ namespace flashinfer {
 class BatchPrefillWrapper {
  public:
   BatchPrefillWrapper(bool enable_cuda_graph)
-      : handler_(std::make_shared<flashinfer::BatchPrefillHandler>(
+      : handler_(std::make_unique<flashinfer::BatchPrefillHandler>(
             enable_cuda_graph)) {}
 
   void Plan(torch::Tensor float_workspace_buffer,
@@ -24,7 +22,8 @@ class BatchPrefillWrapper {
             unsigned int num_kv_heads,
             unsigned int head_dim,
             unsigned page_size,
-            torch::Tensor empty_q_data);
+            torch::Tensor empty_q_data,
+            int32_t num_sm);
 
   bool IsCUDAGraphEnabled() const { return handler_->IsCUDAGraphEnabled(); }
 
@@ -43,7 +42,7 @@ class BatchPrefillWrapper {
                     std::optional<torch::Tensor> alibi_slopes);
 
  private:
-  std::shared_ptr<flashinfer::BatchPrefillHandler> handler_;
+  std::unique_ptr<flashinfer::BatchPrefillHandler> handler_;
 };
 
 }  // namespace flashinfer
