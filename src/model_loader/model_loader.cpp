@@ -220,14 +220,7 @@ bool HFModelLoader::load_model_args(const std::string& model_weights_path) {
   // apply args override from gflag if exists
   override_args_from_gflag(args_, quant_args_, tokenizer_args_);
 
-  // Some hacky logics to support loading of old models
-  // always use float16 for quantization
-  // TODO: support quantization for other data types
-  if (!quant_args_.quant_method().empty() && args_.dtype() != "float16") {
-    LOG(WARNING) << "Overwriting dtype from " << args_.dtype()
-                 << " to float16 for quantization";
-    args_.dtype() = "float16";
-  }
+  // Some hacky logics to support loading models.
 
   // fix chat template
   if (!tokenizer_args_.chat_template().empty()) {
