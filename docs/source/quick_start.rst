@@ -12,7 +12,7 @@ ScaleLLM is available as a Python Wheel package on `PyPI <https://pypi.org/proje
 
 .. code-block:: bash
 
-    # Install ScaleLLM with CUDA 12.1 and Pytorch 2.4.0
+    # Install ScaleLLM with CUDA 12.1 and Pytorch 2.5.1
     $ pip install scalellm
 
 Install other versions
@@ -25,55 +25,49 @@ If you want to install ScaleLLM with different versions of CUDA and PyTorch, you
 
         .. tabs::
 
-            .. tab:: PyTorch 2.4.0
+            .. tab:: PyTorch 2.5.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu124/torch2.4.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu124/torch2.5.1/
+
+            .. tab:: PyTorch 2.4.1
+
+                .. code-block:: bash
+
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu124/torch2.4.1/
 
     .. tab:: CUDA 12.1
 
         .. tabs::
 
-            .. tab:: PyTorch 2.4.0
+            .. tab:: PyTorch 2.5.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.4.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.5.1/
 
-            .. tab:: PyTorch 2.3.1
-
-                .. code-block:: bash
-
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.3.1/
-
-            .. tab:: PyTorch 2.2.2
+            .. tab:: PyTorch 2.4.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.2.2/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu121/torch2.4.1/
 
     .. tab:: CUDA 11.8
 
         .. tabs::
 
-            .. tab:: PyTorch 2.4.0
+            .. tab:: PyTorch 2.5.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.4.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.5.1/
 
-            .. tab:: PyTorch 2.3.1
-
-                .. code-block:: bash
-
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.3.1/
-
-            .. tab:: PyTorch 2.2.2
+            .. tab:: PyTorch 2.4.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.2.2/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.4.1/
 
 
 Build from source
