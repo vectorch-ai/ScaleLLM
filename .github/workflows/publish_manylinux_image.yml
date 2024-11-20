@@ -5,7 +5,7 @@ on:
       push:
         description: 'Push to Docker Hub'
         required: false
-        default: 'true'
+        default: 'false'
 
   # Schedule the workflow to run at 9:00 (UTC) every month.
   schedule:
@@ -47,7 +47,7 @@ jobs:
         with:
           context: ./docker
           file: ./docker/Dockerfile.manylinux
-          push: ${{ inputs.push }}
+          push: ${{ inputs.push || 'true' }}
           cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
           cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
           build-args: |
