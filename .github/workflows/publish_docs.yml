@@ -21,6 +21,11 @@ on:
   
   workflow_call:
 
+  # Schedule the workflow to run at 9:00 (UTC) every month.
+  schedule:
+    # Minute[0,59] Hour[0,23] Day of month[1,31] Month[1,12] Day of week[0,6] (Sunday=0)
+    - cron: '0 9 1 * *'
+
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
@@ -58,7 +63,8 @@ jobs:
     if: |
       github.event_name == 'push' || 
       github.event_name == 'workflow_call' || 
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

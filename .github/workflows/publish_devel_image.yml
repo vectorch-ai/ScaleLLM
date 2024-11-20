@@ -1,6 +1,17 @@
 name: Publish devel image
 on:
   workflow_dispatch:
+    inputs:
+      push:
+        description: 'Push to Docker Hub'
+        required: false
+        default: 'true'
+
+  # Schedule the workflow to run at 10:00 (UTC) every month.
+  schedule:
+    # Minute[0,59] Hour[0,23] Day of month[1,31] Month[1,12] Day of week[0,6] (Sunday=0)
+    - cron: '0 10 1 * *'  
+
 env:
   # Tells where to store caches.
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
@@ -27,12 +38,28 @@ jobs:
       - name: Create cache directory
         run: mkdir -p $CI_CACHE_DIR/.buildx-cache
 
+      - name: Build devel image for cuda 12.6 (experimental)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.devel
+          push: ${{ inputs.push || 'true' }}
+          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
+          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          build-args: |
+            UBUNTU_VERSION=22.04
+            CUDA_VERSION=12.6
+            GCC_VERSION=12
+          tags: |
+            vectorchai/scalellm_devel:cuda12.6-ubuntu22.04
+            vectorchai/scalellm_devel:cuda12.6
+
       - name: Build devel image for cuda 12.4
         uses: docker/build-push-action@v5
         with:
           context: ./docker
           file: ./docker/Dockerfile.devel
-          push: true
+          push: ${{ inputs.push || 'true' }}
           cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
           cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
           build-args: |
@@ -49,7 +76,7 @@ jobs:
         with:
           context: ./docker
           file: ./docker/Dockerfile.devel
-          push: true
+          push: ${{ inputs.push || 'true' }}
           cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
           cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
           build-args: |
@@ -65,7 +92,7 @@ jobs:
         with:
           context: ./docker
           file: ./docker/Dockerfile.devel
-          push: true
+          push: ${{ inputs.push || 'true' }}
           cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
           cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
           build-args: |
