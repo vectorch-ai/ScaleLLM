@@ -5,7 +5,7 @@ on:
       push:
         description: 'Push to Docker Hub'
         required: false
-        default: 'false'
+        default: 'true'
 
   # Schedule the workflow to run at 10:00 (UTC) every month.
   schedule:
