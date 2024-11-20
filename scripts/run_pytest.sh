@@ -24,6 +24,9 @@ export PATH="$HOME/.local/bin:$PATH"
 PYVER="${PYTHON_VERSION//./}"
 export PATH="/opt/python/cp${PYVER}-cp${PYVER}/bin:$PATH"
 
+# update pip
+python -m pip install --upgrade pip
+
 # install PyTorch
 pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
@@ -33,6 +36,6 @@ pip install -r requirements-test.txt
 # install scalellm wheel
 pip install dist/*.whl
 
-# run pytest
+# run pytest within the tests directory
 cd tests
 pytest
