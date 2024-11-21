@@ -17,11 +17,11 @@ env:
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  publish_base:
+  publish_devel_image:
     strategy:
       fail-fast: false
       matrix:
-        cuda: ["12.1", "12.4", "12.6"]
+        cuda: ["11.8", "12.1", "12.4", "12.6"]
     runs-on: [self-hosted, linux, build]
     steps:
       - name: Checkout repository
