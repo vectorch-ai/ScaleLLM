@@ -19,16 +19,22 @@ RUN yum -y update && yum -y install \
     perl-IPC-Cmd \
     sudo 
 
+# Show versions of gcc, g++, nvcc
+RUN gcc --version; g++ --version; nvcc --version
+
+# Install cmake
 ARG CMAKE_VERSION=3.29.3
 COPY ./common/install_cmake.sh install_cmake.sh
 RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
 RUN rm install_cmake.sh
+RUN cmake --version
 
 # Install ccache
 ARG CCACHE_VERSION=4.8.3
 COPY ./common/install_ccache.sh install_ccache.sh
 RUN if [ -n "${CCACHE_VERSION}" ]; then bash ./install_ccache.sh; fi
 RUN rm install_ccache.sh
+RUN ccache --version
 
 # Install rust
 ENV RUSTUP_HOME=/usr/local/rustup

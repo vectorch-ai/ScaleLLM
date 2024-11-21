@@ -4,6 +4,9 @@ set -ex
 
 [ -n "$CMAKE_VERSION" ]
 
+# Uninstall cmake package if it exists
+command -v pip3 >/dev/null && pip3 uninstall -y cmake
+
 # Remove existing CMake installation
 rm -f /usr/local/bin/cmake
 
