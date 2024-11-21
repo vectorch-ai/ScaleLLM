@@ -4,10 +4,11 @@ set -ex
 
 [ -n "$CMAKE_VERSION" ]
 
+# Uninstall cmake package if it exists
+command -v pip >/dev/null && pip uninstall -y cmake
+
 # Remove existing CMake installation
 rm -f /usr/local/bin/cmake
-# Uninstall cmake package if it exists
-pip uninstall -y cmake
 
 path="v${CMAKE_VERSION}"
 file="cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"
