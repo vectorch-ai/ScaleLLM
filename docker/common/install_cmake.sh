@@ -6,6 +6,8 @@ set -ex
 
 # Remove existing CMake installation
 rm -f /usr/local/bin/cmake
+# Install cmake via pip
+pip uninstall -y cmake
 
 path="v${CMAKE_VERSION}"
 file="cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"
