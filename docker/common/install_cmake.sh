@@ -6,7 +6,7 @@ set -ex
 
 # Remove existing CMake installation
 rm -f /usr/local/bin/cmake
-# Install cmake via pip
+# Uninstall cmake package if it exists
 pip uninstall -y cmake
 
 path="v${CMAKE_VERSION}"
