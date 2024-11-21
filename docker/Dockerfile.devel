@@ -19,22 +19,26 @@ RUN apt-get update \
     software-properties-common gpg-agent
 COPY ./common/install_gcc.sh install_gcc.sh
 RUN bash ./install_gcc.sh && rm install_gcc.sh
+RUN gcc --version; g++ --version
 
 ARG CMAKE_VERSION=3.29.3
 COPY ./common/install_cmake.sh install_cmake.sh
 RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
 RUN rm install_cmake.sh
+RUN cmake --version
 
 ARG NINJA_VERSION=1.11.1
 COPY ./common/install_ninja.sh install_ninja.sh
 RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
 RUN rm install_ninja.sh
+RUN ninja --version
 
 # Install ccache
 ARG CCACHE_VERSION=4.8.3
 COPY ./common/install_ccache.sh install_ccache.sh
 RUN if [ -n "${CCACHE_VERSION}" ]; then bash ./install_ccache.sh; fi
 RUN rm install_ccache.sh
+RUN ccache --version
 
 # Install cuda, cudnn and nccl
 ARG CUDA_VERSION=12.1
@@ -42,6 +46,7 @@ COPY ./common/install_cuda.sh install_cuda.sh
 RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
 ENV DESIRED_CUDA=${CUDA_VERSION}
 ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
+RUN nvcc --version
 
 # Install rust
 ENV RUSTUP_HOME=/usr/local/rustup
