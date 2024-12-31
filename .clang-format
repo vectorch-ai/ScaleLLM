@@ -6,6 +6,7 @@ BinPackArguments: false
 ExperimentalAutoDetectBinPacking: false
 AllowAllParametersOfDeclarationOnNextLine: false
 DerivePointerAlignment: false
+AlwaysBreakTemplateDeclarations: Yes
 PointerAlignment: Left
 ColumnLimit: 80
 ...
