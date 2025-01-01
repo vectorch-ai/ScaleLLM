@@ -1,8 +1,7 @@
-#include <ATen/ops/equal.h>
-#include <gtest/gtest.h>
-#include <torch/csrc/autograd/generated/variable_factories.h>
-
 #include "attention_cpu.h"
+
+#include <gtest/gtest.h>
+#include <torch/torch.h>
 
 namespace llm {
 namespace {

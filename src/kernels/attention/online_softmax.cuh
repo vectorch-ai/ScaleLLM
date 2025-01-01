@@ -34,67 +34,68 @@ CUTE_DEVICE T group_reduce_max(T val) {
 // online softmax kernel
 template <int ROWS_PER_THREAD>
 struct OnlineSoftmax {
-  // allocate memory for row_max and row_sum
+  // Fragment type for row_max and row_sum
   using FragmentT = decltype(make_tensor<float>(Shape<Int<ROWS_PER_THREAD>>{}));
-  FragmentT row_max;
-  FragmentT row_sum;
+
+  FragmentT row_max_;
+  FragmentT row_sum_;
 
   __device__ OnlineSoftmax() {
     // initialize row_max and row_sum
-    fill(row_max, float(-5e4));
-    clear(row_sum);
+    fill(row_max_, float(-5e4));
+    clear(row_sum_);
   }
 
   // computes the softmax scores and rescales the output
-  //  - rScores = exp(rScores - row_max`)
-  //  - rOut = rOut * exp(row_max - row_max`)
+  //  - score = exp(score - row_max`)
+  //  - O = O * s_scale
   //  - internal: row_sum = row_sum * s_scale + row_sum`
   template <typename FragmentS, typename FragmentO>
-  CUTE_DEVICE void rescale(FragmentS& rScores, FragmentO& rOut) {
+  CUTE_DEVICE void rescale(FragmentS& rAccS, FragmentO& rAccO) {
     CUTE_UNROLL
-    for (int si = 0; si < size<0>(rScores); si++) {
+    for (int si = 0; si < size<0>(rAccS); si++) {
       // rowmax across 4 threads
-      float cur_rowmax = row_max(si);
+      float cur_rowmax = row_max_(si);
       CUTE_UNROLL
-      for (int sj = 0; sj < size<1>(rScores); sj++) {
-        cur_rowmax = max(cur_rowmax, rScores(si, sj));
+      for (int sj = 0; sj < size<1>(rAccS); sj++) {
+        cur_rowmax = max(cur_rowmax, rAccS(si, sj));
       }
       cur_rowmax = group_reduce_max<4>(cur_rowmax);
 
       // use local rowsum
       float cur_rowsum = 0;
       CUTE_UNROLL
-      for (int sj = 0; sj < size<1>(rScores); sj++) {
-        rScores(si, sj) = exp2f(rScores(si, sj) - cur_rowmax);
-        cur_rowsum += rScores(si, sj);
+      for (int sj = 0; sj < size<1>(rAccS); sj++) {
+        rAccS(si, sj) = exp2f(rAccS(si, sj) - cur_rowmax);
+        cur_rowsum += rAccS(si, sj);
       }
 
       // scores_scale = exp(max - cur_rowmax)
-      const float scores_scale = exp2f(row_max(si) - cur_rowmax);
-      row_max(si) = cur_rowmax;
+      const float scores_scale = exp2f(row_max_(si) - cur_rowmax);
+      row_max_(si) = cur_rowmax;
 
       // o_2 = o_1 * s_scale
       CUTE_UNROLL
-      for (int sj = 0; sj < size<1>(rOut); sj++) {
-        rOut(si, sj) *= scores_scale;
+      for (int sj = 0; sj < size<1>(rAccO); sj++) {
+        rAccO(si, sj) *= scores_scale;
       }
 
       // s_2 = s_1 * s_scale + row_sum
-      row_sum(si) = row_sum(si) * scores_scale + cur_rowsum;
+      row_sum_(si) = row_sum_(si) * scores_scale + cur_rowsum;
     }
   }
 
-  // finalizes the softmax computation with rOut = rOut / row_sum
+  // finalizes the softmax computation with O = O / row_sum
   template <typename FragmentO>
-  CUTE_DEVICE void finalize(FragmentO& rAccOut) {
+  CUTE_DEVICE void finalize(FragmentO& rAccO) {
     CUTE_UNROLL
-    for (int oi = 0; oi < size<0>(rAccOut); oi++) {
+    for (int oi = 0; oi < size<0>(rAccO); oi++) {
       // rowsum across 4 threads
-      row_sum(oi) = group_reduce_sum<4>(row_sum(oi));
+      row_sum_(oi) = group_reduce_sum<4>(row_sum_(oi));
 
       CUTE_UNROLL
-      for (int oj = 0; oj < size<1>(rAccOut); oj++) {
-        rAccOut(oi, oj) /= row_sum(oi);
+      for (int oj = 0; oj < size<1>(rAccO); oj++) {
+        rAccO(oi, oj) /= row_sum_(oi);
       }
     }
   }

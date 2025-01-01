@@ -2,6 +2,7 @@
 #include <torch/torch.h>
 
 #include "attention_kernel_sm80.cuh"
+#include "attention_traits_sm80.h"
 
 namespace llm {
 namespace {
@@ -49,6 +50,9 @@ TEST_P(AttentionKernelTest, MHA) {
   const auto query = torch::randn({q_seq_len, n_heads, head_dim}, options);
   const auto key = torch::randn({seq_len, n_kv_heads, head_dim}, options);
   const auto value = torch::randn({seq_len, n_kv_heads, head_dim}, options);
+
+  using AttentionTraits = AttentionTraitsSM80<cute::half_t, 64, 64, 64>;
+  auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
 
   auto ref_out = attention_ref(query, key, value);
 
