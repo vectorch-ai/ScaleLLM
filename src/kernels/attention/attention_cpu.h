@@ -91,7 +91,7 @@ inline void mha(torch::Tensor query,
           }
           // apply causal mask
           if (kv_idx_base + j > q_idx_base + q_idx) {
-            s(j) = -INFINITY;
+            s(j) = -5e4;
           }
           max = std::max(max, s(j));
         }

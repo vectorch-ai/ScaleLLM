@@ -21,17 +21,15 @@ torch::Tensor attention_ref(
 
   const float sm_scale = 1.0 / sqrt(head_dim);
   // query * key => [n_heads, q_seq_len, seq_len]
-  // auto scores = torch::einsum("bhqd,bhkd->bhqk", {query, key});
-  auto scores = torch::matmul(query, key.transpose(-2, -1));
+  auto scores = torch::einsum("bhqd,bhkd->bhqk", {query, key});
   // apply scale
   scores *= sm_scale;
 
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
 
-  // score * value => [batch_size, q_seq_len, n_heads, head_dim]
-  // return torch::einsum("bhqk,bkhd->bhqd", {scores, value});
-  return torch::matmul(scores, value);
+  // score * value => [batch_size, n_heads, q_seq_len, head_dim]
+  return torch::einsum("bhqk,bhkd->bhqd", {scores, value});
 }
 
 torch::Tensor attention_sm80(
