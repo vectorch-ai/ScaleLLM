@@ -1,8 +1,7 @@
-#include <ATen/ops/equal.h>
-#include <gtest/gtest.h>
-#include <torch/csrc/autograd/generated/variable_factories.h>
-
 #include "attention_cpu.h"
+
+#include <gtest/gtest.h>
+#include <torch/torch.h>
 
 namespace llm {
 namespace {
@@ -36,7 +35,7 @@ torch::Tensor masked_self_attention(
   torch::Tensor mask = torch::ones({1, q_seq_len, seq_len}, torch::kBool);
   // returns the lower triangular part of a matrix
   mask = torch::tril(mask, /*diagonal=*/seq_len - q_seq_len).to(query);
-  scores = scores.masked_fill(mask == 0, -INFINITY);
+  scores = scores.masked_fill(mask == 0, -5e4);
 
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);

@@ -18,7 +18,8 @@ cc_test(
     attention_cpu.h
   SRCS
     cute_test.cpp
-    attention_test.cpp
+    attention_cpu_test.cpp
+    attention_kernel_sm80_test.cu
   DEPS
     :attention.kernel
     glog::glog
