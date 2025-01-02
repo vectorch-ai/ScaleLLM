@@ -39,8 +39,9 @@ struct OnlineSoftmax {
 
   FragmentT row_max_;
   FragmentT row_sum_;
+  float sm_scale_;
 
-  __device__ OnlineSoftmax() {
+  CUTE_DEVICE OnlineSoftmax(float sm_scale = 1.0f) : sm_scale_(sm_scale) {
     // initialize row_max and row_sum
     fill(row_max_, float(-5e4));
     clear(row_sum_);
@@ -66,12 +67,14 @@ struct OnlineSoftmax {
       float cur_rowsum = 0;
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS); sj++) {
-        rAccS(si, sj) = exp2f(rAccS(si, sj) - cur_rowmax);
+        rAccS(si, sj) =
+            exp2f(rAccS(si, sj) * sm_scale_ - cur_rowmax * sm_scale_);
         cur_rowsum += rAccS(si, sj);
       }
 
       // scores_scale = exp(max - cur_rowmax)
-      const float scores_scale = exp2f(row_max_(si) - cur_rowmax);
+      const float scores_scale =
+          exp2f(row_max_(si) * sm_scale_ - cur_rowmax * sm_scale_);
       row_max_(si) = cur_rowmax;
 
       // o_2 = o_1 * s_scale
