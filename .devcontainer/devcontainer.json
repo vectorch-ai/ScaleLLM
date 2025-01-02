@@ -3,7 +3,6 @@
   "runArgs": [
       "--gpus=all"
   ],
-  "remoteUser": "vscode",
   "forwardPorts": [],
   "features": {
     "ghcr.io/devcontainers/features/anaconda:1": {},
