@@ -1,5 +1,5 @@
 {
-  "image": "vectorchai/scalellm_devel:cuda12.4",
+  "image": "registry.hub.docker.com/vectorchai/scalellm_devel:cuda12.4",
   "runArgs": [
       "--gpus=all"
   ],
