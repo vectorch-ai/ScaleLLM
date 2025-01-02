@@ -1,0 +1,24 @@
+{
+  "image": "vectorchai/scalellm_devel:cuda12.4",
+  "runArgs": [
+      "--gpus=all"
+  ],
+  "remoteUser": "vscode",
+  "forwardPorts": [],
+  "features": {
+    "ghcr.io/devcontainers/features/anaconda:1": {},
+		"ghcr.io/devcontainers/features/conda:1": {},
+		"ghcr.io/devcontainers/features/git:1": {}
+  },
+  "customizations": {
+      "vscode": {
+          "extensions": [
+            "ms-vscode.cmake-tools",
+            "ms-vscode.cpptools",
+            "ms-vscode.cpptools-extension-pack",
+            "llvm-vs-code-extensions.vscode-clangd",
+            "ms-python.python"
+          ]
+      }
+  }
+}
