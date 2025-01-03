@@ -5,7 +5,9 @@
     "dockerfile": "Dockerfile",
     "args": {
       "BASE_IMAGE": "vectorchai/scalellm_devel:cuda12.4",
-      "USER": "${localEnv:USER}"
+      "USER": "${localEnv:USER:vscode}",
+      "UID": "${localEnv:UID:1000}",
+      "GID": "${localEnv:GID:1000}"
     }
   },
   // Access GPUs from inside the container
@@ -17,8 +19,8 @@
     "HUGGING_FACE_HUB_TOKEN": "${localEnv:HUGGING_FACE_HUB_TOKEN}"
   },
   // Run as the current user
-  "remoteUser": "${localEnv:USER}",
-  "containerUser": "${localEnv:USER}",
+  "remoteUser": "${localEnv:USER:vscode}",
+  "containerUser": "${localEnv:USER:vscode}",
   "updateRemoteUserUID": true,
   // Ports should be forwarded from inside container to the local machine
   "forwardPorts": [],
