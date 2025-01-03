@@ -1,6 +1,6 @@
 // For more config options, see https://aka.ms/devcontainer.json.
 {
-  "name": "ScaleLLM Dev (CUDA 12.4)",
+  "name": "cuda12.4",
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
@@ -20,7 +20,7 @@
   "remoteUser": "${localEnv:USER}",
   "containerUser": "${localEnv:USER}",
   "updateRemoteUserUID": true,
-  // Prots should be forwarded from inside container to the local machine
+  // Ports should be forwarded from inside container to the local machine
   "forwardPorts": [],
   // For a full avaiable list, see https://containers.dev/features.
   "features": {
@@ -39,14 +39,14 @@
       ],
       "settings": {
         "extensions.verifySignature": false,
+        "terminal.integrated.defaultProfile.linux": "bash",
         "C_Cpp.clang_format_sortIncludes": true,
         "C_Cpp.default.intelliSenseMode": "linux-clang-x64",
         "C_Cpp.default.cppStandard": "c++17",
+        "cmake.loggingLevel": "info",
         "cmake.configureOnOpen": false,
         "cmake.configureOnEdit": false,
-        "cmake.loggingLevel": "info",
         "cmake.automaticReconfigure": true,
-        "cmake.clearOutputBeforeBuild": true,
         "cmake.ctest.allowParallelJobs": true,
         "python.testing.pytestEnabled": true,
         "python.analysis.inlayHints.pytestParameters": true,
