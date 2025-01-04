@@ -20,6 +20,7 @@ void attention_bench_sm80(nvbench::state& state) {
   const auto n_heads = state.get_int64("n_heads");
   const auto n_kv_heads = state.get_int64("n_kv_heads");
   const auto head_dim = state.get_int64("head_dim");
+  const float logits_soft_cap = state.get_float64("logits_soft_cap");
 
   const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
   const auto query =
@@ -31,7 +32,7 @@ void attention_bench_sm80(nvbench::state& state) {
 
   auto out = torch::empty_like(query);
 
-  const float sm_scale = 1.0 / sqrt(head_dim) * M_LOG2E;
+  const float sm_scale = 1.0 / sqrt(head_dim);
   const auto h_stride = query.stride(1);
   const auto kv_h_stride = key.stride(1);
 
@@ -43,7 +44,7 @@ void attention_bench_sm80(nvbench::state& state) {
       AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
 
   dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size * head_dim);
+  dim3 grid(q_len / kBlockM, batch_size * n_heads);
 
   const auto smem_size = AttentionTraits::kSmemSize;
   auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
@@ -61,14 +62,16 @@ void attention_bench_sm80(nvbench::state& state) {
         kv_h_stride,
         q_len,
         kv_len,
-        sm_scale);
+        sm_scale,
+        logits_soft_cap);
   });
 }
 
 NVBENCH_BENCH(attention_bench_sm80)
     .add_int64_axis("batch_size", {1})
-    .add_int64_axis("q_len", {64})
-    .add_int64_axis("kv_len", {64, 128})
-    .add_int64_axis("n_heads", {2})
-    .add_int64_axis("n_kv_heads", {2})
-    .add_int64_axis("head_dim", {64});
+    .add_int64_axis("q_len", {1024})
+    .add_int64_axis("kv_len", {1024})
+    .add_int64_axis("n_heads", {32})
+    .add_int64_axis("n_kv_heads", {32})
+    .add_int64_axis("head_dim", {64})
+    .add_float64_axis("logits_soft_cap", {0.0});

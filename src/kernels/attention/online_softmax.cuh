@@ -4,6 +4,8 @@
 
 #include <cute/tensor.hpp>
 
+#include "ptx.cuh"
+
 namespace llm {
 using namespace cute;
 
@@ -53,11 +55,11 @@ struct OnlineSoftmax {
   template <typename FragmentS, typename FragmentO>
   CUTE_DEVICE void rescale(FragmentS& rAccS, FragmentO& rAccO) {
     CUTE_UNROLL
-    for (int si = 0; si < size<0>(rAccS); si++) {
+    for (int si = 0; si < size<0>(rAccS); ++si) {
       // rowmax across 4 threads
       float cur_rowmax = row_max_(si);
       CUTE_UNROLL
-      for (int sj = 0; sj < size<1>(rAccS); sj++) {
+      for (int sj = 0; sj < size<1>(rAccS); ++sj) {
         cur_rowmax = max(cur_rowmax, rAccS(si, sj));
       }
       cur_rowmax = group_reduce_max<4>(cur_rowmax);
@@ -67,15 +69,16 @@ struct OnlineSoftmax {
       float cur_rowsum = 0;
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS); sj++) {
-        rAccS(si, sj) = exp2f(rAccS(si, sj) * sm_scale_ - rowmax_scale);
+        rAccS(si, sj) = ptx::exp2(rAccS(si, sj) * sm_scale_ - rowmax_scale);
         cur_rowsum += rAccS(si, sj);
       }
 
       // scores_scale = exp(max - cur_rowmax)
-      const float scores_scale = exp2f(row_max_(si) * sm_scale_ - rowmax_scale);
+      const float scores_scale =
+          ptx::exp2(row_max_(si) * sm_scale_ - rowmax_scale);
       // o_2 = o_1 * s_scale
       CUTE_UNROLL
-      for (int sj = 0; sj < size<1>(rAccO); sj++) {
+      for (int sj = 0; sj < size<1>(rAccO); ++sj) {
         rAccO(si, sj) *= scores_scale;
       }
 
@@ -90,13 +93,13 @@ struct OnlineSoftmax {
   template <typename FragmentO>
   CUTE_DEVICE void finalize(FragmentO& rAccO) {
     CUTE_UNROLL
-    for (int oi = 0; oi < size<0>(rAccO); oi++) {
+    for (int oi = 0; oi < size<0>(rAccO); ++oi) {
       // rowsum across 4 threads
       row_sum_(oi) = group_reduce_sum<4>(row_sum_(oi));
 
       CUTE_UNROLL
-      for (int oj = 0; oj < size<1>(rAccO); oj++) {
-        rAccO(oi, oj) /= row_sum_(oi);
+      for (int oj = 0; oj < size<1>(rAccO); ++oj) {
+        rAccO(oi, oj) *= ptx::rcp(row_sum_(oi));
       }
     }
   }

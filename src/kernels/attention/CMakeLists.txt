@@ -7,6 +7,10 @@ cc_library(
     attention.kernel
   HDRS
     attention_cpu.h
+    ptx.cuh 
+    fast_cast.cuh
+    online_softmax.cuh
+    attention_traits_sm80.h
     attention_kernel_sm80.cuh
   SRCS 
     # attention.cu
@@ -37,6 +41,8 @@ cc_binary(
     nvbench::nvbench
     nvbench::main
     :attention.kernel
+  COPTS
+    -lineinfo 
 )
 
 add_subdirectory(flash_attn)
