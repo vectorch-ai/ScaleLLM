@@ -1,5 +1,4 @@
-#include <c10/core/DeviceType.h>
-#include <c10/core/ScalarType.h>
+#include <ATen/cuda/Exceptions.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
@@ -43,6 +42,7 @@ torch::Tensor attention_sm80(
   const auto head_dim = query.size(3);
 
   const auto h_stride = query.stride(1);
+  const auto kv_h_stride = key.stride(1);
 
   auto out = torch::empty_like(query);
 
@@ -55,21 +55,25 @@ torch::Tensor attention_sm80(
   using AttentionTraits =
       AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
 
-  const auto smem_size = AttentionTraits::kSmemSize;
   dim3 block = AttentionTraits::kThreadNum;
   dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size * head_dim);
 
+  const auto smem_size = AttentionTraits::kSmemSize;
   auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
-  cudaFuncSetAttribute(
-      attention_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+  C10_CUDA_CHECK(
+      cudaFuncSetAttribute(attention_kernel,
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           smem_size));
   attention_kernel<<<grid, block, smem_size>>>(out.mutable_data_ptr(),
                                                query.const_data_ptr(),
                                                key.const_data_ptr(),
                                                value.const_data_ptr(),
                                                h_stride,
+                                               kv_h_stride,
                                                q_len,
                                                kv_len,
                                                sm_scale);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
 
@@ -102,15 +106,15 @@ TEST_P(AttentionKernelTest, MHA) {
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    MHA,
-    AttentionKernelTest,
-    ::testing::Combine(::testing::Values(1),    // batch_size
-                       ::testing::Values(256),  // q_len
-                       ::testing::Values(256),  // kv_len
-                       ::testing::Values(32),   // n_heads
-                       ::testing::Values(32),   // n_kv_heads
-                       ::testing::Values(64)    // head_dim
-                       ));
+INSTANTIATE_TEST_SUITE_P(MHA,
+                         AttentionKernelTest,
+                         ::testing::Combine(::testing::Values(1),  // batch_size
+                                            ::testing::Values(64),  // q_len
+                                            ::testing::Values(64,
+                                                              256),  // kv_len
+                                            ::testing::Values(2),    // n_heads
+                                            ::testing::Values(2),  // n_kv_heads
+                                            ::testing::Values(64)  // head_dim
+                                            ));
 
 }  // namespace llm

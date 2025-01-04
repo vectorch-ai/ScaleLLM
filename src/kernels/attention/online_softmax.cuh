@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cuda.h>
-// #include <cuda_runtime.h>
 
 #include <cute/tensor.hpp>
 
@@ -63,26 +62,25 @@ struct OnlineSoftmax {
       }
       cur_rowmax = group_reduce_max<4>(cur_rowmax);
 
-      // use local rowsum
+      // scores = exp(scores - row_max)
+      const float rowmax_scale = cur_rowmax * sm_scale_;
       float cur_rowsum = 0;
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS); sj++) {
-        rAccS(si, sj) =
-            exp2f(rAccS(si, sj) * sm_scale_ - cur_rowmax * sm_scale_);
+        rAccS(si, sj) = exp2f(rAccS(si, sj) * sm_scale_ - rowmax_scale);
         cur_rowsum += rAccS(si, sj);
       }
 
       // scores_scale = exp(max - cur_rowmax)
-      const float scores_scale =
-          exp2f(row_max_(si) * sm_scale_ - cur_rowmax * sm_scale_);
-      row_max_(si) = cur_rowmax;
-
+      const float scores_scale = exp2f(row_max_(si) * sm_scale_ - rowmax_scale);
       // o_2 = o_1 * s_scale
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccO); sj++) {
         rAccO(si, sj) *= scores_scale;
       }
 
+      // update row_max and row_sum
+      row_max_(si) = cur_rowmax;
       // s_2 = s_1 * s_scale + row_sum
       row_sum_(si) = row_sum_(si) * scores_scale + cur_rowsum;
     }

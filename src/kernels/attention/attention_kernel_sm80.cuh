@@ -5,6 +5,7 @@
 
 #include <cute/tensor.hpp>
 
+#include "fast_cast.cuh"
 #include "online_softmax.cuh"
 
 namespace llm {
@@ -15,6 +16,7 @@ __global__ void mha_kernel_sm80(void* o,
                                 const void* k,
                                 const void* v,
                                 int h_stride,
+                                int kv_h_stride,
                                 int q_len,
                                 int kv_len,
                                 float sm_scale) {
@@ -28,7 +30,7 @@ __global__ void mha_kernel_sm80(void* o,
   using HEAD_DIM = typename Traits::HEAD_DIM;
 
   using TiledMMA = typename Traits::TiledMMA;
-  using Convertor = typename Traits::FragmentConvertor;
+  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutKV;
@@ -49,32 +51,23 @@ __global__ void mha_kernel_sm80(void* o,
 
   // ProblemShape
   // TODO: support non-contiguous layout
-  const int offset = base_id * h_stride;
   // (q_len, head_dim)
+  const int offset = base_id * h_stride;
   auto Q = make_tensor(make_gmem_ptr((Element*)q + offset),
                        make_shape(q_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
   auto O = make_tensor(make_gmem_ptr((Element*)o + offset),
                        make_shape(q_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
+
   // (kv_len, head_dim)
-  auto K = make_tensor(make_gmem_ptr((Element*)k + offset),
+  const int kv_offset = base_id * kv_h_stride;
+  auto K = make_tensor(make_gmem_ptr((Element*)k + kv_offset),
                        make_shape(kv_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
-  auto V = make_tensor(make_gmem_ptr((Element*)v + offset),
+  auto V = make_tensor(make_gmem_ptr((Element*)v + kv_offset),
                        make_shape(kv_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
-
-  // CTA/Block Shape
-  // (BLK_M, head_dim)
-  Tensor gQ =
-      local_tile(Q, make_tile(BLK_M{}, HEAD_DIM{}), make_coord(m_block, _));
-  Tensor gO =
-      local_tile(O, make_tile(BLK_M{}, HEAD_DIM{}), make_coord(m_block, _));
-
-  // (BLK_N, head_dim)
-  Tensor gK = local_tile(K, make_tile(BLK_N{}, HEAD_DIM{}), make_coord(0, _));
-  Tensor gV = local_tile(V, make_tile(BLK_N{}, HEAD_DIM{}), make_coord(0, _));
 
   // Smem
   extern __shared__ char smem[];
@@ -89,37 +82,38 @@ __global__ void mha_kernel_sm80(void* o,
   Tensor sV = make_tensor(make_smem_ptr(v_smem), SmemLayoutV{});
 
   // Tensor for V^t; used in GEMM-II.
-  // (BLK_K, BLK_N), k-major
+  // (BLK_K, BLK_N)
   Tensor sVt = make_tensor(make_smem_ptr(v_smem), SmemLayoutVt{});
 
   // Tiled Copy
   // g2s tiled copy for qkv
   GmemTiledCopyQKV gmem_tiled_copy_QKV;
   auto gmem_thr_copy_QKV = gmem_tiled_copy_QKV.get_thread_slice(tidx);
-  auto tQgQ = gmem_thr_copy_QKV.partition_S(gQ(_, _, 0));
-  auto tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
-  auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, 0));
-  auto tKsK = gmem_thr_copy_QKV.partition_D(sK);
-  auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, 0));
-  auto tVsV = gmem_thr_copy_QKV.partition_D(sV);
 
+  // (BLK_M, HEAD_DIM)
+  Tensor gQ =
+      local_tile(Q, make_tile(BLK_M{}, HEAD_DIM{}), make_coord(m_block, _0{}));
   auto produce_q = [&]() {
+    auto tQgQ = gmem_thr_copy_QKV.partition_S(gQ(_, _));
+    auto tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
     cute::copy(gmem_tiled_copy_QKV, tQgQ, tQsQ);
-    cp_async_fence();
   };
 
+  // (BLK_N, head_dim)
+  auto tKsK = gmem_thr_copy_QKV.partition_D(sK);
   auto produce_k = [&](int ni) {
-    gK = local_tile(K, make_tile(BLK_N{}, HEAD_DIM{}), make_coord(ni, _));
-    tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, 0));
+    auto gK =
+        local_tile(K, make_tile(BLK_N{}, HEAD_DIM{}), make_coord(ni, _0{}));
+    auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _));
     cute::copy(gmem_tiled_copy_QKV, tKgK, tKsK);
-    cp_async_fence();
   };
 
+  auto tVsV = gmem_thr_copy_QKV.partition_D(sV);
   auto produce_v = [&](int ni) {
-    gV = local_tile(V, make_tile(BLK_N{}, HEAD_DIM{}), make_coord(ni, _));
-    tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, 0));
+    auto gV =
+        local_tile(V, make_tile(BLK_N{}, HEAD_DIM{}), make_coord(ni, _0{}));
+    auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _));
     cute::copy(gmem_tiled_copy_QKV, tVgV, tVsV);
-    cp_async_fence();
   };
 
   TiledMMA tiled_mma;
@@ -127,8 +121,6 @@ __global__ void mha_kernel_sm80(void* o,
   // GEMM-I: S = Q@K.T
   auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA,MMA_M,MMA_K)
   auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA,MMA_N,MMA_K)
-  auto tSrAccS = partition_fragment_C(
-      tiled_mma, Shape<BLK_M, BLK_N>{});  // (MMA,MMA_M,MMA_N)
 
   // s2r tiled copy for qkv
   SmemTiledCopyQ smem_tiled_copy_Q;
@@ -142,7 +134,8 @@ __global__ void mha_kernel_sm80(void* o,
   auto tSrK_copy_view = smem_thr_copy_K.retile_D(tSrK);
 
   // S = Q@K.T
-  auto compute_qk = [&]() {
+  // tSrAccS: (MMA,MMA_M,MMA_N)
+  auto compute_qk = [&](auto& tSrAccS) {
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(tSrQ); ++ki) {
       cute::copy(smem_tiled_copy_Q, tSsQ(_, _, ki), tSrQ_copy_view(_, _, ki));
@@ -153,8 +146,6 @@ __global__ void mha_kernel_sm80(void* o,
 
   // GEMM-II: O = softmax(S)@V
   auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA,MMA_K,MMA_N)
-  auto tOrAccO = partition_fragment_C(
-      tiled_mma, Shape<BLK_M, HEAD_DIM>{});  // (MMA,MMA_M,MMA_K)
 
   SmemTiledCopyVT smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
@@ -162,16 +153,15 @@ __global__ void mha_kernel_sm80(void* o,
   auto tOrVt_copy_view = smem_thr_copy_Vt.retile_D(tOrVt);
 
   // O = softmax(S)*V
-  auto compute_sv = [&]() {
+  // tSrAccS: (MMA,MMA_M,MMA_N)
+  // tOrAccO: (MMA,MMA_M,MMA_K)
+  auto compute_sv = [&](auto& tSrAccS, auto& tOrAccO) {
     // cast scores from Accumulator to Element
     auto tSrS = make_tensor_like<Element>(tSrAccS);
-    CUTE_UNROLL
-    for (int i = 0; i < size(tSrAccS); ++i) {
-      tSrS(i) = static_cast<Element>(tSrAccS(i));
-    }
+    fast_cast(tSrAccS, tSrS);
 
     // convert layout from gemm-I C to gemm-II A
-    auto tOrS = Convertor::to_mma_a(tSrS);
+    auto tOrS = make_tensor(tSrS.data(), Layout::to_mma_a(tSrS.layout()));
 
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(tOrS); ++ki) {
@@ -181,14 +171,14 @@ __global__ void mha_kernel_sm80(void* o,
     }
   };
 
-  // write output to gmem
-  auto epilogue = [&]() {
-    // 1> covernt output from ElementAccumulator to Element
+  // tOrAccO: (MMA,MMA_M,MMA_K)
+  Tensor gO =
+      local_tile(O, make_tile(BLK_M{}, HEAD_DIM{}), make_coord(m_block, _));
+  auto epilogue = [&](auto& tOrAccO) {
+    // write output to gmem
+    // 1> cast output from ElementAccumulator to Element
     auto tOrO = make_tensor_like<Element>(tOrAccO);
-    CUTE_UNROLL
-    for (int si = 0; si < size(tOrAccO); ++si) {
-      tOrO(si) = static_cast<Element>(tOrAccO(si));
-    }
+    fast_cast(tOrAccO, tOrO);
 
     // 2. copy output from reg to smem (reuse sQ)
     auto sO = make_tensor(sQ.data(), SmemLayoutO{});
@@ -217,16 +207,17 @@ __global__ void mha_kernel_sm80(void* o,
 
   // produce q: [] => [q]
   produce_q();
+  cp_async_fence();
   // produce k: [q] => [q, k]
   produce_k(0);
+  cp_async_fence();
 
   // ###############  Mainloop  ###############
 
-  // reshape for iterating over rows and columns
-  auto tOrAccO_rc_view = Convertor::to_rowcol(tOrAccO);
-  auto tSrAccS_rc_view = Convertor::to_rowcol(tSrAccS);
-
-  // clear output
+  // output accumulator, (MMA,MMA_M,MMA_K)
+  auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
+  auto tOrAccO_rc_view =
+      make_tensor(tOrAccO.data(), Layout::to_rowcol(tOrAccO.layout()));
   clear(tOrAccO);
 
   // RowsPerThread = #rows_per_MMA * #MMA_M
@@ -238,7 +229,10 @@ __global__ void mha_kernel_sm80(void* o,
 
   CUTE_NO_UNROLL
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
-    // clear attention score for each block
+    // attention score accumulator, (MMA,MMA_M,MMA_N)
+    auto tSrAccS = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_N>{});
+    auto tSrAccS_rc_view =
+        make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
     clear(tSrAccS);
 
     // wait k, queue: [q, k] => []
@@ -247,9 +241,10 @@ __global__ void mha_kernel_sm80(void* o,
 
     // produce v, [] => [v]
     produce_v(ni);
+    cp_async_fence();
 
     // 1> S = Q@K.T
-    compute_qk();
+    compute_qk(tSrAccS);
 
     // apply softmax and rescale
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
@@ -262,9 +257,10 @@ __global__ void mha_kernel_sm80(void* o,
     if (ni != n_block_max - 1) {
       produce_k(ni + 1);
     }
+    cp_async_fence();
 
     // 2> O = softmax(S)*V
-    compute_sv();
+    compute_sv(tSrAccS, tOrAccO);
   }
 
   // ###############  Epilogue  ###############
@@ -273,7 +269,7 @@ __global__ void mha_kernel_sm80(void* o,
   softmax.finalize(tOrAccO_rc_view);
 
   // write output to gmem
-  epilogue();
+  epilogue(tOrAccO);
 }
 
 }  // namespace llm
