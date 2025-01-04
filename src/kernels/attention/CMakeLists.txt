@@ -10,6 +10,7 @@ cc_library(
     ptx.cuh 
     fast_cast.cuh
     online_softmax.cuh
+    attention_traits_sm80.h
     attention_kernel_sm80.cuh
   SRCS 
     # attention.cu
