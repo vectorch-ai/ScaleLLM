@@ -14,14 +14,14 @@ namespace detail {
 using namespace cute;
 template <typename SRC_TYPE, typename DST_TYPE>
 struct type_cast {
-  static_assert(dependent_false<SRC_TYPE>, "not implemented for this cast");
+  static_assert(dependent_false<SRC_TYPE>, "not implemented");
 };
 
 // specialization for float -> half
 template <>
 struct type_cast<float, cute::half_t> {
   template <typename FragmentS, typename FragmentD>
-  CUTE_DEVICE static void cast(FragmentS& src, FragmentD& dst) {
+  CUTE_DEVICE static void cast(const FragmentS& src, FragmentD& dst) {
     auto src2 = recast<float2>(src);
     auto dst2 = recast<half2>(dst);
 
@@ -36,7 +36,7 @@ struct type_cast<float, cute::half_t> {
 template <>
 struct type_cast<float, cute::bfloat16_t> {
   template <typename FragmentS, typename FragmentD>
-  CUTE_DEVICE static void cast(FragmentS& src, FragmentD& dst) {
+  CUTE_DEVICE static void cast(const FragmentS& src, FragmentD& dst) {
     auto src2 = recast<float2>(src);
     auto dst2 = recast<nv_bfloat162>(dst);
 
@@ -53,7 +53,7 @@ struct type_cast<float, cute::bfloat16_t> {
 // dispatch to right type_cast
 // functionality: dst = (DST_TYPE)src
 template <typename FragmentS, typename FragmentD>
-CUTE_DEVICE void fast_cast(FragmentS& src, FragmentD& dst) {
+CUTE_DEVICE void fast_cast(const FragmentS& src, FragmentD& dst) {
   CUTE_STATIC_ASSERT_V((cute::size(src) == cute::size(dst)), "size mismatch");
 
   using TypeSrc = typename FragmentS::value_type;

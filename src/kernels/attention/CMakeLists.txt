@@ -30,16 +30,14 @@ cc_test(
 
 cc_binary(
   NAME 
-    attention_sm80_bench
+    attention_bench_sm80
   SRCS 
-    attention_sm80_bench.cu
+    attention_bench_sm80.cu
   DEPS
     nvbench::nvbench
     nvbench::main
     :attention.kernel
 )
-
-
 
 add_subdirectory(flash_attn)
 add_subdirectory(flash_infer)

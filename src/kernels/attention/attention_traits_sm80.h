@@ -19,9 +19,9 @@ struct LayoutConvertor {
   }
 
   // Convert fragment layout from gemm-I C to gemm-II A
+  // (MMA_C=4,MMA_M,MMA_N) => (MMA_A=(4, 2), MMA_M, MMA_N/2)
   template <typename LayoutC>
   CUTE_HOST_DEVICE static constexpr auto to_mma_a(const LayoutC& layout) {
-    // (MMA_C=4,MMA_M,MMA_N) => (MMA_A=(4, 2), MMA_M, MMA_N/2)
     auto l = logical_divide(layout.layout(), Shape<X, X, _2>{});
     return make_layout(
         make_layout(get<0>(l), get<2, 0>(l)), get<1>(l), get<2, 1>(l));

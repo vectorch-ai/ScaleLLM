@@ -15,10 +15,10 @@ __global__ void mha_kernel_sm80(void* o,
                                 const void* q,
                                 const void* k,
                                 const void* v,
-                                int h_stride,
-                                int kv_h_stride,
-                                int q_len,
-                                int kv_len,
+                                int64_t h_stride,
+                                int64_t kv_h_stride,
+                                int64_t q_len,
+                                int64_t kv_len,
                                 float sm_scale) {
   using namespace cute;
 
@@ -45,14 +45,14 @@ __global__ void mha_kernel_sm80(void* o,
   using SmemTiledCopyVT = typename Traits::SmemTiledCopyVT;
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
-  const int m_block = blockIdx.x;
-  const int base_id = blockIdx.y;
-  const int tidx = threadIdx.x;
+  const auto m_block = blockIdx.x;
+  const auto base_id = blockIdx.y;
+  const auto tidx = threadIdx.x;
 
   // ProblemShape
   // TODO: support non-contiguous layout
   // (q_len, head_dim)
-  const int offset = base_id * h_stride;
+  const auto offset = base_id * h_stride;
   auto Q = make_tensor(make_gmem_ptr((Element*)q + offset),
                        make_shape(q_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
@@ -61,7 +61,7 @@ __global__ void mha_kernel_sm80(void* o,
                        make_stride(HEAD_DIM{}, _1{}));
 
   // (kv_len, head_dim)
-  const int kv_offset = base_id * kv_h_stride;
+  const auto kv_offset = base_id * kv_h_stride;
   auto K = make_tensor(make_gmem_ptr((Element*)k + kv_offset),
                        make_shape(kv_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
@@ -155,7 +155,7 @@ __global__ void mha_kernel_sm80(void* o,
   // O = softmax(S)*V
   // tSrAccS: (MMA,MMA_M,MMA_N)
   // tOrAccO: (MMA,MMA_M,MMA_K)
-  auto compute_sv = [&](auto& tSrAccS, auto& tOrAccO) {
+  auto compute_sv = [&](const auto& tSrAccS, auto& tOrAccO) {
     // cast scores from Accumulator to Element
     auto tSrS = make_tensor_like<Element>(tSrAccS);
     fast_cast(tSrAccS, tSrS);
@@ -174,7 +174,7 @@ __global__ void mha_kernel_sm80(void* o,
   // tOrAccO: (MMA,MMA_M,MMA_K)
   Tensor gO =
       local_tile(O, make_tile(BLK_M{}, HEAD_DIM{}), make_coord(m_block, _));
-  auto epilogue = [&](auto& tOrAccO) {
+  auto epilogue = [&](const auto& tOrAccO) {
     // write output to gmem
     // 1> cast output from ElementAccumulator to Element
     auto tOrO = make_tensor_like<Element>(tOrAccO);
@@ -196,7 +196,7 @@ __global__ void mha_kernel_sm80(void* o,
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
     // ((Atom,AtomNum),ATOM_M,ATOM_N)
     auto tOsO = gmem_thr_copy_O.partition_S(sO);
-    auto tOgO = gmem_thr_copy_O.partition_D(gO(_, _, 0));
+    auto tOgO = gmem_thr_copy_O.partition_D(gO(_, _, _0{}));
 
     // wait for smem copy before copy to gmem
     __syncthreads();
