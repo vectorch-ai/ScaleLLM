@@ -1,9 +1,13 @@
+include(cc_binary)
 include(cc_library)
 include(cc_test)
 
 cc_library(
   NAME 
     attention.kernel
+  HDRS
+    attention_cpu.h
+    attention_kernel_sm80.cuh
   SRCS 
     # attention.cu
   DEPS
@@ -14,8 +18,6 @@ cc_library(
 cc_test(
   NAME
     attention_kernel_test
-  HDRS
-    attention_cpu.h
   SRCS
     cute_test.cpp
     attention_cpu_test.cpp
@@ -26,6 +28,16 @@ cc_test(
     GTest::gtest_main
 )
 
+cc_binary(
+  NAME 
+    attention_bench_sm80
+  SRCS 
+    attention_bench_sm80.cu
+  DEPS
+    nvbench::nvbench
+    nvbench::main
+    :attention.kernel
+)
 
 add_subdirectory(flash_attn)
 add_subdirectory(flash_infer)

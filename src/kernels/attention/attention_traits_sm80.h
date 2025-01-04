@@ -8,25 +8,23 @@ namespace detail {
 
 // Convert fragment layout for different purposes
 // Only works for TiledMMA (64x16x16) with SM80_16x8x16_F32F16F16F32_TN
-struct FragmentConvertor {
-  // Convert fragment to rowcol layout for iterating
+struct LayoutConvertor {
+  // Convert fragment layout to rowcol layout for iterating
   // (MMA=4, MMA_M, MMA_N) => ((2, MMA_M), (2, MMA_N))
-  template <typename FragmentC>
-  CUTE_HOST_DEVICE static auto to_rowcol(FragmentC& frag) {
-    auto ol = logical_divide(frag.layout(), Shape<_2>{});
-    auto layout = make_layout(make_layout(get<0, 1>(ol), get<1>(ol)),
-                              make_layout(get<0, 0>(ol), get<2>(ol)));
-    return make_tensor(frag.data(), layout);
+  template <typename LayoutC>
+  CUTE_HOST_DEVICE static constexpr auto to_rowcol(const LayoutC& layout) {
+    auto l = logical_divide(layout, Shape<_2>{});
+    return make_layout(make_layout(get<0, 1>(l), get<1>(l)),
+                       make_layout(get<0, 0>(l), get<2>(l)));
   }
 
   // Convert fragment layout from gemm-I C to gemm-II A
-  template <typename FragmentC>
-  CUTE_HOST_DEVICE static auto to_mma_a(FragmentC& frag) {
-    // (MMA_C=4,MMA_M,MMA_N) => (MMA_A=(4, 2), MMA_M, MMA_N/2)
-    auto l = logical_divide(frag.layout(), Shape<X, X, _2>{});
-    auto layout = make_layout(
+  // (MMA_C=4,MMA_M,MMA_N) => (MMA_A=(4, 2), MMA_M, MMA_N/2)
+  template <typename LayoutC>
+  CUTE_HOST_DEVICE static constexpr auto to_mma_a(const LayoutC& layout) {
+    auto l = logical_divide(layout.layout(), Shape<X, X, _2>{});
+    return make_layout(
         make_layout(get<0>(l), get<2, 0>(l)), get<1>(l), get<2, 1>(l));
-    return make_tensor(frag.data(), layout);
   }
 };
 
@@ -50,8 +48,8 @@ struct AttentionTraitsSM80 {
                             Layout<Shape<_4, _1, _1>>,  // warp layout 4x1x1
                             Tile<_64, _16, _16>>;       // Prom Shape 64x16x16
 
-  // Fragment convertor for TiledMMA (64x16x16)
-  using FragmentConvertor = detail::FragmentConvertor;
+  // Layout convertor for TiledMMA (64x16x16)
+  using LayoutConvertor = detail::LayoutConvertor;
 
   // SMEM layout for QKV
   // Q smem: (BLK_M, K):(K, 1), k-major
@@ -104,10 +102,10 @@ struct AttentionTraitsSM80 {
       decltype(make_tiled_copy_C(SmemCopyAtomO{}, TiledMMA{}));
 
   // constexpr values for kernel launch
-  static constexpr int kSmemSize =
+  static constexpr size_t kSmemSize =
       (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) * 2) * sizeof(Element);
 
-  static constexpr int kThreadNum = size(TiledMMA{});
+  static constexpr size_t kThreadNum = size(TiledMMA{});
 };
 
 }  // namespace llm
