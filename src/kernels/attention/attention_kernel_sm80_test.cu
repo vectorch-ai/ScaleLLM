@@ -11,8 +11,8 @@ namespace {
 torch::Tensor attention_ref(
     torch::Tensor query,  // [batch_size, n_heads, q_len, head_dim]
     torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
-    torch::Tensor value   // [batch_size, n_kv_heads, kv_len, head_dim]
-) {
+    torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
+    float logits_soft_cap) {
   const auto n_heads = query.size(1);
   const auto n_kv_heads = key.size(1);
   const auto head_dim = query.size(3);
@@ -20,23 +20,31 @@ torch::Tensor attention_ref(
 
   const float sm_scale = 1.0 / sqrt(head_dim);
   // query * key => [n_heads, q_seq_len, seq_len]
-  auto scores = torch::einsum("bhqd,bhkd->bhqk", {query, key});
+  auto scores = torch::einsum("bhqd,bhkd->bhqk",
+                              {query.to(torch::kFloat), key.to(torch::kFloat)});
   // apply scale
   scores *= sm_scale;
+
+  // apply softcap if needed
+  if (logits_soft_cap != 0.0) {
+    scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
+  }
 
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
 
   // score * value => [batch_size, n_heads, q_seq_len, head_dim]
-  return torch::einsum("bhqk,bhkd->bhqd", {scores, value});
+  return torch::einsum("bhqk,bhkd->bhqd", {scores, value.to(torch::kFloat)})
+      .type_as(query);
 }
 
 torch::Tensor attention_sm80(
     torch::Tensor query,  // [batch_size, n_heads, q_len, head_dim]
     torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
-    torch::Tensor value   // [batch_size, n_kv_heads, kv_len, head_dim]
-) {
+    torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
+    float logits_soft_cap) {
   const auto batch_size = query.size(0);
+  const auto n_heads = query.size(1);
   const auto q_len = query.size(2);
   const auto kv_len = key.size(2);
   const auto head_dim = query.size(3);
@@ -50,13 +58,13 @@ torch::Tensor attention_sm80(
   constexpr int32_t kBlockM = 64;
   constexpr int32_t kBlockN = 64;
 
-  const float sm_scale = 1.0 / sqrt(head_dim) * M_LOG2E;
+  const float sm_scale = 1.0 / sqrt(head_dim);
 
   using AttentionTraits =
       AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
 
   dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size * head_dim);
+  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size * n_heads);
 
   const auto smem_size = AttentionTraits::kSmemSize;
   auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
@@ -72,7 +80,8 @@ torch::Tensor attention_sm80(
                                                kv_h_stride,
                                                q_len,
                                                kv_len,
-                                               sm_scale);
+                                               sm_scale,
+                                               logits_soft_cap);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
@@ -85,11 +94,23 @@ class AttentionKernelTest
                                                  int64_t /*kv_len*/,
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
-                                                 int64_t /*head_dim*/>> {};
+                                                 int64_t /*head_dim*/,
+                                                 float /*logits_soft_cap*/>> {
+ public:
+  void SetUp() override {
+    // Set random seed for test stability
+    torch::manual_seed(0);
+  }
+};
 
 TEST_P(AttentionKernelTest, MHA) {
-  const auto [batch_size, q_len, kv_len, n_heads, n_kv_heads, head_dim] =
-      GetParam();
+  const auto [batch_size,
+              q_len,
+              kv_len,
+              n_heads,
+              n_kv_heads,
+              head_dim,
+              logits_soft_cap] = GetParam();
 
   const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
 
@@ -100,21 +121,22 @@ TEST_P(AttentionKernelTest, MHA) {
   const auto value =
       torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
 
-  auto ref_out = attention_ref(query, key, value);
-  auto out = attention_sm80(query, key, value);
+  auto ref_out = attention_ref(query, key, value, logits_soft_cap);
+  auto out = attention_sm80(query, key, value, logits_soft_cap);
 
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
-INSTANTIATE_TEST_SUITE_P(MHA,
-                         AttentionKernelTest,
-                         ::testing::Combine(::testing::Values(1),  // batch_size
-                                            ::testing::Values(64),  // q_len
-                                            ::testing::Values(64,
-                                                              256),  // kv_len
-                                            ::testing::Values(2),    // n_heads
-                                            ::testing::Values(2),  // n_kv_heads
-                                            ::testing::Values(64)  // head_dim
-                                            ));
+INSTANTIATE_TEST_SUITE_P(
+    MHA,
+    AttentionKernelTest,
+    ::testing::Combine(::testing::Values(1, 2, 4),         // batch_size
+                       ::testing::Values(128, 256, 1024),  // q_len
+                       ::testing::Values(128, 256, 1024),  // kv_len
+                       ::testing::Values(16),              // n_heads
+                       ::testing::Values(16),              // n_kv_heads
+                       ::testing::Values(64),              // head_dim
+                       ::testing::Values(0.0, 50.0)        // logits_soft_cap
+                       ));
 
 }  // namespace llm

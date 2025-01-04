@@ -2,8 +2,12 @@ ARG BASE_IMAGE=vectorchai/scalellm_devel:cuda12.4
 FROM ${BASE_IMAGE}
 
 ARG USER=vscode
+ARG UID=1000
+ARG GID=1000
+
 # Run as non-root user
-RUN useradd -m ${USER}
+RUN groupadd --gid ${GID} ${USER} \
+    && useradd --uid ${UID} --gid ${GID} -m ${USER} --shell /bin/bash
 RUN echo ${USER} ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/${USER} \
     && chmod 0440 /etc/sudoers.d/${USER}
 
