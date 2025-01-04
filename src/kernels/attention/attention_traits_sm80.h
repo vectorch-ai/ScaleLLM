@@ -102,10 +102,10 @@ struct AttentionTraitsSM80 {
       decltype(make_tiled_copy_C(SmemCopyAtomO{}, TiledMMA{}));
 
   // constexpr values for kernel launch
-  static constexpr int kSmemSize =
+  static constexpr size_t kSmemSize =
       (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) * 2) * sizeof(Element);
 
-  static constexpr int kThreadNum = size(TiledMMA{});
+  static constexpr size_t kThreadNum = size(TiledMMA{});
 };
 
 }  // namespace llm
