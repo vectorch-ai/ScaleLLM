@@ -44,7 +44,7 @@ struct AttentionTraitsSM80 {
 
   // ******* Mainloop *******
   // TiledMMA (64x16x16) for gemm-I and gemm-II
-  using TiledMMA = TiledMMA<MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,
+  using TiledMma = TiledMMA<MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,
                             Layout<Shape<_4, _1, _1>>,  // warp layout 4x1x1
                             Tile<_64, _16, _16>>;       // Prom Shape 64x16x16
 
@@ -76,13 +76,13 @@ struct AttentionTraitsSM80 {
 
   // s2r tiled copy for gemm-I
   using SmemTiledCopyQ =
-      decltype(make_tiled_copy_A(SmemCopyAtom{}, TiledMMA{}));
+      decltype(make_tiled_copy_A(SmemCopyAtom{}, TiledMma{}));
   using SmemTiledCopyK =
-      decltype(make_tiled_copy_B(SmemCopyAtom{}, TiledMMA{}));
+      decltype(make_tiled_copy_B(SmemCopyAtom{}, TiledMma{}));
 
   // s2r tiled copy for gemm-II
   using SmemTiledCopyVT =
-      decltype(make_tiled_copy_B(SmemCopyAtomTransposed{}, TiledMMA{}));
+      decltype(make_tiled_copy_B(SmemCopyAtomTransposed{}, TiledMma{}));
 
   // ******* Epilogue *******
 
@@ -99,13 +99,13 @@ struct AttentionTraitsSM80 {
   // r2s tiled copy for O
   using SmemCopyAtomO = Copy_Atom<DefaultCopy, Element>;
   using SmemTiledCopyO =
-      decltype(make_tiled_copy_C(SmemCopyAtomO{}, TiledMMA{}));
+      decltype(make_tiled_copy_C(SmemCopyAtomO{}, TiledMma{}));
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
       (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) * 2) * sizeof(Element);
 
-  static constexpr size_t kThreadNum = size(TiledMMA{});
+  static constexpr size_t kThreadNum = size(TiledMma{});
 };
 
 }  // namespace llm
