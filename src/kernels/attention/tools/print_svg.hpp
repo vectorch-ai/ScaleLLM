@@ -122,11 +122,6 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledCopy<Args...>& copy) {
 
   // header
   builder.print_header(os);
-  // Commented prints
-  // printf("%% LayoutS: "); print(S);  printf("\n");
-  // printf("%% ThrIDS : "); print(TS); printf("\n");
-  // printf("%% LayoutD: "); print(D);  printf("\n");
-  // printf("%% ThrIDD : "); print(TD); printf("\n\n");
 
   // S starting at (1, 1)
   builder.print_comment(os, "S starting at (0, 0)");
@@ -183,14 +178,13 @@ CUTE_HOST void print_svg(std::ostream& os,
                          LayoutS const& smem_layout,
                          const TiledCopyGmem& g2s_copy,
                          const TiledCopySmem& s2r_copy) {
-  // TODO: add layout to SVG
-  auto layout = get_nonswizzle_portion(smem_layout.layout());
+  // auto layout = get_nonswizzle_portion(smem_layout.layout());
 
   // print smem layout with g2s_copy
   const int cell_width = 20;
   const int cell_height = 20;
-  const int num_rows = size<0>(layout) * 2 + 3;  // M + M + 3
-  const int num_cols = size<1>(layout) * 2 + 3;  // N + N + 3
+  const int num_rows = size<0>(smem_layout) * 2 + 3;  // M + M + 3
+  const int num_cols = size<1>(smem_layout) * 2 + 3;  // N + N + 3
 
   SVGBuilder builder(num_rows, num_cols, cell_width, cell_height);
 
@@ -199,50 +193,50 @@ CUTE_HOST void print_svg(std::ostream& os,
 
   // print smem layout with g2s_copy
   auto [D, TD] = g2s_copy.get_layoutD_MN();  // (m,n)->(tid,vid), tid->thr_idx
-  for (int m = 0; m < size<0>(layout); ++m) {
-    for (int n = 0; n < size<1>(layout); ++n) {
+  for (int m = 0; m < size<0>(smem_layout); ++m) {
+    for (int n = 0; n < size<1>(smem_layout); ++n) {
       int thrid = D(m % size<0>(D), n % size<1>(D)) % size(TD);
       int thr_idx = TD(thrid);
-      int offset = smem_layout(m, n);
-      // color coded by lane idx, (32 banks => 8 colors)
+      int idx = smem_layout(m, n);
+      int lane_idx = idx % 32;
 
       builder.print_cell(os,
                          m + 1,
                          n + 1,
                          thr_idx,
-                         std::to_string(offset),
-                         kColorMap[(offset % 32) / 4]);
+                         std::to_string(idx),
+                         kColorMap[lane_idx / 4]);
     }
   }
-  for (int m = 0; m < size<0>(layout); ++m) {
+  for (int m = 0; m < size<0>(smem_layout); ++m) {
     builder.print_label(os, m + 1, 0, m);
   }
-  for (int n = 0; n < size<1>(layout); ++n) {
+  for (int n = 0; n < size<1>(smem_layout); ++n) {
     builder.print_label(os, 0, n + 1, n);
   }
 
   // print smem layout with s2r_copy
   auto [S, TS] = s2r_copy.get_layoutS_MN();  // (m,n)->(tid,vid), tid->thr_idx
-  for (int m = 0; m < size<0>(layout); ++m) {
-    for (int n = 0; n < size<1>(layout); ++n) {
+  for (int m = 0; m < size<0>(smem_layout); ++m) {
+    for (int n = 0; n < size<1>(smem_layout); ++n) {
       int thrid = S(m % size<0>(S), n % size<1>(S)) % size(TS);
-      int thr_idx = TD(thrid);
-      int offset = smem_layout(m, n);
-      // color coded by lane idx, (32 banks => 8 colors)
+      int thr_idx = TS(thrid);
+      int idx = smem_layout(m, n);
+      int lane_idx = idx % 32;
 
       builder.print_cell(os,
                          m + 1,
-                         n + size<1>(layout) + 3,
+                         n + size<1>(smem_layout) + 3,
                          thr_idx,
-                         std::to_string(offset),
-                         kColorMap[(offset % 32) / 4]);
+                         std::to_string(idx),
+                         kColorMap[lane_idx / 4]);
     }
   }
-  for (int m = 0; m < size<0>(layout); ++m) {
-    builder.print_label(os, m + 1, size<1>(layout) + 2, m);
+  for (int m = 0; m < size<0>(smem_layout); ++m) {
+    builder.print_label(os, m + 1, size<1>(smem_layout) + 2, m);
   }
-  for (int n = 0; n < size<1>(layout); ++n) {
-    builder.print_label(os, 0, n + size<1>(layout) + 3, n);
+  for (int n = 0; n < size<1>(smem_layout); ++n) {
+    builder.print_label(os, 0, n + size<1>(smem_layout) + 3, n);
   }
 
   // footer
