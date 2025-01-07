@@ -39,14 +39,17 @@ class SVGBuilder {
                    int m,
                    int n,
                    int val,
+                   const char* text_color = "blue",
                    int font_size = 12) const {
     assert(m < num_rows_);
     assert(n < num_cols_);
     os << absl::StreamFormat(
         "<text x=\"%d\" y=\"%d\" text-anchor=\"middle\" "
-        "alignment-baseline=\"central\" font-size=\"%d\">%d</text>\n",
+        "alignment-baseline=\"central\" stroke=\"%s\" "
+        "font-size=\"%d\">%d</text>\n",
         n * cell_width_ + cell_width_ / 2,
         m * cell_height_ + cell_height_ / 2,
+        text_color,
         font_size,
         val);
   }
@@ -87,6 +90,10 @@ class SVGBuilder {
         m * cell_height_ + cell_height_ * 3 / 4,
         font_size,
         val);
+  }
+
+  void print_comment(std::ostream& os, const std::string& comment) const {
+    os << absl::StreamFormat("<!-- %s -->\n", comment);
   }
 };
 
