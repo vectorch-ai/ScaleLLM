@@ -7,8 +7,6 @@
 #include <ostream>
 #include <string>
 
-#include "cute/swizzle_layout.hpp"
-#include "cute/underscore.hpp"
 #include "svg_builder.hpp"
 
 namespace cute {
@@ -178,9 +176,6 @@ CUTE_HOST void print_svg(std::ostream& os,
                          LayoutS const& smem_layout,
                          const TiledCopyGmem& g2s_copy,
                          const TiledCopySmem& s2r_copy) {
-  // auto layout = get_nonswizzle_portion(smem_layout.layout());
-
-  // print smem layout with g2s_copy
   const int cell_width = 20;
   const int cell_height = 20;
   const int num_rows = size<0>(smem_layout) * 2 + 3;  // M + M + 3
