@@ -31,7 +31,7 @@ __global__ void mha_kernel_sm80(void* o,
   using BLK_K = typename Traits::BLK_K;
   using HEAD_DIM = typename Traits::HEAD_DIM;
 
-  using TiledMMA = typename Traits::TiledMMA;
+  using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
@@ -44,7 +44,7 @@ __global__ void mha_kernel_sm80(void* o,
 
   using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
   using SmemTiledCopyK = typename Traits::SmemTiledCopyK;
-  using SmemTiledCopyVT = typename Traits::SmemTiledCopyVT;
+  using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
   const auto m_block = blockIdx.x;
@@ -142,7 +142,7 @@ __global__ void mha_kernel_sm80(void* o,
     cute::copy(gmem_tiled_copy_QKV, tVgV, tVsV);
   };
 
-  TiledMMA tiled_mma;
+  TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(tidx);
   // GEMM-I: S = Q@K.T
   auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA,MMA_M,MMA_K)
@@ -185,7 +185,7 @@ __global__ void mha_kernel_sm80(void* o,
   // GEMM-II: O = softmax(S)@V
   auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA,MMA_K,MMA_N)
 
-  SmemTiledCopyVT smem_tiled_copy_Vt;
+  SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
   auto tOsVt = smem_thr_copy_Vt.partition_S(sVt);
   auto tOrVt_copy_view = smem_thr_copy_Vt.retile_D(tOrVt);
