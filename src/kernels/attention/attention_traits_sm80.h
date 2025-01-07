@@ -53,13 +53,23 @@ struct AttentionTraitsSM80 {
 
   // SMEM layout for QKV
   // Q smem: (BLK_M, K):(K, 1), k-major
-  using SmemLayoutQ = Layout<Shape<BLK_M, HEAD_DIM>, Stride<HEAD_DIM, _1>>;
+  using SmemLayoutQ = decltype(composition(
+      Swizzle<3, 3, 3>{},
+      Layout<Shape<BLK_M, HEAD_DIM>, Stride<HEAD_DIM, _1>>{}));
 
   // KV smem: (BLK_N, K):(K, 1), k-major
-  using SmemLayoutKV = Layout<Shape<BLK_N, HEAD_DIM>, Stride<HEAD_DIM, _1>>;
+  using SmemLayoutK = decltype(composition(
+      Swizzle<3, 3, 3>{},
+      Layout<Shape<BLK_N, HEAD_DIM>, Stride<HEAD_DIM, _1>>{}));
+
+  using SmemLayoutV = decltype(composition(
+      Swizzle<3, 3, 3>{},
+      Layout<Shape<BLK_N, HEAD_DIM>, Stride<HEAD_DIM, _1>>{}));
 
   // V^T smem: (K, BLK_N):(1, K), k-major
-  using SmemLayoutVt = Layout<Shape<HEAD_DIM, BLK_N>, Stride<_1, HEAD_DIM>>;
+  using SmemLayoutVt = decltype(composition(
+      Swizzle<3, 3, 3>{},
+      Layout<Shape<HEAD_DIM, BLK_N>, Stride<_1, HEAD_DIM>>{}));
 
   // Tiled copy for QKV
   // s2r CopyAtom for QK: 16x16
@@ -103,7 +113,8 @@ struct AttentionTraitsSM80 {
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
-      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) * 2) * sizeof(Element);
+      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutK{}) + cosize(SmemLayoutV{})) *
+      sizeof(Element);
 
   static constexpr size_t kThreadNum = size(TiledMma{});
 };

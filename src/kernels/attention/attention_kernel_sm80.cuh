@@ -35,8 +35,8 @@ __global__ void mha_kernel_sm80(void* o,
   using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
-  using SmemLayoutK = typename Traits::SmemLayoutKV;
-  using SmemLayoutV = typename Traits::SmemLayoutKV;
+  using SmemLayoutK = typename Traits::SmemLayoutK;
+  using SmemLayoutV = typename Traits::SmemLayoutV;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
   using GmemTiledCopyQKV = typename Traits::GmemTiledCopyQKV;
@@ -110,6 +110,8 @@ __global__ void mha_kernel_sm80(void* o,
   // Tensor for V^t; used in GEMM-II.
   // (BLK_K, BLK_N)
   Tensor sVt = make_tensor(make_smem_ptr(v_smem), SmemLayoutVt{});
+  Tensor sVtNoSwizzle = make_tensor(make_smem_ptr(v_smem),
+                                    get_nonswizzle_portion(SmemLayoutVt{}));
 
   // Tiled Copy
   // g2s tiled copy for qkv
@@ -183,7 +185,7 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // GEMM-II: O = softmax(S)@V
-  auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA,MMA_K,MMA_N)
+  auto tOrVt = thr_mma.partition_fragment_B(sVtNoSwizzle);  // (MMA,MMA_K,MMA_N)
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
