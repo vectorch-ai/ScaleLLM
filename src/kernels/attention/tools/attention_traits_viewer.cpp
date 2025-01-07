@@ -14,8 +14,8 @@ void print_attn_traits() {
   using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
-  using SmemLayoutK = typename Traits::SmemLayoutKV;
-  using SmemLayoutV = typename Traits::SmemLayoutKV;
+  using SmemLayoutK = typename Traits::SmemLayoutK;
+  using SmemLayoutV = typename Traits::SmemLayoutV;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
 
