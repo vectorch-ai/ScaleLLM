@@ -5,13 +5,13 @@
 #include <cute/atom/mma_atom.hpp>
 #include <cute/config.hpp>
 #include <ostream>
+#include <string>
 
+#include "cute/swizzle_layout.hpp"
+#include "cute/underscore.hpp"
 #include "svg_builder.hpp"
 
-namespace llm {
-using namespace cute;
-
-namespace detail {
+namespace cute {
 
 static const char* kColorMap[8] = {"rgb(175,175,255)",
                                    "rgb(175,255,175)",
@@ -50,8 +50,12 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledMMA<Args...>& mma) {
       int val_idx = C(m, n) / size(TC);
       int thr_idx = TC(thrid);
 
-      builder.print_cell(
-          os, m + base, n + base, thr_idx, val_idx, kColorMap[thr_idx % 8]);
+      builder.print_cell(os,
+                         m + base,
+                         n + base,
+                         thr_idx,
+                         absl::StrFormat("V%d", val_idx),
+                         kColorMap[thr_idx % 8]);
     }
   }
 
@@ -68,8 +72,12 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledMMA<Args...>& mma) {
       int thrid = A(m, k) % size(TA);
       int val_idx = A(m, k) / size(TA);
       int thr_idx = TA(thrid);
-      builder.print_cell(
-          os, m + base, k + 1, thr_idx, val_idx, kColorMap[thr_idx % 8]);
+      builder.print_cell(os,
+                         m + base,
+                         k + 1,
+                         thr_idx,
+                         absl::StrFormat("V%d", val_idx),
+                         kColorMap[thr_idx % 8]);
     }
   }
 
@@ -87,8 +95,12 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledMMA<Args...>& mma) {
       int val_idx = B(n, k) / size(TB);
       int thr_idx = TB(thrid);
 
-      builder.print_cell(
-          os, k + 1, n + base, thr_idx, val_idx, kColorMap[thr_idx % 8]);
+      builder.print_cell(os,
+                         k + 1,
+                         n + base,
+                         thr_idx,
+                         absl::StrFormat("V%d", val_idx),
+                         kColorMap[thr_idx % 8]);
     }
   }
 
@@ -104,7 +116,7 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledCopy<Args...>& copy) {
   const int cell_width = 20;
   const int cell_height = 20;
   const int num_rows = size<0>(S) + size<0>(D) + 3;  // M + M + 3
-  const int num_cols = size<1>(S) + size<1>(D) + 4;  // N + N + 3
+  const int num_cols = size<1>(S) + size<1>(D) + 3;  // N + N + 3
 
   SVGBuilder builder(num_rows, num_cols, cell_width, cell_height);
 
@@ -124,8 +136,12 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledCopy<Args...>& copy) {
       int val_idx = S(m, n) / size(TS);
       int thr_idx = TS(thrid);
 
-      builder.print_cell(
-          os, m + 1, n + 1, thr_idx, val_idx, kColorMap[thr_idx % 8]);
+      builder.print_cell(os,
+                         m + 1,
+                         n + 1,
+                         thr_idx,
+                         absl::StrFormat("V%d", val_idx),
+                         kColorMap[thr_idx % 8]);
     }
   }
   for (int m = 0; m < cute::size<0>(S); ++m) {
@@ -147,7 +163,7 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledCopy<Args...>& copy) {
                          m + 1,
                          n + size<1>(S) + 3,
                          thr_idx,
-                         val_idx,
+                         absl::StrFormat("V%d", val_idx),
                          kColorMap[thr_idx % 8]);
     }
   }
@@ -162,32 +178,75 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledCopy<Args...>& copy) {
   builder.print_footer(os);
 }
 
-template <class Shape, class Stride>
+template <class LayoutS, class TiledCopyGmem, class TiledCopySmem>
 CUTE_HOST void print_svg(std::ostream& os,
-                         Layout<Shape, Stride> const& layout) {
+                         LayoutS const& smem_layout,
+                         const TiledCopyGmem& g2s_copy,
+                         const TiledCopySmem& s2r_copy) {
   // TODO: add layout to SVG
+  auto layout = get_nonswizzle_portion(smem_layout.layout());
+
+  // print smem layout with g2s_copy
+  const int cell_width = 20;
+  const int cell_height = 20;
+  const int num_rows = size<0>(layout) * 2 + 3;  // M + M + 3
+  const int num_cols = size<1>(layout) * 2 + 3;  // N + N + 3
+
+  SVGBuilder builder(num_rows, num_cols, cell_width, cell_height);
+
+  // header
+  builder.print_header(os);
+
+  // print smem layout with g2s_copy
+  auto [D, TD] = g2s_copy.get_layoutD_MN();  // (m,n)->(tid,vid), tid->thr_idx
+  for (int m = 0; m < size<0>(layout); ++m) {
+    for (int n = 0; n < size<1>(layout); ++n) {
+      int thrid = D(m % size<0>(D), n % size<1>(D)) % size(TD);
+      int thr_idx = TD(thrid);
+      int offset = smem_layout(m, n);
+      // color coded by lane idx, (32 banks => 8 colors)
+
+      builder.print_cell(os,
+                         m + 1,
+                         n + 1,
+                         thr_idx,
+                         std::to_string(offset),
+                         kColorMap[(offset % 32) / 4]);
+    }
+  }
+  for (int m = 0; m < size<0>(layout); ++m) {
+    builder.print_label(os, m + 1, 0, m);
+  }
+  for (int n = 0; n < size<1>(layout); ++n) {
+    builder.print_label(os, 0, n + 1, n);
+  }
+
+  // print smem layout with s2r_copy
+  auto [S, TS] = s2r_copy.get_layoutS_MN();  // (m,n)->(tid,vid), tid->thr_idx
+  for (int m = 0; m < size<0>(layout); ++m) {
+    for (int n = 0; n < size<1>(layout); ++n) {
+      int thrid = S(m % size<0>(S), n % size<1>(S)) % size(TS);
+      int thr_idx = TD(thrid);
+      int offset = smem_layout(m, n);
+      // color coded by lane idx, (32 banks => 8 colors)
+
+      builder.print_cell(os,
+                         m + 1,
+                         n + size<1>(layout) + 3,
+                         thr_idx,
+                         std::to_string(offset),
+                         kColorMap[(offset % 32) / 4]);
+    }
+  }
+  for (int m = 0; m < size<0>(layout); ++m) {
+    builder.print_label(os, m + 1, size<1>(layout) + 2, m);
+  }
+  for (int n = 0; n < size<1>(layout); ++n) {
+    builder.print_label(os, 0, n + size<1>(layout) + 3, n);
+  }
+
+  // footer
+  builder.print_footer(os);
 }
 
-}  // namespace detail
-
-template <class... Args>
-CUTE_HOST std::ostream& operator<<(std::ostream& os,
-                                   const MMA_Atom<Args...>& mma_atom) {
-  return os << make_tiled_mma(mma_atom);
-}
-
-template <class... Args>
-CUTE_HOST std::ostream& operator<<(std::ostream& os,
-                                   const TiledMMA<Args...>& mma) {
-  detail::print_svg(os, mma);
-  return os;
-}
-
-template <class... Args>
-CUTE_HOST std::ostream& operator<<(std::ostream& os,
-                                   const TiledCopy<Args...>& copy) {
-  detail::print_svg(os, copy);
-  return os;
-}
-
-}  // namespace llm
+}  // namespace cute

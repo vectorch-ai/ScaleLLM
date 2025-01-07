@@ -44,7 +44,7 @@ __global__ void mha_kernel_sm80(void* o,
 
   using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
   using SmemTiledCopyK = typename Traits::SmemTiledCopyK;
-  using SmemTiledCopyVT = typename Traits::SmemTiledCopyVT;
+  using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
   const auto m_block = blockIdx.x;
@@ -185,7 +185,7 @@ __global__ void mha_kernel_sm80(void* o,
   // GEMM-II: O = softmax(S)@V
   auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA,MMA_K,MMA_N)
 
-  SmemTiledCopyVT smem_tiled_copy_Vt;
+  SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
   auto tOsVt = smem_thr_copy_Vt.partition_S(sVt);
   auto tOrVt_copy_view = smem_thr_copy_Vt.retile_D(tOrVt);

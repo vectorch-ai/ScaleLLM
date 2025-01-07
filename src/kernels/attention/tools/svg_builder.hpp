@@ -6,7 +6,7 @@
 #include <cute/config.hpp>
 #include <ostream>
 
-namespace llm {
+namespace cute {
 
 class SVGBuilder {
   int num_rows_;
@@ -58,7 +58,7 @@ class SVGBuilder {
                   int m,
                   int n,
                   int trd_idx,
-                  int val,
+                  const std::string& val,
                   const char* color,
                   int font_size = 8) const {
     assert(m < num_rows_);
@@ -85,7 +85,7 @@ class SVGBuilder {
     // draw value index
     os << absl::StreamFormat(
         "<text x=\"%d\" y=\"%d\" text-anchor=\"middle\" "
-        "alignment-baseline=\"central\" font-size=\"%d\">V%d</text>\n",
+        "alignment-baseline=\"central\" font-size=\"%d\">%s</text>\n",
         n * cell_width_ + cell_width_ / 2,
         m * cell_height_ + cell_height_ * 3 / 4,
         font_size,
@@ -97,4 +97,4 @@ class SVGBuilder {
   }
 };
 
-}  // namespace llm
+}  // namespace cute

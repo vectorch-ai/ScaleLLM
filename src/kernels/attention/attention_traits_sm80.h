@@ -81,7 +81,7 @@ struct AttentionTraitsSM80 {
       decltype(make_tiled_copy_B(SmemCopyAtom{}, TiledMma{}));
 
   // s2r tiled copy for gemm-II
-  using SmemTiledCopyVT =
+  using SmemTiledCopyVt =
       decltype(make_tiled_copy_B(SmemCopyAtomTransposed{}, TiledMma{}));
 
   // ******* Epilogue *******

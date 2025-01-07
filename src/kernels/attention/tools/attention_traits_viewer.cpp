@@ -7,34 +7,84 @@
 using namespace cute;
 using namespace llm;
 
-template <typename Item>
-void save_svg(const Item& item, const std::string& filename) {
-  std::ofstream os(filename);
-  os << item;
-}
-
-template <typename AttentionTraits>
+template <typename Traits>
 void print_attn_traits() {
+  // type alias
+  using TiledMma = typename Traits::TiledMma;
+  using Layout = typename Traits::LayoutConvertor;
+
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutK = typename Traits::SmemLayoutKV;
+  using SmemLayoutV = typename Traits::SmemLayoutKV;
+  using SmemLayoutVt = typename Traits::SmemLayoutVt;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+
+  using GmemTiledCopyQKV = typename Traits::GmemTiledCopyQKV;
+  using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
+
+  using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
+  using SmemTiledCopyK = typename Traits::SmemTiledCopyK;
+  using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
+  using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
+
   // print tiled mma
-  save_svg(typename AttentionTraits::TiledMma{}, "tiled_mma.svg");
+  {
+    std::ofstream os("tiled_mma.svg");
+    print_svg(os, TiledMma{});
+  }
 
   // print g2s tiled copy Q
-  save_svg(typename AttentionTraits::GmemTiledCopyQKV{}, "g2s_tiled_copy_q.svg");
+  {
+    std::ofstream os("g2s_tiled_copy_q.svg");
+    print_svg(os, GmemTiledCopyQKV{});
+  }
+  // print s2g tiled copy O
+  {
+    std::ofstream os("s2g_tiled_copy_o.svg");
+    print_svg(os, GmemTiledCopyO{});
+  }
 
   // print s2r tiled copy Q
-  save_svg(typename AttentionTraits::SmemTiledCopyQ{}, "s2r_tiled_copy_q.svg");
+  {
+    std::ofstream os("s2r_tiled_copy_q.svg");
+    print_svg(os, SmemTiledCopyQ{});
+  }
   // print s2r tiled copy K
-  save_svg(typename AttentionTraits::SmemTiledCopyK{}, "s2r_tiled_copy_k.svg");
+  {
+    std::ofstream os("s2r_tiled_copy_k.svg");
+    print_svg(os, SmemTiledCopyK{});
+  }
   // print s2r tiled copy Vt
-  save_svg(typename AttentionTraits::SmemTiledCopyVT{},
-           "s2r_tiled_copy_vt.svg");
+  {
+    std::ofstream os("s2r_tiled_copy_vt.svg");
+    print_svg(os, SmemTiledCopyVt{});
+  }
+  // print r2s tiled copy O
+  {
+    std::ofstream os("r2s_tiled_copy_o.svg");
+    print_svg(os, SmemTiledCopyO{});
+  }
 
-  // TODO: print smem layout Q
-  // save_svg(typename AttentionTraits::SmemLayoutQ{}, "smem_layout_q.svg");
+  // print smem layout Q
+  {
+    std::ofstream os("smem_layout_q.svg");
+    print_svg(os, SmemLayoutQ{}, GmemTiledCopyQKV{}, SmemTiledCopyQ{});
+  }
   // print smem layout KV
-  // save_svg(typename AttentionTraits::SmemLayoutKV{}, "smem_layout_kv.svg");
+  {
+    std::ofstream os("smem_layout_k.svg");
+    print_svg(os, SmemLayoutK{}, GmemTiledCopyQKV{}, SmemTiledCopyK{});
+  }
   // print smem layout Vt
-  // save_svg(typename AttentionTraits::SmemLayoutVt{}, "smem_layout_vt.svg");
+  {
+    std::ofstream os("smem_layout_vt.svg");
+    print_svg(os, SmemLayoutVt{}, GmemTiledCopyQKV{}, SmemTiledCopyVt{});
+  }
+  // print smem layout O
+  {
+    std::ofstream os("smem_layout_o.svg");
+    print_svg(os, SmemLayoutO{}, SmemTiledCopyO{}, GmemTiledCopyO{});
+  }
 }
 
 int main(int argc, char** argv) {
