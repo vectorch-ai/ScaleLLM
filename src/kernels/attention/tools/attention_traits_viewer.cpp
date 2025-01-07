@@ -78,7 +78,7 @@ void print_attn_traits() {
   // print smem layout Vt
   {
     std::ofstream os("smem_layout_vt.svg");
-    print_svg(os, SmemLayoutVt{}, GmemTiledCopyQKV{}, SmemTiledCopyVt{});
+    print_svg(os, SmemLayoutV{}, SmemLayoutVt{}, GmemTiledCopyQKV{}, SmemTiledCopyVt{});
   }
   // print smem layout O
   {
