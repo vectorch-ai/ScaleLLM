@@ -21,7 +21,9 @@ __global__ void mha_kernel_sm80(void* o,
                                 int64_t q_len,
                                 int64_t kv_len,
                                 float sm_scale,
-                                float logits_soft_cap) {
+                                float logits_soft_cap,
+                                int left_window_size = -1,
+                                float alibi_slope = 0.0f) {
   using namespace cute;
 
   // type alias
@@ -33,6 +35,7 @@ __global__ void mha_kernel_sm80(void* o,
 
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
+  using Mask = typename Traits::Mask;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -110,8 +113,6 @@ __global__ void mha_kernel_sm80(void* o,
   // Tensor for V^t; used in GEMM-II.
   // (BLK_K, BLK_N)
   Tensor sVt = make_tensor(make_smem_ptr(v_smem), SmemLayoutVt{});
-  Tensor sVtNoSwizzle = make_tensor(make_smem_ptr(v_smem),
-                                    get_nonswizzle_portion(SmemLayoutVt{}));
 
   // Tiled Copy
   // g2s tiled copy for qkv
@@ -185,6 +186,8 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // GEMM-II: O = softmax(S)@V
+  auto sVtNoSwizzle = make_tensor(make_smem_ptr(v_smem),
+                                  get_nonswizzle_portion(SmemLayoutVt{}));
   auto tOrVt = thr_mma.partition_fragment_B(sVtNoSwizzle);  // (MMA,MMA_K,MMA_N)
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
@@ -271,6 +274,7 @@ __global__ void mha_kernel_sm80(void* o,
   // RowsPerThread = #rows_per_MMA * #MMA_M
   constexpr int RowsPerThread = 2 * size<1>(tOrAccO);
   OnlineSoftmax<RowsPerThread> softmax(sm_scale);
+  Mask mask(q_len, kv_len, left_window_size, alibi_slope);
 
   const int n_block_min = 0;
   const int n_block_max = cute::ceil_div(kv_len, BLK_N{});
@@ -298,6 +302,10 @@ __global__ void mha_kernel_sm80(void* o,
     if (logits_soft_cap != 0.0) {
       apply_logits_soft_cap(tSrAccS);
     }
+
+    // apply mask for block (m_block, ni)
+    mask.apply</*Local=*/false, /*Alibi=*/false>(
+        tSrAccS_rc_view, m_block, ni, tidx);
 
     // apply softmax and rescale
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);

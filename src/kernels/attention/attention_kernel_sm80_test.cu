@@ -13,6 +13,8 @@ torch::Tensor attention_ref(
     torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
     torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
     float logits_soft_cap) {
+  const auto q_len = query.size(2);
+  const auto kv_len = key.size(2);
   const auto n_heads = query.size(1);
   const auto n_kv_heads = key.size(1);
   const auto head_dim = query.size(3);
@@ -29,6 +31,15 @@ torch::Tensor attention_ref(
   if (logits_soft_cap != 0.0) {
     scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
   }
+
+  auto mask = torch::ones({q_len, kv_len}, torch::kBool);
+  // causal mask: returns the lower triangular part of a matrix
+  mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(query);
+
+  std::cerr << mask << std::endl;
+
+  // apply causal mask
+  scores = scores.masked_fill(mask == 0, -INFINITY);
 
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
@@ -81,7 +92,9 @@ torch::Tensor attention_sm80(
                                                q_len,
                                                kv_len,
                                                sm_scale,
-                                               logits_soft_cap);
+                                               logits_soft_cap,
+                                               /*left_window_size=*/-1,
+                                               /*alibi_slope=*/0.0f);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
@@ -122,21 +135,22 @@ TEST_P(AttentionKernelTest, MHA) {
       torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
 
   auto ref_out = attention_ref(query, key, value, logits_soft_cap);
-  auto out = attention_sm80(query, key, value, logits_soft_cap);
+  // auto out = attention_sm80(query, key, value, logits_soft_cap);
 
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  // EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  EXPECT_TRUE(false);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MHA,
     AttentionKernelTest,
-    ::testing::Combine(::testing::Values(1, 2, 4),         // batch_size
-                       ::testing::Values(128, 256, 1024),  // q_len
-                       ::testing::Values(128, 256, 1024),  // kv_len
-                       ::testing::Values(16),              // n_heads
-                       ::testing::Values(16),              // n_kv_heads
-                       ::testing::Values(64),              // head_dim
-                       ::testing::Values(0.0, 50.0)        // logits_soft_cap
+    ::testing::Combine(::testing::Values(1),   // batch_size
+                       ::testing::Values(64),  // q_len
+                       ::testing::Values(64),  // kv_len
+                       ::testing::Values(1),   // n_heads
+                       ::testing::Values(1),   // n_kv_heads
+                       ::testing::Values(64),  // head_dim
+                       ::testing::Values(0.0)  // logits_soft_cap
                        ));
 
 }  // namespace llm

@@ -63,7 +63,9 @@ void attention_bench_sm80(nvbench::state& state) {
         q_len,
         kv_len,
         sm_scale,
-        logits_soft_cap);
+        logits_soft_cap,
+        /*left_window_size=*/-1,
+        /*alibi_slope=*/0.0f);
   });
 }
 
