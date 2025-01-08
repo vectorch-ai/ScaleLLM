@@ -44,10 +44,10 @@ void attention_bench_sm80(nvbench::state& state) {
       AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
 
   dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid(q_len / kBlockM, batch_size * n_heads);
+  dim3 grid((q_len + kBlockM - 1) / kBlockM, n_heads, batch_size);
 
   const auto smem_size = AttentionTraits::kSmemSize;
-  auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
+  auto attention_kernel = mha_kernel_sm80<AttentionTraits, /*Alibi=*/false>;
 
   state.exec([&](nvbench::launch& launch) {
     cudaFuncSetAttribute(attention_kernel,

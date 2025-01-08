@@ -11,7 +11,7 @@
 
 namespace llm {
 
-template <typename Traits>
+template <typename Traits, bool Alibi>
 __global__ void mha_kernel_sm80(void* o,
                                 const void* q,
                                 const void* k,
@@ -51,7 +51,10 @@ __global__ void mha_kernel_sm80(void* o,
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
   const auto m_block = blockIdx.x;
-  const auto base_id = blockIdx.y;
+  const auto batch_idx = blockIdx.y;
+  const auto head_idx = blockIdx.z;
+  const auto n_heads = gridDim.z;
+
   const auto tidx = threadIdx.x;
 
   // preprocess input parameters
@@ -78,10 +81,16 @@ __global__ void mha_kernel_sm80(void* o,
   // use exp2f instead of expf for better performance
   sm_scale *= M_LOG2E;
 
+  // adjust sliding window size
+  if (left_window_size < 0) {
+    left_window_size = kv_len;
+  }
+
   // ProblemShape
   // TODO: support non-contiguous layout
   // (q_len, head_dim)
-  const auto offset = base_id * h_stride;
+  const auto base_idx = batch_idx * n_heads + head_idx;
+  const auto offset = base_idx * h_stride;
   auto Q = make_tensor(make_gmem_ptr((Element*)q + offset),
                        make_shape(q_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
@@ -90,7 +99,7 @@ __global__ void mha_kernel_sm80(void* o,
                        make_stride(HEAD_DIM{}, _1{}));
 
   // (kv_len, head_dim)
-  const auto kv_offset = base_id * kv_h_stride;
+  const auto kv_offset = base_idx * kv_h_stride;
   auto K = make_tensor(make_gmem_ptr((Element*)k + kv_offset),
                        make_shape(kv_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
@@ -304,8 +313,7 @@ __global__ void mha_kernel_sm80(void* o,
     }
 
     // apply mask for block (m_block, ni)
-    mask.apply</*Local=*/false, /*Alibi=*/false>(
-        tSrAccS_rc_view, m_block, ni, tidx);
+    mask.apply<Alibi>(tSrAccS_rc_view, m_block, ni, tidx);
 
     // apply softmax and rescale
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);

@@ -46,13 +46,13 @@ struct Mask {
         alibi_slope_(alibi_slope) {}
 
   // rAccS: ((2, MMA_M), (2, MMA_N))
-  template <bool Local, bool Alibi, typename FragmentS>
+  template <bool Alibi, typename FragmentS>
   CUTE_HOST_DEVICE void apply(FragmentS& rAccS,
                               int m_block,
                               int n_block,
                               int tidx) const {
     // TODO: support other layout
-    // Warp layout 4x1, TiledMMA: 64x16x16
+    // Warp layout 4x1, TiledMMA: 64x16x16, MMAAtom: 16x8x16
     // each warp (32 threads, 4 threads per row) processes 16 rows
     const int warp_idx_x = tidx / 32;
     const int warp_idx_y = 0;
@@ -62,35 +62,33 @@ struct Mask {
         n_block * kBlockN + warp_idx_y * 16 + (lane_id % 4) * 2;
 
     CUTE_UNROLL
-    for (int mi = 0; mi < size<0, 1>(rAccS); ++mi) {  //  MMA_M=1
+    for (int mi = 0; mi < size<0, 1>(rAccS); ++mi) {  //  MMA_M
       const int m_base = row_base + mi * 64;
       CUTE_UNROLL
-      for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2
-        // m inner stride = 8
-        const int m = m_base + i * 8;
-
-        // col boundaries: [left, right)
-        const int diagonal = m + kv_len_ - q_len_;
-        const int left = std::max(0, diagonal - left_window_size_);
-        const int right = std::min(kv_len_, diagonal + 1);
-
+      for (int nj = 0; nj < size<1, 1>(rAccS); ++nj) {  // MMA_N
+        // n outer stride = 8
+        const auto n_base = col_base + nj * 8;
         CUTE_UNROLL
-        for (int nj = 0; nj < size<1, 1>(rAccS); ++nj) {  // MMA_N=2
-          // n outer stride = 8
-          const auto n_base = col_base + nj * 8;
+        for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2
+          // m inner stride = 8
+          const int m = m_base + i * 8;
+
+          // boundaries: [left, right)
+          // causal: [0,                            kv_len_)
+          // local:  [diagonal - left_window_size_, diagonal + 1)
+          const int diagonal = m + kv_len_ - q_len_;
+          const int left = std::max(0, diagonal - left_window_size_);
+          const int right = std::min(kv_len_, diagonal + 1);
+
           CUTE_UNROLL
           for (int j = 0; j < size<1, 0>(rAccS); ++j) {  // 2
             // n inner stride = 1
             const int n = n_base + j;
 
-            // check if n is out of range [left, right)
-            bool should_mask_out = (n >= right);
-            if constexpr (Local) {
-              should_mask_out |= (n < left);
-            }
-
+            // check if n is out of boundary [left, right)
+            const bool out_of_boundary = n < left || n >= right;
             // Apply masks: alibi, local, causal
-            if (should_mask_out) {
+            if (out_of_boundary) {
               rAccS(make_coord(i, mi), make_coord(j, nj)) = -INFINITY;
             } else {
               if constexpr (Alibi) {
