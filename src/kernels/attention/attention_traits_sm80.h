@@ -51,13 +51,18 @@ struct Mask {
                               int m_block,
                               int n_block,
                               int tidx) const {
+    // TODO: support other layout
+    // Warp layout 4x1, TiledMMA: 64x16x16
     // each warp (32 threads, 4 threads per row) processes 16 rows
-    const int row_base = m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4;
-    const int col_base = n_block * kBlockN;
+    const int warp_idx_x = tidx / 32;
+    const int warp_idx_y = 0;
+    const int lane_id = tidx % 32;
+    const int row_base = m_block * kBlockM + warp_idx_x * 16 + lane_id / 4;
+    const int col_base =
+        n_block * kBlockN + warp_idx_y * 16 + (lane_id % 4) * 2;
 
     CUTE_UNROLL
     for (int mi = 0; mi < size<0, 1>(rAccS); ++mi) {  //  MMA_M=1
-      // warp layout 4x1x1, total 4*16 = 64 rows
       const int m_base = row_base + mi * 64;
       CUTE_UNROLL
       for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2

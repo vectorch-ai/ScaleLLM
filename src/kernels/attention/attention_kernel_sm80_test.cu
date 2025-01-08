@@ -36,8 +36,6 @@ torch::Tensor attention_ref(
   // causal mask: returns the lower triangular part of a matrix
   mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(query);
 
-  std::cerr << mask << std::endl;
-
   // apply causal mask
   scores = scores.masked_fill(mask == 0, -INFINITY);
 
@@ -135,22 +133,21 @@ TEST_P(AttentionKernelTest, MHA) {
       torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
 
   auto ref_out = attention_ref(query, key, value, logits_soft_cap);
-  // auto out = attention_sm80(query, key, value, logits_soft_cap);
+  auto out = attention_sm80(query, key, value, logits_soft_cap);
 
-  // EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
-  EXPECT_TRUE(false);
+  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MHA,
     AttentionKernelTest,
-    ::testing::Combine(::testing::Values(1),   // batch_size
-                       ::testing::Values(64),  // q_len
-                       ::testing::Values(64),  // kv_len
-                       ::testing::Values(1),   // n_heads
-                       ::testing::Values(1),   // n_kv_heads
-                       ::testing::Values(64),  // head_dim
-                       ::testing::Values(0.0)  // logits_soft_cap
+    ::testing::Combine(::testing::Values(1, 2, 4),         // batch_size
+                       ::testing::Values(64, 128),         // q_len
+                       ::testing::Values(128, 256, 1024),  // kv_len
+                       ::testing::Values(16),              // n_heads
+                       ::testing::Values(16),              // n_kv_heads
+                       ::testing::Values(64),              // head_dim
+                       ::testing::Values(0.0, 50.0)        // logits_soft_cap
                        ));
 
 }  // namespace llm
