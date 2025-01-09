@@ -23,7 +23,7 @@ cc_test(
   NAME
     attention_kernel_test
   SRCS
-    cute_test.cpp
+    attention_traits_test.cpp
     attention_cpu_test.cpp
     attention_kernel_sm80_test.cu
   DEPS

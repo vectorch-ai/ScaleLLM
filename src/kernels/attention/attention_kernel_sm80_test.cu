@@ -12,7 +12,11 @@ torch::Tensor attention_ref(
     torch::Tensor query,  // [batch_size, n_heads, q_len, head_dim]
     torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
     torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
-    float logits_soft_cap) {
+    torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
+    float logits_soft_cap,
+    int32_t sliding_window) {
+  const auto q_len = query.size(2);
+  const auto kv_len = key.size(2);
   const auto n_heads = query.size(1);
   const auto n_kv_heads = key.size(1);
   const auto head_dim = query.size(3);
@@ -30,6 +34,29 @@ torch::Tensor attention_ref(
     scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
   }
 
+  // apply alibi bias
+  if (alibi_slopes) {
+    const auto& slopes = alibi_slopes.value();
+    // calculate alibi attention bias
+    // since it's causal mask, we can just use [0, 1, ...,, kv_len)
+    auto distance = torch::arange(0, kv_len, query.options());
+    // [n_heads, 1, kv_len]
+    auto bias = distance.view({1, 1, kv_len}) * slopes.view({n_heads, 1, 1});
+    scores += bias;
+  }
+
+  auto mask = torch::ones({q_len, kv_len}, torch::kBool);
+  if (sliding_window >= 0) {
+    // sliding window mask
+    // returns the upper triangular part of a matrix
+    mask = torch::triu(mask, /*diagonal=*/kv_len - q_len - sliding_window);
+  }
+
+  // apply causal mask
+  // causal mask: returns the lower triangular part of a matrix
+  mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(query);
+  scores = scores.masked_fill(mask == 0, -INFINITY);
+
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
 
@@ -42,7 +69,9 @@ torch::Tensor attention_sm80(
     torch::Tensor query,  // [batch_size, n_heads, q_len, head_dim]
     torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
     torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
-    float logits_soft_cap) {
+    torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
+    float logits_soft_cap,
+    int32_t sliding_window) {
   const auto batch_size = query.size(0);
   const auto n_heads = query.size(1);
   const auto q_len = query.size(2);
@@ -54,6 +83,8 @@ torch::Tensor attention_sm80(
 
   auto out = torch::empty_like(query);
 
+  // TODO: pass in alibi slope
+
   constexpr int32_t kHeadDim = 64;
   constexpr int32_t kBlockM = 64;
   constexpr int32_t kBlockN = 64;
@@ -64,10 +95,10 @@ torch::Tensor attention_sm80(
       AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
 
   dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size * n_heads);
+  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
 
   const auto smem_size = AttentionTraits::kSmemSize;
-  auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
+  auto attention_kernel = mha_kernel_sm80<AttentionTraits, /*Alibi=*/false>;
   C10_CUDA_CHECK(
       cudaFuncSetAttribute(attention_kernel,
                            cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -81,7 +112,8 @@ torch::Tensor attention_sm80(
                                                q_len,
                                                kv_len,
                                                sm_scale,
-                                               logits_soft_cap);
+                                               logits_soft_cap,
+                                               sliding_window);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
@@ -95,7 +127,9 @@ class AttentionKernelTest
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
                                                  int64_t /*head_dim*/,
-                                                 float /*logits_soft_cap*/>> {
+                                                 float /*logits_soft_cap*/,
+                                                 bool /*alibi*/,
+                                                 int32_t /*sliding_window*/>> {
  public:
   void SetUp() override {
     // Set random seed for test stability
@@ -110,7 +144,9 @@ TEST_P(AttentionKernelTest, MHA) {
               n_heads,
               n_kv_heads,
               head_dim,
-              logits_soft_cap] = GetParam();
+              logits_soft_cap,
+              alibi,
+              sliding_window] = GetParam();
 
   const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
 
@@ -121,8 +157,16 @@ TEST_P(AttentionKernelTest, MHA) {
   const auto value =
       torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
 
-  auto ref_out = attention_ref(query, key, value, logits_soft_cap);
-  auto out = attention_sm80(query, key, value, logits_soft_cap);
+  torch::optional<torch::Tensor> alibi_slopes;
+  if (alibi) {
+    alibi_slopes = torch::rand(
+        {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  }
+
+  auto ref_out = attention_ref(
+      query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
+  auto out = attention_sm80(
+      query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
 
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
@@ -131,12 +175,14 @@ INSTANTIATE_TEST_SUITE_P(
     MHA,
     AttentionKernelTest,
     ::testing::Combine(::testing::Values(1, 2, 4),         // batch_size
-                       ::testing::Values(128, 256, 1024),  // q_len
+                       ::testing::Values(64, 128),         // q_len
                        ::testing::Values(128, 256, 1024),  // kv_len
                        ::testing::Values(16),              // n_heads
                        ::testing::Values(16),              // n_kv_heads
                        ::testing::Values(64),              // head_dim
-                       ::testing::Values(0.0, 50.0)        // logits_soft_cap
+                       ::testing::Values(0.0, 50.0),       // logits_soft_cap
+                       ::testing::Values(false),           // alibi slope
+                       ::testing::Values(-1, 0, 10)        // sliding window
                        ));
 
 }  // namespace llm

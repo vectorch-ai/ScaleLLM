@@ -11,7 +11,7 @@
 
 namespace llm {
 
-template <typename Traits>
+template <typename Traits, bool Alibi>
 __global__ void mha_kernel_sm80(void* o,
                                 const void* q,
                                 const void* k,
@@ -21,7 +21,8 @@ __global__ void mha_kernel_sm80(void* o,
                                 int64_t q_len,
                                 int64_t kv_len,
                                 float sm_scale,
-                                float logits_soft_cap) {
+                                float logits_soft_cap,
+                                int sliding_window) {
   using namespace cute;
 
   // type alias
@@ -33,6 +34,7 @@ __global__ void mha_kernel_sm80(void* o,
 
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
+  using Mask = typename Traits::Mask;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -48,7 +50,10 @@ __global__ void mha_kernel_sm80(void* o,
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
   const auto m_block = blockIdx.x;
-  const auto base_id = blockIdx.y;
+  const auto batch_idx = blockIdx.y;
+  const auto head_idx = blockIdx.z;
+  const auto n_heads = gridDim.z;
+
   const auto tidx = threadIdx.x;
 
   // preprocess input parameters
@@ -75,10 +80,16 @@ __global__ void mha_kernel_sm80(void* o,
   // use exp2f instead of expf for better performance
   sm_scale *= M_LOG2E;
 
+  // adjust sliding window size
+  if (sliding_window < 0) {
+    sliding_window = kv_len;
+  }
+
   // ProblemShape
   // TODO: support non-contiguous layout
   // (q_len, head_dim)
-  const auto offset = base_id * h_stride;
+  const auto base_idx = batch_idx * n_heads + head_idx;
+  const auto offset = base_idx * h_stride;
   auto Q = make_tensor(make_gmem_ptr((Element*)q + offset),
                        make_shape(q_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
@@ -87,7 +98,7 @@ __global__ void mha_kernel_sm80(void* o,
                        make_stride(HEAD_DIM{}, _1{}));
 
   // (kv_len, head_dim)
-  const auto kv_offset = base_id * kv_h_stride;
+  const auto kv_offset = base_idx * kv_h_stride;
   auto K = make_tensor(make_gmem_ptr((Element*)k + kv_offset),
                        make_shape(kv_len, HEAD_DIM{}),
                        make_stride(HEAD_DIM{}, _1{}));
@@ -110,8 +121,6 @@ __global__ void mha_kernel_sm80(void* o,
   // Tensor for V^t; used in GEMM-II.
   // (BLK_K, BLK_N)
   Tensor sVt = make_tensor(make_smem_ptr(v_smem), SmemLayoutVt{});
-  Tensor sVtNoSwizzle = make_tensor(make_smem_ptr(v_smem),
-                                    get_nonswizzle_portion(SmemLayoutVt{}));
 
   // Tiled Copy
   // g2s tiled copy for qkv
@@ -185,6 +194,8 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // GEMM-II: O = softmax(S)@V
+  auto sVtNoSwizzle = make_tensor(make_smem_ptr(v_smem),
+                                  get_nonswizzle_portion(SmemLayoutVt{}));
   auto tOrVt = thr_mma.partition_fragment_B(sVtNoSwizzle);  // (MMA,MMA_K,MMA_N)
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
@@ -271,6 +282,7 @@ __global__ void mha_kernel_sm80(void* o,
   // RowsPerThread = #rows_per_MMA * #MMA_M
   constexpr int RowsPerThread = 2 * size<1>(tOrAccO);
   OnlineSoftmax<RowsPerThread> softmax(sm_scale);
+  Mask mask(q_len, kv_len, sliding_window, /*alibi_slope=*/0.0f);
 
   const int n_block_min = 0;
   const int n_block_max = cute::ceil_div(kv_len, BLK_N{});
@@ -298,6 +310,9 @@ __global__ void mha_kernel_sm80(void* o,
     if (logits_soft_cap != 0.0) {
       apply_logits_soft_cap(tSrAccS);
     }
+
+    // apply mask for block (m_block, ni)
+    mask.apply<Alibi>(tSrAccS_rc_view, m_block, ni, tidx);
 
     // apply softmax and rescale
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
