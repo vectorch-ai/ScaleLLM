@@ -91,29 +91,65 @@ torch::Tensor attention_sm80(
 
   const float sm_scale = 1.0 / sqrt(head_dim);
 
-  using AttentionTraits =
-      AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
+  if (alibi_slopes.has_value()) {
+    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
+                                                kHeadDim,
+                                                kBlockM,
+                                                kBlockN,
+                                                /*Alibi=*/true>;
 
-  dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
+    dim3 block = AttentionTraits::kThreadNum;
+    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
 
-  const auto smem_size = AttentionTraits::kSmemSize;
-  auto attention_kernel = mha_kernel_sm80<AttentionTraits, /*Alibi=*/false>;
-  C10_CUDA_CHECK(
-      cudaFuncSetAttribute(attention_kernel,
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,
-                           smem_size));
-  attention_kernel<<<grid, block, smem_size>>>(out.mutable_data_ptr(),
-                                               query.const_data_ptr(),
-                                               key.const_data_ptr(),
-                                               value.const_data_ptr(),
-                                               h_stride,
-                                               kv_h_stride,
-                                               q_len,
-                                               kv_len,
-                                               sm_scale,
-                                               logits_soft_cap,
-                                               sliding_window);
+    const auto smem_size = AttentionTraits::kSmemSize;
+    auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
+    C10_CUDA_CHECK(
+        cudaFuncSetAttribute(attention_kernel,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_size));
+    attention_kernel<<<grid, block, smem_size>>>(
+        out.mutable_data_ptr(),
+        query.const_data_ptr(),
+        key.const_data_ptr(),
+        value.const_data_ptr(),
+        alibi_slopes.value().const_data_ptr<float>(),
+        h_stride,
+        kv_h_stride,
+        q_len,
+        kv_len,
+        sm_scale,
+        logits_soft_cap,
+        sliding_window);
+
+  } else {
+    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
+                                                kHeadDim,
+                                                kBlockM,
+                                                kBlockN,
+                                                /*Alibi=*/false>;
+
+    dim3 block = AttentionTraits::kThreadNum;
+    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
+
+    const auto smem_size = AttentionTraits::kSmemSize;
+    auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
+    C10_CUDA_CHECK(
+        cudaFuncSetAttribute(attention_kernel,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_size));
+    attention_kernel<<<grid, block, smem_size>>>(out.mutable_data_ptr(),
+                                                 query.const_data_ptr(),
+                                                 key.const_data_ptr(),
+                                                 value.const_data_ptr(),
+                                                 /*alibi_slopes=*/nullptr,
+                                                 h_stride,
+                                                 kv_h_stride,
+                                                 q_len,
+                                                 kv_len,
+                                                 sm_scale,
+                                                 logits_soft_cap,
+                                                 sliding_window);
+  }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
@@ -181,7 +217,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(16),              // n_kv_heads
                        ::testing::Values(64),              // head_dim
                        ::testing::Values(0.0, 50.0),       // logits_soft_cap
-                       ::testing::Values(false),           // alibi slope
+                       ::testing::Values(false, true),     // alibi slope
                        ::testing::Values(-1, 0, 10)        // sliding window
                        ));
 
