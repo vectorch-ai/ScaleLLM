@@ -195,9 +195,8 @@ TEST_P(AttentionKernelTest, MHA) {
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
-    alibi_slopes =
-        torch::rand({n_heads},
-                    torch::dtype(torch::kFloat32).device(torch::kCUDA));
+    alibi_slopes = torch::rand(
+        {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
   auto ref_out = attention_ref(
@@ -218,7 +217,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(16),              // n_kv_heads
                        ::testing::Values(64),              // head_dim
                        ::testing::Values(0.0, 50.0),       // logits_soft_cap
-                       ::testing::Values(false),           // alibi slope
+                       ::testing::Values(false, true),     // alibi slope
                        ::testing::Values(-1, 0, 10)        // sliding window
                        ));
 

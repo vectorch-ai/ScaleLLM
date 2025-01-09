@@ -79,6 +79,9 @@ __global__ void mha_kernel_sm80(void* o,
     }
   };
 
+  const float alibi_slope =
+      alibi_slopes ? (alibi_slopes[head_idx] / sm_scale) : 0.0f;
+
   // use exp2f instead of expf for better performance
   sm_scale *= M_LOG2E;
 
@@ -86,8 +89,6 @@ __global__ void mha_kernel_sm80(void* o,
   if (sliding_window < 0) {
     sliding_window = kv_len;
   }
-
-  const float alibi_slope = alibi_slopes ? alibi_slopes[head_idx] : 0.0f;
 
   // ProblemShape
   // TODO: support non-contiguous layout
