@@ -33,16 +33,16 @@ template <int kBlockM, int kBlockN>
 struct Mask {
   int q_len_;
   int kv_len_;
-  int left_window_size_;
+  int sliding_window_;
   float alibi_slope_;
 
   CUTE_HOST_DEVICE Mask(int q_len,
                         int kv_len,
-                        int left_window_size,
+                        int sliding_window,
                         float alibi_slope = 0.0f)
       : q_len_(q_len),
         kv_len_(kv_len),
-        left_window_size_(left_window_size),
+        sliding_window_(sliding_window),
         alibi_slope_(alibi_slope) {}
 
   // rAccS: ((2, MMA_M), (2, MMA_N))
@@ -71,9 +71,9 @@ struct Mask {
 
         // boundaries: [left, right)
         // causal: [0,                            kv_len_)
-        // local:  [diagonal - left_window_size_, diagonal + 1)
+        // local:  [diagonal - sliding_window_, diagonal + 1)
         const int diagonal = m + kv_len_ - q_len_;
-        const int left = std::max(0, diagonal - left_window_size_);
+        const int left = std::max(0, diagonal - sliding_window_);
         const int right = std::min(kv_len_, diagonal + 1);
 
         CUTE_UNROLL

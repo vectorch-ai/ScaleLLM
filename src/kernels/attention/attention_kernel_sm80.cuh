@@ -22,8 +22,7 @@ __global__ void mha_kernel_sm80(void* o,
                                 int64_t kv_len,
                                 float sm_scale,
                                 float logits_soft_cap,
-                                int left_window_size = -1,
-                                float alibi_slope = 0.0f) {
+                                int sliding_window) {
   using namespace cute;
 
   // type alias
@@ -82,8 +81,8 @@ __global__ void mha_kernel_sm80(void* o,
   sm_scale *= M_LOG2E;
 
   // adjust sliding window size
-  if (left_window_size < 0) {
-    left_window_size = kv_len;
+  if (sliding_window < 0) {
+    sliding_window = kv_len;
   }
 
   // ProblemShape
@@ -283,7 +282,7 @@ __global__ void mha_kernel_sm80(void* o,
   // RowsPerThread = #rows_per_MMA * #MMA_M
   constexpr int RowsPerThread = 2 * size<1>(tOrAccO);
   OnlineSoftmax<RowsPerThread> softmax(sm_scale);
-  Mask mask(q_len, kv_len, left_window_size, alibi_slope);
+  Mask mask(q_len, kv_len, sliding_window, /*alibi_slope=*/0.0f);
 
   const int n_block_min = 0;
   const int n_block_max = cute::ceil_div(kv_len, BLK_N{});

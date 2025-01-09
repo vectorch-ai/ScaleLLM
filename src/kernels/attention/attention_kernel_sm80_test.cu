@@ -113,8 +113,7 @@ torch::Tensor attention_sm80(
                                                kv_len,
                                                sm_scale,
                                                logits_soft_cap,
-                                               sliding_window,
-                                               /*alibi_slope=*/0.0f);
+                                               sliding_window);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
