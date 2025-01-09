@@ -91,29 +91,65 @@ torch::Tensor attention_sm80(
 
   const float sm_scale = 1.0 / sqrt(head_dim);
 
-  using AttentionTraits =
-      AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
+  if (alibi_slopes.has_value()) {
+    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
+                                                kHeadDim,
+                                                kBlockM,
+                                                kBlockN,
+                                                /*Alibi=*/true>;
 
-  dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
+    dim3 block = AttentionTraits::kThreadNum;
+    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
 
-  const auto smem_size = AttentionTraits::kSmemSize;
-  auto attention_kernel = mha_kernel_sm80<AttentionTraits, /*Alibi=*/false>;
-  C10_CUDA_CHECK(
-      cudaFuncSetAttribute(attention_kernel,
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,
-                           smem_size));
-  attention_kernel<<<grid, block, smem_size>>>(out.mutable_data_ptr(),
-                                               query.const_data_ptr(),
-                                               key.const_data_ptr(),
-                                               value.const_data_ptr(),
-                                               h_stride,
-                                               kv_h_stride,
-                                               q_len,
-                                               kv_len,
-                                               sm_scale,
-                                               logits_soft_cap,
-                                               sliding_window);
+    const auto smem_size = AttentionTraits::kSmemSize;
+    auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
+    C10_CUDA_CHECK(
+        cudaFuncSetAttribute(attention_kernel,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_size));
+    attention_kernel<<<grid, block, smem_size>>>(
+        out.mutable_data_ptr(),
+        query.const_data_ptr(),
+        key.const_data_ptr(),
+        value.const_data_ptr(),
+        alibi_slopes.value().const_data_ptr<float>(),
+        h_stride,
+        kv_h_stride,
+        q_len,
+        kv_len,
+        sm_scale,
+        logits_soft_cap,
+        sliding_window);
+
+  } else {
+    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
+                                                kHeadDim,
+                                                kBlockM,
+                                                kBlockN,
+                                                /*Alibi=*/false>;
+
+    dim3 block = AttentionTraits::kThreadNum;
+    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
+
+    const auto smem_size = AttentionTraits::kSmemSize;
+    auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
+    C10_CUDA_CHECK(
+        cudaFuncSetAttribute(attention_kernel,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_size));
+    attention_kernel<<<grid, block, smem_size>>>(out.mutable_data_ptr(),
+                                                 query.const_data_ptr(),
+                                                 key.const_data_ptr(),
+                                                 value.const_data_ptr(),
+                                                 /*alibi_slopes=*/nullptr,
+                                                 h_stride,
+                                                 kv_h_stride,
+                                                 q_len,
+                                                 kv_len,
+                                                 sm_scale,
+                                                 logits_soft_cap,
+                                                 sliding_window);
+  }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
@@ -159,8 +195,9 @@ TEST_P(AttentionKernelTest, MHA) {
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
-    alibi_slopes = torch::rand(
-        {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+    alibi_slopes =
+        torch::rand({n_heads},
+                    torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
   auto ref_out = attention_ref(

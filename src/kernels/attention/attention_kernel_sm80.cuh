@@ -5,17 +5,18 @@
 
 #include <cute/tensor.hpp>
 
+#include "cute_extensions.cuh"
 #include "fast_cast.cuh"
-#include "online_softmax.cuh"
 #include "ptx.cuh"
 
 namespace llm {
 
-template <typename Traits, bool Alibi>
+template <typename Traits>
 __global__ void mha_kernel_sm80(void* o,
                                 const void* q,
                                 const void* k,
                                 const void* v,
+                                const float* alibi_slopes,
                                 int64_t h_stride,
                                 int64_t kv_h_stride,
                                 int64_t q_len,
@@ -34,6 +35,7 @@ __global__ void mha_kernel_sm80(void* o,
 
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
+  using Softmax = typename Traits::Softmax;
   using Mask = typename Traits::Mask;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
@@ -84,6 +86,8 @@ __global__ void mha_kernel_sm80(void* o,
   if (sliding_window < 0) {
     sliding_window = kv_len;
   }
+
+  const float alibi_slope = alibi_slopes ? alibi_slopes[head_idx] : 0.0f;
 
   // ProblemShape
   // TODO: support non-contiguous layout
@@ -156,8 +160,8 @@ __global__ void mha_kernel_sm80(void* o,
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(tidx);
   // GEMM-I: S = Q@K.T
-  auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA,MMA_M,MMA_K)
-  auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA,MMA_N,MMA_K)
+  auto tSrQ = partition_fragment_A(thr_mma, sQ);  // (MMA,MMA_M,MMA_K)
+  auto tSrK = partition_fragment_B(thr_mma, sK);  // (MMA,MMA_N,MMA_K)
 
   // s2r tiled copy for qkv
   SmemTiledCopyQ smem_tiled_copy_Q;
@@ -194,9 +198,7 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // GEMM-II: O = softmax(S)@V
-  auto sVtNoSwizzle = make_tensor(make_smem_ptr(v_smem),
-                                  get_nonswizzle_portion(SmemLayoutVt{}));
-  auto tOrVt = thr_mma.partition_fragment_B(sVtNoSwizzle);  // (MMA,MMA_K,MMA_N)
+  auto tOrVt = partition_fragment_B(thr_mma, sVt);  // (MMA,MMA_K,MMA_N)
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
@@ -279,10 +281,8 @@ __global__ void mha_kernel_sm80(void* o,
       make_tensor(tOrAccO.data(), Layout::to_rowcol(tOrAccO.layout()));
   clear(tOrAccO);
 
-  // RowsPerThread = #rows_per_MMA * #MMA_M
-  constexpr int RowsPerThread = 2 * size<1>(tOrAccO);
-  OnlineSoftmax<RowsPerThread> softmax(sm_scale);
-  Mask mask(q_len, kv_len, sliding_window, /*alibi_slope=*/0.0f);
+  Softmax softmax(sm_scale);
+  Mask mask(q_len, kv_len, sliding_window, alibi_slope);
 
   const int n_block_min = 0;
   const int n_block_max = cute::ceil_div(kv_len, BLK_N{});
@@ -312,7 +312,7 @@ __global__ void mha_kernel_sm80(void* o,
     }
 
     // apply mask for block (m_block, ni)
-    mask.apply<Alibi>(tSrAccS_rc_view, m_block, ni, tidx);
+    mask.apply(tSrAccS_rc_view, m_block, ni, tidx);
 
     // apply softmax and rescale
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
