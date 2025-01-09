@@ -44,7 +44,7 @@ void attention_bench_sm80(nvbench::state& state) {
       AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
 
   dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, n_heads, batch_size);
+  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
 
   const auto smem_size = AttentionTraits::kSmemSize;
   auto attention_kernel = mha_kernel_sm80<AttentionTraits, /*Alibi=*/false>;

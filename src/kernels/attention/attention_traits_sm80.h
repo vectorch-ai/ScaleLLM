@@ -51,7 +51,7 @@ struct Mask {
                               int m_block,
                               int n_block,
                               int tidx) const {
-    // TODO: support other layout
+    // TODO: support other warp layout
     // Warp layout 4x1, TiledMMA: 64x16x16, MMAAtom: 16x8x16
     // each warp (32 threads, 4 threads per row) processes 16 rows
     const int warp_idx_x = tidx / 32;
@@ -65,20 +65,21 @@ struct Mask {
     for (int mi = 0; mi < size<0, 1>(rAccS); ++mi) {  //  MMA_M
       const int m_base = row_base + mi * 64;
       CUTE_UNROLL
-      for (int nj = 0; nj < size<1, 1>(rAccS); ++nj) {  // MMA_N
-        // n outer stride = 8
-        const auto n_base = col_base + nj * 8;
-        CUTE_UNROLL
-        for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2
-          // m inner stride = 8
-          const int m = m_base + i * 8;
+      for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2
+        // m inner stride = 8
+        const int m = m_base + i * 8;
 
-          // boundaries: [left, right)
-          // causal: [0,                            kv_len_)
-          // local:  [diagonal - left_window_size_, diagonal + 1)
-          const int diagonal = m + kv_len_ - q_len_;
-          const int left = std::max(0, diagonal - left_window_size_);
-          const int right = std::min(kv_len_, diagonal + 1);
+        // boundaries: [left, right)
+        // causal: [0,                            kv_len_)
+        // local:  [diagonal - left_window_size_, diagonal + 1)
+        const int diagonal = m + kv_len_ - q_len_;
+        const int left = std::max(0, diagonal - left_window_size_);
+        const int right = std::min(kv_len_, diagonal + 1);
+
+        CUTE_UNROLL
+        for (int nj = 0; nj < size<1, 1>(rAccS); ++nj) {  // MMA_N
+          // n outer stride = 8
+          const auto n_base = col_base + nj * 8;
 
           CUTE_UNROLL
           for (int j = 0; j < size<1, 0>(rAccS); ++j) {  // 2
@@ -87,10 +88,11 @@ struct Mask {
 
             // check if n is out of boundary [left, right)
             const bool out_of_boundary = n < left || n >= right;
-            // Apply masks: alibi, local, causal
             if (out_of_boundary) {
+              // Apply causal+local mask
               rAccS(make_coord(i, mi), make_coord(j, nj)) = -INFINITY;
             } else {
+              // Apply alibi mask
               if constexpr (Alibi) {
                 rAccS(make_coord(i, mi), make_coord(j, nj)) += alibi_slope_ * n;
               }

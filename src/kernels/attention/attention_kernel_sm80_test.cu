@@ -95,7 +95,7 @@ torch::Tensor attention_sm80(
       AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN>;
 
   dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, n_heads, batch_size);
+  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
 
   const auto smem_size = AttentionTraits::kSmemSize;
   auto attention_kernel = mha_kernel_sm80<AttentionTraits, /*Alibi=*/false>;
@@ -113,7 +113,7 @@ torch::Tensor attention_sm80(
                                                kv_len,
                                                sm_scale,
                                                logits_soft_cap,
-                                               /*left_window_size=*/-1,
+                                               sliding_window,
                                                /*alibi_slope=*/0.0f);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
@@ -183,7 +183,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(64),              // head_dim
                        ::testing::Values(0.0, 50.0),       // logits_soft_cap
                        ::testing::Values(false),           // alibi slope
-                       ::testing::Values(-1, 10)           // sliding window
+                       ::testing::Values(-1, 0, 10)        // sliding window
                        ));
 
 }  // namespace llm
