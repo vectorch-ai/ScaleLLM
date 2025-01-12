@@ -211,8 +211,8 @@ INSTANTIATE_TEST_SUITE_P(
     MHA,
     AttentionKernelTest,
     ::testing::Combine(::testing::Values(1, 2, 4),         // batch_size
-                       ::testing::Values(64, 128),         // q_len
-                       ::testing::Values(128, 256, 1024),  // kv_len
+                       ::testing::Values(1, 62, 125),      // q_len
+                       ::testing::Values(127, 257, 1000),  // kv_len
                        ::testing::Values(16),              // n_heads
                        ::testing::Values(16),              // n_kv_heads
                        ::testing::Values(64),              // head_dim
