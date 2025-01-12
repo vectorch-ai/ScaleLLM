@@ -12,10 +12,6 @@ template <typename Traits>
 void test_attention_traits() {
   // type alias
   using Element = typename Traits::Element;
-  using BLK_M = typename Traits::BLK_M;
-  using BLK_N = typename Traits::BLK_N;
-  using BLK_K = typename Traits::BLK_K;
-  using HEAD_DIM = typename Traits::HEAD_DIM;
 
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;

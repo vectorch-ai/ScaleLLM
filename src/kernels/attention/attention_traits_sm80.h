@@ -109,11 +109,16 @@ template <typename Element_ = cute::half_t,
           bool Alibi_ = false>
 struct AttentionTraitsSM80 {
   // helpful aliases
+  static constexpr int kHeadDim = kHeadDim_;
+  static constexpr int kBlockM = kBlockM_;
+  static constexpr int kBlockN = kBlockN_;
+  static constexpr int kBlockK = kHeadDim % 64 == 0 ? 64 : 32;
+
   using Element = Element_;
-  using BLK_M = Int<kBlockM_>;
-  using BLK_N = Int<kBlockN_>;
-  using BLK_K = Int<kHeadDim_ % 64 == 0 ? 64 : 32>;
-  using HEAD_DIM = Int<kHeadDim_>;
+  using _BLK_M = Int<kBlockM>;
+  using _BLK_N = Int<kBlockN>;
+  using _BLK_K = Int<kBlockK>;
+  using _HEAD_DIM = Int<kHeadDim>;
 
   // ******* Mainloop *******
   // TiledMMA (64x16x16) for gemm-I and gemm-II
@@ -139,21 +144,21 @@ struct AttentionTraitsSM80 {
   // Q smem: (BLK_M, K):(K, 1), k-major
   using SmemLayoutQ = decltype(composition(
       Swizzle<3, 3, 3>{},
-      Layout<Shape<BLK_M, HEAD_DIM>, Stride<HEAD_DIM, _1>>{}));
+      Layout<Shape<_BLK_M, _HEAD_DIM>, Stride<_HEAD_DIM, _1>>{}));
 
   // KV smem: (BLK_N, K):(K, 1), k-major
   using SmemLayoutK = decltype(composition(
       Swizzle<3, 3, 3>{},
-      Layout<Shape<BLK_N, HEAD_DIM>, Stride<HEAD_DIM, _1>>{}));
+      Layout<Shape<_BLK_N, _HEAD_DIM>, Stride<_HEAD_DIM, _1>>{}));
 
   using SmemLayoutV = decltype(composition(
       Swizzle<3, 3, 3>{},
-      Layout<Shape<BLK_N, HEAD_DIM>, Stride<HEAD_DIM, _1>>{}));
+      Layout<Shape<_BLK_N, _HEAD_DIM>, Stride<_HEAD_DIM, _1>>{}));
 
   // V^T smem: (K, BLK_N):(1, K), k-major
   using SmemLayoutVt = decltype(composition(
       Swizzle<3, 3, 3>{},
-      Layout<Shape<HEAD_DIM, BLK_N>, Stride<_1, HEAD_DIM>>{}));
+      Layout<Shape<_HEAD_DIM, _BLK_N>, Stride<_1, _HEAD_DIM>>{}));
 
   // Tiled copy for QKV
   // g2s tiled copy for qkv
