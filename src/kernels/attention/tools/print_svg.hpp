@@ -11,15 +11,6 @@
 
 namespace cute {
 
-static const char* kColorMap[8] = {"rgb(175,175,255)",
-                                   "rgb(175,255,175)",
-                                   "rgb(255,255,175)",
-                                   "rgb(255,175,175)",
-                                   "rgb(210,210,255)",
-                                   "rgb(210,255,210)",
-                                   "rgb(255,255,210)",
-                                   "rgb(255,210,210)"};
-
 // MNK MMA Layout to SVG -- 8-value color coded by thread
 template <class... Args>
 CUTE_HOST void print_svg(std::ostream& os, const TiledMMA<Args...>& mma) {
@@ -53,7 +44,7 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledMMA<Args...>& mma) {
                          n + base,
                          thr_idx,
                          absl::StrFormat("V%d", val_idx),
-                         kColorMap[thr_idx % 8]);
+                         thr_idx % 8);
     }
   }
 
@@ -75,7 +66,7 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledMMA<Args...>& mma) {
                          k + 1,
                          thr_idx,
                          absl::StrFormat("V%d", val_idx),
-                         kColorMap[thr_idx % 8]);
+                         thr_idx % 8);
     }
   }
 
@@ -98,7 +89,7 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledMMA<Args...>& mma) {
                          n + base,
                          thr_idx,
                          absl::StrFormat("V%d", val_idx),
-                         kColorMap[thr_idx % 8]);
+                         thr_idx % 8);
     }
   }
 
@@ -134,7 +125,7 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledCopy<Args...>& copy) {
                          n + 1,
                          thr_idx,
                          absl::StrFormat("V%d", val_idx),
-                         kColorMap[thr_idx % 8]);
+                         thr_idx % 8);
     }
   }
   for (int m = 0; m < cute::size<0>(S); ++m) {
@@ -157,7 +148,7 @@ CUTE_HOST void print_svg(std::ostream& os, const TiledCopy<Args...>& copy) {
                          n + size<1>(S) + 3,
                          thr_idx,
                          absl::StrFormat("V%d", val_idx),
-                         kColorMap[thr_idx % 8]);
+                         thr_idx % 8);
     }
   }
   for (int m = 0; m < cute::size<0>(D); ++m) {
@@ -204,7 +195,7 @@ CUTE_HOST void print_svg(std::ostream& os,
                          n + 1,
                          thr_idx,
                          std::to_string(idx),
-                         kColorMap[bank_idx / 4]);
+                         bank_idx / 4);
     }
   }
   for (int m = 0; m < size<0>(write_layout); ++m) {
@@ -229,7 +220,7 @@ CUTE_HOST void print_svg(std::ostream& os,
                          n + size<1>(write_layout) + 3,
                          thr_idx,
                          std::to_string(idx),
-                         kColorMap[bank_idx / 4]);
+                         bank_idx / 4);
     }
   }
   for (int m = 0; m < size<0>(read_layout); ++m) {

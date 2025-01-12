@@ -9,6 +9,7 @@
 namespace llm {
 using namespace cute;
 
+namespace detail {
 // performs a parallel reduction operation across N threads within the warp
 //   - val: The value to be reduced within the warp.
 template <int N, typename T>
@@ -31,12 +32,13 @@ CUTE_DEVICE T group_reduce_max(T val) {
   }
   return val;
 }
+}  // namespace detail
 
 // online softmax kernel
 template <int ROWS_PER_THREAD>
 struct OnlineSoftmax {
   // Fragment type for row_max and row_sum
-  using FragmentT = decltype(make_tensor<float>(Shape<Int<ROWS_PER_THREAD>>{}));
+  using FragmentT = decltype(make_tensor<float>(Int<ROWS_PER_THREAD>{}));
 
   FragmentT row_max_;
   FragmentT row_sum_;
@@ -62,7 +64,7 @@ struct OnlineSoftmax {
       for (int sj = 0; sj < size<1>(rAccS); ++sj) {
         cur_rowmax = max(cur_rowmax, rAccS(si, sj));
       }
-      cur_rowmax = group_reduce_max<4>(cur_rowmax);
+      cur_rowmax = detail::group_reduce_max<4>(cur_rowmax);
 
       // scores = exp(scores - row_max)
       const float rowmax_scale = cur_rowmax * sm_scale_;
@@ -95,7 +97,7 @@ struct OnlineSoftmax {
     CUTE_UNROLL
     for (int oi = 0; oi < size<0>(rAccO); ++oi) {
       // rowsum across 4 threads
-      row_sum_(oi) = group_reduce_sum<4>(row_sum_(oi));
+      row_sum_(oi) = detail::group_reduce_sum<4>(row_sum_(oi));
 
       CUTE_UNROLL
       for (int oj = 0; oj < size<1>(rAccO); ++oj) {
