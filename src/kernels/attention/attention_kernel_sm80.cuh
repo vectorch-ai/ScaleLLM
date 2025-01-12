@@ -141,10 +141,10 @@ __global__ void mha_kernel_sm80(void* o,
 
   // (BLK_M, HEAD_DIM)
   Tensor gQ =
-      local_tile(Q, Tile<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+      local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
 
   // (BLK_M, BLK_K) -> (blk_m, blk_n)
-  Tensor cQ = make_identity_tensor(Shape<_BLK_M, _BLK_K>{});
+  Tensor cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
   Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
 
   auto produce_q = [&]() {
@@ -155,12 +155,12 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // (BLK_N, head_dim)
-  Tensor cKV = make_identity_tensor(Shape<_BLK_N, _BLK_K>{});
+  Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
   Tensor tKcKV = gmem_thr_copy_QKV.partition_S(cKV);
 
   auto tKsK = gmem_thr_copy_QKV.partition_D(sK);
   auto produce_k = [&](int ni) {
-    auto gK = local_tile(K, Tile<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
+    auto gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
     auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _));
     safe_copy</*Clear_OOB=*/true>(
         gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
@@ -168,7 +168,7 @@ __global__ void mha_kernel_sm80(void* o,
 
   auto tVsV = gmem_thr_copy_QKV.partition_D(sV);
   auto produce_v = [&](int ni) {
-    auto gV = local_tile(V, Tile<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
+    auto gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
     auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _));
     safe_copy</*Clear_OOB=*/true>(
         gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
@@ -250,7 +250,7 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // tOrAccO: (MMA,MMA_M,MMA_K)
-  Tensor gO = local_tile(O, Tile<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _));
+  Tensor gO = local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _));
   auto epilogue = [&](const auto& tOrAccO) {
     // write output to gmem
     // 1> cast output from ElementAccumulator to Element
@@ -272,7 +272,7 @@ __global__ void mha_kernel_sm80(void* o,
     GmemTiledCopyO gmem_tiled_copy_O;
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-    Tensor cO = make_identity_tensor(Shape<_BLK_M, _BLK_K>{});
+    Tensor cO = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
 
     // ((Atom,AtomNum),ATOM_M,ATOM_N)
     auto tOsO = gmem_thr_copy_O.partition_S(sO);

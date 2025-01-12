@@ -24,7 +24,7 @@ CUTE_HOST_DEVICE constexpr auto partition_fragment_B(
   return thr_mma.partition_fragment_B(btensor_noswizzle);
 }
 
-template <bool Clear_OOB = false,
+template <bool Clear_OOB,
           class TiledCopy,
           class TensorS,
           class TensorD,
