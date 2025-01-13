@@ -99,7 +99,7 @@ __global__ void mha_kernel_sm80(void* o,
 
   // ProblemShape
   // TODO: support non-contiguous layout
-  // (q_len, head_dim)
+  // (q_len, HEAD_DIM)
   const auto base_idx = batch_idx * n_heads + head_idx;
   const auto offset = base_idx * h_stride;
   auto Q = make_tensor(make_gmem_ptr((Element*)q + offset),
@@ -109,7 +109,7 @@ __global__ void mha_kernel_sm80(void* o,
                        make_shape(q_len, _HEAD_DIM{}),
                        Stride<_HEAD_DIM, _1>{});
 
-  // (kv_len, head_dim)
+  // (kv_len, HEAD_DIM)
   const auto kv_offset = base_idx * kv_h_stride;
   auto K = make_tensor(make_gmem_ptr((Element*)k + kv_offset),
                        make_shape(kv_len, _HEAD_DIM{}),
@@ -139,38 +139,39 @@ __global__ void mha_kernel_sm80(void* o,
   GmemTiledCopyQKV gmem_tiled_copy_QKV;
   auto gmem_thr_copy_QKV = gmem_tiled_copy_QKV.get_thread_slice(tidx);
 
-  // (BLK_M, HEAD_DIM)
-  Tensor gQ =
-      local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
-
-  // (BLK_M, BLK_K) -> (blk_m, blk_n)
-  Tensor cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
-  Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
-
   auto produce_q = [&]() {
+    // (BLK_M, HEAD_DIM)
+    auto gQ =
+        local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+    // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
+    auto cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
+    auto tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
+
     auto tQgQ = gmem_thr_copy_QKV.partition_S(gQ);
     auto tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
-    safe_copy</*Clear_OOB=*/true>(
+    safe_copy</*ZERO_FILL=*/true>(
         gmem_tiled_copy_QKV, tQgQ, tQsQ, tQcQ, q_len - m_block * kBlockM);
   };
 
-  // (BLK_N, head_dim)
+  // (BLK_N, HEAD_DIM) -> (blk_n, head_dim)
   Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
   Tensor tKcKV = gmem_thr_copy_QKV.partition_S(cKV);
 
-  auto tKsK = gmem_thr_copy_QKV.partition_D(sK);
+  Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
+  // (BLK_N, HEAD_DIM, n)
+  Tensor gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_k = [&](int ni) {
-    auto gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
-    auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _));
-    safe_copy</*Clear_OOB=*/true>(
+    auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
+    safe_copy</*ZERO_FILL=*/true>(
         gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
   };
 
-  auto tVsV = gmem_thr_copy_QKV.partition_D(sV);
+  Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
+  // (BLK_N, HEAD_DIM, n)
+  Tensor gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_v = [&](int ni) {
-    auto gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
-    auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _));
-    safe_copy</*Clear_OOB=*/true>(
+    auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
+    safe_copy</*ZERO_FILL=*/true>(
         gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
   };
 
@@ -250,7 +251,6 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // tOrAccO: (MMA,MMA_M,MMA_K)
-  Tensor gO = local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _));
   auto epilogue = [&](const auto& tOrAccO) {
     // write output to gmem
     // 1> cast output from ElementAccumulator to Element
@@ -262,9 +262,7 @@ __global__ void mha_kernel_sm80(void* o,
 
     SmemTiledCopyO smem_tiled_copy_O;
     auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
-    // ((Atom,AtomNum),MMA_M,MMA_N)
     auto taccOrO = smem_thr_copy_O.retile_S(tOrO);
-    // ((Atom,AtomNum),PIPE_M,PIPE_N)
     auto taccOsO = smem_thr_copy_O.partition_D(sO);
     cute::copy(smem_tiled_copy_O, taccOrO, taccOsO);
 
@@ -272,16 +270,20 @@ __global__ void mha_kernel_sm80(void* o,
     GmemTiledCopyO gmem_tiled_copy_O;
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-    Tensor cO = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
+    // (BLK_M, HEAD_DIM)
+    auto gO =
+        local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+    // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
+    auto cO = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
 
-    // ((Atom,AtomNum),ATOM_M,ATOM_N)
-    auto tOsO = gmem_thr_copy_O.partition_S(sO);
-    auto tOgO = gmem_thr_copy_O.partition_D(gO(_, _, _0{}));
+    auto tOsO = gmem_thr_copy_O.partition_S(sO);  // (CPY,CPY_M,CPY_K)
+    auto tOgO = gmem_thr_copy_O.partition_D(gO);  // (CPY,CPY_M,CPY_K)
+    // (CPY,CPY_M,CPY_K) -> (blk_m, head_dim)
     auto tOcO = gmem_thr_copy_O.partition_D(cO);
 
-    // wait for smem copy before copy to gmem
+    // wait for smem copy done before gmem copy
     __syncthreads();
-    safe_copy</*Clear_OOB=*/false>(
+    safe_copy</*ZERO_FILL=*/false>(
         gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
   };
 
