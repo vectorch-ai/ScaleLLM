@@ -9,6 +9,8 @@ cc_library(
     ptx.cuh
     fast_cast.cuh
     online_softmax.cuh
+    attention_params.h
+    attention_tile.h
     attention_traits_sm80.h
     attention_kernel_sm80.cuh
   DEPS
@@ -23,6 +25,7 @@ cc_library(
     # attention.h
   SRCS 
     # attention.cpp
+    # kernel_instantiations.cu
   DEPS
     :attention.template
     glog::glog

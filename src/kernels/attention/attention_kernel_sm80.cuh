@@ -6,25 +6,15 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
+#include "attention_tile.h"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 #include "ptx.cuh"
 
 namespace llm {
 
-template <typename Traits>
-__global__ void mha_kernel_sm80(void* o,
-                                const void* q,
-                                const void* k,
-                                const void* v,
-                                const float* alibi_slopes,
-                                int64_t h_stride,
-                                int64_t kv_h_stride,
-                                int q_len,
-                                int kv_len,
-                                float sm_scale,
-                                float logits_soft_cap,
-                                int sliding_window) {
+template <typename Traits, typename Params>
+__global__ void mha_kernel_sm80(Params params) {
   using namespace cute;
 
   constexpr int kBlockM = Traits::kBlockM;
@@ -61,9 +51,17 @@ __global__ void mha_kernel_sm80(void* o,
   const int m_block = blockIdx.x;
   const auto batch_idx = blockIdx.y;
   const auto head_idx = blockIdx.z;
-  const auto n_heads = gridDim.z;
 
   const auto tidx = threadIdx.x;
+
+  AttentionTile<Params> tile(params);
+
+  const auto q_len = tile.get_q_len();
+  const auto kv_len = tile.get_kv_len();
+
+  float logits_soft_cap = params.logits_soft_cap;
+  float sm_scale = params.sm_scale;
+  float sliding_window = params.sliding_window;
 
   // preprocess input parameters
   // TODO: Move following logic to the host side?
@@ -86,8 +84,9 @@ __global__ void mha_kernel_sm80(void* o,
     }
   };
 
-  const float alibi_slope =
-      alibi_slopes ? (alibi_slopes[head_idx] / sm_scale) : 0.0f;
+  const float alibi_slope = params.alibi_slopes_ptr != nullptr
+                                ? (params.alibi_slopes_ptr[head_idx] / sm_scale)
+                                : 0.0f;
 
   // use exp2f instead of expf for better performance
   sm_scale *= M_LOG2E;
@@ -98,25 +97,13 @@ __global__ void mha_kernel_sm80(void* o,
   }
 
   // ProblemShape
-  // TODO: support non-contiguous layout
   // (q_len, HEAD_DIM)
-  const auto base_idx = batch_idx * n_heads + head_idx;
-  const auto offset = base_idx * h_stride;
-  auto Q = make_tensor(make_gmem_ptr((Element*)q + offset),
-                       make_shape(q_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
-  auto O = make_tensor(make_gmem_ptr((Element*)o + offset),
-                       make_shape(q_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
+  auto Q = tile.template get_query_tile<Element>(batch_idx, head_idx);
+  auto O = tile.template get_output_tile<Element>(batch_idx, head_idx);
 
   // (kv_len, HEAD_DIM)
-  const auto kv_offset = base_idx * kv_h_stride;
-  auto K = make_tensor(make_gmem_ptr((Element*)k + kv_offset),
-                       make_shape(kv_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
-  auto V = make_tensor(make_gmem_ptr((Element*)v + kv_offset),
-                       make_shape(kv_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
+  auto K = tile.template get_key_tile<Element>(batch_idx, head_idx);
+  auto V = tile.template get_value_tile<Element>(batch_idx, head_idx);
 
   // Smem
   extern __shared__ char smem[];
@@ -162,8 +149,7 @@ __global__ void mha_kernel_sm80(void* o,
   Tensor gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
-    safe_copy</*ZERO_FILL=*/true>(
-        gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
+    safe_copy(gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
   };
 
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
@@ -171,8 +157,7 @@ __global__ void mha_kernel_sm80(void* o,
   Tensor gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
-    safe_copy</*ZERO_FILL=*/true>(
-        gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
+    safe_copy(gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
   };
 
   TiledMma tiled_mma;
@@ -283,8 +268,7 @@ __global__ void mha_kernel_sm80(void* o,
 
     // wait for smem copy done before gmem copy
     __syncthreads();
-    safe_copy</*ZERO_FILL=*/false>(
-        gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
+    safe_copy(gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
   };
 
   // ###############  Prologue  ###############

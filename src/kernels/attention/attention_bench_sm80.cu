@@ -6,6 +6,7 @@
 
 #include "attention_kernel_sm80.cuh"
 #include "attention_traits_sm80.h"
+#include "kernels/attention/attention_params.h"
 
 using namespace llm;
 
@@ -40,32 +41,45 @@ void attention_bench_sm80(nvbench::state& state) {
   constexpr int32_t kBlockM = 64;
   constexpr int32_t kBlockN = 64;
 
-  using AttentionTraits =
-      AttentionTraitsSM80<cute::half_t, kHeadDim, kBlockM, kBlockN, /*Alibi=*/false>;
+  // construct attention params
+  AttentionParams params;
+  params.q_ptr = query.const_data_ptr();
+  params.q_stride =
+      make_stride(query.stride(0), query.stride(1), query.stride(2));
+  params.k_ptr = key.const_data_ptr();
+  params.k_stride = make_stride(key.stride(0), key.stride(1), key.stride(2));
+  params.v_ptr = value.const_data_ptr();
+  params.v_stride =
+      make_stride(value.stride(0), value.stride(1), value.stride(2));
+  params.o_ptr = out.mutable_data_ptr();
+  params.o_stride = make_stride(out.stride(0), out.stride(1), out.stride(2));
+  params.alibi_slopes_ptr = nullptr;
+  params.n_heads = n_heads;
+  params.n_kv_heads = n_kv_heads;
+  params.q_len = q_len;
+  params.kv_len = kv_len;
+  params.head_dim = head_dim;
+  params.sm_scale = sm_scale;
+  params.logits_soft_cap = logits_soft_cap;
+  params.sliding_window = -1;
+
+  using AttentionTraits = AttentionTraitsSM80<cute::half_t,
+                                              kHeadDim,
+                                              kBlockM,
+                                              kBlockN,
+                                              /*Alibi=*/false>;
 
   dim3 block = AttentionTraits::kThreadNum;
   dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
 
   const auto smem_size = AttentionTraits::kSmemSize;
-  auto attention_kernel = mha_kernel_sm80<AttentionTraits>;
+  auto attention_kernel = mha_kernel_sm80<AttentionTraits, AttentionParams>;
 
   state.exec([&](nvbench::launch& launch) {
     cudaFuncSetAttribute(attention_kernel,
                          cudaFuncAttributeMaxDynamicSharedMemorySize,
                          smem_size);
-    attention_kernel<<<grid, block, smem_size, launch.get_stream()>>>(
-        out.mutable_data_ptr(),
-        query.const_data_ptr(),
-        key.const_data_ptr(),
-        value.const_data_ptr(),
-        /*alibi_slopes=*/nullptr,
-        h_stride,
-        kv_h_stride,
-        q_len,
-        kv_len,
-        sm_scale,
-        logits_soft_cap,
-        /*sliding_window=*/-1);
+    attention_kernel<<<grid, block, smem_size, launch.get_stream()>>>(params);
   });
 }
 

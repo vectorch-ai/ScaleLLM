@@ -58,8 +58,7 @@ struct Mask {
     const int warp_idx_x = tidx / 32;
     const int warp_idx_y = 0;
     const int lane_id = tidx % 32;
-    const int m_base =
-        m_block * kBlockM + warp_idx_x * 16 + lane_id / 4 + kv_len_ - q_len_;
+    const int m_base = m_block * kBlockM + warp_idx_x * 16 + lane_id / 4;
     const int n_base = n_block * kBlockN + warp_idx_y * 16 + (lane_id % 4) * 2;
 
     // TiledMMA: 64x16x16, MMA_Atom: 16x8x16
@@ -69,7 +68,7 @@ struct Mask {
       CUTE_UNROLL
       for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2
         // m inner stride = 8
-        const int q_idx = q_idx_base + i * 8;  // diagonal
+        const int q_idx = q_idx_base + i * 8 + kv_len_ - q_len_;  // diagonal
 
         CUTE_UNROLL
         for (int nj = 0; nj < size<1, 1>(rAccS); ++nj) {  // MMA_N
