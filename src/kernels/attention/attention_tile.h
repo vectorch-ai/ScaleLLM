@@ -181,11 +181,7 @@ struct AttentionTile<PagedKVAttentionParams> {
   CUTE_HOST_DEVICE auto get_k_tile(int batch_idx, int kv_head_idx) const {
     const auto kv_len =
         params_.cu_seqlens_kv[batch_idx + 1] - params_.cu_seqlens_kv[batch_idx];
-    // (seq, head, len, d)
-    const auto offset = kv_head_idx * get<0>(params_.k_stride);
 
-    // k[kv_head_idx, :, :]
-    // TODO: use block_table to build a tensor with dynamic stride
     const int* block_table =
         params_.block_table + params_.cu_block_lens[batch_idx];
     const int block_size = params_.block_size;
@@ -194,7 +190,9 @@ struct AttentionTile<PagedKVAttentionParams> {
     auto idx_to_slot = [block_table, block_size](int idx) {
       return block_table[idx / block_size] * block_size + idx % block_size;
     };
-    return DynamicStride(stride, idx_to_slot);
+
+    // v[kv_head_idx, :, :]
+    const auto offset = kv_head_idx * get<0>(params_.k_stride);
     return make_tensor(make_gmem_ptr((const Element*)params_.k_ptr + offset),
                        make_shape(kv_len, params_.head_dim),
                        make_stride(DynamicStride(stride, idx_to_slot), _1{}));
@@ -205,11 +203,7 @@ struct AttentionTile<PagedKVAttentionParams> {
   CUTE_HOST_DEVICE auto get_v_tile(int batch_idx, int kv_head_idx) const {
     const auto kv_len =
         params_.cu_seqlens_kv[batch_idx + 1] - params_.cu_seqlens_kv[batch_idx];
-    // (seq, head, len, d)
-    const auto offset = kv_head_idx * get<0>(params_.v_stride);
 
-    // v[kv_head_idx, :, :]
-    // TODO: use block_table to build a tensor with dynamic stride
     const int* block_table =
         params_.block_table + params_.cu_block_lens[batch_idx];
     const int block_size = params_.block_size;
@@ -218,6 +212,9 @@ struct AttentionTile<PagedKVAttentionParams> {
     auto idx_to_slot = [block_table, block_size](int idx) {
       return block_table[idx / block_size] * block_size + idx % block_size;
     };
+
+    // v[kv_head_idx, :, :]
+    const auto offset = kv_head_idx * get<0>(params_.v_stride);
     return make_tensor(make_gmem_ptr((const Element*)params_.v_ptr + offset),
                        make_shape(kv_len, params_.head_dim),
                        make_stride(DynamicStride(stride, idx_to_slot), _1{}));

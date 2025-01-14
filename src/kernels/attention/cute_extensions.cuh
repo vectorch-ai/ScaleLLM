@@ -50,34 +50,23 @@ CUTE_HOST_DEVICE void safe_copy(
   }
 }
 
-struct Identical {
-  template <typename Index>
-  CUTE_HOST_DEVICE constexpr auto operator()(Index i) const {
-    return i;
-  }
-};
-
-// dynamic stride that mapping stride based on index
-template <typename Stride, typename Func = Identical>
+// DynamicStride: mapping index based on a function
+template <typename Stride, typename Func>
 struct DynamicStride {
   Func func_;
   Stride stride_;
 
-  CUTE_HOST_DEVICE constexpr DynamicStride(const Func& func,
-                                           const Stride& stride)
+  CUTE_HOST_DEVICE DynamicStride(const Func& func, const Stride& stride)
       : func_(func), stride_(stride) {}
 
-  // overloads operator* to map seq_idx to slot_idx
-  // slot_idx = block_table[seq_idx/block_size]*block_size + seq_idx%block_size
+  // overloads operator* to compute with index
   template <typename Index>
-  CUTE_HOST_DEVICE friend constexpr auto operator*(Index i,
-                                                   const DynamicStride& s) {
+  CUTE_HOST_DEVICE friend auto operator*(Index i, const DynamicStride& s) {
     return s.func_(i) * s.stride_;
   }
 
   template <typename Index>
-  CUTE_HOST_DEVICE friend constexpr auto operator*(const DynamicStride& s,
-                                                   Index i) {
+  CUTE_HOST_DEVICE friend auto operator*(const DynamicStride& s, Index i) {
     return s.func_(i) * s.stride_;
   }
 };
