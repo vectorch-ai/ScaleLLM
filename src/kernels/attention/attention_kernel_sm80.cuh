@@ -6,25 +6,15 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
+#include "attention_tile.h"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 #include "ptx.cuh"
 
 namespace llm {
 
-template <typename Traits>
-__global__ void mha_kernel_sm80(void* o,
-                                const void* q,
-                                const void* k,
-                                const void* v,
-                                const float* alibi_slopes,
-                                int64_t h_stride,
-                                int64_t kv_h_stride,
-                                int q_len,
-                                int kv_len,
-                                float sm_scale,
-                                float logits_soft_cap,
-                                int sliding_window) {
+template <typename Traits, typename Params>
+__global__ void mha_kernel_sm80(Params params) {
   using namespace cute;
 
   constexpr int kBlockM = Traits::kBlockM;
@@ -61,9 +51,17 @@ __global__ void mha_kernel_sm80(void* o,
   const int m_block = blockIdx.x;
   const auto batch_idx = blockIdx.y;
   const auto head_idx = blockIdx.z;
-  const auto n_heads = gridDim.z;
 
   const auto tidx = threadIdx.x;
+
+  AttentionTile<Params> tile(params);
+
+  const auto q_len = tile.get_q_len();
+  const auto kv_len = tile.get_kv_len();
+
+  float logits_soft_cap = params.logits_soft_cap;
+  float sm_scale = params.sm_scale;
+  float sliding_window = params.sliding_window;
 
   // preprocess input parameters
   // TODO: Move following logic to the host side?
@@ -86,8 +84,9 @@ __global__ void mha_kernel_sm80(void* o,
     }
   };
 
-  const float alibi_slope =
-      alibi_slopes ? (alibi_slopes[head_idx] / sm_scale) : 0.0f;
+  const float alibi_slope = params.alibi_slopes_ptr != nullptr
+                                ? (params.alibi_slopes_ptr[head_idx] / sm_scale)
+                                : 0.0f;
 
   // use exp2f instead of expf for better performance
   sm_scale *= M_LOG2E;
@@ -98,25 +97,13 @@ __global__ void mha_kernel_sm80(void* o,
   }
 
   // ProblemShape
-  // TODO: support non-contiguous layout
-  // (q_len, head_dim)
-  const auto base_idx = batch_idx * n_heads + head_idx;
-  const auto offset = base_idx * h_stride;
-  auto Q = make_tensor(make_gmem_ptr((Element*)q + offset),
-                       make_shape(q_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
-  auto O = make_tensor(make_gmem_ptr((Element*)o + offset),
-                       make_shape(q_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
+  // (q_len, HEAD_DIM)
+  auto Q = tile.template get_q_tile<Element>(batch_idx, head_idx);
+  auto O = tile.template get_o_tile<Element>(batch_idx, head_idx);
 
-  // (kv_len, head_dim)
-  const auto kv_offset = base_idx * kv_h_stride;
-  auto K = make_tensor(make_gmem_ptr((Element*)k + kv_offset),
-                       make_shape(kv_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
-  auto V = make_tensor(make_gmem_ptr((Element*)v + kv_offset),
-                       make_shape(kv_len, _HEAD_DIM{}),
-                       Stride<_HEAD_DIM, _1>{});
+  // (kv_len, HEAD_DIM)
+  auto K = tile.template get_k_tile<Element>(batch_idx, head_idx);
+  auto V = tile.template get_v_tile<Element>(batch_idx, head_idx);
 
   // Smem
   extern __shared__ char smem[];
@@ -139,39 +126,38 @@ __global__ void mha_kernel_sm80(void* o,
   GmemTiledCopyQKV gmem_tiled_copy_QKV;
   auto gmem_thr_copy_QKV = gmem_tiled_copy_QKV.get_thread_slice(tidx);
 
-  // (BLK_M, HEAD_DIM)
-  Tensor gQ =
-      local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
-
-  // (BLK_M, BLK_K) -> (blk_m, blk_n)
-  Tensor cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
-  Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
-
   auto produce_q = [&]() {
+    // (BLK_M, HEAD_DIM)
+    auto gQ =
+        local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+    // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
+    auto cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
+    auto tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
+
     auto tQgQ = gmem_thr_copy_QKV.partition_S(gQ);
     auto tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
-    safe_copy</*Clear_OOB=*/true>(
+    safe_copy</*ZERO_FILL=*/true>(
         gmem_tiled_copy_QKV, tQgQ, tQsQ, tQcQ, q_len - m_block * kBlockM);
   };
 
-  // (BLK_N, head_dim)
+  // (BLK_N, HEAD_DIM) -> (blk_n, head_dim)
   Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
   Tensor tKcKV = gmem_thr_copy_QKV.partition_S(cKV);
 
-  auto tKsK = gmem_thr_copy_QKV.partition_D(sK);
+  Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
+  // (BLK_N, HEAD_DIM, n)
+  Tensor gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_k = [&](int ni) {
-    auto gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
-    auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _));
-    safe_copy</*Clear_OOB=*/true>(
-        gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
+    auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
+    safe_copy(gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
   };
 
-  auto tVsV = gmem_thr_copy_QKV.partition_D(sV);
+  Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
+  // (BLK_N, HEAD_DIM, n)
+  Tensor gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_v = [&](int ni) {
-    auto gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(ni, _0{}));
-    auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _));
-    safe_copy</*Clear_OOB=*/true>(
-        gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
+    auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
+    safe_copy(gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
   };
 
   TiledMma tiled_mma;
@@ -250,7 +236,6 @@ __global__ void mha_kernel_sm80(void* o,
   };
 
   // tOrAccO: (MMA,MMA_M,MMA_K)
-  Tensor gO = local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _));
   auto epilogue = [&](const auto& tOrAccO) {
     // write output to gmem
     // 1> cast output from ElementAccumulator to Element
@@ -262,9 +247,7 @@ __global__ void mha_kernel_sm80(void* o,
 
     SmemTiledCopyO smem_tiled_copy_O;
     auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
-    // ((Atom,AtomNum),MMA_M,MMA_N)
     auto taccOrO = smem_thr_copy_O.retile_S(tOrO);
-    // ((Atom,AtomNum),PIPE_M,PIPE_N)
     auto taccOsO = smem_thr_copy_O.partition_D(sO);
     cute::copy(smem_tiled_copy_O, taccOrO, taccOsO);
 
@@ -272,17 +255,20 @@ __global__ void mha_kernel_sm80(void* o,
     GmemTiledCopyO gmem_tiled_copy_O;
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-    Tensor cO = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
+    // (BLK_M, HEAD_DIM)
+    auto gO =
+        local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+    // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
+    auto cO = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
 
-    // ((Atom,AtomNum),ATOM_M,ATOM_N)
-    auto tOsO = gmem_thr_copy_O.partition_S(sO);
-    auto tOgO = gmem_thr_copy_O.partition_D(gO(_, _, _0{}));
+    auto tOsO = gmem_thr_copy_O.partition_S(sO);  // (CPY,CPY_M,CPY_K)
+    auto tOgO = gmem_thr_copy_O.partition_D(gO);  // (CPY,CPY_M,CPY_K)
+    // (CPY,CPY_M,CPY_K) -> (blk_m, head_dim)
     auto tOcO = gmem_thr_copy_O.partition_D(cO);
 
-    // wait for smem copy before copy to gmem
+    // wait for smem copy done before gmem copy
     __syncthreads();
-    safe_copy</*Clear_OOB=*/false>(
-        gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
+    safe_copy(gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
   };
 
   // ###############  Prologue  ###############

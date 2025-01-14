@@ -24,7 +24,7 @@ CUTE_HOST_DEVICE constexpr auto partition_fragment_B(
   return thr_mma.partition_fragment_B(btensor_noswizzle);
 }
 
-template <bool Clear_OOB,
+template <bool ZERO_FILL = false,
           class TiledCopy,
           class TensorS,
           class TensorD,
@@ -37,12 +37,12 @@ CUTE_HOST_DEVICE void safe_copy(
     const int max_coord       // max_coord_m/n
 ) {
   CUTE_UNROLL
-  for (int m = 0; m < size<1>(src); ++m) {
-    if (get<0>(identity(0, m, 0)) < max_coord) {
-      cute::copy(tiled_copy, src(_, m, _), dst(_, m, _));
+  for (int mi = 0; mi < size<1>(src); ++mi) {
+    if (get<0>(identity(0, mi, 0)) < max_coord) {
+      cute::copy(tiled_copy, src(_, mi, _), dst(_, mi, _));
     } else {
-      if constexpr (Clear_OOB) {
-        cute::clear(dst(_, m, _));
+      if constexpr (ZERO_FILL) {
+        cute::clear(dst(_, mi, _));
       }
     }
   }

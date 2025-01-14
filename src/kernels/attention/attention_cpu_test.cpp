@@ -19,7 +19,7 @@ torch::Tensor masked_self_attention(
 
   // repeat key and value if n_kv_heads < n_heads
   if (n_kv_heads < n_heads) {
-    CHECK_EQ(n_heads % n_kv_heads, 0);
+    assert(n_heads % n_kv_heads == 0);
     const auto n_groups = n_heads / n_kv_heads;
     key = key.repeat_interleave(/*repeats=*/n_groups, /*dim=*/1);
     value = value.repeat_interleave(/*repeats=*/n_groups, /*dim=*/1);

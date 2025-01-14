@@ -1,6 +1,5 @@
 #pragma once
 
-#include <glog/logging.h>
 #include <torch/torch.h>
 
 #include <algorithm>
@@ -19,20 +18,22 @@ inline void mha(torch::Tensor query,
                 torch::Tensor key,
                 torch::Tensor value,
                 torch::Tensor& out) {
-  CHECK_EQ(query.dim(), 3);
-  CHECK_EQ(key.dim(), 3);
-  CHECK_EQ(key.sizes(), value.sizes()) << "k and v must have the same shape";
-  CHECK_EQ(query.size(2), key.size(2)) << "q and k must have the same head_dim";
+  assert(query.dim() == 3);
+  assert(key.dim() == 3);
+  // k and v must have the same shape
+  assert(key.sizes() == value.sizes());
+  // q and k must have the same head_dim
+  assert(query.size(2) == key.size(2));
 
   const int64_t q_seq_len = query.size(0);
   const int64_t n_heads = query.size(1);
   const int64_t head_dim = query.size(2);
   const int64_t seq_len = key.size(0);
   const int64_t n_kv_heads = key.size(1);
-  CHECK_LE(q_seq_len, seq_len) << "q_len must be less than or equal to seq_len";
-  CHECK_LE(n_kv_heads, n_heads)
-      << "n_kv_heads must be less than or equal to n_heads";
-  CHECK(n_heads % n_kv_heads == 0) << "n_heads must be divisible by n_kv_heads";
+  assert(q_seq_len <= seq_len);
+  assert(n_kv_heads <= n_heads);
+  assert(n_heads % n_kv_heads == 0);
+
   // number of heads to share the same k/v head
   const int64_t group_size = n_heads / n_kv_heads;
   const int64_t q_idx_base = seq_len - q_seq_len;

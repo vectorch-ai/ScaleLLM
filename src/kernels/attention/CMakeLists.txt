@@ -4,18 +4,30 @@ include(cc_test)
 
 cc_library(
   NAME 
-    attention.kernel
+    attention.template
   HDRS
-    attention_cpu.h
-    ptx.cuh 
+    ptx.cuh
     fast_cast.cuh
     online_softmax.cuh
+    attention_params.h
+    attention_tile.h
     attention_traits_sm80.h
     attention_kernel_sm80.cuh
-  SRCS 
-    # attention.cu
   DEPS
     cutlass
+)
+
+cc_library(
+  NAME 
+    attention.kernel
+  HDRS
+    # attention_launcher.cuh
+    # attention.h
+  SRCS 
+    # attention.cpp
+    # kernel_instantiations.cu
+  DEPS
+    :attention.template
     glog::glog
 )
 
@@ -23,12 +35,11 @@ cc_test(
   NAME
     attention_kernel_test
   SRCS
-    attention_traits_test.cpp
     attention_cpu_test.cpp
+    attention_traits_test.cpp
     attention_kernel_sm80_test.cu
   DEPS
-    :attention.kernel
-    glog::glog
+    :attention.template
     GTest::gtest_main
 )
 
@@ -40,7 +51,7 @@ cc_binary(
   DEPS
     nvbench::nvbench
     nvbench::main
-    :attention.kernel
+    :attention.template
   COPTS
     -lineinfo 
 )
