@@ -235,4 +235,58 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(-1, 0, 10)                         // sliding window
         ));
 
+
+TEST_P(AttentionKernelTest, VarLangth) {
+  const auto [batch_size,
+              q_len,
+              kv_len,
+              n_heads,
+              n_kv_heads,
+              head_dim,
+              logits_soft_cap,
+              alibi,
+              sliding_window] = GetParam();
+
+  const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
+
+  // TODO: construct variable length query, key and value
+
+  // construct non-contiguous query, key and value
+  const auto data = torch::randn(
+      {batch_size, n_heads + 2 * n_kv_heads, q_len, head_dim}, options);
+  const auto qkv =
+      data.split(/*split_size=*/{n_heads, n_kv_heads, n_kv_heads}, /*dim=*/1);
+  const auto& query = qkv[0];
+  const auto& key = qkv[1];
+  const auto& value = qkv[2];
+
+  torch::optional<torch::Tensor> alibi_slopes;
+  if (alibi) {
+    alibi_slopes = torch::rand(
+        {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  }
+
+  auto ref_out = attention_ref(
+      query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
+  auto out = attention_sm80(
+      query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
+
+  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    VarLangth,
+    AttentionKernelTest,
+    ::testing::Combine(
+        ::testing::Values(1, 2, 4),                          // batch_size
+        ::testing::Values(1, 62, 125),                       // q_len
+        ::testing::Values(127, 287, 1000),                   // kv_len
+        ::testing::Values(6),                                // n_heads
+        ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
+        ::testing::Values(64),                               // head_dim
+        ::testing::Values(0.0, 50.0),                        // logits_soft_cap
+        ::testing::Values(false, true),                      // alibi slope
+        ::testing::Values(-1, 0, 10)                         // sliding window
+        ));
+
 }  // namespace llm

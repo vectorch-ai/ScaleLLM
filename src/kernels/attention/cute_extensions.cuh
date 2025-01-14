@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cute/atom/mma_atom.hpp>
 #include <cute/swizzle_layout.hpp>
 #include <cute/tensor.hpp>
@@ -47,5 +49,37 @@ CUTE_HOST_DEVICE void safe_copy(
     }
   }
 }
+
+struct Identical {
+  template <typename Index>
+  CUTE_HOST_DEVICE constexpr auto operator()(Index i) const {
+    return i;
+  }
+};
+
+// dynamic stride that mapping stride based on index
+template <typename Stride, typename Func = Identical>
+struct DynamicStride {
+  Func func_;
+  Stride stride_;
+
+  CUTE_HOST_DEVICE constexpr DynamicStride(const Func& func,
+                                           const Stride& stride)
+      : func_(func), stride_(stride) {}
+
+  // overloads operator* to map seq_idx to slot_idx
+  // slot_idx = block_table[seq_idx/block_size]*block_size + seq_idx%block_size
+  template <typename Index>
+  CUTE_HOST_DEVICE friend constexpr auto operator*(Index i,
+                                                   const DynamicStride& s) {
+    return s.func_(i) * s.stride_;
+  }
+
+  template <typename Index>
+  CUTE_HOST_DEVICE friend constexpr auto operator*(const DynamicStride& s,
+                                                   Index i) {
+    return s.func_(i) * s.stride_;
+  }
+};
 
 }  // namespace cute
