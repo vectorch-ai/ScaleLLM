@@ -88,6 +88,8 @@ __global__ void mha_kernel_sm80(Params params) {
                                 ? (params.alibi_slopes_ptr[head_idx] / sm_scale)
                                 : 0.0f;
 
+  const int group_size = params.n_heads / params.n_kv_heads;
+
   // use exp2f instead of expf for better performance
   sm_scale *= M_LOG2E;
 
@@ -102,8 +104,8 @@ __global__ void mha_kernel_sm80(Params params) {
   auto O = tile.template get_o_tile<Element>(batch_idx, head_idx);
 
   // (kv_len, HEAD_DIM)
-  auto K = tile.template get_k_tile<Element>(batch_idx, head_idx);
-  auto V = tile.template get_v_tile<Element>(batch_idx, head_idx);
+  auto K = tile.template get_k_tile<Element>(batch_idx, head_idx / group_size);
+  auto V = tile.template get_v_tile<Element>(batch_idx, head_idx / group_size);
 
   // Smem
   extern __shared__ char smem[];
