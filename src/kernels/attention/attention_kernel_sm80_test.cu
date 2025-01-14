@@ -22,7 +22,14 @@ torch::Tensor attention_ref(
   const auto n_heads = query.size(1);
   const auto n_kv_heads = key.size(1);
   const auto head_dim = query.size(3);
-  assert(n_heads == n_kv_heads);
+  assert(kv_len >= q_len);
+
+  if (n_heads != n_kv_heads) {
+    assert(n_heads % n_kv_heads == 0);
+    const auto group_size = n_heads / n_kv_heads;
+    key = key.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
+    value = value.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
+  }
 
   const float sm_scale = 1.0 / sqrt(head_dim);
   // query * key => [n_heads, q_seq_len, seq_len]
@@ -214,15 +221,16 @@ TEST_P(AttentionKernelTest, MHA) {
 INSTANTIATE_TEST_SUITE_P(
     MHA,
     AttentionKernelTest,
-    ::testing::Combine(::testing::Values(1, 2, 4),         // batch_size
-                       ::testing::Values(1, 62, 125),      // q_len
-                       ::testing::Values(127, 287, 1000),  // kv_len
-                       ::testing::Values(16),              // n_heads
-                       ::testing::Values(16),              // n_kv_heads
-                       ::testing::Values(64),              // head_dim
-                       ::testing::Values(0.0, 50.0),       // logits_soft_cap
-                       ::testing::Values(false, true),     // alibi slope
-                       ::testing::Values(-1, 0, 10)        // sliding window
-                       ));
+    ::testing::Combine(
+        ::testing::Values(1, 2, 4),                          // batch_size
+        ::testing::Values(1, 62, 125),                       // q_len
+        ::testing::Values(127, 287, 1000),                   // kv_len
+        ::testing::Values(6),                                // n_heads
+        ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
+        ::testing::Values(64),                               // head_dim
+        ::testing::Values(0.0, 50.0),                        // logits_soft_cap
+        ::testing::Values(false, true),                      // alibi slope
+        ::testing::Values(-1, 0, 10)                         // sliding window
+        ));
 
 }  // namespace llm
