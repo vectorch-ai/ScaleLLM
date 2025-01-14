@@ -98,12 +98,12 @@ __global__ void mha_kernel_sm80(Params params) {
 
   // ProblemShape
   // (q_len, HEAD_DIM)
-  auto Q = tile.template get_query_tile<Element>(batch_idx, head_idx);
-  auto O = tile.template get_output_tile<Element>(batch_idx, head_idx);
+  auto Q = tile.template get_q_tile<Element>(batch_idx, head_idx);
+  auto O = tile.template get_o_tile<Element>(batch_idx, head_idx);
 
   // (kv_len, HEAD_DIM)
-  auto K = tile.template get_key_tile<Element>(batch_idx, head_idx);
-  auto V = tile.template get_value_tile<Element>(batch_idx, head_idx);
+  auto K = tile.template get_k_tile<Element>(batch_idx, head_idx);
+  auto V = tile.template get_v_tile<Element>(batch_idx, head_idx);
 
   // Smem
   extern __shared__ char smem[];

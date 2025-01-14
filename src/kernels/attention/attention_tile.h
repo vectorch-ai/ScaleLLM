@@ -21,9 +21,9 @@ struct AttentionTile<AttentionParams> {
   CUTE_HOST_DEVICE AttentionTile(const AttentionParams& params)
       : params_(params) {}
 
-  // return the query tile for a given block: (q_len, head_dim)
+  // return the query tile: (q_len, head_dim)
   template <typename Element>
-  CUTE_HOST_DEVICE auto get_query_tile(int batch_idx, int head_idx) const {
+  CUTE_HOST_DEVICE auto get_q_tile(int batch_idx, int head_idx) const {
     // (batch, head, len, d)
     const auto offset = batch_idx * get<0>(params_.q_stride) +
                         head_idx * get<1>(params_.q_stride);
@@ -32,9 +32,9 @@ struct AttentionTile<AttentionParams> {
                        make_stride(get<2>(params_.q_stride), _1{}));
   }
 
-  // return the output tile for a given block: (q_len, head_dim)
+  // return the output tile: (q_len, head_dim)
   template <typename Element>
-  CUTE_HOST_DEVICE auto get_output_tile(int batch_idx, int head_idx) const {
+  CUTE_HOST_DEVICE auto get_o_tile(int batch_idx, int head_idx) const {
     // (batch, head, len, d)
     const auto offset = batch_idx * get<0>(params_.o_stride) +
                         head_idx * get<1>(params_.o_stride);
@@ -43,9 +43,9 @@ struct AttentionTile<AttentionParams> {
                        make_stride(get<2>(params_.o_stride), _1{}));
   }
 
-  // return the key tile for a given block: (kv_len, head_dim)
+  // return the key tile: (kv_len, head_dim)
   template <typename Element>
-  CUTE_HOST_DEVICE auto get_key_tile(int batch_idx, int kv_head_idx) const {
+  CUTE_HOST_DEVICE auto get_k_tile(int batch_idx, int kv_head_idx) const {
     // (batch, head, len, d)
     const auto offset = batch_idx * get<0>(params_.k_stride) +
                         kv_head_idx * get<1>(params_.k_stride);
@@ -54,9 +54,9 @@ struct AttentionTile<AttentionParams> {
                        make_stride(get<2>(params_.k_stride), _1{}));
   }
 
-  // return the value tile for a given block: (kv_len, head_dim)
+  // return the value tile: (kv_len, head_dim)
   template <typename Element>
-  CUTE_HOST_DEVICE auto get_value_tile(int batch_idx, int kv_head_idx) const {
+  CUTE_HOST_DEVICE auto get_v_tile(int batch_idx, int kv_head_idx) const {
     // (batch, head, len, d)
     const auto offset = batch_idx * get<0>(params_.v_stride) +
                         kv_head_idx * get<1>(params_.v_stride);
