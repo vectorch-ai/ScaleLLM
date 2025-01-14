@@ -56,9 +56,6 @@ __global__ void mha_kernel_sm80(Params params) {
 
   AttentionTile<Params> tile(params);
 
-  const auto q_len = tile.get_q_len();
-  const auto kv_len = tile.get_kv_len();
-
   float logits_soft_cap = params.logits_soft_cap;
   float sm_scale = params.sm_scale;
   float sliding_window = params.sliding_window;
@@ -93,11 +90,6 @@ __global__ void mha_kernel_sm80(Params params) {
   // use exp2f instead of expf for better performance
   sm_scale *= M_LOG2E;
 
-  // adjust sliding window size
-  if (sliding_window < 0) {
-    sliding_window = kv_len;
-  }
-
   // ProblemShape
   // (q_len, HEAD_DIM)
   auto Q = tile.template get_q_tile<Element>(batch_idx, head_idx);
@@ -106,6 +98,14 @@ __global__ void mha_kernel_sm80(Params params) {
   // (kv_len, HEAD_DIM)
   auto K = tile.template get_k_tile<Element>(batch_idx, head_idx / group_size);
   auto V = tile.template get_v_tile<Element>(batch_idx, head_idx / group_size);
+
+  const int q_len = size<0>(Q.shape());
+  const int kv_len = size<0>(K.shape());
+
+  // adjust sliding window size
+  if (sliding_window < 0) {
+    sliding_window = kv_len;
+  }
 
   // Smem
   extern __shared__ char smem[];

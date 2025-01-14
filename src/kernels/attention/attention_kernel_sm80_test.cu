@@ -197,12 +197,14 @@ TEST_P(AttentionKernelTest, MHA) {
 
   const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
 
-  const auto query =
-      torch::randn({batch_size, n_heads, q_len, head_dim}, options);
-  const auto key =
-      torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
-  const auto value =
-      torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
+  // construct non-contiguous query, key and value
+  const auto data = torch::randn(
+      {batch_size, n_heads + 2 * n_kv_heads, q_len, head_dim}, options);
+  const auto qkv =
+      data.split(/*split_size=*/{n_heads, n_kv_heads, n_kv_heads}, /*dim=*/1);
+  const auto& query = qkv[0];
+  const auto& key = qkv[1];
+  const auto& value = qkv[2];
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
