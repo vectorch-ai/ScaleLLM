@@ -195,7 +195,7 @@ struct AttentionTile<PagedKVAttentionParams> {
     return make_gather_tensor(
         make_gmem_ptr((const Element*)params_.k_ptr + offset),
         make_shape(kv_len, params_.head_dim),
-        make_stride(get<1>(params_.q_stride), _1{}),
+        make_stride(get<1>(params_.k_stride), _1{}),
         idx_to_slot);
   }
 
@@ -216,9 +216,9 @@ struct AttentionTile<PagedKVAttentionParams> {
     // v[kv_head_idx, :, :]
     const auto offset = kv_head_idx * get<0>(params_.v_stride);
     return make_gather_tensor(
-        make_gmem_ptr((const Element*)params_.k_ptr + offset),
+        make_gmem_ptr((const Element*)params_.v_ptr + offset),
         make_shape(kv_len, params_.head_dim),
-        make_stride(get<1>(params_.q_stride), _1{}),
+        make_stride(get<1>(params_.v_stride), _1{}),
         idx_to_slot);
   }
 };

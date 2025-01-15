@@ -1,5 +1,6 @@
 #include <ATen/cuda/Exceptions.h>
 #include <absl/random/random.h>
+#include <c10/core/DeviceType.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
@@ -111,12 +112,15 @@ torch::Tensor attention_varlen_ref(
   return torch::cat(out_list, /*dim=*/1);
 }
 
-torch::Tensor attention_varlen_sm80(
+torch::Tensor attention_pagedkv_sm80(
     torch::Tensor query,           // [n_heads, q_seq_len, head_dim]
     torch::Tensor key,             // [n_kv_heads, kv_seq_len, head_dim]
     torch::Tensor value,           // [n_kv_heads, kv_seq_len, head_dim]
     torch::Tensor q_cu_seq_lens,   // [batch_size+1]
     torch::Tensor kv_cu_seq_lens,  // [batch_size+1]
+    torch::Tensor block_tables,    // [n_blocks]
+    torch::Tensor cu_block_lens,   // [batch_size+1]
+    int block_size,
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
     int32_t sliding_window) {
@@ -136,7 +140,7 @@ torch::Tensor attention_varlen_sm80(
   const float sm_scale = 1.0 / sqrt(head_dim);
 
   // construct attention params
-  VarLenAttentionParams params;
+  PagedKVAttentionParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride = make_stride(query.stride(0), query.stride(1));
   params.k_ptr = key.const_data_ptr();
@@ -158,6 +162,10 @@ torch::Tensor attention_varlen_sm80(
   params.cu_seqlens_q = q_cu_seq_lens.const_data_ptr<int32_t>();
   params.cu_seqlens_kv = kv_cu_seq_lens.const_data_ptr<int32_t>();
 
+  params.block_table = block_tables.const_data_ptr<int32_t>();
+  params.cu_block_lens = cu_block_lens.const_data_ptr<int32_t>();
+  params.block_size = block_size;
+
   if (alibi_slopes.has_value()) {
     using AttentionTraits = AttentionTraitsSM80<cute::half_t,
                                                 kHeadDim,
@@ -170,7 +178,7 @@ torch::Tensor attention_varlen_sm80(
 
     const auto smem_size = AttentionTraits::kSmemSize;
     auto attention_kernel =
-        mha_kernel_sm80<AttentionTraits, VarLenAttentionParams>;
+        mha_kernel_sm80<AttentionTraits, PagedKVAttentionParams>;
     C10_CUDA_CHECK(
         cudaFuncSetAttribute(attention_kernel,
                              cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -188,7 +196,7 @@ torch::Tensor attention_varlen_sm80(
 
     const auto smem_size = AttentionTraits::kSmemSize;
     auto attention_kernel =
-        mha_kernel_sm80<AttentionTraits, VarLenAttentionParams>;
+        mha_kernel_sm80<AttentionTraits, PagedKVAttentionParams>;
     C10_CUDA_CHECK(
         cudaFuncSetAttribute(attention_kernel,
                              cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -201,8 +209,9 @@ torch::Tensor attention_varlen_sm80(
 
 }  // namespace
 
-class AttentionKernelVarlenTest
+class AttentionKernelPagedKVTest
     : public ::testing::TestWithParam<std::tuple<int64_t /*batch_size*/,
+                                                 int64_t /*block_size*/,
                                                  int64_t /*q_len*/,
                                                  int64_t /*kv_len*/,
                                                  int64_t /*n_heads*/,
@@ -218,8 +227,9 @@ class AttentionKernelVarlenTest
   }
 };
 
-TEST_P(AttentionKernelVarlenTest, VarLen) {
+TEST_P(AttentionKernelPagedKVTest, PageKV) {
   const auto [batch_size,
+              block_size,
               max_q_len,
               max_kv_len,
               n_heads,
@@ -231,6 +241,11 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
 
   const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
 
+  std::vector<int32_t> block_tables_vec;
+  std::vector<int32_t> cu_block_lens_vec = {0};
+  std::vector<int> slot_ids;
+
+  const int32_t total_blocks = (max_kv_len * batch_size) / block_size + 2;
   // random generate seq lens with size in [1, max_seq_len]
   std::vector<int32_t> q_cu_seq_lens_vec = {0};
   std::vector<int32_t> kv_cu_seq_lens_vec = {0};
@@ -241,10 +256,12 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
     // q_len: [1, q_max_seq_len]
     const int32_t q_len =
         absl::Uniform<int>(absl::IntervalClosedClosed, gen, 1, max_q_len);
+    // const int32_t q_len = max_q_len;
     n_q_tokens += q_len;
     q_cu_seq_lens_vec.push_back(n_q_tokens);
 
     // kv_len >= q_len
+    // const int32_t kv_len = max_kv_len;
     int32_t kv_len = q_len;
     if (q_len < max_kv_len) {
       // sample kv_len from [q_len, kv_max_seq_len]
@@ -254,19 +271,44 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
     n_kv_tokens += kv_len;
     kv_cu_seq_lens_vec.push_back(n_kv_tokens);
     assert(kv_len >= q_len);
+
+    // assign blocks for each sequence
+    const int32_t n_blocks = (kv_len + block_size - 1) / block_size;
+    std::vector<int32_t> block_ids;
+    block_ids.reserve(n_blocks);
+    for (int j = 0; j < n_blocks; ++j) {
+      // random assign block size
+      block_ids.push_back(absl::Uniform<int>(
+          absl::IntervalClosedClosed, gen, 1, total_blocks - 1));
+    }
+    block_tables_vec.insert(
+        block_tables_vec.end(), block_ids.begin(), block_ids.end());
+    cu_block_lens_vec.push_back(block_tables_vec.size());
+    for (int j = 0; j < kv_len; ++j) {
+      const int32_t block_id = block_ids[j / block_size];
+      const int32_t block_offset = j % block_size;
+      slot_ids.push_back(block_id * block_size + block_offset);
+    }
   }
 
   // construct non-contiguous query, key and value
   // generate query, key and value
   torch::Tensor query = torch::rand({n_heads, n_q_tokens, head_dim}, options);
-  torch::Tensor key = torch::rand({n_kv_heads, n_kv_tokens, head_dim}, options);
-  torch::Tensor value =
-      torch::rand({n_kv_heads, n_kv_tokens, head_dim}, options);
+  const auto n_slots = total_blocks * block_size;
+  torch::Tensor key_cache =
+      torch::rand({n_kv_heads, n_slots, head_dim}, options);
+  torch::Tensor value_cache =
+      torch::rand({n_kv_heads, n_slots, head_dim}, options);
 
   torch::Tensor q_cu_seq_lens = torch::tensor(
       q_cu_seq_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
   torch::Tensor kv_cu_seq_lens = torch::tensor(
       kv_cu_seq_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
+
+  torch::Tensor block_tables = torch::tensor(
+      block_tables_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
+  torch::Tensor cu_block_lens = torch::tensor(
+      cu_block_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
@@ -274,33 +316,54 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
         {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
+  // get combined key and value
+  std::vector<torch::Tensor> keys;
+  keys.reserve(slot_ids.size());
+  std::vector<torch::Tensor> values;
+  values.reserve(slot_ids.size());
+  for (int slot_id : slot_ids) {
+    using ISlice = torch::indexing::Slice;
+    // kv = kv_cache[:, slot_idx, :]
+    const auto key = key_cache.index({ISlice(), slot_id, ISlice()});
+    const auto value = value_cache.index({ISlice(), slot_id, ISlice()});
+    keys.push_back(key.reshape({n_kv_heads, head_dim}));
+    values.push_back(value.reshape({n_kv_heads, head_dim}));
+  }
+  const auto key = torch::stack(keys).transpose(0, 1).contiguous();
+  const auto value = torch::stack(values).transpose(0, 1).contiguous();
+
   auto ref_out = attention_varlen_ref(query,
-                                      key,
-                                      value,
+                                      key.to(query),
+                                      value.to(query),
                                       q_cu_seq_lens,
                                       kv_cu_seq_lens,
                                       alibi_slopes,
                                       logits_soft_cap,
                                       sliding_window);
-  auto out = attention_varlen_sm80(query,
-                                   key,
-                                   value,
-                                   q_cu_seq_lens,
-                                   kv_cu_seq_lens,
-                                   alibi_slopes,
-                                   logits_soft_cap,
-                                   sliding_window);
+
+  auto out = attention_pagedkv_sm80(query,
+                                    key_cache,
+                                    value_cache,
+                                    q_cu_seq_lens,
+                                    kv_cu_seq_lens,
+                                    block_tables,
+                                    cu_block_lens,
+                                    block_size,
+                                    alibi_slopes,
+                                    logits_soft_cap,
+                                    sliding_window);
 
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    VarLen,
-    AttentionKernelVarlenTest,
+    PagedKV,
+    AttentionKernelPagedKVTest,
     ::testing::Combine(
         ::testing::Values(1, 2, 4),                          // batch_size
-        ::testing::Values(1, 62, 125),                       // max_q_len
-        ::testing::Values(127, 287, 1000),                   // max_kv_len
+        ::testing::Values(1, 8),                             // block_size
+        ::testing::Values(1, 125),                           // max_q_len
+        ::testing::Values(127, 1000),                        // max_kv_len
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(64),                               // head_dim

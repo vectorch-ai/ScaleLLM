@@ -39,6 +39,7 @@ cc_test(
     attention_traits_test.cpp
     attention_kernel_sm80_test.cu
     attention_kernel_sm80_varlen_test.cu
+    attention_kernel_sm80_pagedkv_test.cu
   DEPS
     :attention.template
     absl::random_random
