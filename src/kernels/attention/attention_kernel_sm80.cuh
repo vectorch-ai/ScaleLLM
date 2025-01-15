@@ -155,7 +155,8 @@ __global__ void mha_kernel_sm80(Params params) {
   Tensor gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
-    safe_copy(gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
+    safe_copy</*ZERO_FILL=*/true>(
+        gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
   };
 
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
@@ -163,7 +164,8 @@ __global__ void mha_kernel_sm80(Params params) {
   Tensor gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
-    safe_copy(gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
+    safe_copy</*ZERO_FILL=*/true>(
+        gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
   };
 
   TiledMma tiled_mma;
@@ -274,7 +276,8 @@ __global__ void mha_kernel_sm80(Params params) {
 
     // wait for smem copy done before gmem copy
     __syncthreads();
-    safe_copy(gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
+    safe_copy</*ZERO_FILL=*/false>(
+        gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
   };
 
   // ###############  Prologue  ###############

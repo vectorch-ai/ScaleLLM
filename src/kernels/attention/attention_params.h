@@ -58,15 +58,15 @@ struct VarLenAttentionParams : public AttentionParamsCommon {
 
   // input shapes
   // array of length batch_size + 1 holding starting offset of each sequence.
-  const int* __restrict__ cu_seqlens_q = nullptr;
-  const int* __restrict__ cu_seqlens_kv = nullptr;
+  const int* __restrict__ q_cu_lens = nullptr;
+  const int* __restrict__ kv_cu_lens = nullptr;
 };
 
 // paged KV cache
 struct PagedKVAttentionParams : public VarLenAttentionParams {
   // Paged KV cache
   const int* __restrict__ block_table = nullptr;
-  const int* __restrict__ cu_block_lens = nullptr;
+  const int* __restrict__ block_cu_lens = nullptr;
   int block_size = 0;
 };
 

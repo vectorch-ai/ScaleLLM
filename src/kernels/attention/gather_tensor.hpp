@@ -40,13 +40,19 @@ struct CustomStride {
     return Layout<Shape, CustomStride>(shape, stride);
   }
 
+  CUTE_HOST_DEVICE friend void print(CustomStride const& s) {
+    print("CustomStride{func,");
+    print(s.stride_);
+    print("}");
+  }
+
   Func func_;
   Stride stride_;
 };
 
-template <class Stride, class Func>
-CUTLASS_HOST_DEVICE auto make_custom_stride_layout(const Stride& stride,
-                                                   Func&& func) {
+template <class Func, class Stride>
+CUTLASS_HOST_DEVICE auto make_custom_stride_layout(Func&& func,
+                                                   const Stride& stride) {
   // Use a dummy shape and replace the first non-unit stride with a custom
   // gather stride
   auto idx =
@@ -67,7 +73,7 @@ CUTLASS_HOST_DEVICE auto make_gather_tensor(Iterator iter,
   Layout matrix_layout = make_identity_layout(shape);
   auto offset = as_arithmetic_tuple(repeat_like(shape, _0{}));
   Layout gather_layout =
-      make_custom_stride_layout(stride, static_cast<Func&&>(func));
+      make_custom_stride_layout(static_cast<Func&&>(func), stride);
   return make_tensor(iter,
                      ComposedLayout{gather_layout, offset, matrix_layout});
 }
