@@ -79,25 +79,25 @@ torch::Tensor attention_varlen_ref(
     torch::Tensor query,           // [n_heads, q_seq_len, head_dim]
     torch::Tensor key,             // [n_kv_heads, kv_seq_len, head_dim]
     torch::Tensor value,           // [n_kv_heads, kv_seq_len, head_dim]
-    torch::Tensor q_cu_seq_lens,   // [batch_size+1]
+    torch::Tensor q_cu_lens,       // [batch_size+1]
     torch::Tensor kv_cu_seq_lens,  // [batch_size+1]
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
     int32_t sliding_window) {
-  torch::Tensor q_cu_seq_lens_cpu = q_cu_seq_lens.cpu();
+  torch::Tensor q_cu_lens_cpu = q_cu_lens.cpu();
   torch::Tensor kv_cu_seq_lens_cpu = kv_cu_seq_lens.cpu();
-  const size_t n_seqs = q_cu_seq_lens_cpu.numel() - 1;
-  const int32_t* q_cu_lens = q_cu_seq_lens_cpu.data_ptr<int32_t>();
-  const int32_t* kv_cu_lens = kv_cu_seq_lens_cpu.data_ptr<int32_t>();
+  const size_t n_seqs = q_cu_lens_cpu.numel() - 1;
+  const int32_t* q_cu_lens_ptr = q_cu_lens_cpu.data_ptr<int32_t>();
+  const int32_t* kv_cu_lens_ptr = kv_cu_seq_lens_cpu.data_ptr<int32_t>();
 
   std::vector<torch::Tensor> out_list;
   // process sequence one by one
   for (int64_t i = 0; i < n_seqs; ++i) {
     // calaculate attention for each sequence
-    const int32_t q_start = q_cu_lens[i];
-    const int32_t q_end = q_cu_lens[i + 1];
-    const int32_t kv_start = kv_cu_lens[i];
-    const int32_t kv_end = kv_cu_lens[i + 1];
+    const int32_t q_start = q_cu_lens_ptr[i];
+    const int32_t q_end = q_cu_lens_ptr[i + 1];
+    const int32_t kv_start = kv_cu_lens_ptr[i];
+    const int32_t kv_end = kv_cu_lens_ptr[i + 1];
 
     torch::Tensor q = query.slice(/*dim=*/1, /*start=*/q_start, /*end=*/q_end);
     torch::Tensor k = key.slice(/*dim=*/1, /*start=*/kv_start, /*end=*/kv_end);
@@ -112,11 +112,11 @@ torch::Tensor attention_varlen_ref(
 }
 
 torch::Tensor attention_varlen_sm80(
-    torch::Tensor query,           // [n_heads, q_seq_len, head_dim]
-    torch::Tensor key,             // [n_kv_heads, kv_seq_len, head_dim]
-    torch::Tensor value,           // [n_kv_heads, kv_seq_len, head_dim]
-    torch::Tensor q_cu_seq_lens,   // [batch_size+1]
-    torch::Tensor kv_cu_seq_lens,  // [batch_size+1]
+    torch::Tensor query,       // [n_heads, q_len, head_dim]
+    torch::Tensor key,         // [n_kv_heads, kv_len, head_dim]
+    torch::Tensor value,       // [n_kv_heads, kv_len, head_dim]
+    torch::Tensor q_cu_lens,   // [batch_size+1]
+    torch::Tensor kv_cu_lens,  // [batch_size+1]
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
     int32_t sliding_window) {
@@ -125,7 +125,7 @@ torch::Tensor attention_varlen_sm80(
   const auto q_len = query.size(1);
   const auto kv_len = key.size(1);
   const auto head_dim = query.size(2);
-  const auto batch_size = q_cu_seq_lens.size(0) - 1;
+  const auto batch_size = q_cu_lens.size(0) - 1;
 
   auto out = torch::empty_like(query);
 
@@ -155,8 +155,8 @@ torch::Tensor attention_varlen_sm80(
   params.logits_soft_cap = logits_soft_cap;
   params.sliding_window = sliding_window;
 
-  params.cu_seqlens_q = q_cu_seq_lens.const_data_ptr<int32_t>();
-  params.cu_seqlens_kv = kv_cu_seq_lens.const_data_ptr<int32_t>();
+  params.q_cu_lens = q_cu_lens.const_data_ptr<int32_t>();
+  params.kv_cu_lens = kv_cu_lens.const_data_ptr<int32_t>();
 
   if (alibi_slopes.has_value()) {
     using AttentionTraits = AttentionTraitsSM80<cute::half_t,
@@ -232,8 +232,8 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
   const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
 
   // random generate seq lens with size in [1, max_seq_len]
-  std::vector<int32_t> q_cu_seq_lens_vec = {0};
-  std::vector<int32_t> kv_cu_seq_lens_vec = {0};
+  std::vector<int32_t> q_cu_lens_vec = {0};
+  std::vector<int32_t> kv_cu_lens_vec = {0};
   int32_t n_kv_tokens = 0;
   int32_t n_q_tokens = 0;
   absl::BitGen gen;
@@ -242,7 +242,7 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
     const int32_t q_len =
         absl::Uniform<int>(absl::IntervalClosedClosed, gen, 1, max_q_len);
     n_q_tokens += q_len;
-    q_cu_seq_lens_vec.push_back(n_q_tokens);
+    q_cu_lens_vec.push_back(n_q_tokens);
 
     // kv_len >= q_len
     int32_t kv_len = q_len;
@@ -252,7 +252,7 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
           absl::IntervalClosedClosed, gen, q_len, max_kv_len);
     }
     n_kv_tokens += kv_len;
-    kv_cu_seq_lens_vec.push_back(n_kv_tokens);
+    kv_cu_lens_vec.push_back(n_kv_tokens);
     assert(kv_len >= q_len);
   }
 
@@ -263,10 +263,10 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
   torch::Tensor value =
       torch::rand({n_kv_heads, n_kv_tokens, head_dim}, options);
 
-  torch::Tensor q_cu_seq_lens = torch::tensor(
-      q_cu_seq_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
-  torch::Tensor kv_cu_seq_lens = torch::tensor(
-      kv_cu_seq_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
+  torch::Tensor q_cu_lens = torch::tensor(
+      q_cu_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
+  torch::Tensor kv_cu_lens = torch::tensor(
+      kv_cu_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
@@ -277,16 +277,16 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
   auto ref_out = attention_varlen_ref(query,
                                       key,
                                       value,
-                                      q_cu_seq_lens,
-                                      kv_cu_seq_lens,
+                                      q_cu_lens,
+                                      kv_cu_lens,
                                       alibi_slopes,
                                       logits_soft_cap,
                                       sliding_window);
   auto out = attention_varlen_sm80(query,
                                    key,
                                    value,
-                                   q_cu_seq_lens,
-                                   kv_cu_seq_lens,
+                                   q_cu_lens,
+                                   kv_cu_lens,
                                    alibi_slopes,
                                    logits_soft_cap,
                                    sliding_window);
