@@ -165,6 +165,97 @@ torch::Tensor attention_sm80(
   return out;
 }
 
+torch::Tensor attention_varlen_sm80(
+    torch::Tensor query,  // [batch_size, n_heads, q_len, head_dim]
+    torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
+    torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
+    torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
+    float logits_soft_cap,
+    int32_t sliding_window) {
+  const auto batch_size = query.size(0);
+  const auto n_heads = query.size(1);
+  const auto n_kv_heads = key.size(1);
+  const auto q_len = query.size(2);
+  const auto kv_len = key.size(2);
+  const auto head_dim = query.size(3);
+
+  const auto h_stride = query.stride(1);
+  const auto kv_h_stride = key.stride(1);
+
+  auto out = torch::empty_like(query);
+
+  // TODO: pass in alibi slope
+
+  constexpr int32_t kHeadDim = 64;
+  constexpr int32_t kBlockM = 64;
+  constexpr int32_t kBlockN = 64;
+
+  const float sm_scale = 1.0 / sqrt(head_dim);
+
+  // construct attention params
+  PagedKVAttentionParams params;
+  params.q_ptr = query.const_data_ptr();
+  params.q_stride = make_stride(query.stride(0), query.stride(1));
+  params.k_ptr = key.const_data_ptr();
+  params.k_stride = make_stride(key.stride(0), key.stride(1));
+  params.v_ptr = value.const_data_ptr();
+  params.v_stride = make_stride(value.stride(0), value.stride(1));
+  params.o_ptr = out.mutable_data_ptr();
+  params.o_stride = make_stride(out.stride(0), out.stride(1));
+  params.alibi_slopes_ptr = alibi_slopes.has_value()
+                                ? alibi_slopes.value().const_data_ptr<float>()
+                                : nullptr;
+  params.n_heads = n_heads;
+  params.n_kv_heads = n_kv_heads;
+  // params.q_len = q_len;
+  // params.kv_len = kv_len;
+  params.head_dim = head_dim;
+  params.sm_scale = sm_scale;
+  params.logits_soft_cap = logits_soft_cap;
+  params.sliding_window = sliding_window;
+
+  if (alibi_slopes.has_value()) {
+    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
+                                                kHeadDim,
+                                                kBlockM,
+                                                kBlockN,
+                                                /*Alibi=*/true>;
+
+    dim3 block = AttentionTraits::kThreadNum;
+    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
+
+    const auto smem_size = AttentionTraits::kSmemSize;
+    auto attention_kernel =
+        mha_kernel_sm80<AttentionTraits, PagedKVAttentionParams>;
+    C10_CUDA_CHECK(
+        cudaFuncSetAttribute(attention_kernel,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_size));
+    attention_kernel<<<grid, block, smem_size>>>(params);
+
+  } else {
+    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
+                                                kHeadDim,
+                                                kBlockM,
+                                                kBlockN,
+                                                /*Alibi=*/false>;
+
+    dim3 block = AttentionTraits::kThreadNum;
+    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
+
+    const auto smem_size = AttentionTraits::kSmemSize;
+    auto attention_kernel =
+        mha_kernel_sm80<AttentionTraits, PagedKVAttentionParams>;
+    C10_CUDA_CHECK(
+        cudaFuncSetAttribute(attention_kernel,
+                             cudaFuncAttributeMaxDynamicSharedMemorySize,
+                             smem_size));
+    attention_kernel<<<grid, block, smem_size>>>(params);
+  }
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return out;
+}
+
 }  // namespace
 
 class AttentionKernelTest
@@ -234,7 +325,6 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(false, true),                      // alibi slope
         ::testing::Values(-1, 0, 10)                         // sliding window
         ));
-
 
 TEST_P(AttentionKernelTest, VarLangth) {
   const auto [batch_size,

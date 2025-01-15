@@ -5,7 +5,7 @@
 #include <cute/tensor.hpp>
 
 #include "attention_params.h"
-#include "cute_extensions.cuh"
+#include "gather_tensor.hpp"
 
 namespace llm {
 using namespace cute;
@@ -182,20 +182,21 @@ struct AttentionTile<PagedKVAttentionParams> {
     const auto kv_len =
         params_.cu_seqlens_kv[batch_idx + 1] - params_.cu_seqlens_kv[batch_idx];
 
+    // map seq_idx to slot_idx
     const int* block_table =
         params_.block_table + params_.cu_block_lens[batch_idx];
     const int block_size = params_.block_size;
-    const auto stride = get<1>(params_.v_stride);
-    // map seq_idx to slot_idx
     auto idx_to_slot = [block_table, block_size](int idx) {
       return block_table[idx / block_size] * block_size + idx % block_size;
     };
 
     // v[kv_head_idx, :, :]
     const auto offset = kv_head_idx * get<0>(params_.k_stride);
-    return make_tensor(make_gmem_ptr((const Element*)params_.k_ptr + offset),
-                       make_shape(kv_len, params_.head_dim),
-                       make_stride(DynamicStride(stride, idx_to_slot), _1{}));
+    return make_gather_tensor(
+        make_gmem_ptr((const Element*)params_.k_ptr + offset),
+        make_shape(kv_len, params_.head_dim),
+        make_stride(get<1>(params_.q_stride), _1{}),
+        idx_to_slot);
   }
 
   // return the value tile: (kv_len, head_dim)
@@ -204,20 +205,21 @@ struct AttentionTile<PagedKVAttentionParams> {
     const auto kv_len =
         params_.cu_seqlens_kv[batch_idx + 1] - params_.cu_seqlens_kv[batch_idx];
 
+    // map seq_idx to slot_idx
     const int* block_table =
         params_.block_table + params_.cu_block_lens[batch_idx];
     const int block_size = params_.block_size;
-    const auto stride = get<1>(params_.v_stride);
-    // map seq_idx to slot_idx
     auto idx_to_slot = [block_table, block_size](int idx) {
       return block_table[idx / block_size] * block_size + idx % block_size;
     };
 
     // v[kv_head_idx, :, :]
     const auto offset = kv_head_idx * get<0>(params_.v_stride);
-    return make_tensor(make_gmem_ptr((const Element*)params_.v_ptr + offset),
-                       make_shape(kv_len, params_.head_dim),
-                       make_stride(DynamicStride(stride, idx_to_slot), _1{}));
+    return make_gather_tensor(
+        make_gmem_ptr((const Element*)params_.k_ptr + offset),
+        make_shape(kv_len, params_.head_dim),
+        make_stride(get<1>(params_.q_stride), _1{}),
+        idx_to_slot);
   }
 };
 
