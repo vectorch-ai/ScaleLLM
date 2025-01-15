@@ -51,7 +51,6 @@ __global__ void mha_kernel_sm80(Params params) {
   const int m_block = blockIdx.x;
   const auto batch_idx = blockIdx.y;
   const auto head_idx = blockIdx.z;
-
   const auto tidx = threadIdx.x;
 
   AttentionTile<Params> tile(params);
@@ -101,6 +100,11 @@ __global__ void mha_kernel_sm80(Params params) {
 
   const int q_len = size<0>(Q.shape());
   const int kv_len = size<0>(K.shape());
+
+  if (m_block * kBlockM >= q_len) {
+    // out of bound, return
+    return;
+  }
 
   // adjust sliding window size
   if (sliding_window < 0) {
