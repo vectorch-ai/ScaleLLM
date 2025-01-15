@@ -1,8 +1,12 @@
+#pragma once
+
 #include <cute/atom/mma_atom.hpp>
 #include <cute/swizzle_layout.hpp>
 #include <cute/tensor.hpp>
 
 #include "cute/config.hpp"
+#include "cute/layout.hpp"
+#include "cute/layout_composed.hpp"
 
 namespace cute {
 
@@ -46,6 +50,58 @@ CUTE_HOST_DEVICE void safe_copy(
       }
     }
   }
+}
+
+
+template <int N, int I, class Shape, class Stride>
+CUTE_HOST_DEVICE constexpr auto upcast(Shape const& shape,
+                                       Stride const& stride) {
+  if constexpr (is_tuple<Shape>::value) {
+    return transform_layout(shape, stride, [](auto const& s, auto const& d) {
+      return upcast<N, I>(s, d);
+    });
+  } else if constexpr (is_scaled_basis<Stride>::value) {
+    if constexpr (Stride::mode() == I) {
+      return make_layout(shape_div(shape, Int<N>{}),
+                         shape_div(stride, Int<N>{}));
+    } else {
+      return make_layout(shape, stride);
+    }
+  } else {
+    return upcast<N>(shape, stride);
+  }
+
+  CUTE_GCC_UNREACHABLE;
+}
+
+template <int N,
+          class OuterShape,
+          class OuterStride,
+          class Offset,
+          class Shape,
+          class Stride>
+CUTE_HOST_DEVICE constexpr auto upcast(
+    ComposedLayout<Layout<OuterShape, OuterStride>,
+                   Offset,
+                   Layout<Shape, Stride>> const& layout) {
+  // Find index of the stride-1 mode - that is the only one that requires
+  // updating inner shape and offset
+  auto idx = find_if(layout.layout_a().stride(),
+                     [](auto x) { return is_constant<1, decltype(x)>{}; });
+  constexpr int I = decltype(idx)::value;
+
+  // Upcast the outer layout (works as expected)
+  auto outer = upcast<N>(layout.layout_a());
+
+  // Upcast the accumulated offset along stride-1 mode
+  auto offset = as_arithmetic_tuple(
+      replace<I>(layout.offset(), upcast<N>(get<I>(layout.offset()))));
+
+  // Upcast the inner layout's shape along stride-1 mode
+  auto inner =
+      upcast<N, I>(layout.layout_b().shape(), layout.layout_b().stride());
+
+  return composition(outer, offset, inner);
 }
 
 }  // namespace cute
