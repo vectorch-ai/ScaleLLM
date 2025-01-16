@@ -48,9 +48,11 @@ void test_attention_traits() {
 
 TEST(AttentionTraitsTest, TraitsSM80) {
   test_attention_traits<AttentionTraitsSM80<cute::half_t,
-                                            /*kHeadDim_=*/64,
-                                            /*kBlockM_=*/64,
-                                            /*kBlockN_=*/64>>();
+                                            /*HEAD_DIM=*/64,
+                                            /*BLK_M=*/64,
+                                            /*BLK_N=*/64,
+                                            /*BLK_K=*/64,
+                                            /*ALIBI=*/false>>();
 }
 
 }  // namespace llm
