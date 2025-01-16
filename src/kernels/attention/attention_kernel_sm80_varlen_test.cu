@@ -11,29 +11,29 @@ namespace llm {
 namespace {
 // Multi-head attention implementation using pytorch
 torch::Tensor attention_ref(
-    torch::Tensor query,  // [n_heads, q_len, head_dim]
-    torch::Tensor key,    // [n_kv_heads, kv_len, head_dim]
-    torch::Tensor value,  // [n_kv_heads, kv_len, head_dim]
+    torch::Tensor query,  // [q_len, n_heads, head_dim]
+    torch::Tensor key,    // [kv_len, n_kv_heads, head_dim]
+    torch::Tensor value,  // [kv_len, n_kv_heads, head_dim]
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
     int32_t sliding_window) {
-  const auto q_len = query.size(1);
-  const auto kv_len = key.size(1);
-  const auto n_heads = query.size(0);
-  const auto n_kv_heads = key.size(0);
-  const auto head_dim = query.size(2);
+  const auto q_len = query.size(-3);
+  const auto kv_len = key.size(-3);
+  const auto n_heads = query.size(-2);
+  const auto n_kv_heads = key.size(-2);
+  const auto head_dim = query.size(-1);
   assert(kv_len >= q_len);
 
   if (n_heads != n_kv_heads) {
     assert(n_heads % n_kv_heads == 0);
     const auto group_size = n_heads / n_kv_heads;
-    key = key.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
-    value = value.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
+    key = key.repeat_interleave(/*repeats=*/group_size, /*dim=*/-2);
+    value = value.repeat_interleave(/*repeats=*/group_size, /*dim=*/-2);
   }
 
   const float sm_scale = 1.0 / sqrt(head_dim);
-  // query * key => [n_heads, q_seq_len, seq_len]
-  auto scores = torch::einsum("hqd,hkd->hqk",
+  // query * key => [n_heads, q_len, kv_len]
+  auto scores = torch::einsum("qhd,khd->hqk",
                               {query.to(torch::kFloat), key.to(torch::kFloat)});
   // apply scale
   scores *= sm_scale;
@@ -69,22 +69,22 @@ torch::Tensor attention_ref(
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
 
-  // score * value => [batch_size, n_heads, q_seq_len, head_dim]
-  return torch::einsum("hqk,hkd->hqd", {scores, value.to(torch::kFloat)})
+  // score * value => [q_len, n_heads, head_dim]
+  return torch::einsum("hqk,khd->qhd", {scores, value.to(torch::kFloat)})
       .type_as(query);
 }
 
 torch::Tensor attention_varlen_ref(
-    torch::Tensor query,           // [n_heads, q_seq_len, head_dim]
-    torch::Tensor key,             // [n_kv_heads, kv_seq_len, head_dim]
-    torch::Tensor value,           // [n_kv_heads, kv_seq_len, head_dim]
-    torch::Tensor q_cu_lens,       // [batch_size+1]
-    torch::Tensor kv_cu_seq_lens,  // [batch_size+1]
+    torch::Tensor query,       // [q_len, n_heads, head_dim]
+    torch::Tensor key,         // [kv_len, n_kv_heads, head_dim]
+    torch::Tensor value,       // [kv_len, n_kv_heads, head_dim]
+    torch::Tensor q_cu_lens,   // [batch_size + 1]
+    torch::Tensor kv_cu_lens,  // [batch_size + 1]
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
     int32_t sliding_window) {
   torch::Tensor q_cu_lens_cpu = q_cu_lens.cpu();
-  torch::Tensor kv_cu_seq_lens_cpu = kv_cu_seq_lens.cpu();
+  torch::Tensor kv_cu_seq_lens_cpu = kv_cu_lens.cpu();
   const size_t n_seqs = q_cu_lens_cpu.numel() - 1;
   const int32_t* q_cu_lens_ptr = q_cu_lens_cpu.data_ptr<int32_t>();
   const int32_t* kv_cu_lens_ptr = kv_cu_seq_lens_cpu.data_ptr<int32_t>();
@@ -98,32 +98,32 @@ torch::Tensor attention_varlen_ref(
     const int32_t kv_start = kv_cu_lens_ptr[i];
     const int32_t kv_end = kv_cu_lens_ptr[i + 1];
 
-    torch::Tensor q = query.slice(/*dim=*/1, /*start=*/q_start, /*end=*/q_end);
-    torch::Tensor k = key.slice(/*dim=*/1, /*start=*/kv_start, /*end=*/kv_end);
+    torch::Tensor q = query.slice(/*dim=*/0, /*start=*/q_start, /*end=*/q_end);
+    torch::Tensor k = key.slice(/*dim=*/0, /*start=*/kv_start, /*end=*/kv_end);
     torch::Tensor v =
-        value.slice(/*dim=*/1, /*start=*/kv_start, /*end=*/kv_end);
+        value.slice(/*dim=*/0, /*start=*/kv_start, /*end=*/kv_end);
 
     auto output =
         attention_ref(q, k, v, alibi_slopes, logits_soft_cap, sliding_window);
     out_list.push_back(output);
   }
-  return torch::cat(out_list, /*dim=*/1);
+  return torch::cat(out_list, /*dim=*/0);
 }
 
 torch::Tensor attention_varlen_sm80(
-    torch::Tensor query,       // [n_heads, q_len, head_dim]
-    torch::Tensor key,         // [n_kv_heads, kv_len, head_dim]
-    torch::Tensor value,       // [n_kv_heads, kv_len, head_dim]
+    torch::Tensor query,       // [q_len, n_heads, head_dim]
+    torch::Tensor key,         // [kv_len, n_kv_heads, head_dim]
+    torch::Tensor value,       // [kv_len, n_kv_heads, head_dim]
     torch::Tensor q_cu_lens,   // [batch_size+1]
     torch::Tensor kv_cu_lens,  // [batch_size+1]
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
     int32_t sliding_window,
     int32_t max_q_len) {
-  const auto n_heads = query.size(0);
-  const auto n_kv_heads = key.size(0);
-  const auto head_dim = query.size(2);
   const auto batch_size = q_cu_lens.size(0) - 1;
+  const auto n_heads = query.size(-2);
+  const auto n_kv_heads = key.size(-2);
+  const auto head_dim = query.size(-1);
 
   auto out = torch::empty_like(query);
 
@@ -221,10 +221,10 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
 
   // construct non-contiguous query, key and value
   // generate query, key and value
-  torch::Tensor query = torch::rand({n_heads, n_q_tokens, head_dim}, options);
-  torch::Tensor key = torch::rand({n_kv_heads, n_kv_tokens, head_dim}, options);
+  torch::Tensor query = torch::rand({n_q_tokens, n_heads, head_dim}, options);
+  torch::Tensor key = torch::rand({n_kv_tokens, n_kv_heads, head_dim}, options);
   torch::Tensor value =
-      torch::rand({n_kv_heads, n_kv_tokens, head_dim}, options);
+      torch::rand({n_kv_tokens, n_kv_heads, head_dim}, options);
 
   torch::Tensor q_cu_lens = torch::tensor(
       q_cu_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));

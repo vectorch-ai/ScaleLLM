@@ -5,93 +5,26 @@
 
 #include "attention_launch_sm80.cuh"
 #include "attention_params.h"
+#include "attention_ref.h"
 #include "cute/layout.hpp"
 #include "static_dispatch.h"
 
 namespace llm {
 namespace {
-// Multi-head attention implementation using pytorch
-torch::Tensor attention_ref(
-    torch::Tensor query,  // [batch_size, n_heads, q_len, head_dim]
-    torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
-    torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
-    torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
-    float logits_soft_cap,
-    int32_t sliding_window) {
-  const auto q_len = query.size(2);
-  const auto kv_len = key.size(2);
-  const auto n_heads = query.size(1);
-  const auto n_kv_heads = key.size(1);
-  const auto head_dim = query.size(3);
-  assert(kv_len >= q_len);
-
-  if (n_heads != n_kv_heads) {
-    assert(n_heads % n_kv_heads == 0);
-    const auto group_size = n_heads / n_kv_heads;
-    key = key.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
-    value = value.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
-  }
-
-  const float sm_scale = 1.0 / sqrt(head_dim);
-  // query * key => [n_heads, q_seq_len, seq_len]
-  auto scores = torch::einsum("bhqd,bhkd->bhqk",
-                              {query.to(torch::kFloat), key.to(torch::kFloat)});
-  // apply scale
-  scores *= sm_scale;
-
-  // apply softcap if needed
-  if (logits_soft_cap != 0.0) {
-    scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
-  }
-
-  // apply alibi bias
-  if (alibi_slopes) {
-    const auto& slopes = alibi_slopes.value();
-    // calculate alibi attention bias
-    // since it's causal mask, we can just use [0, 1, ...,, kv_len)
-    auto distance = torch::arange(0, kv_len, query.options());
-    // [n_heads, 1, kv_len]
-    auto bias = distance.view({1, 1, kv_len}) * slopes.view({n_heads, 1, 1});
-    scores += bias;
-  }
-
-  auto mask = torch::ones({q_len, kv_len}, torch::kBool);
-  if (sliding_window >= 0) {
-    // sliding window mask
-    // returns the upper triangular part of a matrix
-    mask = torch::triu(mask, /*diagonal=*/kv_len - q_len - sliding_window);
-  }
-
-  // apply causal mask
-  // causal mask: returns the lower triangular part of a matrix
-  mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(query);
-  scores = scores.masked_fill(mask == 0, -INFINITY);
-
-  // safe softmax
-  scores = torch::softmax(scores, /*dim=*/-1);
-
-  // score * value => [batch_size, n_heads, q_seq_len, head_dim]
-  return torch::einsum("bhqk,bhkd->bhqd", {scores, value.to(torch::kFloat)})
-      .type_as(query);
-}
-
 torch::Tensor attention_sm80(
-    torch::Tensor query,  // [batch_size, n_heads, q_len, head_dim]
-    torch::Tensor key,    // [batch_size, n_kv_heads, kv_len, head_dim]
-    torch::Tensor value,  // [batch_size, n_kv_heads, kv_len, head_dim]
+    torch::Tensor query,  // [batch_size, q_len, n_heads, head_dim]
+    torch::Tensor key,    // [batch_size, kv_len, n_kv_heads, head_dim]
+    torch::Tensor value,  // [batch_size, kv_len, n_kv_heads, head_dim]
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
     int32_t sliding_window,
     int32_t max_q_len) {
   const auto batch_size = query.size(0);
-  const auto n_heads = query.size(1);
-  const auto n_kv_heads = key.size(1);
-  const auto q_len = query.size(2);
-  const auto kv_len = key.size(2);
-  const auto head_dim = query.size(3);
-
-  const auto h_stride = query.stride(1);
-  const auto kv_h_stride = key.stride(1);
+  const auto q_len = query.size(-3);
+  const auto kv_len = key.size(-3);
+  const auto n_heads = query.size(-2);
+  const auto n_kv_heads = key.size(-2);
+  const auto head_dim = query.size(-1);
 
   auto out = torch::empty_like(query);
 
@@ -166,9 +99,9 @@ TEST_P(AttentionKernelTest, MHA) {
 
   // construct non-contiguous query, key and value
   const auto data = torch::randn(
-      {batch_size, n_heads + 2 * n_kv_heads, q_len, head_dim}, options);
+      {batch_size, q_len, n_heads + 2 * n_kv_heads, head_dim}, options);
   const auto qkv =
-      data.split(/*split_size=*/{n_heads, n_kv_heads, n_kv_heads}, /*dim=*/1);
+      data.split(/*split_size=*/{n_heads, n_kv_heads, n_kv_heads}, /*dim=*/2);
   const auto& query = qkv[0];
   const auto& key = qkv[1];
   const auto& value = qkv[2];
@@ -179,7 +112,7 @@ TEST_P(AttentionKernelTest, MHA) {
         {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
-  auto ref_out = attention_ref(
+  auto ref_out = attention_batch_ref(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
   auto out = attention_sm80(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window, q_len);

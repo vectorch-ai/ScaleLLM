@@ -62,6 +62,7 @@ cc_test(
     :attention.template
     absl::random_random
     GTest::gtest_main
+    torch
 )
 
 cc_binary(
