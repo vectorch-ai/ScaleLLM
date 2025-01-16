@@ -29,6 +29,7 @@ configure_file(
 execute_process(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_instantiation_cu.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
+  COMMAND_ERROR_IS_FATAL ANY
 )
 # globbing all generated files in sub directory "generated"
 file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/*.cu")
