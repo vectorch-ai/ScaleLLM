@@ -4,9 +4,9 @@
 #include <cuda/std/chrono>
 #include <nvbench/nvbench.cuh>
 
-#include "attention_kernel_sm80.cuh"
-#include "attention_traits_sm80.h"
-#include "kernels/attention/attention_params.h"
+#include "attention_launch_sm80.cuh"
+#include "attention_params.h"
+#include "static_dispatch.h"
 
 using namespace llm;
 
@@ -37,10 +37,6 @@ void attention_bench_sm80(nvbench::state& state) {
   const auto h_stride = query.stride(1);
   const auto kv_h_stride = key.stride(1);
 
-  constexpr int32_t kHeadDim = 64;
-  constexpr int32_t kBlockM = 64;
-  constexpr int32_t kBlockN = 64;
-
   // construct attention params
   AttentionParams params;
   params.q_ptr = query.const_data_ptr();
@@ -54,6 +50,8 @@ void attention_bench_sm80(nvbench::state& state) {
   params.o_ptr = out.mutable_data_ptr();
   params.o_stride = make_stride(out.stride(0), out.stride(1), out.stride(2));
   params.alibi_slopes_ptr = nullptr;
+  params.batch_size = batch_size;
+  params.max_q_len = q_len;
   params.n_heads = n_heads;
   params.n_kv_heads = n_kv_heads;
   params.q_len = q_len;
@@ -63,23 +61,12 @@ void attention_bench_sm80(nvbench::state& state) {
   params.logits_soft_cap = logits_soft_cap;
   params.sliding_window = -1;
 
-  using AttentionTraits = AttentionTraitsSM80<cute::half_t,
-                                              kHeadDim,
-                                              kBlockM,
-                                              kBlockN,
-                                              /*Alibi=*/false>;
-
-  dim3 block = AttentionTraits::kThreadNum;
-  dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
-
-  const auto smem_size = AttentionTraits::kSmemSize;
-  auto attention_kernel = mha_kernel_sm80<AttentionTraits, AttentionParams>;
-
   state.exec([&](nvbench::launch& launch) {
-    cudaFuncSetAttribute(attention_kernel,
-                         cudaFuncAttributeMaxDynamicSharedMemorySize,
-                         smem_size);
-    attention_kernel<<<grid, block, smem_size, launch.get_stream()>>>(params);
+    DISPATCH_TORCH_DTYPE(query.dtype(), QTYPE, [&] {
+      DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
+        run_attention_kernel_sm80<QTYPE, HEAD_DIM>(params, launch.get_stream());
+      });
+    });
   });
 }
 

@@ -31,7 +31,7 @@ struct LayoutConvertor {
   }
 };
 
-template <int kBlockM, int kBlockN, bool Alibi>
+template <int BLK_M, int BLK_N, bool ALIBI>
 struct Mask {
   int q_len_;
   int kv_len_;
@@ -58,8 +58,8 @@ struct Mask {
     const int warp_idx_x = tidx / 32;
     const int warp_idx_y = 0;
     const int lane_id = tidx % 32;
-    const int m_base = m_block * kBlockM + warp_idx_x * 16 + lane_id / 4;
-    const int n_base = n_block * kBlockN + warp_idx_y * 16 + (lane_id % 4) * 2;
+    const int m_base = m_block * BLK_M + warp_idx_x * 16 + lane_id / 4;
+    const int n_base = n_block * BLK_N + warp_idx_y * 16 + (lane_id % 4) * 2;
 
     // TiledMMA: 64x16x16, MMA_Atom: 16x8x16
     CUTE_UNROLL
@@ -87,7 +87,7 @@ struct Mask {
               rAccS(make_coord(i, mi), make_coord(j, nj)) = -INFINITY;
             } else {
               // Apply alibi bias
-              if constexpr (Alibi) {
+              if constexpr (ALIBI) {
                 rAccS(make_coord(i, mi), make_coord(j, nj)) +=
                     alibi_slope_ * kv_idx;
               }
@@ -101,17 +101,18 @@ struct Mask {
 
 }  // namespace detail
 
-template <typename Element_ = cute::half_t,
-          int kHeadDim_ = 64,
-          int kBlockM_ = 64,
-          int kBlockN_ = 64,
-          bool Alibi_ = false>
+template <typename Element_,
+          int HEAD_DIM,
+          int BLK_M,
+          int BLK_N,
+          int BLK_K,
+          bool ALIBI = false>
 struct AttentionTraitsSM80 {
   // helpful aliases
-  static constexpr int kHeadDim = kHeadDim_;
-  static constexpr int kBlockM = kBlockM_;
-  static constexpr int kBlockN = kBlockN_;
-  static constexpr int kBlockK = kHeadDim % 64 == 0 ? 64 : 32;
+  static constexpr int kHeadDim = HEAD_DIM;
+  static constexpr int kBlockM = BLK_M;
+  static constexpr int kBlockN = BLK_N;
+  static constexpr int kBlockK = BLK_K;
 
   using Element = Element_;
   using _BLK_M = Int<kBlockM>;
@@ -134,10 +135,10 @@ struct AttentionTraitsSM80 {
   using LayoutConvertor = detail::LayoutConvertor;
 
   // Mask for causal, local, alibi
-  using Mask = detail::Mask<kBlockM_, kBlockN_, Alibi_>;
+  using Mask = detail::Mask<BLK_M, BLK_N, ALIBI>;
 
   // Online softmax
-  using Softmax = OnlineSoftmax<2 * kBlockM_ / 64>;
+  using Softmax = OnlineSoftmax<2 * BLK_M / 64>;
 
   // SMEM layout for QKV
   // Q smem: (BLK_M, K):(K, 1), k-major

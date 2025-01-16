@@ -1,12 +1,11 @@
-#include <ATen/cuda/Exceptions.h>
 #include <absl/random/random.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
-#include "attention_kernel_sm80.cuh"
-#include "attention_traits_sm80.h"
+#include "attention_launch_sm80.cuh"
+#include "attention_params.h"
 #include "cute/layout.hpp"
-#include "kernels/attention/attention_params.h"
+#include "static_dispatch.h"
 
 namespace llm {
 namespace {
@@ -119,19 +118,14 @@ torch::Tensor attention_varlen_sm80(
     torch::Tensor kv_cu_lens,  // [batch_size+1]
     torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
     float logits_soft_cap,
-    int32_t sliding_window) {
+    int32_t sliding_window,
+    int32_t max_q_len) {
   const auto n_heads = query.size(0);
   const auto n_kv_heads = key.size(0);
-  const auto q_len = query.size(1);
-  const auto kv_len = key.size(1);
   const auto head_dim = query.size(2);
   const auto batch_size = q_cu_lens.size(0) - 1;
 
   auto out = torch::empty_like(query);
-
-  constexpr int32_t kHeadDim = 64;
-  constexpr int32_t kBlockM = 64;
-  constexpr int32_t kBlockN = 64;
 
   const float sm_scale = 1.0 / sqrt(head_dim);
 
@@ -148,6 +142,8 @@ torch::Tensor attention_varlen_sm80(
   params.alibi_slopes_ptr = alibi_slopes.has_value()
                                 ? alibi_slopes.value().const_data_ptr<float>()
                                 : nullptr;
+  params.batch_size = batch_size;
+  params.max_q_len = max_q_len;
   params.n_heads = n_heads;
   params.n_kv_heads = n_kv_heads;
   params.head_dim = head_dim;
@@ -158,44 +154,11 @@ torch::Tensor attention_varlen_sm80(
   params.q_cu_lens = q_cu_lens.const_data_ptr<int32_t>();
   params.kv_cu_lens = kv_cu_lens.const_data_ptr<int32_t>();
 
-  if (alibi_slopes.has_value()) {
-    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
-                                                kHeadDim,
-                                                kBlockM,
-                                                kBlockN,
-                                                /*Alibi=*/true>;
-
-    dim3 block = AttentionTraits::kThreadNum;
-    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
-
-    const auto smem_size = AttentionTraits::kSmemSize;
-    auto attention_kernel =
-        mha_kernel_sm80<AttentionTraits, VarLenAttentionParams>;
-    C10_CUDA_CHECK(
-        cudaFuncSetAttribute(attention_kernel,
-                             cudaFuncAttributeMaxDynamicSharedMemorySize,
-                             smem_size));
-    attention_kernel<<<grid, block, smem_size>>>(params);
-  } else {
-    using AttentionTraits = AttentionTraitsSM80<cute::half_t,
-                                                kHeadDim,
-                                                kBlockM,
-                                                kBlockN,
-                                                /*Alibi=*/false>;
-
-    dim3 block = AttentionTraits::kThreadNum;
-    dim3 grid((q_len + kBlockM - 1) / kBlockM, batch_size, n_heads);
-
-    const auto smem_size = AttentionTraits::kSmemSize;
-    auto attention_kernel =
-        mha_kernel_sm80<AttentionTraits, VarLenAttentionParams>;
-    C10_CUDA_CHECK(
-        cudaFuncSetAttribute(attention_kernel,
-                             cudaFuncAttributeMaxDynamicSharedMemorySize,
-                             smem_size));
-    attention_kernel<<<grid, block, smem_size>>>(params);
-  }
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  DISPATCH_TORCH_DTYPE(query.dtype(), QTYPE, [&] {
+    DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
+      run_attention_kernel_sm80<QTYPE, HEAD_DIM>(params);
+    });
+  });
   return out;
 }
 
@@ -289,7 +252,8 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
                                    kv_cu_lens,
                                    alibi_slopes,
                                    logits_soft_cap,
-                                   sliding_window);
+                                   sliding_window,
+                                   max_q_len);
 
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }

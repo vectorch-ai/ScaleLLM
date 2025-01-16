@@ -78,7 +78,11 @@ void print_attn_traits() {
   // print smem layout Vt
   {
     std::ofstream os("smem_layout_vt.svg");
-    print_svg(os, SmemLayoutV{}, SmemLayoutVt{}, GmemTiledCopyQKV{}, SmemTiledCopyVt{});
+    print_svg(os,
+              SmemLayoutV{},
+              SmemLayoutVt{},
+              GmemTiledCopyQKV{},
+              SmemTiledCopyVt{});
   }
   // print smem layout O
   {
@@ -94,8 +98,11 @@ int main(int argc, char** argv) {
   constexpr int kHeadDim = 64;
   constexpr int kBlockM = 64;
   constexpr int kBlockN = 64;
+  constexpr int kBlockK = 64;
 
-  print_attn_traits<AttentionTraitsSM80<Element, kHeadDim, kBlockM, kBlockN>>();
+  using Traits =
+      AttentionTraitsSM80<Element, kHeadDim, kBlockM, kBlockN, kBlockK>;
+  print_attn_traits<Traits>();
 
   return 0;
 }

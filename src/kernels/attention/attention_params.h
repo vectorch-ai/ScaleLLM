@@ -19,6 +19,10 @@ struct AttentionParamsCommon {
   int n_kv_heads = 0;
   int head_dim = 0;
 
+  // used for scheduling
+  // TODO: remove it after persistent kernel
+  int max_q_len = 0;
+
   // mask
   int sliding_window = -1;
 
