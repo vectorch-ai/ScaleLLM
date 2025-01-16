@@ -91,12 +91,10 @@ __global__ void mha_kernel_sm80(Params params) {
 
   // ProblemShape
   // (q_len, HEAD_DIM)
-  auto Q = tile.template get_q_tile<Element>(batch_idx, head_idx);
-  auto O = tile.template get_o_tile<Element>(batch_idx, head_idx);
-
+  auto [Q, O] = tile.template get_qo_tile<Element>(batch_idx, head_idx);
   // (kv_len, HEAD_DIM)
-  auto K = tile.template get_k_tile<Element>(batch_idx, head_idx / group_size);
-  auto V = tile.template get_v_tile<Element>(batch_idx, head_idx / group_size);
+  auto [K, V] =
+      tile.template get_kv_tile<Element>(batch_idx, head_idx / group_size);
 
   const int q_len = size<0>(Q.shape());
   const int kv_len = size<0>(K.shape());
@@ -110,6 +108,16 @@ __global__ void mha_kernel_sm80(Params params) {
   if (sliding_window < 0) {
     sliding_window = kv_len;
   }
+
+  // Gmem
+  // (BLK_M, HEAD_DIM)
+  Tensor gQ =
+      local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+  Tensor gO =
+      local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+  // (BLK_N, HEAD_DIM, n)
+  Tensor gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
+  Tensor gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
 
   // Smem
   extern __shared__ char smem[];
@@ -133,9 +141,6 @@ __global__ void mha_kernel_sm80(Params params) {
   auto gmem_thr_copy_QKV = gmem_tiled_copy_QKV.get_thread_slice(tidx);
 
   auto produce_q = [&]() {
-    // (BLK_M, HEAD_DIM)
-    auto gQ =
-        local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
     // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
     auto cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
     auto tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
@@ -151,8 +156,6 @@ __global__ void mha_kernel_sm80(Params params) {
   Tensor tKcKV = gmem_thr_copy_QKV.partition_S(cKV);
 
   Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
-  // (BLK_N, HEAD_DIM, n)
-  Tensor gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
     safe_copy</*ZERO_FILL=*/true>(
@@ -160,8 +163,6 @@ __global__ void mha_kernel_sm80(Params params) {
   };
 
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
-  // (BLK_N, HEAD_DIM, n)
-  Tensor gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
     safe_copy</*ZERO_FILL=*/true>(
@@ -263,9 +264,6 @@ __global__ void mha_kernel_sm80(Params params) {
     GmemTiledCopyO gmem_tiled_copy_O;
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-    // (BLK_M, HEAD_DIM)
-    auto gO =
-        local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
     // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
     auto cO = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
 
