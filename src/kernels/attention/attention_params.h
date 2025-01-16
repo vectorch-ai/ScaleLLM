@@ -37,7 +37,7 @@ struct AttentionParamsCommon {
 };
 
 struct AttentionParams : public AttentionParamsCommon {
-  // (batch, head, len, 1): last dimension is contiguous
+  // (batch, seq, head, dim): last dimension is contiguous
   using Stride = cute::Stride<int64_t, int64_t, int64_t /*,_1*/>;
 
   Stride q_stride;
@@ -52,7 +52,7 @@ struct AttentionParams : public AttentionParamsCommon {
 
 // variable length sequence
 struct VarLenAttentionParams : public AttentionParamsCommon {
-  // (head, seq, 1): last dimension is contiguous
+  // (seq, head, dim): last dimension is contiguous
   using Stride = cute::Stride<int64_t, int64_t /*,_1*/>;
 
   Stride q_stride;

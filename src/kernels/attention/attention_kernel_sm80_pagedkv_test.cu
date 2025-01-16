@@ -1,120 +1,19 @@
-#include <ATen/cuda/Exceptions.h>
 #include <absl/random/random.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
 #include "attention_launch_sm80.cuh"
 #include "attention_params.h"
+#include "attention_ref.h"
 #include "cute/layout.hpp"
 #include "static_dispatch.h"
 
 namespace llm {
 namespace {
-// Multi-head attention implementation using pytorch
-torch::Tensor attention_ref(
-    torch::Tensor query,  // [n_heads, q_len, head_dim]
-    torch::Tensor key,    // [n_kv_heads, kv_len, head_dim]
-    torch::Tensor value,  // [n_kv_heads, kv_len, head_dim]
-    torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
-    float logits_soft_cap,
-    int32_t sliding_window) {
-  const auto q_len = query.size(1);
-  const auto kv_len = key.size(1);
-  const auto n_heads = query.size(0);
-  const auto n_kv_heads = key.size(0);
-  const auto head_dim = query.size(2);
-  assert(kv_len >= q_len);
-
-  if (n_heads != n_kv_heads) {
-    assert(n_heads % n_kv_heads == 0);
-    const auto group_size = n_heads / n_kv_heads;
-    key = key.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
-    value = value.repeat_interleave(/*repeats=*/group_size, /*dim=*/-3);
-  }
-
-  const float sm_scale = 1.0 / sqrt(head_dim);
-  // query * key => [n_heads, q_seq_len, seq_len]
-  auto scores = torch::einsum("hqd,hkd->hqk",
-                              {query.to(torch::kFloat), key.to(torch::kFloat)});
-  // apply scale
-  scores *= sm_scale;
-
-  // apply softcap if needed
-  if (logits_soft_cap != 0.0) {
-    scores = torch::tanh(scores / logits_soft_cap) * logits_soft_cap;
-  }
-
-  // apply alibi bias
-  if (alibi_slopes) {
-    const auto& slopes = alibi_slopes.value();
-    // calculate alibi attention bias
-    // since it's causal mask, we can just use [0, 1, ...,, kv_len)
-    auto distance = torch::arange(0, kv_len, query.options());
-    // [n_heads, 1, kv_len]
-    auto bias = distance.view({1, 1, kv_len}) * slopes.view({n_heads, 1, 1});
-    scores += bias;
-  }
-
-  auto mask = torch::ones({q_len, kv_len}, torch::kBool);
-  if (sliding_window >= 0) {
-    // sliding window mask
-    // returns the upper triangular part of a matrix
-    mask = torch::triu(mask, /*diagonal=*/kv_len - q_len - sliding_window);
-  }
-
-  // apply causal mask
-  // causal mask: returns the lower triangular part of a matrix
-  mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(query);
-  scores = scores.masked_fill(mask == 0, -INFINITY);
-
-  // safe softmax
-  scores = torch::softmax(scores, /*dim=*/-1);
-
-  // score * value => [batch_size, n_heads, q_seq_len, head_dim]
-  return torch::einsum("hqk,hkd->hqd", {scores, value.to(torch::kFloat)})
-      .type_as(query);
-}
-
-torch::Tensor attention_varlen_ref(
-    torch::Tensor query,           // [n_heads, q_seq_len, head_dim]
-    torch::Tensor key,             // [n_kv_heads, kv_seq_len, head_dim]
-    torch::Tensor value,           // [n_kv_heads, kv_seq_len, head_dim]
-    torch::Tensor q_cu_lens,       // [batch_size+1]
-    torch::Tensor kv_cu_seq_lens,  // [batch_size+1]
-    torch::optional<torch::Tensor> alibi_slopes,  //[n_heads]
-    float logits_soft_cap,
-    int32_t sliding_window) {
-  torch::Tensor q_cu_lens_cpu = q_cu_lens.cpu();
-  torch::Tensor kv_cu_seq_lens_cpu = kv_cu_seq_lens.cpu();
-  const size_t n_seqs = q_cu_lens_cpu.numel() - 1;
-  const int32_t* q_cu_lens_ptr = q_cu_lens_cpu.data_ptr<int32_t>();
-  const int32_t* kv_cu_lens_ptr = kv_cu_seq_lens_cpu.data_ptr<int32_t>();
-
-  std::vector<torch::Tensor> out_list;
-  // process sequence one by one
-  for (int64_t i = 0; i < n_seqs; ++i) {
-    // calaculate attention for each sequence
-    const int32_t q_start = q_cu_lens_ptr[i];
-    const int32_t q_end = q_cu_lens_ptr[i + 1];
-    const int32_t kv_start = kv_cu_lens_ptr[i];
-    const int32_t kv_end = kv_cu_lens_ptr[i + 1];
-
-    torch::Tensor q = query.slice(/*dim=*/1, /*start=*/q_start, /*end=*/q_end);
-    torch::Tensor k = key.slice(/*dim=*/1, /*start=*/kv_start, /*end=*/kv_end);
-    torch::Tensor v =
-        value.slice(/*dim=*/1, /*start=*/kv_start, /*end=*/kv_end);
-
-    auto output =
-        attention_ref(q, k, v, alibi_slopes, logits_soft_cap, sliding_window);
-    out_list.push_back(output);
-  }
-  return torch::cat(out_list, /*dim=*/1);
-}
-
 torch::Tensor attention_pagedkv_sm80(
-    torch::Tensor query,          // [n_heads, q_seq_len, head_dim]
-    torch::Tensor key_cache,      // [n_kv_heads, n_slots, head_dim]
-    torch::Tensor value_cache,    // [n_kv_heads, n_slots, head_dim]
+    torch::Tensor query,          // [q_seq_len, n_heads, head_dim]
+    torch::Tensor key_cache,      // [n_slots, n_kv_heads, head_dim]
+    torch::Tensor value_cache,    // [n_slots, n_kv_heads, head_dim]
     torch::Tensor q_cu_lens,      // [batch_size+1]
     torch::Tensor kv_cu_lens,     // [batch_size+1]
     torch::Tensor block_table,    // [n_blocks]
@@ -124,10 +23,10 @@ torch::Tensor attention_pagedkv_sm80(
     float logits_soft_cap,
     int32_t sliding_window,
     int32_t max_q_len) {
-  const auto n_heads = query.size(0);
-  const auto n_kv_heads = key_cache.size(0);
-  const auto head_dim = query.size(2);
   const auto batch_size = q_cu_lens.size(0) - 1;
+  const auto n_heads = query.size(-2);
+  const auto n_kv_heads = key_cache.size(-2);
+  const auto head_dim = query.size(-1);
 
   auto out = torch::empty_like(query);
 
@@ -254,12 +153,12 @@ TEST_P(AttentionKernelPagedKVTest, PageKV) {
 
   // construct non-contiguous query, key and value
   // generate query, key and value
-  torch::Tensor query = torch::rand({n_heads, n_q_tokens, head_dim}, options);
+  torch::Tensor query = torch::rand({n_q_tokens, n_heads, head_dim}, options);
   const auto n_slots = total_blocks * block_size;
   torch::Tensor key_cache =
-      torch::rand({n_kv_heads, n_slots, head_dim}, options);
+      torch::rand({n_slots, n_kv_heads, head_dim}, options);
   torch::Tensor value_cache =
-      torch::rand({n_kv_heads, n_slots, head_dim}, options);
+      torch::rand({n_slots, n_kv_heads, head_dim}, options);
 
   torch::Tensor q_cu_lens = torch::tensor(
       q_cu_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
@@ -283,15 +182,12 @@ TEST_P(AttentionKernelPagedKVTest, PageKV) {
   std::vector<torch::Tensor> values;
   values.reserve(slot_ids.size());
   for (int slot_id : slot_ids) {
-    using ISlice = torch::indexing::Slice;
-    // kv = kv_cache[:, slot_idx, :]
-    const auto key = key_cache.index({ISlice(), slot_id, ISlice()});
-    const auto value = value_cache.index({ISlice(), slot_id, ISlice()});
-    keys.push_back(key.reshape({n_kv_heads, head_dim}));
-    values.push_back(value.reshape({n_kv_heads, head_dim}));
+    // kv = kv_cache[slot_idx, :, :]
+    keys.push_back(key_cache[slot_id]);
+    values.push_back(value_cache[slot_id]);
   }
-  const auto key = torch::stack(keys).transpose(0, 1);
-  const auto value = torch::stack(values).transpose(0, 1);
+  const auto key = torch::stack(keys, /*dim=*/0);
+  const auto value = torch::stack(values, /*dim=*/0);
 
   auto ref_out = attention_varlen_ref(query,
                                       key,

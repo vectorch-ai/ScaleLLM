@@ -27,49 +27,49 @@ struct AttentionTile<AttentionParams> {
   // return the query tile: (q_len, head_dim)
   template <typename Element>
   CUTE_HOST_DEVICE auto get_q_tile(int batch_idx, int head_idx) const {
-    // (batch, head, len, d)
+    // (batch, seq, head, dim)
     const auto offset = batch_idx * get<0>(params_.q_stride) +
-                        head_idx * get<1>(params_.q_stride);
-    // q[batch_idx, head_idx, :, :]
+                        head_idx * get<2>(params_.q_stride);
+    // q[batch_idx, :, head_idx, :]
     return make_tensor(make_gmem_ptr((const Element*)params_.q_ptr + offset),
                        make_shape(params_.q_len, params_.head_dim),
-                       make_stride(get<2>(params_.q_stride), _1{}));
+                       make_stride(get<1>(params_.q_stride), _1{}));
   }
 
   // return the output tile: (q_len, head_dim)
   template <typename Element>
   CUTE_HOST_DEVICE auto get_o_tile(int batch_idx, int head_idx) const {
-    // (batch, head, len, d)
+    // (batch, seq, head, dim)
     const auto offset = batch_idx * get<0>(params_.o_stride) +
-                        head_idx * get<1>(params_.o_stride);
-    // o[batch_idx, head_idx, :, :]
+                        head_idx * get<2>(params_.o_stride);
+    // o[batch_idx, :, head_idx, :]
     return make_tensor(make_gmem_ptr((Element*)params_.o_ptr + offset),
                        make_shape(params_.q_len, params_.head_dim),
-                       make_stride(get<2>(params_.o_stride), _1{}));
+                       make_stride(get<1>(params_.o_stride), _1{}));
   }
 
   // return the key tile: (kv_len, head_dim)
   template <typename Element>
   CUTE_HOST_DEVICE auto get_k_tile(int batch_idx, int kv_head_idx) const {
-    // (batch, head, len, d)
+    // (batch, seq, kv_head, dim)
     const auto offset = batch_idx * get<0>(params_.k_stride) +
-                        kv_head_idx * get<1>(params_.k_stride);
-    // k[batch_idx, kv_head_idx, :, :]
+                        kv_head_idx * get<2>(params_.k_stride);
+    // k[batch_idx, :, kv_head_idx, :]
     return make_tensor(make_gmem_ptr((const Element*)params_.k_ptr + offset),
                        make_shape(params_.kv_len, params_.head_dim),
-                       make_stride(get<2>(params_.k_stride), _1{}));
+                       make_stride(get<1>(params_.k_stride), _1{}));
   }
 
   // return the value tile: (kv_len, head_dim)
   template <typename Element>
   CUTE_HOST_DEVICE auto get_v_tile(int batch_idx, int kv_head_idx) const {
-    // (batch, head, len, d)
+    // (batch, seq, kv_head, d)
     const auto offset = batch_idx * get<0>(params_.v_stride) +
-                        kv_head_idx * get<1>(params_.v_stride);
-    // v[batch_idx, kv_head_idx, :, :]
+                        kv_head_idx * get<2>(params_.v_stride);
+    // v[batch_idx, :, kv_head_idx, :]
     return make_tensor(make_gmem_ptr((const Element*)params_.v_ptr + offset),
                        make_shape(params_.kv_len, params_.head_dim),
-                       make_stride(get<2>(params_.v_stride), _1{}));
+                       make_stride(get<1>(params_.v_stride), _1{}));
   }
 };
 
@@ -87,13 +87,13 @@ struct AttentionTile<VarLenAttentionParams> {
   CUTE_HOST_DEVICE auto get_q_tile(int batch_idx, int head_idx) const {
     const auto begin = params_.q_cu_lens[batch_idx];
     const auto q_len = params_.q_cu_lens[batch_idx + 1] - begin;
-    // (head, len, d)
+    // (seq, head, dim)
     const auto offset =
-        head_idx * get<0>(params_.q_stride) + begin * get<1>(params_.q_stride);
-    // q[head_idx, begin:begin + q_len, :]
+        begin * get<0>(params_.q_stride) + head_idx * get<1>(params_.q_stride);
+    // q[begin:begin + q_len, head_idx, :]
     return make_tensor(make_gmem_ptr((const Element*)params_.q_ptr + offset),
                        make_shape(q_len, params_.head_dim),
-                       make_stride(get<1>(params_.q_stride), _1{}));
+                       make_stride(get<0>(params_.q_stride), _1{}));
   }
 
   // return the output tile: (q_len, head_dim)
@@ -101,13 +101,13 @@ struct AttentionTile<VarLenAttentionParams> {
   CUTE_HOST_DEVICE auto get_o_tile(int batch_idx, int head_idx) const {
     const auto begin = params_.q_cu_lens[batch_idx];
     const auto o_len = params_.q_cu_lens[batch_idx + 1] - begin;
-    // (seq, head, len, d)
+    // (seq, head, dim)
     const auto offset =
-        head_idx * get<0>(params_.o_stride) + begin * get<1>(params_.o_stride);
-    // o[head_idx, begin:begin + o_len, :]
+        begin * get<0>(params_.o_stride) + head_idx * get<1>(params_.o_stride);
+    // o[begin:begin + o_len, head_idx, :]
     return make_tensor(make_gmem_ptr((Element*)params_.o_ptr + offset),
                        make_shape(o_len, params_.head_dim),
-                       make_stride(get<1>(params_.o_stride), _1{}));
+                       make_stride(get<0>(params_.o_stride), _1{}));
   }
 
   // return the key tile: (kv_len, head_dim)
@@ -115,13 +115,13 @@ struct AttentionTile<VarLenAttentionParams> {
   CUTE_HOST_DEVICE auto get_k_tile(int batch_idx, int kv_head_idx) const {
     const auto begin = params_.kv_cu_lens[batch_idx];
     const auto kv_len = params_.kv_cu_lens[batch_idx + 1] - begin;
-    // (seq, head, len, d)
-    const auto offset = kv_head_idx * get<0>(params_.k_stride) +
-                        begin * get<1>(params_.k_stride);
-    // k[kv_head_idx, begin:begin + kv_len, :]
+    // (seq, head, dim)
+    const auto offset = begin * get<0>(params_.k_stride) +
+                        kv_head_idx * get<1>(params_.k_stride);
+    // k[begin:begin + kv_len, kv_head_idx, :]
     return make_tensor(make_gmem_ptr((const Element*)params_.k_ptr + offset),
                        make_shape(kv_len, params_.head_dim),
-                       make_stride(get<1>(params_.k_stride), _1{}));
+                       make_stride(get<0>(params_.k_stride), _1{}));
   }
 
   // return the value tile: (kv_len, head_dim)
@@ -129,13 +129,13 @@ struct AttentionTile<VarLenAttentionParams> {
   CUTE_HOST_DEVICE auto get_v_tile(int batch_idx, int kv_head_idx) const {
     const auto begin = params_.kv_cu_lens[batch_idx];
     const auto kv_len = params_.kv_cu_lens[batch_idx + 1] - begin;
-    // (seq, head, len, d)
-    const auto offset = kv_head_idx * get<0>(params_.v_stride) +
-                        begin * get<1>(params_.v_stride);
-    // v[kv_head_idx, begin:begin + kv_len, :]
+    // (seq, head, dim)
+    const auto offset = begin * get<0>(params_.v_stride) +
+                        kv_head_idx * get<1>(params_.v_stride);
+    // v[begin:begin + kv_len, kv_head_idx, :]
     return make_tensor(make_gmem_ptr((const Element*)params_.v_ptr + offset),
                        make_shape(kv_len, params_.head_dim),
-                       make_stride(get<1>(params_.v_stride), _1{}));
+                       make_stride(get<0>(params_.v_stride), _1{}));
   }
 };
 
@@ -153,13 +153,13 @@ struct AttentionTile<PagedKVAttentionParams> {
   CUTE_HOST_DEVICE auto get_q_tile(int batch_idx, int head_idx) const {
     const auto begin = params_.q_cu_lens[batch_idx];
     const auto q_len = params_.q_cu_lens[batch_idx + 1] - begin;
-    // (seq, head, len, d)
+    // (seq, head, dim)
     const auto offset =
-        head_idx * get<0>(params_.q_stride) + begin * get<1>(params_.q_stride);
-    // q[head_idx, begin:begin + q_len, :]
+        begin * get<0>(params_.q_stride) + head_idx * get<1>(params_.q_stride);
+    // q[begin:begin + q_len, head_idx, :]
     return make_tensor(make_gmem_ptr((const Element*)params_.q_ptr + offset),
                        make_shape(q_len, params_.head_dim),
-                       make_stride(get<1>(params_.q_stride), _1{}));
+                       make_stride(get<0>(params_.q_stride), _1{}));
   }
 
   // return the output tile: (q_len, head_dim)
@@ -167,13 +167,13 @@ struct AttentionTile<PagedKVAttentionParams> {
   CUTE_HOST_DEVICE auto get_o_tile(int batch_idx, int head_idx) const {
     const auto begin = params_.q_cu_lens[batch_idx];
     const auto o_len = params_.q_cu_lens[batch_idx + 1] - begin;
-    // (seq, head, len, d)
+    // (seq, head, dim)
     const auto offset =
-        head_idx * get<0>(params_.o_stride) + begin * get<1>(params_.o_stride);
-    // o[head_idx, begin:begin + o_len, :]
+        begin * get<0>(params_.o_stride) + head_idx * get<1>(params_.o_stride);
+    // o[begin:begin + o_len, head_idx, :]
     return make_tensor(make_gmem_ptr((Element*)params_.o_ptr + offset),
                        make_shape(o_len, params_.head_dim),
-                       make_stride(get<1>(params_.o_stride), _1{}));
+                       make_stride(get<0>(params_.o_stride), _1{}));
   }
 
   // return the key tile: (kv_len, head_dim)
@@ -190,12 +190,12 @@ struct AttentionTile<PagedKVAttentionParams> {
       return block_table[idx / block_size] * block_size + idx % block_size;
     };
 
-    // v[kv_head_idx, :, :]
-    const auto offset = kv_head_idx * get<0>(params_.k_stride);
+    // v[:, kv_head_idx, :]
+    const auto offset = kv_head_idx * get<1>(params_.k_stride);
     return make_gather_tensor(
         make_gmem_ptr((const Element*)params_.k_ptr + offset),
         make_shape(kv_len, params_.head_dim),
-        make_stride(get<1>(params_.k_stride), _1{}),
+        make_stride(get<0>(params_.k_stride), _1{}),
         idx_to_slot);
   }
 
@@ -213,12 +213,12 @@ struct AttentionTile<PagedKVAttentionParams> {
       return block_table[idx / block_size] * block_size + idx % block_size;
     };
 
-    // v[kv_head_idx, :, :]
-    const auto offset = kv_head_idx * get<0>(params_.v_stride);
+    // v[:, kv_head_idx, :]
+    const auto offset = kv_head_idx * get<1>(params_.v_stride);
     return make_gather_tensor(
         make_gmem_ptr((const Element*)params_.v_ptr + offset),
         make_shape(kv_len, params_.head_dim),
-        make_stride(get<1>(params_.v_stride), _1{}),
+        make_stride(get<0>(params_.v_stride), _1{}),
         idx_to_slot);
   }
 };
