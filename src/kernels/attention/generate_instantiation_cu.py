@@ -12,7 +12,7 @@ DTYPE_MAP = {
     "bf16": "cute::bfloat16_t",
 }
 
-HEAD_DIMENSIONS = [64, 128, 256]
+HEAD_DIMENSIONS = [64, 96, 128, 256]
 
 PAGEDKV_KERNEL_IMPL_TEMPLATE = """
 #include "attention_launch_sm80.cuh" // IWYU pragma: keep
