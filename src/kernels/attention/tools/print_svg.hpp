@@ -173,7 +173,7 @@ CUTE_HOST void print_svg(std::ostream& os,
   const int num_rows =
       size<0>(write_layout) + size<0>(read_layout) + 3;  // M + M + 3
   const int num_cols =
-      size<1>(write_layout) + size<0>(read_layout) + 3;  // N + N + 3
+      size<1>(write_layout) + size<1>(read_layout) + 3;  // N + N + 3
 
   SVGBuilder builder(num_rows, num_cols, cell_width, cell_height);
 

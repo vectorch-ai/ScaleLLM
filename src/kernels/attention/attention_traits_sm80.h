@@ -141,31 +141,39 @@ struct AttentionTraitsSM80 {
   using Softmax = OnlineSoftmax<2 * BLK_M / 64>;
 
   // SMEM layout for QKV
-  // Q smem: (BLK_M, K):(K, 1), k-major
-  using SmemLayoutQ = decltype(composition(
-      Swizzle<3, 3, 3>{},
-      Layout<Shape<_BLK_M, _HEAD_DIM>, Stride<_HEAD_DIM, _1>>{}));
+  // Atom layout: (8, BLK_K):(BLK_K, 1) k-major
+  using SmemLayoutAtom =
+      decltype(composition(Swizzle<3, 3, 3>{},
+                           Layout<Shape<_8, _BLK_K>, Stride<_BLK_K, _1>>{}));
 
-  // KV smem: (BLK_N, K):(K, 1), k-major
-  using SmemLayoutK = decltype(composition(
-      Swizzle<3, 3, 3>{},
-      Layout<Shape<_BLK_N, _HEAD_DIM>, Stride<_HEAD_DIM, _1>>{}));
+  // Q smem: (BLK_M, HEAD_DIM)
+  using SmemLayoutQ =
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _HEAD_DIM>{}));
 
-  using SmemLayoutV = decltype(composition(
-      Swizzle<3, 3, 3>{},
-      Layout<Shape<_BLK_N, _HEAD_DIM>, Stride<_HEAD_DIM, _1>>{}));
+  // KV smem: (BLK_N, HEAD_DIM)
+  using SmemLayoutK =
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
 
-  // V^T smem: (K, BLK_N):(1, K), k-major
+  using SmemLayoutV =
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
+
+  // V^T smem: (HEAD_DIM, BLK_N) row-major
   using SmemLayoutVt = decltype(composition(
-      Swizzle<3, 3, 3>{},
-      Layout<Shape<_HEAD_DIM, _BLK_N>, Stride<_1, _HEAD_DIM>>{}));
+      SmemLayoutV{},
+      make_layout(Shape<_HEAD_DIM, _BLK_N>{}, GenRowMajor{})));
+
+  // Thr layout for gmem copy
+  using GmemCopyThrLayout =
+      std::conditional_t<BLK_K == 32,
+                         Layout<Shape<_32, _4>, Stride<_4, _1>>,
+                         Layout<Shape<_16, _8>, Stride<_8, _1>>>;
 
   // Tiled copy for QKV
   // g2s tiled copy for qkv
   using GmemTiledCopyQKV = decltype(make_tiled_copy(
       Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
-      Layout<Shape<_16, _8>, Stride<_8, _1>>{},  // Thr layout: (_16,_8):(_8,_1)
-      Layout<Shape<_1, _8>>{}                    // Val layout: 8 vals per read
+      GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
+      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
   // s2r tiled copy for gemm-I
@@ -188,9 +196,9 @@ struct AttentionTraitsSM80 {
 
   // s2g tiled copy for O
   using GmemTiledCopyO = decltype(make_tiled_copy(
-      Copy_Atom<UniversalCopy<cute::uint128_t>, Element>{},
-      Layout<Shape<_16, _8>, Stride<_8, _1>>{},  // Thr layout: (_16,_8):(_8,_1)
-      Layout<Shape<_1, _8>>{}                    // Val layout: 8 vals per read
+      Copy_Atom<DefaultCopy, Element>{},
+      GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
+      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
   // r2s tiled copy for O

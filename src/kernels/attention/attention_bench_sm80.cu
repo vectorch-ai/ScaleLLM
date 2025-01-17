@@ -25,17 +25,15 @@ void attention_bench_sm80(nvbench::state& state) {
 
   const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
   const auto query =
-      torch::randn({batch_size, n_heads, q_len, head_dim}, options);
+      torch::randn({batch_size, q_len, n_heads, head_dim}, options);
   const auto key =
-      torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
+      torch::randn({batch_size, kv_len, n_kv_heads, head_dim}, options);
   const auto value =
-      torch::randn({batch_size, n_kv_heads, kv_len, head_dim}, options);
+      torch::randn({batch_size, kv_len, n_kv_heads, head_dim}, options);
 
   auto out = torch::empty_like(query);
 
   const float sm_scale = 1.0 / sqrt(head_dim);
-  const auto h_stride = query.stride(1);
-  const auto kv_h_stride = key.stride(1);
 
   // construct attention params
   AttentionParams params;

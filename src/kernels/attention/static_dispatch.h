@@ -32,6 +32,9 @@ namespace llm {
     if (HEAD_DIM_V <= 64) {                               \
       constexpr static int HEAD_DIM_NAME = 64;            \
       return __VA_ARGS__();                               \
+    } else if (HEAD_DIM_V <= 96) {                        \
+      constexpr static int HEAD_DIM_NAME = 96;            \
+      return __VA_ARGS__();                               \
     } else if (HEAD_DIM_V <= 128) {                       \
       constexpr static int HEAD_DIM_NAME = 128;           \
       return __VA_ARGS__();                               \
