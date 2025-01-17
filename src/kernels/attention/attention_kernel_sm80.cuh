@@ -9,18 +9,26 @@
 #include "attention_tile.h"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
+#include "mask.h"
+#include "online_softmax.cuh"
 #include "ptx.cuh"
 
 namespace llm {
 
-template <typename Traits, typename Params>
-__global__ void mha_kernel_sm80(Params params) {
+template <typename Traits,
+          typename Params,
+          bool EVEN_K,
+          bool ALIBI,
+          bool SOFT_CAP,
+          bool LOCAL>
+__global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   using namespace cute;
 
   constexpr int kBlockM = Traits::kBlockM;
   constexpr int kBlockN = Traits::kBlockN;
   constexpr int kBlockK = Traits::kBlockK;
   constexpr int kHeadDim = Traits::kHeadDim;
+  constexpr int kRowsPerMMA = Traits::kRowsPerMMA;
 
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
@@ -28,12 +36,10 @@ __global__ void mha_kernel_sm80(Params params) {
   using _HEAD_DIM = Int<kHeadDim>;
 
   // type alias
-  using Element = typename Traits::Element;
+  using DType = typename Traits::DType;
 
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
-  using Softmax = typename Traits::Softmax;
-  using Mask = typename Traits::Mask;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -55,46 +61,13 @@ __global__ void mha_kernel_sm80(Params params) {
 
   AttentionTile<Params> tile(params);
 
-  float logits_soft_cap = params.logits_soft_cap;
-  float sm_scale = params.sm_scale;
-  float sliding_window = params.sliding_window;
-
-  // preprocess input parameters
-  // TODO: Move following logic to the host side?
-  if (logits_soft_cap != 0.0) {
-    //    Softmax(x * sm_scale) + apply_logits_soft_cap
-    // => Softmax(Tanh(x * sm_scale / soft_cap) * soft_cap)
-    // => Softmax(S' * sm_scale') where
-    //    S'        = Tanh(x * sm_scale / soft_cap)
-    //              = Tanh(x * soft_cap')
-    //    soft_cap' = sm_scale / soft_cap
-    //    sm_scale' = soft_cap
-    const auto sm_scale_hat = logits_soft_cap;
-    logits_soft_cap = sm_scale * ptx::rcp(logits_soft_cap);
-    sm_scale = sm_scale_hat;
-  }
-  auto apply_logits_soft_cap = [&](auto& tSrAccS) {
-    CUTE_UNROLL
-    for (int i = 0; i < size(tSrAccS); ++i) {
-      tSrAccS(i) = ptx::tanh(tSrAccS(i) * logits_soft_cap);
-    }
-  };
-
-  const float alibi_slope = params.alibi_slopes_ptr != nullptr
-                                ? (params.alibi_slopes_ptr[head_idx] / sm_scale)
-                                : 0.0f;
-
   const int group_size = params.n_heads / params.n_kv_heads;
-
-  // use exp2f instead of expf for better performance
-  sm_scale *= M_LOG2E;
-
   // ProblemShape
   // (q_len, HEAD_DIM)
-  auto [Q, O] = tile.template get_qo_tile<Element>(batch_idx, head_idx);
+  auto [Q, O] = tile.template get_qo_tile<DType>(batch_idx, head_idx);
   // (kv_len, HEAD_DIM)
   auto [K, V] =
-      tile.template get_kv_tile<Element>(batch_idx, head_idx / group_size);
+      tile.template get_kv_tile<DType>(batch_idx, head_idx / group_size);
 
   const int q_len = size<0>(Q.shape());
   const int kv_len = size<0>(K.shape());
@@ -104,10 +77,22 @@ __global__ void mha_kernel_sm80(Params params) {
     return;
   }
 
-  // adjust sliding window size
-  if (sliding_window < 0) {
-    sliding_window = kv_len;
-  }
+  const float logits_soft_cap = params.logits_soft_cap;
+  const float sm_scale = params.sm_scale;
+  const float sm_scale_log2 = params.sm_scale_log2;
+  const float sliding_window = LOCAL ? params.sliding_window : kv_len;
+  const float alibi_slope =
+      ALIBI ? (params.alibi_slopes_ptr[head_idx] / sm_scale) : 0.0f;
+
+  // preprocess input parameters
+  auto apply_logits_soft_cap = [&](auto& tSrAccS) {
+    if constexpr (SOFT_CAP) {
+      CUTE_UNROLL
+      for (int i = 0; i < size(tSrAccS); ++i) {
+        tSrAccS(i) = ptx::tanh(tSrAccS(i) * logits_soft_cap);
+      }
+    }
+  };
 
   // Gmem
   // (BLK_M, HEAD_DIM)
@@ -121,9 +106,9 @@ __global__ void mha_kernel_sm80(Params params) {
 
   // Smem
   extern __shared__ char smem[];
-  Element* q_smem = (Element*)smem;
-  Element* k_smem = q_smem + cosize(SmemLayoutQ{});
-  Element* v_smem = k_smem + cosize(SmemLayoutK{});
+  DType* q_smem = (DType*)smem;
+  DType* k_smem = q_smem + cosize(SmemLayoutQ{});
+  DType* v_smem = k_smem + cosize(SmemLayoutK{});
 
   // (BLK_M, BLK_K), k-major
   Tensor sQ = make_tensor(make_smem_ptr(q_smem), SmemLayoutQ{});
@@ -155,16 +140,19 @@ __global__ void mha_kernel_sm80(Params params) {
   Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
   Tensor tKcKV = gmem_thr_copy_QKV.partition_S(cKV);
 
+  // TODO: seperate mask iterations
   Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
-    safe_copy</*ZERO_FILL=*/true>(
+    // skip zero fill oob for k since mask will mask out oob with -inf
+    safe_copy</*ZERO_FILL=*/false>(
         gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
   };
 
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
+    // TODO: skip zero fill oob for v, may have nan issue
     safe_copy</*ZERO_FILL=*/true>(
         gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
   };
@@ -222,7 +210,7 @@ __global__ void mha_kernel_sm80(Params params) {
   // tOrAccO: (MMA,MMA_M,MMA_K)
   auto compute_sv = [&](const auto& tSrAccS, auto& tOrAccO) {
     // cast scores from Accumulator to Element
-    auto tSrS = make_tensor_like<Element>(tSrAccS);
+    auto tSrS = make_tensor_like<DType>(tSrAccS);
     fast_cast(tSrAccS, tSrS);
 
     // convert layout from gemm-I C to gemm-II A
@@ -248,7 +236,7 @@ __global__ void mha_kernel_sm80(Params params) {
   auto epilogue = [&](const auto& tOrAccO) {
     // write output to gmem
     // 1> cast output from ElementAccumulator to Element
-    auto tOrO = make_tensor_like<Element>(tOrAccO);
+    auto tOrO = make_tensor_like<DType>(tOrAccO);
     fast_cast(tOrAccO, tOrO);
 
     // 2. copy output from reg to smem (reuse sQ)
@@ -293,20 +281,23 @@ __global__ void mha_kernel_sm80(Params params) {
   auto tOrAccO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
   auto tOrAccO_rc_view =
       make_tensor(tOrAccO.data(), Layout::to_rowcol(tOrAccO.layout()));
-  clear(tOrAccO);
 
-  Softmax softmax(sm_scale);
-  Mask mask(q_len, kv_len, sliding_window, alibi_slope);
+  // attention score accumulator, (MMA,MMA_M,MMA_N)
+  auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
+  auto tSrAccS_rc_view =
+      make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
 
+  OnlineSoftmax<kRowsPerMMA * size<1>(tOrAccO)> softmax(sm_scale_log2);
+  Mask<kBlockM, kBlockM, ALIBI, LOCAL> mask(
+      q_len, kv_len, sliding_window, alibi_slope);
+
+  // TODO: control block min/max precisely
   const int n_block_min = 0;
   const int n_block_max = cute::ceil_div(kv_len, kBlockN);
 
+  clear(tOrAccO);
   CUTE_NO_UNROLL
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
-    // attention score accumulator, (MMA,MMA_M,MMA_N)
-    auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-    auto tSrAccS_rc_view =
-        make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
     clear(tSrAccS);
 
     // wait k, queue: [q, k] => []
@@ -321,7 +312,7 @@ __global__ void mha_kernel_sm80(Params params) {
     compute_qk(tSrAccS);
 
     // apply soft cap if needed
-    if (logits_soft_cap != 0.0) {
+    if constexpr (SOFT_CAP) {
       apply_logits_soft_cap(tSrAccS);
     }
 

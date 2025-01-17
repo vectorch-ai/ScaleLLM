@@ -61,9 +61,9 @@ torch::Tensor attention_pagedkv_sm80(
   params.block_cu_lens = block_cu_lens.const_data_ptr<int32_t>();
   params.block_size = block_size;
 
-  DISPATCH_TORCH_DTYPE(query.dtype(), QTYPE, [&] {
+  DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
     DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<QTYPE, HEAD_DIM>(params);
+      run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params);
     });
   });
   return out;
@@ -85,7 +85,7 @@ class AttentionKernelPagedKVTest
  public:
   void SetUp() override {
     // Set random seed for test stability
-    torch::manual_seed(0);
+    // torch::manual_seed(0);
   }
 };
 

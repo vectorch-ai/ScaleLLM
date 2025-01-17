@@ -154,9 +154,9 @@ torch::Tensor attention_varlen_sm80(
   params.q_cu_lens = q_cu_lens.const_data_ptr<int32_t>();
   params.kv_cu_lens = kv_cu_lens.const_data_ptr<int32_t>();
 
-  DISPATCH_TORCH_DTYPE(query.dtype(), QTYPE, [&] {
+  DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
     DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<QTYPE, HEAD_DIM>(params);
+      run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params);
     });
   });
   return out;
@@ -177,7 +177,7 @@ class AttentionKernelVarlenTest
  public:
   void SetUp() override {
     // Set random seed for test stability
-    torch::manual_seed(0);
+    // torch::manual_seed(0);
   }
 };
 

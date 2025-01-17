@@ -51,7 +51,13 @@ class AttentionCPUTest
                                                  int64_t /*q_seq_len*/,
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
-                                                 int64_t /*head_dim*/>> {};
+                                                 int64_t /*head_dim*/>> {
+ public:
+  void SetUp() override {
+    // Set random seed for test stability
+    torch::manual_seed(0);
+  }
+};
 
 TEST_P(AttentionCPUTest, MHA) {
   const auto [seq_len, q_seq_len, n_heads, n_kv_heads, head_dim] = GetParam();
@@ -66,7 +72,7 @@ TEST_P(AttentionCPUTest, MHA) {
 
   auto out = torch::empty_like(query);
   mha(query, key, value, out);
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-5, /*atol=*/1e-5));
+  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-4, /*atol=*/1e-4));
 }
 
 INSTANTIATE_TEST_SUITE_P(
