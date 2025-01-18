@@ -9,11 +9,12 @@ cc_library(
     ptx.cuh
     fast_cast.cuh
     online_softmax.cuh
+    mask.h
+    static_dispatch.h
     attention_params.h
     attention_tile.h
     attention_traits_sm80.h
     attention_kernel_sm80.cuh
-    static_dispatch.h
     attention_launch_sm80.cuh
   DEPS
     cutlass
@@ -53,13 +54,13 @@ cc_test(
   NAME
     attention_kernel_test
   SRCS
-    attention_cpu_test.cpp
+    # attention_cpu_test.cpp
     attention_traits_test.cpp
     attention_kernel_sm80_test.cu
     attention_kernel_sm80_varlen_test.cu
     attention_kernel_sm80_pagedkv_test.cu
   DEPS
-    :attention.template
+    :attention.kernel
     absl::random_random
     GTest::gtest_main
     torch

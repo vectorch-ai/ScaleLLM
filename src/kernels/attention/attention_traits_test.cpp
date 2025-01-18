@@ -11,8 +11,6 @@ using namespace cute;
 template <typename Traits>
 void test_attention_traits() {
   // type alias
-  using Element = typename Traits::Element;
-
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
 
@@ -51,8 +49,7 @@ TEST(AttentionTraitsTest, TraitsSM80) {
                                             /*HEAD_DIM=*/64,
                                             /*BLK_M=*/64,
                                             /*BLK_N=*/64,
-                                            /*BLK_K=*/64,
-                                            /*ALIBI=*/false>>();
+                                            /*BLK_K=*/64>>();
 }
 
 }  // namespace llm

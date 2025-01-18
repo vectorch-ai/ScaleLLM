@@ -31,9 +31,37 @@ struct AttentionParamsCommon {
 
   // softmax scaling
   float sm_scale = 1.0;
+  
+  // used for performance optimization, don't change it
+  bool normalized = false;
+  float sm_scale_log2 = 0.0;
 
   // alibi
   const float* __restrict__ alibi_slopes_ptr = nullptr;  // [n_heads]
+
+  // used to initialize the params that used for performance optimization
+  void normalize() {
+    if (normalized) {
+      // already normalized
+      return;
+    }
+
+    if (logits_soft_cap > 0.0) {
+      //    Softmax(x * sm_scale) + apply_logits_soft_cap
+      // => Softmax(Tanh(x * sm_scale / soft_cap) * soft_cap)
+      // => Softmax(S' * sm_scale') where
+      //    S'        = Tanh(x * sm_scale / soft_cap)
+      //              = Tanh(x * soft_cap')
+      //    soft_cap' = sm_scale / soft_cap
+      //    sm_scale' = soft_cap
+      const auto sm_scale_hat = logits_soft_cap;
+      logits_soft_cap = sm_scale / logits_soft_cap;
+      sm_scale = sm_scale_hat;
+    }
+    sm_scale_log2 = static_cast<float>(sm_scale * M_LOG2E);
+
+    normalized = true;
+  }
 };
 
 struct AttentionParams : public AttentionParamsCommon {

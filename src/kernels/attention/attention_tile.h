@@ -163,8 +163,12 @@ struct AttentionTile<PagedKVAttentionParams> {
     const int* block_table =
         params_.block_table + params_.block_cu_lens[batch_idx];
     const int block_size = params_.block_size;
-    auto idx_to_slot = [block_table, block_size](int idx) {
-      return block_table[idx / block_size] * block_size + idx % block_size;
+    auto idx_to_slot = [block_table,
+                        block_size = cutlass::FastDivmod(block_size)](int idx) {
+      int block_idx;     // idx / block_size;
+      int block_offset;  // idx % block_size
+      block_size.fast_divmod(block_idx, block_offset, idx);
+      return block_table[block_idx] * block_size + block_offset;
     };
 
     // v[:, kv_head_idx, :]

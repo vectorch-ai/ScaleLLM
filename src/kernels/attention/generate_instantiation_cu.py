@@ -21,7 +21,7 @@ namespace llm {{
 
 using Params = PagedKVAttentionParams;
 template void run_attention_kernel_sm80<{DTYPE}, {HEAD_DIM}, Params>(
-    const Params& params, cudaStream_t stream);
+    Params& params, cudaStream_t stream);
 
 }}  // namespace llm
 """
