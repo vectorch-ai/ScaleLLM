@@ -9,11 +9,12 @@ cc_library(
     ptx.cuh
     fast_cast.cuh
     online_softmax.cuh
+    mask.h
+    static_dispatch.h
     attention_params.h
     attention_tile.h
     attention_traits_sm80.h
     attention_kernel_sm80.cuh
-    static_dispatch.h
     attention_launch_sm80.cuh
   DEPS
     cutlass

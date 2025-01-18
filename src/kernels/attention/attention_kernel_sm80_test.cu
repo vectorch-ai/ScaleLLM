@@ -129,7 +129,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(127, 287, 1000),                   // kv_len
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
-        ::testing::Values(64),                               // head_dim
+        ::testing::Values(32, 64, 96, 128, 256),             // head_dim
         ::testing::Values(0.0, 50.0),                        // logits_soft_cap
         ::testing::Values(false, true),                      // alibi slope
         ::testing::Values(-1, 0, 10)                         // sliding window

@@ -7,6 +7,7 @@
 #include <cute/tensor.hpp>
 
 #include "attention_tile.h"
+#include "cute/config.hpp"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 #include "mask.h"
@@ -77,6 +78,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     return;
   }
 
+  const int head_dim = params.head_dim;
   const float logits_soft_cap = params.logits_soft_cap;
   const float sm_scale = params.sm_scale;
   const float sm_scale_log2 = params.sm_scale_log2;
@@ -125,36 +127,57 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   GmemTiledCopyQKV gmem_tiled_copy_QKV;
   auto gmem_thr_copy_QKV = gmem_tiled_copy_QKV.get_thread_slice(tidx);
 
-  auto produce_q = [&]() {
-    // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
-    auto cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
-    auto tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
-
-    auto tQgQ = gmem_thr_copy_QKV.partition_S(gQ);
-    auto tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
-    safe_copy</*ZERO_FILL=*/true>(
-        gmem_tiled_copy_QKV, tQgQ, tQsQ, tQcQ, q_len - m_block * kBlockM);
-  };
-
+  // coordinate tensor for oob handling
+  // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
+  Tensor cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
+  Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
   // (BLK_N, HEAD_DIM) -> (blk_n, head_dim)
   Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
   Tensor tKcKV = gmem_thr_copy_QKV.partition_S(cKV);
+
+  auto produce_q = [&]() {
+    auto tQgQ = gmem_thr_copy_QKV.partition_S(gQ);
+    auto tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
+    safe_copy<EVEN_K,
+              /*EVEN_MN=*/false,
+              /*ZERO_FILL_MN=*/true,
+              /*ZERO_FILL_K=*/true>(
+        gmem_tiled_copy_QKV,
+        tQgQ,
+        tQsQ,
+        tQcQ,
+        make_coord(q_len - m_block * kBlockM, head_dim));
+  };
 
   // TODO: seperate mask iterations
   Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
     // skip zero fill oob for k since mask will mask out oob with -inf
-    safe_copy</*ZERO_FILL=*/false>(
-        gmem_tiled_copy_QKV, tKgK, tKsK, tKcKV, kv_len - ni * kBlockN);
+    safe_copy<EVEN_K,
+              /*EVEN_MN=*/false,
+              /*ZERO_FILL_MN=*/true,
+              /*ZERO_FILL_K=*/true>(
+        gmem_tiled_copy_QKV,
+        tKgK,
+        tKsK,
+        tKcKV,
+        make_coord(kv_len - ni * kBlockN, head_dim));
   };
 
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
     // TODO: skip zero fill oob for v, may have nan issue
-    safe_copy</*ZERO_FILL=*/true>(
-        gmem_tiled_copy_QKV, tVgV, tVsV, tKcKV, kv_len - ni * kBlockN);
+    safe_copy<EVEN_K,
+              /*EVEN_MN=*/false,
+              /*ZERO_FILL_MN=*/true,
+              /*ZERO_FILL_K=*/true>(
+        gmem_tiled_copy_QKV,
+        tVgV,
+        tVsV,
+        tKcKV,
+        make_coord(kv_len - ni * kBlockN, head_dim));
   };
 
   TiledMma tiled_mma;
@@ -262,8 +285,15 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
     // wait for smem copy done before gmem copy
     __syncthreads();
-    safe_copy</*ZERO_FILL=*/false>(
-        gmem_tiled_copy_O, tOsO, tOgO, tOcO, q_len - m_block * kBlockM);
+    safe_copy<EVEN_K,
+              /*EVEN_MN=*/false,
+              /*ZERO_FILL_MN=*/false,
+              /*ZERO_FILL_K=*/false>(
+        gmem_tiled_copy_O,
+        tOsO,
+        tOgO,
+        tOcO,
+        make_coord(q_len - m_block * kBlockM, head_dim));
   };
 
   // ###############  Prologue  ###############

@@ -26,7 +26,6 @@ namespace llm {
     }                                                     \
   }()
 
-// TODO: fix build error for head_dim == 96
 #define DISPATCH_HEAD_DIM(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
   [&] {                                                   \
     if (HEAD_DIM_V <= 64) {                               \
