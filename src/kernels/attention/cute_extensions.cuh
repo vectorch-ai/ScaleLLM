@@ -54,20 +54,20 @@ CUTE_HOST_DEVICE void safe_copy(
     // handle both m/n and k oob
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less<0>(identity(0, mi, 0), max_coord)) {
+      if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
         CUTE_UNROLL
         for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less<1>(identity(0, 0, ki), max_coord)) {
-            cute::copy(tiled_copy, src(_, mi, ki), dst(_, mi, ki));
+          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+            copy(tiled_copy, src(_, mi, ki), dst(_, mi, ki));
           } else {
             if constexpr (ZERO_FILL_K) {
-              cute::clear(dst(_, mi, ki));
+              clear(dst(_, mi, ki));
             }
           }
         }
       } else {
         if constexpr (ZERO_FILL_MN) {
-          cute::clear(dst(_, mi, _));
+          clear(dst(_, mi, _));
         }
       }
     }
@@ -75,11 +75,11 @@ CUTE_HOST_DEVICE void safe_copy(
     // only handle m/n oob
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less<0>(identity(0, mi, 0), max_coord)) {
-        cute::copy(tiled_copy, src(_, mi, _), dst(_, mi, _));
+      if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
+        copy(tiled_copy, src(_, mi, _), dst(_, mi, _));
       } else {
         if constexpr (ZERO_FILL_MN) {
-          cute::clear(dst(_, mi, _));
+          clear(dst(_, mi, _));
         }
       }
     }
@@ -87,17 +87,17 @@ CUTE_HOST_DEVICE void safe_copy(
     // only handle k oob
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(src); ++ki) {
-      if (elem_less<1>(identity(0, 0, ki), max_coord)) {
-        cute::copy(tiled_copy, src(_, _, ki), dst(_, _, ki));
+      if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+        copy(tiled_copy, src(_, _, ki), dst(_, _, ki));
       } else {
         if constexpr (ZERO_FILL_K) {
-          cute::clear(dst(_, _, ki));
+          clear(dst(_, _, ki));
         }
       }
     }
   } else {
     // no oob, just copy
-    cute::copy(tiled_copy, src, dst);
+    copy(tiled_copy, src, dst);
   }
 }
 
