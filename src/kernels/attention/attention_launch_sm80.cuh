@@ -32,8 +32,7 @@ void launch_attention_kernel(const Params& params, cudaStream_t stream) {
 template <typename Traits, typename Params>
 void run_attention_kernel(const Params& params, cudaStream_t stream) {
   // dispatch to proper kernel instantiation based on params
-  const bool even_k = (params.head_dim % Traits::kHeadDim == 0);
-  DISPATCH_BOOL(even_k, EVEN_K, [&] {
+  DISPATCH_BOOL(params.head_dim == Traits::kHeadDim, EVEN_K, [&] {
     DISPATCH_BOOL(params.alibi_slopes_ptr != nullptr, ALIBI, [&] {
       DISPATCH_BOOL(params.logits_soft_cap > 0, SOFT_CAP, [&] {
         DISPATCH_BOOL(params.sliding_window >= 0, LOCAL, [&] {
