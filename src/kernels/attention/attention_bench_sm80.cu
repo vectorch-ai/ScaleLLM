@@ -10,6 +10,19 @@
 
 using namespace llm;
 
+#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
+  [&] {                                                    \
+    if (HEAD_DIM_V <= 64) {                                \
+      constexpr static int HEAD_DIM_NAME = 64;             \
+      return __VA_ARGS__();                                \
+    } else if (HEAD_DIM_V <= 128) {                        \
+      constexpr static int HEAD_DIM_NAME = 128;            \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
+
 void attention_bench_sm80(nvbench::state& state) {
   // Collect CUPTI metrics
   state.collect_cupti_metrics();
@@ -60,10 +73,9 @@ void attention_bench_sm80(nvbench::state& state) {
   params.sliding_window = -1;
 
   state.exec([&](nvbench::launch& launch) {
-    DISPATCH_TORCH_DTYPE(query.dtype(), QTYPE, [&] {
-      DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
-        run_attention_kernel_sm80<QTYPE, HEAD_DIM>(params, launch.get_stream());
-      });
+    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+      run_attention_kernel_sm80<cute::half_t, HEAD_DIM>(params,
+                                                        launch.get_stream());
     });
   });
 }

@@ -85,7 +85,7 @@ class AttentionKernelPagedKVTest
  public:
   void SetUp() override {
     // Set random seed for test stability
-    // torch::manual_seed(0);
+    torch::manual_seed(0);
   }
 };
 

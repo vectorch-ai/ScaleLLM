@@ -156,7 +156,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     // skip zero fill oob for k since mask will mask out oob with -inf
     safe_copy<EVEN_K,
               /*EVEN_MN=*/false,
-              /*ZERO_FILL_MN=*/true,
+              /*ZERO_FILL_MN=*/false,
               /*ZERO_FILL_K=*/true>(
         gmem_tiled_copy_QKV,
         tKgK,
