@@ -28,6 +28,12 @@ CUTE_HOST_DEVICE constexpr auto partition_fragment_B(
   return thr_mma.partition_fragment_B(btensor_noswizzle);
 }
 
+template <size_t I, class IntTupleA, class IntTupleB>
+CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
+                                          IntTupleB const& b) {
+  return elem_less(get<I>(a), get<I>(b));
+}
+
 template <bool EVEN_K,
           bool EVEN_MN,
           bool ZERO_FILL_MN,
@@ -42,16 +48,16 @@ CUTE_HOST_DEVICE void safe_copy(
     const TensorS& src,       // (CPY, CPY_M/N, CPY_K)
     TensorD& dst,             // (CPY, CPY_M/N, CPY_K)
     const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
-    const Coord& max_coord    // max_coord(m, n)
+    const Coord& max_coord    // max_coord(blk_m/n, blk_k)
 ) {
   if constexpr (!EVEN_MN && !EVEN_K) {
     // handle both m/n and k oob
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less(get<0>(identity(0, mi, 0)), get<0>(max_coord))) {
+      if (elem_less<0>(identity(0, mi, 0), max_coord)) {
         CUTE_UNROLL
         for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less(get<1>(identity(0, 0, ki)), get<1>(max_coord))) {
+          if (elem_less<1>(identity(0, 0, ki), max_coord)) {
             cute::copy(tiled_copy, src(_, mi, ki), dst(_, mi, ki));
           } else {
             if constexpr (ZERO_FILL_K) {
@@ -69,7 +75,7 @@ CUTE_HOST_DEVICE void safe_copy(
     // only handle m/n oob
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less(get<0>(identity(0, mi, 0)), get<0>(max_coord))) {
+      if (elem_less<0>(identity(0, mi, 0), max_coord)) {
         cute::copy(tiled_copy, src(_, mi, _), dst(_, mi, _));
       } else {
         if constexpr (ZERO_FILL_MN) {
@@ -81,7 +87,7 @@ CUTE_HOST_DEVICE void safe_copy(
     // only handle k oob
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(src); ++ki) {
-      if (elem_less(get<1>(identity(0, 0, ki)), get<1>(max_coord))) {
+      if (elem_less<1>(identity(0, 0, ki), max_coord)) {
         cute::copy(tiled_copy, src(_, _, ki), dst(_, _, ki));
       } else {
         if constexpr (ZERO_FILL_K) {
