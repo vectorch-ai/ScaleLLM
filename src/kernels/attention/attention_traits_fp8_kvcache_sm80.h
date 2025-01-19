@@ -32,7 +32,7 @@ struct LayoutConvertor {
 }  // namespace detail
 
 template <typename DTYPE_, int HEAD_DIM, int BLK_M, int BLK_N, int BLK_K>
-struct AttentionTraitsSM80 {
+struct AttentionTraitsFp8KVCacheSM80 {
   // helpful aliases
   static constexpr int kHeadDim = HEAD_DIM;
   static constexpr int kBlockM = BLK_M;
@@ -100,14 +100,22 @@ struct AttentionTraitsSM80 {
   using SmemTiledCopyQ =
       decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
                                  TiledMma{}));
-  using SmemTiledCopyK =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
-                                 TiledMma{}));
 
-  // s2r tiled copy for gemm-II
-  using SmemTiledCopyVt =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, DType>{},
-                                 TiledMma{}));
+  // s2r tiled copy for k (fp8/int8)
+  // ((_4, _8), (_2, _2)):((_32, _1), (_16, _8))
+  using Layout_TV_K = Layout<Shape<Shape<_4, _8>, Shape<_2, _2>>,
+                             Stride<Stride<_32, _1>, Stride<_16, _8>>>;
+  using SmemTiledCopyK = TiledCopy<Copy_Atom<SM75_U32x2_LDSM_N, DType>,
+                                   Layout_TV_K,
+                                   Shape<_16, _8>>;  // N x K => 16 x 16
+
+  // s2r tiled copy for vt
+  // ((_4, _8), (_2, _2)):((_16, _1), (_8, _64))
+  using Layout_TV_Vt = Layout<Shape<Shape<_4, _8>, Shape<_2, _2>>,
+                              Stride<Stride<_16, _1>, Stride<_8, _64>>>;
+  using SmemTiledCopyVt = TiledCopy<Copy_Atom<SM75_U16x4_LDSM_T, cute::half_t>,
+                                    Layout_TV_Vt,
+                                    Shape<_8, _16>>;  // K x N => 16 x 16
 
   // ******* Epilogue *******
 
