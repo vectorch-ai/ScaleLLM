@@ -1,6 +1,7 @@
 #include <cute/tensor.hpp>
 #include <fstream>
 
+#include "../attention_traits_fp8_kvcache_sm80.h"
 #include "../attention_traits_sm80.h"
 #include "print_svg.hpp"
 
@@ -11,7 +12,6 @@ template <typename Traits>
 void print_attn_traits() {
   // type alias
   using TiledMma = typename Traits::TiledMma;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -19,7 +19,8 @@ void print_attn_traits() {
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
 
-  using GmemTiledCopyQKV = typename Traits::GmemTiledCopyQKV;
+  using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
+  using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
   using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
 
   using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
@@ -37,13 +38,22 @@ void print_attn_traits() {
   }
 
   // print g2s tiled copy Q
-  print("GmemTiledCopyQKV: \n");
-  print(GmemTiledCopyQKV{});
+  print("GmemTiledCopyQ: \n");
+  print(GmemTiledCopyQ{});
   print("\n\n");
   {
     std::ofstream os("g2s_tiled_copy_q.svg");
-    print_svg(os, GmemTiledCopyQKV{});
+    print_svg(os, GmemTiledCopyQ{});
   }
+
+  print("GmemTiledCopyKV: \n");
+  print(GmemTiledCopyKV{});
+  print("\n\n");
+  {
+    std::ofstream os("g2s_tiled_copy_kv.svg");
+    print_svg(os, GmemTiledCopyKV{});
+  }
+
   // print s2g tiled copy O
   print("GmemTiledCopyO: \n");
   print(GmemTiledCopyO{});
@@ -92,7 +102,7 @@ void print_attn_traits() {
   print("\n\n");
   {
     std::ofstream os("smem_layout_q.svg");
-    print_svg(os, SmemLayoutQ{}, GmemTiledCopyQKV{}, SmemTiledCopyQ{});
+    print_svg(os, SmemLayoutQ{}, GmemTiledCopyQ{}, SmemTiledCopyQ{});
   }
   // print smem layout KV
   print("SmemLayoutK: \n");
@@ -100,7 +110,7 @@ void print_attn_traits() {
   print("\n\n");
   {
     std::ofstream os("smem_layout_k.svg");
-    print_svg(os, SmemLayoutK{}, GmemTiledCopyQKV{}, SmemTiledCopyK{});
+    print_svg(os, SmemLayoutK{}, GmemTiledCopyKV{}, SmemTiledCopyK{});
   }
   // print smem layout Vt
   print("SmemLayoutVt: \n");
@@ -111,7 +121,7 @@ void print_attn_traits() {
     print_svg(os,
               SmemLayoutV{},
               SmemLayoutVt{},
-              GmemTiledCopyQKV{},
+              GmemTiledCopyKV{},
               SmemTiledCopyVt{});
   }
   // print smem layout O
@@ -126,15 +136,20 @@ void print_attn_traits() {
 
 int main(int argc, char** argv) {
   // TODO: pass in as parameters
-  using Element = cute::half_t;
+  using DTYPE = cute::half_t;
+  using KV_DTYPE = cute::int8_t;
 
   constexpr int kHeadDim = 64;
   constexpr int kBlockM = 64;
   constexpr int kBlockN = 64;
   constexpr int kBlockK = 64;
 
-  using Traits =
-      AttentionTraitsSM80<Element, kHeadDim, kBlockM, kBlockN, kBlockK>;
+  using Traits = AttentionTraitsFp8KVCacheSM80<DTYPE,
+                                               KV_DTYPE,
+                                               kHeadDim,
+                                               kBlockM,
+                                               kBlockN,
+                                               kBlockK>;
   print_attn_traits<Traits>();
 
   return 0;

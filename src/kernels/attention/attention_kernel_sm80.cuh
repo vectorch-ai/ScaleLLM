@@ -195,6 +195,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   SmemTiledCopyK smem_tiled_copy_K;
   auto smem_thr_copy_K = smem_tiled_copy_K.get_thread_slice(tidx);
   auto tSsK = smem_thr_copy_K.partition_S(sK);
+  // TODO: allocate register for K if kvcache uses different type
   auto tSrK_copy_view = smem_thr_copy_K.retile_D(tSrK);
 
   // S = Q@K.T
@@ -216,6 +217,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
                    tSsK(_, _, next_ki),
                    tSrK_copy_view(_, _, next_ki));
       }
+      // TODO: convert kv cache type to Element
       cute::gemm(tiled_mma, tSrQ(_, _, ki), tSrK(_, _, ki), tSrAccS);
     }
   };
@@ -226,6 +228,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
   auto tOsVt = smem_thr_copy_Vt.partition_S(sVt);
+  // TODO: allocate register for K if kvcache uses different type
   auto tOrVt_copy_view = smem_thr_copy_Vt.retile_D(tOrVt);
 
   // O = softmax(S)*V
@@ -251,6 +254,8 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
                    tOsVt(_, _, next_ki),
                    tOrVt_copy_view(_, _, next_ki));
       }
+
+      // TODO: convert kv cache type to Element
       cute::gemm(tiled_mma, tOrS(_, _, ki), tOrVt(_, _, ki), tOrAccO);
     }
   };
