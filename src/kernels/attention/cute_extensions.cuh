@@ -6,8 +6,15 @@
 #include "cute/config.hpp"
 #include "cute/layout.hpp"
 #include "cute/layout_composed.hpp"
+#include "cute/tensor_impl.hpp"
 
 namespace cute {
+
+template <class NewT, typename ThrMMA, class BTensor>
+CUTE_HOST_DEVICE constexpr auto make_fragment_B(const ThrMMA& thr_mma,
+                                                BTensor const& btensor) {
+  return make_fragment_like<NewT>(thr_mma.partition_B(btensor));
+}
 
 template <size_t I, class IntTupleA, class IntTupleB>
 CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
@@ -79,6 +86,41 @@ CUTE_HOST_DEVICE void safe_copy(
   } else {
     // no oob, just copy
     copy(tiled_copy, src, dst);
+  }
+}
+
+// support mixed precision mma
+// Dispatch [4]: (V,M) x (V,N) => (V,M,N)
+template <class MMA, class FragmentA, class FragmentB, class FragmentC>
+CUTE_HOST_DEVICE void mixed_gemm(MMA_Atom<MMA> const& mma,
+                                 const FragmentA& A,  // (V,M) Logical data
+                                 const FragmentB& B,  // (V,N) Logical data
+                                 FragmentC& C)        // (V,M,N) Logical data
+{
+  using AType = typename FragmentA::value_type;
+  using BType = typename FragmentB::value_type;
+
+  if constexpr (std::is_same_v<AType, BType>) {
+    // same type, call gemm
+    gemm(mma, A, B, C);
+  } else {
+    // handle mixed precision
+    auto M = size<1>(A);
+    auto N = size<1>(B);
+
+    // Col-major serpentine iteration
+    CUTE_UNROLL
+    for (int n = 0; n < N; ++n) {
+      // Covnert B to same type as A before gemm
+      auto B_ = make_fragment_like<AType>(B(_, n));
+      fast_cast(B(_, n), B_);
+
+      CUTE_UNROLL
+      for (int m = 0; m < M; ++m) {
+        int ms = (n & 1) ? M - 1 - m : m;  // Serpentine coordinate
+        gemm(mma, A(_, ms), B_, C(_, ms, n));
+      }
+    }
   }
 }
 

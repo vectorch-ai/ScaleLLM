@@ -74,8 +74,8 @@ void attention_bench_sm80(nvbench::state& state) {
 
   state.exec([&](nvbench::launch& launch) {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<cute::half_t, HEAD_DIM>(params,
-                                                        launch.get_stream());
+      run_attention_kernel_sm80<cute::half_t, cute::half_t, HEAD_DIM>(
+          params, launch.get_stream());
     });
   });
 }

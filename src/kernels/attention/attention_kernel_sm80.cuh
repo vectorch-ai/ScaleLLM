@@ -10,6 +10,7 @@
 #include "cute/config.hpp"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
+#include "layout_conformance.cuh"
 #include "mask.h"
 #include "online_softmax.cuh"
 #include "ptx.cuh"
@@ -38,6 +39,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
   // type alias
   using DType = typename Traits::DType;
+  using KV_DType = typename Traits::KV_DType;
 
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
@@ -69,10 +71,10 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto [Q, O] = tile.template get_qo_tile<DType>(batch_idx, head_idx);
   // (kv_len, HEAD_DIM)
   auto [K, V] =
-      tile.template get_kv_tile<DType>(batch_idx, head_idx / group_size);
+      tile.template get_kv_tile<KV_DType>(batch_idx, head_idx / group_size);
 
-  const int q_len = size<0>(Q.shape());
-  const int kv_len = size<0>(K.shape());
+  const int q_len = size<0>(Q);
+  const int kv_len = size<0>(K);
 
   if (m_block * kBlockM >= q_len) {
     // out of bound, return
@@ -110,8 +112,8 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // Smem
   extern __shared__ char smem[];
   DType* q_smem = (DType*)smem;
-  DType* k_smem = q_smem + cosize(SmemLayoutQ{});
-  DType* v_smem = k_smem + cosize(SmemLayoutK{});
+  KV_DType* k_smem = q_smem + cosize(SmemLayoutQ{});
+  KV_DType* v_smem = k_smem + cosize(SmemLayoutK{});
 
   // (BLK_M, BLK_K), k-major
   Tensor sQ = make_tensor(make_smem_ptr(q_smem), SmemLayoutQ{});
@@ -187,7 +189,8 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto thr_mma = tiled_mma.get_slice(tidx);
   // GEMM-I: S = Q@K.T
   auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA,MMA_M,MMA_K)
-  auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA,MMA_N,MMA_K)
+  // alocate register with type KV_DType for K
+  auto tSrK = make_fragment_B<KV_DType>(thr_mma, sK);  // (MMA,MMA_N,MMA_K)
 
   // s2r tiled copy for qkv
   SmemTiledCopyQ smem_tiled_copy_Q;
@@ -219,12 +222,18 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
                    tSsK(_, _, next_ki),
                    tSrK_copy_view(_, _, next_ki));
       }
-      cute::gemm(tiled_mma, tSrQ(_, _, ki), tSrK(_, _, ki), tSrAccS);
+
+      if constexpr (!is_same_v<DType, KV_DType>) {
+        // fragment layout swizzle between threads
+        frag_B_layout_swizzle(tSrK_copy_view, tidx);
+      }
+      mixed_gemm(tiled_mma, tSrQ(_, _, ki), tSrK(_, _, ki), tSrAccS);
     }
   };
 
   // GEMM-II: O = softmax(S)@V
-  auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA,MMA_K,MMA_N)
+  // alocate register with type KV_DType for V^t
+  auto tOrVt = make_fragment_B<KV_DType>(thr_mma, sVt);  // (MMA,MMA_K,MMA_N)
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
@@ -254,7 +263,12 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
                    tOsVt(_, _, next_ki),
                    tOrVt_copy_view(_, _, next_ki));
       }
-      cute::gemm(tiled_mma, tOrS(_, _, ki), tOrVt(_, _, ki), tOrAccO);
+
+      if constexpr (!is_same_v<DType, KV_DType>) {
+        // fragment layout swizzle between threads
+        frag_B_trans_layout_swizzle(tOrVt_copy_view, tidx);
+      }
+      mixed_gemm(tiled_mma, tOrS(_, _, ki), tOrVt(_, _, ki), tOrAccO);
     }
   };
 

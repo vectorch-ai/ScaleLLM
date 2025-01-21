@@ -1,8 +1,10 @@
 #include <cute/tensor.hpp>
 #include <fstream>
 
+#include "../attention_traits_fp8_kvcache_sm80.h"
 #include "../attention_traits_sm80.h"
 #include "print_svg.hpp"
+#include "../cute_extensions.cuh"
 
 using namespace cute;
 using namespace llm;
@@ -17,7 +19,6 @@ template <typename Traits>
 void print_attn_traits() {
   // type alias
   using TiledMma = typename Traits::TiledMma;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -114,18 +115,63 @@ void print_attn_traits() {
       "smem_layout_o.svg", SmemLayoutO{}, SmemTiledCopyO{}, GmemTiledCopyO{});
 }
 
+template <typename Traits>
+void test_attn_traits() {
+  // type alias
+  using TiledMma = typename Traits::TiledMma;
+
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutK = typename Traits::SmemLayoutK;
+  using SmemLayoutV = typename Traits::SmemLayoutV;
+  using SmemLayoutVt = typename Traits::SmemLayoutVt;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+
+  using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
+  using SmemTiledCopyK = typename Traits::SmemTiledCopyK;
+  using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
+  using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
+
+  // NxK: (64, 64)
+  Tensor sK = make_tensor(counting_iterator<int>(0), SmemLayoutK{});
+  print(sK);print("\n");
+
+  TiledMma tiled_mma;
+  auto thr_mma = tiled_mma.get_slice(0);
+  // (MMA, MMA_N, MMA_K)
+  // ((_2,_2),_8,_4):((_1,_2),_16,_4)
+  auto tSrK = partition_fragment_B(thr_mma, sK);
+  print(tSrK);print("\n");
+
+  auto tSrK_fp8 = make_fragment_like<cute::int8_t>(tSrK);
+  print(tSrK_fp8);print("\n");
+
+  SmemTiledCopyK smem_tiled_copy_K;
+  auto smem_thr_copy_K = smem_tiled_copy_K.get_thread_slice(0);
+  print(smem_thr_copy_K);print("\n");
+
+  // (((_4,_2),_1),_4,_4):(((_1,_16),_0),_32,_4)
+  auto tSrK_copy_view = smem_thr_copy_K.retile_D(tSrK_fp8);
+  print(tSrK_copy_view);print("\n");
+
+}
+
 int main(int argc, char** argv) {
   // TODO: pass in as parameters
-  using Element = cute::half_t;
+  using DTYPE = cute::half_t;
+  using KV_DTYPE = cute::int8_t;
 
   constexpr int kHeadDim = 64;
   constexpr int kBlockM = 64;
   constexpr int kBlockN = 64;
   constexpr int kBlockK = 64;
 
-  using Traits =
-      AttentionTraitsSM80<Element, kHeadDim, kBlockM, kBlockN, kBlockK>;
-  print_attn_traits<Traits>();
+  using Traits = AttentionTraitsFp8KVCacheSM80<DTYPE, KV_DTYPE,
+                                               kHeadDim,
+                                               kBlockM,
+                                               kBlockN,
+                                               kBlockK>;
+  // print_attn_traits<Traits>();
+  test_attn_traits<Traits>();
 
   return 0;
 }

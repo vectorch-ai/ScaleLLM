@@ -63,7 +63,7 @@ torch::Tensor attention_pagedkv_sm80(
 
   DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
     DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params);
+      run_attention_kernel_sm80<DTYPE, DTYPE, HEAD_DIM>(params);
     });
   });
   return out;
