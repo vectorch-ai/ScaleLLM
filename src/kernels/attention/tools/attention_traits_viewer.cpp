@@ -139,10 +139,10 @@ void test_attn_traits() {
   auto thr_mma = tiled_mma.get_slice(0);
   // (MMA, MMA_N, MMA_K)
   // ((_2,_2),_8,_4):((_1,_2),_16,_4)
-  auto tSrK = partition_fragment_B(thr_mma, sK);
+  auto tSrK = thr_mma.partition_fragment_B(sK);
   print(tSrK);print("\n");
 
-  auto tSrK_fp8 = make_fragment_like<cute::int8_t>(tSrK);
+  auto tSrK_fp8 = make_fragment_B<cute::int8_t>(thr_mma, sK);
   print(tSrK_fp8);print("\n");
 
   SmemTiledCopyK smem_tiled_copy_K;
