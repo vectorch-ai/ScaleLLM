@@ -31,11 +31,7 @@ struct LayoutConvertor {
 
 }  // namespace detail
 
-template <typename DTYPE_,
-          int HEAD_DIM,
-          int BLK_M,
-          int BLK_N,
-          int BLK_K>
+template <typename DTYPE, int HEAD_DIM, int BLK_M, int BLK_N, int BLK_K>
 struct AttentionTraitsSM80 {
   // helpful aliases
   static constexpr int kHeadDim = HEAD_DIM;
@@ -44,7 +40,7 @@ struct AttentionTraitsSM80 {
   static constexpr int kBlockK = BLK_K;
   static constexpr int kRowsPerMMA = 2;
 
-  using DType = DTYPE_;
+  using DType = DTYPE;
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
   using _BLK_K = Int<kBlockK>;
@@ -93,12 +89,15 @@ struct AttentionTraitsSM80 {
                          Layout<Shape<_16, _8>, Stride<_8, _1>>>;
 
   // Tiled copy for QKV
-  // g2s tiled copy for qkv
-  using GmemTiledCopyQKV = decltype(make_tiled_copy(
+  // g2s tiled copy for q
+  using GmemTiledCopyQ = decltype(make_tiled_copy(
       Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, DType>{},
       GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
+
+  // g2s tiled copy for kv
+  using GmemTiledCopyKV = GmemTiledCopyQ;
 
   // s2r tiled copy for gemm-I
   using SmemTiledCopyQ =
@@ -127,8 +126,7 @@ struct AttentionTraitsSM80 {
 
   // r2s tiled copy for O
   using SmemTiledCopyO =
-      decltype(make_tiled_copy_C(Copy_Atom<DefaultCopy, DType>{},
-                                 TiledMma{}));
+      decltype(make_tiled_copy_C(Copy_Atom<DefaultCopy, DType>{}, TiledMma{}));
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =

@@ -19,7 +19,8 @@ void test_attention_traits() {
   using SmemLayoutV = typename Traits::SmemLayoutV;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
-  using GmemTiledCopyQKV = typename Traits::GmemTiledCopyQKV;
+  using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
+  using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
   using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
 
   using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;

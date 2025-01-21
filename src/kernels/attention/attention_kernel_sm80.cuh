@@ -47,7 +47,8 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   using SmemLayoutV = typename Traits::SmemLayoutV;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
-  using GmemTiledCopyQKV = typename Traits::GmemTiledCopyQKV;
+  using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
+  using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
   using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
 
   using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
@@ -124,25 +125,27 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
   // Tiled Copy
   // g2s tiled copy for qkv
-  GmemTiledCopyQKV gmem_tiled_copy_QKV;
-  auto gmem_thr_copy_QKV = gmem_tiled_copy_QKV.get_thread_slice(tidx);
+  GmemTiledCopyQ gmem_tiled_copy_Q;
+  GmemTiledCopyKV gmem_tiled_copy_KV;
+  auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_thread_slice(tidx);
+  auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_thread_slice(tidx);
 
   // coordinate tensor for oob handling
   // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
   Tensor cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
-  Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);
+  Tensor tQcQ = gmem_thr_copy_Q.partition_S(cQ);
   // (BLK_N, HEAD_DIM) -> (blk_n, head_dim)
   Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
-  Tensor tKcKV = gmem_thr_copy_QKV.partition_S(cKV);
+  Tensor tKcKV = gmem_thr_copy_KV.partition_S(cKV);
 
   auto produce_q = [&]() {
-    auto tQgQ = gmem_thr_copy_QKV.partition_S(gQ);
-    auto tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
+    auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
+    auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
     safe_copy<EVEN_K,
               /*EVEN_MN=*/false,
               /*ZERO_FILL_MN=*/true,
               /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_QKV,
+        gmem_tiled_copy_Q,
         tQgQ,
         tQsQ,
         tQcQ,
@@ -150,30 +153,30 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   };
 
   // TODO: seperate mask iterations
-  Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
+  Tensor tKsK = gmem_thr_copy_KV.partition_D(sK);
   auto produce_k = [&](int ni) {
-    auto tKgK = gmem_thr_copy_QKV.partition_S(gK(_, _, ni));
+    auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
     // skip zero fill oob for k since mask will mask out oob with -inf
     safe_copy<EVEN_K,
               /*EVEN_MN=*/false,
               /*ZERO_FILL_MN=*/false,
               /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_QKV,
+        gmem_tiled_copy_Q,
         tKgK,
         tKsK,
         tKcKV,
         make_coord(kv_len - ni * kBlockN, head_dim));
   };
 
-  Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
+  Tensor tVsV = gmem_thr_copy_KV.partition_D(sV);
   auto produce_v = [&](int ni) {
-    auto tVgV = gmem_thr_copy_QKV.partition_S(gV(_, _, ni));
+    auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
     // TODO: skip zero fill oob for v, may have nan issue
     safe_copy<EVEN_K,
               /*EVEN_MN=*/false,
               /*ZERO_FILL_MN=*/true,
               /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_QKV,
+        gmem_tiled_copy_Q,
         tVgV,
         tVsV,
         tKcKV,
@@ -183,8 +186,8 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(tidx);
   // GEMM-I: S = Q@K.T
-  auto tSrQ = partition_fragment_A(thr_mma, sQ);  // (MMA,MMA_M,MMA_K)
-  auto tSrK = partition_fragment_B(thr_mma, sK);  // (MMA,MMA_N,MMA_K)
+  auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA,MMA_M,MMA_K)
+  auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA,MMA_N,MMA_K)
 
   // s2r tiled copy for qkv
   SmemTiledCopyQ smem_tiled_copy_Q;
@@ -221,7 +224,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   };
 
   // GEMM-II: O = softmax(S)@V
-  auto tOrVt = partition_fragment_B(thr_mma, sVt);  // (MMA,MMA_K,MMA_N)
+  auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA,MMA_K,MMA_N)
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
