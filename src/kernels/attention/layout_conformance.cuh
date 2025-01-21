@@ -10,7 +10,7 @@ namespace llm {
 namespace detail {
 using namespace cute;
 
-CUTE_DEVICE void swap(uint32_t& a, uint32_t& b) {
+CUTE_DEVICE void swap(uint16_t& a, uint16_t& b) {
   auto tmp = a;
   a = b;
   b = tmp;
