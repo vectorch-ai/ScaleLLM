@@ -9,13 +9,13 @@ cc_library(
     handler.h
     ref_handler.h
     flash_attn_handler.h
-    flash_infer_handler.h
+    scale_attn_handler.h
     attention.h
   SRCS 
     handler.cpp
     ref_handler.cpp
     flash_attn_handler.cpp
-    flash_infer_handler.cpp
+    scale_attn_handler.cpp
     attention.cpp
   DEPS
     :state_dict
@@ -23,7 +23,6 @@ cc_library(
     :pos_embedding
     :kernels
     :flash_attn.kernels
-    # :flash_infer.kernels
     glog::glog
     gflags::gflags
     torch

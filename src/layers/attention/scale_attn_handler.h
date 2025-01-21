@@ -9,10 +9,10 @@
 namespace llm {
 
 // an flash attn implementation for attention operations
-class FlashInferHandler : public AttentionHandler {
+class ScaleAttnHandler : public AttentionHandler {
  public:
   // create a flash attn handler with rope positional embedding
-  FlashInferHandler(float scale,
+  ScaleAttnHandler(float scale,
                     int64_t rotary_dim,
                     int64_t max_position,
                     float rope_scaling,
@@ -21,9 +21,9 @@ class FlashInferHandler : public AttentionHandler {
                     const torch::TensorOptions& options);
 
   // constructor for attention with alibi
-  FlashInferHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
+  ScaleAttnHandler(float scale, std::optional<torch::Tensor> alibi_slopes);
 
-  virtual ~FlashInferHandler() = default;
+  virtual ~ScaleAttnHandler() = default;
 
   std::tuple<torch::Tensor, torch::Tensor> apply_pos_emb(
       const torch::Tensor& query,
@@ -63,7 +63,7 @@ class FlashInferHandler : public AttentionHandler {
   float scale_ = 0.0;
 
   // alibi slops
-  torch::optional<torch::Tensor> alibi_slopes_;
+  std::optional<torch::Tensor> alibi_slopes_;
 };
 
 }  // namespace llm

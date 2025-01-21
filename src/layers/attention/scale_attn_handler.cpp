@@ -1,4 +1,4 @@
-#include "flash_infer_handler.h"
+#include "scale_attn_handler.h"
 
 #include <torch/torch.h>
 
@@ -7,7 +7,7 @@
 
 namespace llm {
 
-FlashInferHandler::FlashInferHandler(float scale,
+ScaleAttnHandler::ScaleAttnHandler(float scale,
                                      int64_t rotary_dim,
                                      int64_t max_position,
                                      float rope_scaling,
@@ -17,13 +17,13 @@ FlashInferHandler::FlashInferHandler(float scale,
   LOG(FATAL) << "Not implemented yet";
 }
 
-FlashInferHandler::FlashInferHandler(
+ScaleAttnHandler::ScaleAttnHandler(
     float scale,
     torch::optional<torch::Tensor> alibi_slopes)
     : scale_(scale), alibi_slopes_(alibi_slopes) {}
 
 // batch prefill for attention, optimized for prefill stage
-void FlashInferHandler::batch_prefill(
+void ScaleAttnHandler::batch_prefill(
     const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
     const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
@@ -36,7 +36,7 @@ void FlashInferHandler::batch_prefill(
 
 // batch decode for attention, optimized for decode stage
 // support multiple queries: one sequence with multiple query tokens
-void FlashInferHandler::batch_decode(
+void ScaleAttnHandler::batch_decode(
     const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
     const KVCache& kv_cache,              // where to retrieval key and value
     const InputParameters& input_params,  // input paras used for attention
@@ -47,7 +47,7 @@ void FlashInferHandler::batch_decode(
 }
 
 // append key and value to kv_cache
-void FlashInferHandler::append_kv_cache(
+void ScaleAttnHandler::append_kv_cache(
     KVCache& kv_cache,           // where to store key and value
     const torch::Tensor& key,    // [n_tokens, n_kv_heads, head_dim]
     const torch::Tensor& value,  // [n_tokens, n_kv_heads, head_dim]
