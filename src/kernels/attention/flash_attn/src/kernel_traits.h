@@ -32,12 +32,15 @@ struct Flash_kernel_traits {
     using MMA_Atom_Arch = MMA_Atom<SM75_16x8x8_F32F16F16F32_TN>;
 #endif
 
+    // use 128-bit vectorizing copy
+    using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
+
 #if defined(__CUDA_ARCH__) &&  __CUDA_ARCH__ >= 750
     using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, elem_type>;
     using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, elem_type>;
 #else
-    using SmemCopyAtom = Copy_Atom<DefaultCopy, elem_type>;
-    using SmemCopyAtomTransposed = Copy_Atom<DefaultCopy, elem_type>;
+    using SmemCopyAtom = Copy_Atom<VectorizingCopy, elem_type>;
+    using SmemCopyAtomTransposed = Copy_Atom<VectorizingCopy, elem_type>;
 #endif
 };
 
@@ -49,6 +52,7 @@ struct Flash_fwd_kernel_traits : public Base {
     using ElementAccum = typename Base::ElementAccum;
     using index_t = typename Base::index_t;
     static constexpr bool Has_cp_async = Base::Has_cp_async;
+    using VectorizingCopy = typename Base::VectorizingCopy;
     using SmemCopyAtom = typename Base::SmemCopyAtom;
     using SmemCopyAtomTransposed = typename Base::SmemCopyAtomTransposed;
 
@@ -97,8 +101,8 @@ struct Flash_fwd_kernel_traits : public Base {
     using SmemLayoutO = decltype(tile_to_shape(
         SmemLayoutAtomO{},
         Shape<Int<kBlockM>, Int<kHeadDim>>{}));
-    using SmemCopyAtomO = Copy_Atom<DefaultCopy, Element>;
-    using SmemCopyAtomOaccum = Copy_Atom<DefaultCopy, ElementAccum>;
+    using SmemCopyAtomO = Copy_Atom<VectorizingCopy, Element>;
+    using SmemCopyAtomOaccum = Copy_Atom<VectorizingCopy, ElementAccum>;
 
     static constexpr int kSmemQSize = size(SmemLayoutQ{}) * sizeof(Element);
     static constexpr int kSmemKVSize = size(SmemLayoutKV{}) * 2 * sizeof(Element);
@@ -121,7 +125,7 @@ struct Flash_fwd_kernel_traits : public Base {
     using Gmem_copy_struct = std::conditional_t<
         Has_cp_async,
         SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>,
-        DefaultCopy
+        VectorizingCopy
     >;
     using GmemTiledCopyQKV = decltype(
         make_tiled_copy(Copy_Atom<Gmem_copy_struct, Element>{},
@@ -140,7 +144,7 @@ struct Flash_fwd_kernel_traits : public Base {
                         Layout<Shape<Int<kGmemRowsPerThread>, _8>, Stride<_8, _1>>{}));
 
     using GmemTiledCopyO = decltype(
-        make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
+        make_tiled_copy(Copy_Atom<VectorizingCopy, Element>{},
                         GmemLayoutAtom{},
                         Layout<Shape<_1, _8>>{}));  // Val layout, 8 vals per store
 
@@ -152,7 +156,7 @@ struct Flash_fwd_kernel_traits : public Base {
                Stride< _16, _1>>
     >;
     using GmemTiledCopyOaccum = decltype(
-        make_tiled_copy(Copy_Atom<DefaultCopy, ElementAccum>{},
+        make_tiled_copy(Copy_Atom<VectorizingCopy, ElementAccum>{},
                         GmemLayoutAtomOaccum{},
                         Layout<Shape < _1, _4>>{}));  // Val layout, 4 vals per store
     using GmemLayoutAtomRotcossin = GmemLayoutAtom;
@@ -161,7 +165,7 @@ struct Flash_fwd_kernel_traits : public Base {
                         GmemLayoutAtomRotcossin{},
                         Layout<Shape < _1, _4>>{}));  // Val layout, 4 vals per load
     using GmemTiledCopyRotcossinCont = decltype(
-        make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
+        make_tiled_copy(Copy_Atom<VectorizingCopy, Element>{},
                         GmemLayoutAtomRotcossin{},
                         Layout<Shape < _1, _8>>{}));  // Val layout, 8 vals per load
     using GmemTiledCopyRotcossinPaged = decltype(
@@ -169,7 +173,7 @@ struct Flash_fwd_kernel_traits : public Base {
                         GmemLayoutAtomRotcossin{},
                         Layout<Shape<Int<kGmemRowsPerThread>, _4>, Stride<_4, _1>>{}));  // Val layout, 4 vals per load
     using GmemTiledCopyRotcossinContPaged = decltype(
-        make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
+        make_tiled_copy(Copy_Atom<VectorizingCopy, Element>{},
                         GmemLayoutAtomRotcossin{},
                         Layout<Shape<Int<kGmemRowsPerThread>, _8>, Stride<_8, _1>>{}));  // Val layout, 8 vals per load
 };

@@ -161,7 +161,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
               /*EVEN_MN=*/false,
               /*ZERO_FILL_MN=*/false,
               /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_Q,
+        gmem_tiled_copy_KV,
         tKgK,
         tKsK,
         tKcKV,
@@ -176,7 +176,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
               /*EVEN_MN=*/false,
               /*ZERO_FILL_MN=*/true,
               /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_Q,
+        gmem_tiled_copy_KV,
         tVgV,
         tVsV,
         tKcKV,
