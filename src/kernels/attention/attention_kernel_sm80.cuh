@@ -80,10 +80,10 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   }
 
   const int head_dim = params.head_dim;
+  const int sliding_window = LOCAL ? params.sliding_window : kv_len;
   const float logits_soft_cap = params.logits_soft_cap;
   const float sm_scale = params.sm_scale;
   const float sm_scale_log2 = params.sm_scale_log2;
-  const float sliding_window = LOCAL ? params.sliding_window : kv_len;
   const float alibi_slope =
       ALIBI ? (params.alibi_slopes_ptr[head_idx] / sm_scale) : 0.0f;
 
@@ -156,9 +156,23 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   Tensor tKsK = gmem_thr_copy_KV.partition_D(sK);
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
-    // skip zero fill oob for k since mask will mask out oob with -inf
+    // skip zfill_mn for k since mask will mask out oob with -inf
     safe_copy<EVEN_K,
               /*EVEN_MN=*/false,
+              /*ZERO_FILL_MN=*/false,
+              /*ZERO_FILL_K=*/true>(
+        gmem_tiled_copy_KV,
+        tKgK,
+        tKsK,
+        tKcKV,
+        make_coord(kv_len - ni * kBlockN, head_dim));
+  };
+
+  auto produce_k_even_mn = [&](int ni) {
+    auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
+    // skip ZFILL_MN for k since mask will mask out oob with -inf
+    safe_copy<EVEN_K,
+              /*EVEN_MN=*/true,
               /*ZERO_FILL_MN=*/false,
               /*ZERO_FILL_K=*/true>(
         gmem_tiled_copy_KV,
@@ -171,10 +185,23 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   Tensor tVsV = gmem_thr_copy_KV.partition_D(sV);
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
-    // TODO: skip zero fill oob for v, may have nan issue
+    // skipping ZFILL_MN for v may cause nan issue
     safe_copy<EVEN_K,
               /*EVEN_MN=*/false,
               /*ZERO_FILL_MN=*/true,
+              /*ZERO_FILL_K=*/true>(
+        gmem_tiled_copy_KV,
+        tVgV,
+        tVsV,
+        tKcKV,
+        make_coord(kv_len - ni * kBlockN, head_dim));
+  };
+
+  auto produce_v_even_mn = [&](int ni) {
+    auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
+    safe_copy<EVEN_K,
+              /*EVEN_MN=*/true,
+              /*ZERO_FILL_MN=*/false,
               /*ZERO_FILL_K=*/true>(
         gmem_tiled_copy_KV,
         tVgV,
@@ -299,13 +326,21 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
         make_coord(q_len - m_block * kBlockM, head_dim));
   };
 
+  const int diagonal = m_block * kBlockM + kv_len - q_len;
+  // process kv in range: [kv_idx_min, kv_idx_max)
+  const int kv_idx_min = std::max(0, diagonal - sliding_window);
+  const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
+  const int n_block_min = LOCAL ? kv_idx_min / kBlockN : 0;
+  const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
+  // TODO: handle n_block_min >= n_block_max
+
   // ###############  Prologue  ###############
 
   // produce q: [] => [q]
   produce_q();
   cp_async_fence();
   // produce k: [q] => [q, k]
-  produce_k(0);
+  produce_k(n_block_min);
   cp_async_fence();
 
   // ###############  Mainloop  ###############
@@ -323,10 +358,6 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   OnlineSoftmax<kRowsPerMMA * size<1>(tOrAccO)> softmax(sm_scale_log2);
   Mask<kBlockM, kBlockM, ALIBI, LOCAL> mask(
       q_len, kv_len, sliding_window, alibi_slope);
-
-  // TODO: control block min/max precisely
-  const int n_block_min = 0;
-  const int n_block_max = cute::ceil_div(kv_len, kBlockN);
 
   clear(tOrAccO);
   CUTE_NO_UNROLL
