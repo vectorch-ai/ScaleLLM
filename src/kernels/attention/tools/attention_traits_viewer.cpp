@@ -2,6 +2,8 @@
 #include <fstream>
 
 #include "../attention_traits_sm80.h"
+#include "../cute_extensions.cuh"
+#include "cute/numeric/numeric_types.hpp"
 #include "print_svg.hpp"
 
 using namespace cute;
@@ -17,7 +19,6 @@ template <typename Traits>
 void print_attn_traits() {
   // type alias
   using TiledMma = typename Traits::TiledMma;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -114,9 +115,76 @@ void print_attn_traits() {
       "smem_layout_o.svg", SmemLayoutO{}, SmemTiledCopyO{}, GmemTiledCopyO{});
 }
 
+template <typename Traits>
+void test_attn_traits() {
+  // type alias
+  using DType = typename Traits::DType;
+  using KV_DType = typename Traits::KV_DType;
+  using TiledMma = typename Traits::TiledMma;
+
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutK = typename Traits::SmemLayoutK;
+  using SmemLayoutV = typename Traits::SmemLayoutV;
+  using SmemLayoutVt = typename Traits::SmemLayoutVt;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+
+  using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
+  using SmemTiledCopyK = typename Traits::SmemTiledCopyK;
+  using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
+  using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
+
+  // NxK: (64, 64)
+  Tensor sK = make_tensor(counting_iterator<int>(0), SmemLayoutK{});
+  Tensor sVt = make_tensor(counting_iterator<int>(0), SmemLayoutVt{});
+  print("sk: ");
+  print(sK);
+  print("\n");
+
+  print("sVt: ");
+  print(sVt);
+  print("\n");
+
+  TiledMma tiled_mma;
+  auto thr_mma = tiled_mma.get_slice(0);
+  // (MMA, MMA_N, MMA_K)
+  auto tSrK = make_fragment_B<KV_DType>(thr_mma, sK);
+  print("tSrK: ");
+  print(tSrK);
+  print("\n");
+
+  auto tOrVt = make_fragment_B<KV_DType>(thr_mma, sVt);
+  print("tOrVt: ");
+  print(tOrVt);
+  print("\n");
+
+  SmemTiledCopyK smem_tiled_copy_K;
+  auto smem_thr_copy_K = smem_tiled_copy_K.get_thread_slice(0);
+  print(smem_thr_copy_K);
+  print("\n");
+
+  SmemTiledCopyVt smem_tiled_copy_Vt;
+  auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(0);
+  print(smem_thr_copy_Vt);
+  print("\n");
+
+  // => ((_8,_1),_4,_4):((_1,_0),_8,_32)
+  auto tSrK_copy_view = smem_thr_copy_K.retile_D(tSrK);
+  print("tSrK_copy_view: ");
+  print(tSrK_copy_view);
+  print("\n");
+
+  // => (((_4,_2),_1),_8,_2):(((_1,_32),_0),_4,_64)
+  auto tOrVt_copy_view = smem_thr_copy_Vt.retile_D(tOrVt);
+  print("tOrVt_copy_view: ");
+  print(tOrVt_copy_view);
+  print("\n");
+}
+
 int main(int argc, char** argv) {
   // TODO: pass in as parameters
-  using Element = cute::half_t;
+  using DTYPE = cute::half_t;
+  using KV_DTYPE = cute::float_e4m3_t;
+  // using KV_DTYPE = cute::half_t;
 
   constexpr int kHeadDim = 64;
   constexpr int kBlockM = 64;
@@ -124,8 +192,9 @@ int main(int argc, char** argv) {
   constexpr int kBlockK = 64;
 
   using Traits =
-      AttentionTraitsSM80<Element, kHeadDim, kBlockM, kBlockN, kBlockK>;
+      AttentionTraitsSM80<DTYPE, KV_DTYPE, kHeadDim, kBlockM, kBlockN, kBlockK>;
   print_attn_traits<Traits>();
+  // test_attn_traits<Traits>();
 
   return 0;
 }

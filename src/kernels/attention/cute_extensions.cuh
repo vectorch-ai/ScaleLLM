@@ -6,8 +6,15 @@
 #include "cute/config.hpp"
 #include "cute/layout.hpp"
 #include "cute/layout_composed.hpp"
+#include "cute/tensor_impl.hpp"
 
 namespace cute {
+
+template <class NewT, typename ThrMMA, class BTensor>
+CUTE_HOST_DEVICE constexpr auto make_fragment_B(const ThrMMA& thr_mma,
+                                                BTensor const& btensor) {
+  return make_fragment_like<NewT>(thr_mma.partition_B(btensor));
+}
 
 template <size_t I, class IntTupleA, class IntTupleB>
 CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
@@ -15,22 +22,62 @@ CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
   return elem_less(get<I>(a), get<I>(b));
 }
 
-template <bool EVEN_K,
-          bool EVEN_MN,
-          bool ZERO_FILL_MN,
-          bool ZERO_FILL_K,
-          class TiledCopy,
+template <class Copy_Atom, class TensorS, class TensorD>
+CUTE_HOST_DEVICE void zfill(const Copy_Atom& copy_atom,
+                            const TensorS& src,
+                            TensorD&& dst) {
+  CUTE_STATIC_ASSERT(TensorS::rank == TensorD::rank, "rank-mismatch.");
+
+  auto has_with_bool = cute::is_valid(
+      [](auto t) -> void_t<decltype(declval<typename decltype(t)::Traits>()
+                                        .with(true))> {},
+      copy_atom);
+  if constexpr (has_with_bool) {
+    constexpr int R = TensorD::rank;
+    if constexpr (R == 1) {  // Dispatch the copy
+      copy_atom.with(false).call(src, dst);
+    } else {  // Loop over all but the first mode
+      Tensor src_v = group_modes<1, R>(src);
+      Tensor dst_v = group_modes<1, R>(dst);
+      CUTE_UNROLL
+      for (int i = 0; i < size<1>(dst_v); ++i) {
+        copy_atom.with(false).call(src_v(_, i), dst_v(_, i));
+      }
+    }
+  } else {
+    // just call clear if no with method
+    clear(dst);
+  }
+}
+
+template <class... CopyArgs, class TensorS, class TensorD>
+CUTE_HOST_DEVICE void zfill(const Copy_Atom<CopyArgs...>& copy_atom,
+                            const TensorS& src,
+                            TensorD& dst) {
+  zfill(copy_atom, src, dst);
+}
+
+template <bool EVEN_MN,
+          bool EVEN_K,
+          bool ZFILL_MN,
+          bool ZFILL_K,
+          class CopyAtom,
+          class TV,
+          class Tiler,
           class TensorS,
           class TensorD,
           class TensorC,
           class Coord>
 CUTE_HOST_DEVICE void safe_copy(
-    const TiledCopy& tiled_copy,
+    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const TensorS& src,       // (CPY, CPY_M/N, CPY_K)
     TensorD& dst,             // (CPY, CPY_M/N, CPY_K)
     const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
     const Coord& max_coord    // max_coord(blk_m/n, blk_k)
 ) {
+  CUTE_STATIC_ASSERT(TensorS::rank == TensorD::rank, "rank-mismatch.");
+  auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
+
   if constexpr (!EVEN_MN && !EVEN_K) {
     // handle both m/n and k oob
     CUTE_UNROLL
@@ -39,16 +86,16 @@ CUTE_HOST_DEVICE void safe_copy(
         CUTE_UNROLL
         for (int ki = 0; ki < size<2>(src); ++ki) {
           if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
-            copy(tiled_copy, src(_, mi, ki), dst(_, mi, ki));
+            copy(copy_atom, src(_, mi, ki), dst(_, mi, ki));
           } else {
-            if constexpr (ZERO_FILL_K) {
-              clear(dst(_, mi, ki));
+            if constexpr (ZFILL_K) {
+              zfill(copy_atom, src(_, mi, ki), dst(_, mi, ki));
             }
           }
         }
       } else {
-        if constexpr (ZERO_FILL_MN) {
-          clear(dst(_, mi, _));
+        if constexpr (ZFILL_MN) {
+          zfill(copy_atom, src(_, mi, _), dst(_, mi, _));
         }
       }
     }
@@ -57,10 +104,10 @@ CUTE_HOST_DEVICE void safe_copy(
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
       if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
-        copy(tiled_copy, src(_, mi, _), dst(_, mi, _));
+        copy(copy_atom, src(_, mi, _), dst(_, mi, _));
       } else {
-        if constexpr (ZERO_FILL_MN) {
-          clear(dst(_, mi, _));
+        if constexpr (ZFILL_MN) {
+          zfill(copy_atom, src(_, mi, _), dst(_, mi, _));
         }
       }
     }
@@ -69,16 +116,51 @@ CUTE_HOST_DEVICE void safe_copy(
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(src); ++ki) {
       if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
-        copy(tiled_copy, src(_, _, ki), dst(_, _, ki));
+        copy(copy_atom, src(_, _, ki), dst(_, _, ki));
       } else {
-        if constexpr (ZERO_FILL_K) {
-          clear(dst(_, _, ki));
+        if constexpr (ZFILL_K) {
+          zfill(copy_atom, src(_, _, ki), dst(_, _, ki));
         }
       }
     }
   } else {
     // no oob, just copy
-    copy(tiled_copy, src, dst);
+    copy(copy_atom, src, dst);
+  }
+}
+
+// support mixed precision mma
+// Dispatch [4]: (V,M) x (V,N) => (V,M,N)
+template <class MMA, class FragmentA, class FragmentB, class FragmentC>
+CUTE_HOST_DEVICE void mixed_gemm(MMA_Atom<MMA> const& mma,
+                                 const FragmentA& A,  // (V,M) Logical data
+                                 const FragmentB& B,  // (V,N) Logical data
+                                 FragmentC& C)        // (V,M,N) Logical data
+{
+  using AType = typename FragmentA::value_type;
+  using BType = typename FragmentB::value_type;
+
+  if constexpr (std::is_same_v<AType, BType>) {
+    // same type, call gemm
+    gemm(mma, A, B, C);
+  } else {
+    // handle mixed precision
+    auto M = size<1>(A);
+    auto N = size<1>(B);
+
+    // Col-major serpentine iteration
+    CUTE_UNROLL
+    for (int n = 0; n < N; ++n) {
+      // Covnert B to same type as A before gemm
+      auto B_ = make_fragment_like<AType>(B(_, n));
+      fast_cast(B(_, n), B_);
+
+      CUTE_UNROLL
+      for (int m = 0; m < M; ++m) {
+        int ms = (n & 1) ? M - 1 - m : m;  // Serpentine coordinate
+        gemm(mma, A(_, ms), B_, C(_, ms, n));
+      }
+    }
   }
 }
 

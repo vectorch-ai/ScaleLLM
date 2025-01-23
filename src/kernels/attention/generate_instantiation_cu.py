@@ -12,6 +12,10 @@ DTYPE_MAP = {
     "bf16": "cute::bfloat16_t",
 }
 
+# TODO: add support for mixed precision kernels
+KV_DTYPE_MAP = {
+}
+
 HEAD_DIMENSIONS = [64, 96, 128, 256]
 
 PAGEDKV_KERNEL_IMPL_TEMPLATE = """
@@ -20,7 +24,7 @@ PAGEDKV_KERNEL_IMPL_TEMPLATE = """
 namespace llm {{
 
 using Params = PagedKVAttentionParams;
-template void run_attention_kernel_sm80<{DTYPE}, {HEAD_DIM}, Params>(
+template void run_attention_kernel_sm80<{DTYPE}, {KV_DTYPE}, {HEAD_DIM}, Params>(
     Params& params, cudaStream_t stream);
 
 }}  // namespace llm
@@ -29,22 +33,31 @@ template void run_attention_kernel_sm80<{DTYPE}, {HEAD_DIM}, Params>(
 @dataclass
 class Kernel:
     dtype: str
+    kv_dtype: str
     head_dim: int
 
     @property
     def template(self) -> str:
         return PAGEDKV_KERNEL_IMPL_TEMPLATE.format(
-            DTYPE=DTYPE_MAP[self.dtype], HEAD_DIM=self.head_dim
+            DTYPE=DTYPE_MAP[self.dtype], KV_DTYPE=DTYPE_MAP[self.kv_dtype], HEAD_DIM=self.head_dim
         )
 
     @property
     def filename(self) -> str:
-        return f"attention_{self.dtype}_hd{self.head_dim}_sm80.cu"
+        if self.dtype == self.kv_dtype:
+            return f"attention_{self.dtype}_hd{self.head_dim}_sm80.cu"
+        # include the kv dtype in the filename
+        return f"attention_{self.dtype}_{self.kv_dtype}_hd{self.head_dim}_sm80.cu"
 
 
 def get_all_kernels() -> Iterator[Kernel]:
+    # fp16 and bf16 kernels
     for dtype, head_dim in itertools.product(DTYPE_MAP.keys(), HEAD_DIMENSIONS):
-        yield Kernel(dtype=dtype, head_dim=head_dim)
+        yield Kernel(dtype=dtype, kv_dtype=dtype, head_dim=head_dim)
+    
+    # mixed precision kernels
+    for dtype, kv_dtype, head_dim in itertools.product(DTYPE_MAP.keys(), KV_DTYPE_MAP.keys(), HEAD_DIMENSIONS):
+        yield Kernel(dtype=dtype, kv_dtype=kv_dtype, head_dim=head_dim)
 
 
 if __name__ == "__main__":
