@@ -46,7 +46,34 @@ struct type_cast<float, cute::bfloat16_t> {
     }
   }
 };
-// TODO: add other specializations
+
+template <>
+struct type_cast<cute::float_e4m3_t, cute::half_t> {
+  template <typename FragmentS, typename FragmentD>
+  CUTE_DEVICE static void cast(const FragmentS& src, FragmentD& dst) {
+    // TODO: implement fast float_e4m3_t -> half_t
+    CUTE_UNROLL
+    for (int i = 0; i < size(src); ++i) {
+      dst(i) = cute::half_t(src(i));
+    }
+  }
+};
+
+template <>
+struct type_cast<cute::float_e5m2_t, cute::half_t> {
+  template <typename FragmentS, typename FragmentD>
+  CUTE_DEVICE static void cast(const FragmentS& src, FragmentD& dst) {
+    // TODO: implement fast float_e5m2_t -> half_t
+    CUTE_UNROLL
+    for (int i = 0; i < size(src); ++i) {
+      dst(i) = cute::half_t(src(i));
+    }
+  }
+};
+
+// TODO: implement the following specializations
+// specialization for float_e4m3_t -> bfloat16
+// specialization for float_e5m2_t -> bfloat16
 
 }  // namespace detail
 
