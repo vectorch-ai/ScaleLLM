@@ -143,10 +143,10 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto produce_q = [&]() {
     auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
     auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
-    safe_copy<EVEN_K,
-              /*EVEN_MN=*/false,
-              /*ZERO_FILL_MN=*/true,
-              /*ZERO_FILL_K=*/true>(
+    safe_copy</*EVEN_MN=*/false,
+              EVEN_K,
+              /*ZFILL_MN=*/true,
+              /*ZFILL_K=*/true>(
         gmem_tiled_copy_Q,
         tQgQ,
         tQsQ,
@@ -159,30 +159,28 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
     // skip zero fill oob for k since mask will mask out oob with -inf
-    safe_copy<EVEN_K,
-              /*EVEN_MN=*/false,
-              /*ZERO_FILL_MN=*/false,
-              /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_Q,
-        tKgK,
-        tKsK,
-        tKcKV,
-        make_coord(kv_len - ni * kBlockN, head_dim));
+    safe_copy</*EVEN_MN=*/false,
+              EVEN_K,
+              /*ZFILL_MN=*/false,
+              /*ZFILL_K=*/true>(gmem_tiled_copy_Q,
+                                tKgK,
+                                tKsK,
+                                tKcKV,
+                                make_coord(kv_len - ni * kBlockN, head_dim));
   };
 
   Tensor tVsV = gmem_thr_copy_KV.partition_D(sV);
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
     // TODO: skip zero fill oob for v, may have nan issue
-    safe_copy<EVEN_K,
-              /*EVEN_MN=*/false,
-              /*ZERO_FILL_MN=*/true,
-              /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_Q,
-        tVgV,
-        tVsV,
-        tKcKV,
-        make_coord(kv_len - ni * kBlockN, head_dim));
+    safe_copy</*EVEN_MN=*/false,
+              EVEN_K,
+              /*ZFILL_MN=*/true,
+              /*ZFILL_K=*/true>(gmem_tiled_copy_Q,
+                                tVgV,
+                                tVsV,
+                                tKcKV,
+                                make_coord(kv_len - ni * kBlockN, head_dim));
   };
 
   TiledMma tiled_mma;
@@ -302,10 +300,10 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
     // wait for smem copy done before gmem copy
     __syncthreads();
-    safe_copy<EVEN_K,
-              /*EVEN_MN=*/false,
-              /*ZERO_FILL_MN=*/false,
-              /*ZERO_FILL_K=*/false>(
+    safe_copy</*EVEN_MN=*/false,
+              EVEN_K,
+              /*ZFILL_MN=*/false,
+              /*ZFILL_K=*/false>(
         gmem_tiled_copy_O,
         tOsO,
         tOgO,

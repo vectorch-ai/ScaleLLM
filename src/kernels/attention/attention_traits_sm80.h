@@ -159,7 +159,8 @@ struct AttentionTraitsSM80 {
   // g2s tiled copy for q
   using GmemTiledCopyQ =
       decltype(detail::tiled_copy_selector<
-               Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, DType>,
+               Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL_ZFILL<cute::uint128_t>,
+                         DType>,
                BLK_K,
                kThreadNum>());
 
@@ -167,7 +168,8 @@ struct AttentionTraitsSM80 {
   // TODO: choose based on BLK_K and kv cache type
   using GmemTiledCopyKV =
       decltype(detail::tiled_copy_selector<
-               Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, KV_DType>,
+               Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL_ZFILL<cute::uint128_t>,
+                         KV_DType>,
                BLK_K,
                kThreadNum>());
 
