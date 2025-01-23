@@ -60,7 +60,7 @@ cc_test(
     attention_kernel_sm80_varlen_test.cu
     attention_kernel_sm80_pagedkv_test.cu
   DEPS
-    :attention.kernel
+    :attention.template
     absl::random_random
     GTest::gtest_main
     torch

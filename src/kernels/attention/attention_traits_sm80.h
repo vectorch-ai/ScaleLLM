@@ -117,16 +117,20 @@ struct AttentionTraitsSM80 {
   // O smem: (BLK_M, K):(K, 1), k-major, same as Q
   using SmemLayoutO = SmemLayoutQ;
 
+  // use 128-bit vectorizing copy
+  using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
+
   // s2g tiled copy for O
   using GmemTiledCopyO = decltype(make_tiled_copy(
-      Copy_Atom<DefaultCopy, DType>{},
+      Copy_Atom<VectorizingCopy, DType>{},
       GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
   // r2s tiled copy for O
   using SmemTiledCopyO =
-      decltype(make_tiled_copy_C(Copy_Atom<DefaultCopy, DType>{}, TiledMma{}));
+      decltype(make_tiled_copy_C(Copy_Atom<VectorizingCopy, DType>{},
+                                 TiledMma{}));
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
