@@ -168,20 +168,6 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
         make_coord(kv_len - ni * kBlockN, head_dim));
   };
 
-  auto produce_k_even_mn = [&](int ni) {
-    auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
-    // skip ZFILL_MN for k since mask will mask out oob with -inf
-    safe_copy<EVEN_K,
-              /*EVEN_MN=*/true,
-              /*ZERO_FILL_MN=*/false,
-              /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_KV,
-        tKgK,
-        tKsK,
-        tKcKV,
-        make_coord(kv_len - ni * kBlockN, head_dim));
-  };
-
   Tensor tVsV = gmem_thr_copy_KV.partition_D(sV);
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
@@ -189,19 +175,6 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     safe_copy<EVEN_K,
               /*EVEN_MN=*/false,
               /*ZERO_FILL_MN=*/true,
-              /*ZERO_FILL_K=*/true>(
-        gmem_tiled_copy_KV,
-        tVgV,
-        tVsV,
-        tKcKV,
-        make_coord(kv_len - ni * kBlockN, head_dim));
-  };
-
-  auto produce_v_even_mn = [&](int ni) {
-    auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
-    safe_copy<EVEN_K,
-              /*EVEN_MN=*/true,
-              /*ZERO_FILL_MN=*/false,
               /*ZERO_FILL_K=*/true>(
         gmem_tiled_copy_KV,
         tVgV,
