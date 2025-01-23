@@ -32,7 +32,7 @@ struct LayoutConvertor {
 template <typename DType, typename KV_DType>
 CUTE_HOST_DEVICE constexpr auto tiled_mma_selector() {
   CUTE_STATIC_ASSERT(
-      sizeof_bits<KV_DType>::value == 16 || sizeof_bits<KV_DType>::value == 8,
+      sizeof_bits_v<KV_DType> == 16 || sizeof_bits_v<KV_DType> == 8,
       "KV_DType must be 8 or 16 bits");
 
   using MMA_Atom = std::conditional_t<std::is_same_v<DType, cute::half_t>,
@@ -59,6 +59,7 @@ CUTE_HOST_DEVICE constexpr auto tiled_copy_selector() {
 template <typename KV_DType, typename TiledMma>
 CUTE_HOST_DEVICE constexpr auto tiled_copy_B_selector() {
   if constexpr (sizeof_bits_v<KV_DType> == 16) {
+    // ((_4,_8,_4),((_2,_2),(_2,_1))):((_32,_1,_0),((_16,_128),(_8,_0)))
     return make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, KV_DType>{},
                              TiledMma{});
   } else if constexpr (sizeof_bits_v<KV_DType> == 8) {
@@ -72,7 +73,7 @@ CUTE_HOST_DEVICE constexpr auto tiled_copy_B_selector() {
                   Shape<_16, _16>>;  // N x K
     return SmemTiledCopyK{};
   } else {
-    CUTE_STATIC_ASSERT_V(
+    CUTE_STATIC_ASSERT(
         sizeof_bits_v<KV_DType> == 8 || sizeof_bits_v<KV_DType> == 16,
         "KV_DType must be 8 or 16 bits");
   }
@@ -81,9 +82,9 @@ CUTE_HOST_DEVICE constexpr auto tiled_copy_B_selector() {
 template <typename DType, typename TiledMma>
 CUTE_HOST_DEVICE constexpr auto tiled_copy_B_T_selector() {
   if constexpr (sizeof_bits_v<DType> == 16) {
+    // ((_4,_8,_4),((_2,_2),(_2,_1))):((_32,_1,_0),((_16,_128),(_8,_0)))
     return make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, DType>{}, TiledMma{});
   } else if constexpr (sizeof_bits_v<DType> == 8) {
-    // ((_4, _8), (_4, _2)):((_64, _1), (_16, _8))
     // ((_4, _8), (_2, _2, _2)):((_32, _2), (_1, _16, _128))
     using Layout_TV_Vt = Layout<Shape<Shape<_4, _8>, Shape<_2, _2, _2>>,
                                 Stride<Stride<_32, _2>, Stride<_1, _16, _128>>>;

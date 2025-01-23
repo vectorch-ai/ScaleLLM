@@ -118,6 +118,8 @@ void print_attn_traits() {
 template <typename Traits>
 void test_attn_traits() {
   // type alias
+  using DType = typename Traits::DType;
+  using KV_DType = typename Traits::KV_DType;
   using TiledMma = typename Traits::TiledMma;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
@@ -133,19 +135,26 @@ void test_attn_traits() {
 
   // NxK: (64, 64)
   Tensor sK = make_tensor(counting_iterator<int>(0), SmemLayoutK{});
+  Tensor sVt = make_tensor(counting_iterator<int>(0), SmemLayoutVt{});
+  print("sk: ");
   print(sK);
+  print("\n");
+
+  print("sVt: ");
+  print(sVt);
   print("\n");
 
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(0);
   // (MMA, MMA_N, MMA_K)
-  // ((_2,_2),_8,_4):((_1,_2),_16,_4)
-  auto tSrK = thr_mma.partition_fragment_B(sK);
+  auto tSrK = make_fragment_B<KV_DType>(thr_mma, sK);
+  print("tSrK: ");
   print(tSrK);
   print("\n");
 
-  auto tSrK_fp8 = make_fragment_B<cute::int8_t>(thr_mma, sK);
-  print(tSrK_fp8);
+  auto tOrVt = make_fragment_B<KV_DType>(thr_mma, sVt);
+  print("tOrVt: ");
+  print(tOrVt);
   print("\n");
 
   SmemTiledCopyK smem_tiled_copy_K;
@@ -153,9 +162,21 @@ void test_attn_traits() {
   print(smem_thr_copy_K);
   print("\n");
 
-  // (((_4,_2),_1),_4,_4):(((_1,_16),_0),_32,_4)
-  auto tSrK_copy_view = smem_thr_copy_K.retile_D(tSrK_fp8);
+  SmemTiledCopyVt smem_tiled_copy_Vt;
+  auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(0);
+  print(smem_thr_copy_Vt);
+  print("\n");
+
+  // => ((_8,_1),_4,_4):((_1,_0),_8,_32)
+  auto tSrK_copy_view = smem_thr_copy_K.retile_D(tSrK);
+  print("tSrK_copy_view: ");
   print(tSrK_copy_view);
+  print("\n");
+
+  // => (((_4,_2),_1),_8,_2):(((_1,_32),_0),_4,_64)
+  auto tOrVt_copy_view = smem_thr_copy_Vt.retile_D(tOrVt);
+  print("tOrVt_copy_view: ");
+  print(tOrVt_copy_view);
   print("\n");
 }
 
@@ -163,6 +184,7 @@ int main(int argc, char** argv) {
   // TODO: pass in as parameters
   using DTYPE = cute::half_t;
   using KV_DTYPE = cute::float_e4m3_t;
+  // using KV_DTYPE = cute::half_t;
 
   constexpr int kHeadDim = 64;
   constexpr int kBlockM = 64;
@@ -171,8 +193,8 @@ int main(int argc, char** argv) {
 
   using Traits =
       AttentionTraitsSM80<DTYPE, KV_DTYPE, kHeadDim, kBlockM, kBlockN, kBlockK>;
-  // print_attn_traits<Traits>();
-  test_attn_traits<Traits>();
+  print_attn_traits<Traits>();
+  // test_attn_traits<Traits>();
 
   return 0;
 }
