@@ -134,46 +134,51 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
   Tensor cQ = make_identity_tensor(Shape<_BLK_M, _HEAD_DIM>{});
   Tensor tQcQ = gmem_thr_copy_Q.partition_S(cQ);
-  // (BLK_N, HEAD_DIM) -> (blk_n, head_dim)
-  Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
-  Tensor tKcKV = gmem_thr_copy_KV.partition_S(cKV);
 
   auto produce_q = [&]() {
     auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
     auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
+    auto max_coord = make_coord(q_len - m_block * kBlockM, head_dim);
     safe_copy</*EVEN_MN=*/false, EVEN_K>(
-        gmem_tiled_copy_Q,
-        tQgQ,
-        tQsQ,
-        tQcQ,
-        make_coord(q_len - m_block * kBlockM, head_dim));
+        gmem_tiled_copy_Q, tQgQ, tQsQ, tQcQ, max_coord);
   };
 
-  // TODO: seperate mask iterations
+  // (BLK_N, HEAD_DIM) -> (blk_n, head_dim)
+  Tensor cKV = make_identity_tensor(Shape<_BLK_N, _HEAD_DIM>{});
+  Tensor tKVcKV = gmem_thr_copy_KV.partition_S(cKV);
+
   Tensor tKsK = gmem_thr_copy_KV.partition_D(sK);
   auto produce_k = [&](int ni) {
     auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
+    auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
     // skip zfill_mn for k since mask will mask out oob with -inf
     safe_copy</*EVEN_MN=*/false,
               EVEN_K,
               /*ZERO_FILL_MN=*/false>(
-        gmem_tiled_copy_KV,
-        tKgK,
-        tKsK,
-        tKcKV,
-        make_coord(kv_len - ni * kBlockN, head_dim));
+        gmem_tiled_copy_KV, tKgK, tKsK, tKVcKV, max_coord);
+  };
+
+  auto produce_k_no_oob = [&](int ni) {
+    auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
+    auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
+    safe_copy</*EVEN_MN=*/true, EVEN_K>(
+        gmem_tiled_copy_KV, tKgK, tKsK, tKVcKV, max_coord);
   };
 
   Tensor tVsV = gmem_thr_copy_KV.partition_D(sV);
   auto produce_v = [&](int ni) {
     auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
+    auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
     // skipping ZFILL_MN for v may cause nan issue
     safe_copy</*EVEN_MN=*/false, EVEN_K>(
-        gmem_tiled_copy_KV,
-        tVgV,
-        tVsV,
-        tKcKV,
-        make_coord(kv_len - ni * kBlockN, head_dim));
+        gmem_tiled_copy_KV, tVgV, tVsV, tKVcKV, max_coord);
+  };
+
+  auto produce_v_no_oob = [&](int ni) {
+    auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
+    auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
+    safe_copy</*EVEN_MN=*/true, EVEN_K>(
+        gmem_tiled_copy_KV, tVgV, tVsV, tKVcKV, max_coord);
   };
 
   TiledMma tiled_mma;
@@ -281,16 +286,20 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
     // wait for smem copy done before gmem copy
     __syncthreads();
+
+    auto max_coord = make_coord(q_len - m_block * kBlockM, head_dim);
     safe_copy</*EVEN_MN=*/false,
               EVEN_K,
               /*ZERO_FILL_MN=*/false,
               /*ZERO_FILL_K=*/false>(
-        gmem_tiled_copy_O,
-        tOsO,
-        tOgO,
-        tOcO,
-        make_coord(q_len - m_block * kBlockM, head_dim));
+        gmem_tiled_copy_O, tOsO, tOgO, tOcO, max_coord);
   };
+
+  // output accumulator, (MMA,MMA_M,MMA_K)
+  auto tOrAccO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
+  auto tOrAccO_rc_view =
+      make_tensor(tOrAccO.data(), Layout::to_rowcol(tOrAccO.layout()));
+  clear(tOrAccO);
 
   const int diagonal = m_block * kBlockM + kv_len - q_len;
   // process kv in range: [kv_idx_min, kv_idx_max)
@@ -298,23 +307,22 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
   const int n_block_min = LOCAL ? kv_idx_min / kBlockN : 0;
   const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
-  // TODO: handle n_block_min >= n_block_max
+
+  // if (n_block_min >= n_block_max) {
+  //   epilogue(tOrAccO);
+  //   return;
+  // }
 
   // ###############  Prologue  ###############
-
+  int n_block_idx = n_block_max - 1;
   // produce q: [] => [q]
   produce_q();
   cp_async_fence();
   // produce k: [q] => [q, k]
-  produce_k(n_block_min);
+  produce_k(n_block_idx);
   cp_async_fence();
 
   // ###############  Mainloop  ###############
-
-  // output accumulator, (MMA,MMA_M,MMA_K)
-  auto tOrAccO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
-  auto tOrAccO_rc_view =
-      make_tensor(tOrAccO.data(), Layout::to_rowcol(tOrAccO.layout()));
 
   // attention score accumulator, (MMA,MMA_M,MMA_N)
   auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
@@ -325,9 +333,12 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   Mask<kBlockM, kBlockM, ALIBI, LOCAL> mask(
       q_len, kv_len, sliding_window, alibi_slope);
 
-  clear(tOrAccO);
-  CUTE_NO_UNROLL
-  for (int ni = n_block_min; ni < n_block_max; ++ni) {
+  // seperate oob mask iterations for better performance
+  constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
+
+  // oob mask iterations
+  CUTE_UNROLL
+  for (int i = 0; i < n_oob_mask; ++i) {
     clear(tSrAccS);
 
     // wait k, queue: [q, k] => []
@@ -335,21 +346,20 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     __syncthreads();
 
     // produce v, [] => [v]
-    produce_v(ni);
+    if (i == 0) {
+      produce_v(n_block_idx);
+    } else {
+      produce_v_no_oob(n_block_idx);
+    }
     cp_async_fence();
 
     // 1> S = Q@K.T
     compute_qk(tSrAccS);
 
-    // apply soft cap if needed
     if constexpr (SOFT_CAP) {
       apply_logits_soft_cap(tSrAccS);
     }
-
-    // apply mask for block (m_block, ni)
-    mask.apply(tSrAccS_rc_view, m_block, ni, tidx);
-
-    // apply softmax and rescale
+    mask.apply(tSrAccS_rc_view, m_block, n_block_idx, tidx);
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
 
     // wait v, [v] => []
@@ -357,8 +367,50 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     __syncthreads();
 
     // produce next k: [] => [k]
-    if (ni != n_block_max - 1) {
-      produce_k(ni + 1);
+    if (n_block_idx > n_block_min) {
+      produce_k_no_oob(n_block_idx - 1);
+    }
+    cp_async_fence();
+
+    // 2> O = softmax(S)*V
+    compute_sv(tSrAccS, tOrAccO);
+
+    --n_block_idx;
+    if (n_block_idx < n_block_min) {
+      // no more kv blocks to process
+      break;
+    }
+  }
+
+  // non-oob mask iterations
+  CUTE_NO_UNROLL
+  for (; n_block_idx >= n_block_min; --n_block_idx) {
+    clear(tSrAccS);
+
+    // wait k, queue: [q, k] => []
+    cp_async_wait<0>();
+    __syncthreads();
+
+    // produce v, [] => [v]
+    produce_v_no_oob(n_block_idx);
+    cp_async_fence();
+
+    // 1> S = Q@K.T
+    compute_qk(tSrAccS);
+
+    if constexpr (SOFT_CAP) {
+      apply_logits_soft_cap(tSrAccS);
+    }
+    mask.apply</*OOB_MASK=*/false>(tSrAccS_rc_view, m_block, n_block_idx, tidx);
+    softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
+
+    // wait v, [v] => []
+    cp_async_wait<0>();
+    __syncthreads();
+
+    // produce next k: [] => [k]
+    if (n_block_idx > n_block_min) {
+      produce_k_no_oob(n_block_idx - 1);
     }
     cp_async_fence();
 
