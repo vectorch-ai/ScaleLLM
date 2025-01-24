@@ -42,33 +42,6 @@ std::tuple<torch::Tensor, torch::Tensor> FlashAttnHandler::apply_pos_emb(
   return {query, key};
 }
 
-// batch prefill for attention, optimized for prefill stage
-void FlashAttnHandler::batch_prefill(
-    const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
-    const InputParameters& input_params,  // input paras used for attention
-    int32_t sliding_window,               // sliding window size
-    torch::Tensor& output) {
-  // don't use kv cache in prefill stage
-  mha_varlen_fwd(output,
-                 query,
-                 key,
-                 value,
-                 input_params.q_cu_seq_lens,
-                 input_params.kv_cu_seq_lens,
-                 /*block_table=*/torch::nullopt,
-                 /*cu_block_lens=*/torch::nullopt,
-                 alibi_slopes_,
-                 input_params.q_max_seq_len,
-                 input_params.kv_max_seq_len,
-                 sm_scale_,
-                 logits_soft_cap_,
-                 /*window_size_left=*/sliding_window,
-                 /*window_size_right=*/0,
-                 /*num_splits=*/0);
-}
-
 // batch decode for attention, optimized for decode stage
 // support multiple queries: one sequence with multiple query tokens
 void FlashAttnHandler::batch_decode(

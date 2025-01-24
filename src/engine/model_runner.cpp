@@ -84,7 +84,6 @@ void ModelRunner::capture_cuda_graphs(uint32_t batch_size,
       positions_.slice(/*dim=*/0, /*start=*/0, /*end=*/n_tokens);
 
   InputParameters params;
-  params.empty_kv_cache = false;
   params.num_sequences = static_cast<int32_t>(batch_size);
   params.q_max_seq_len = static_cast<int32_t>(num_decoding_tokens);
   params.kv_max_seq_len = static_cast<int32_t>(max_seq_len);
@@ -118,8 +117,6 @@ torch::Tensor ModelRunner::forward(const torch::Tensor& tokens,
   // check if captured graph exists
   auto it = graphs_.find(batch_size);
   if (it != graphs_.end()) {
-    // kv_cache is not empty in decoding phase
-    const bool in_decoding_phase = !params.empty_kv_cache;
     // max seq len is supported by captured graph
     const bool seq_len_supported =
         params.kv_max_seq_len <= options_.cuda_graph_max_seq_len();
@@ -130,7 +127,7 @@ torch::Tensor ModelRunner::forward(const torch::Tensor& tokens,
         n_tokens == batch_size * options_.num_decoding_tokens();
 
     // replay the graph if all conditions are met
-    if (in_decoding_phase && seq_len_supported && same_num_decoding_tokens) {
+    if (seq_len_supported && same_num_decoding_tokens) {
       COUNTER_INC(num_cuda_graph_replayed_total);
       return it->second->replay(tokens, positions, params);
     }

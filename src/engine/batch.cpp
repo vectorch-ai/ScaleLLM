@@ -92,7 +92,6 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
   std::vector<std::vector<int32_t>> unique_token_counts_vec;
   std::vector<int32_t> unique_token_lens_vec;
 
-  bool empty_kv_cache = true;
   uint32_t max_seq_len = 0;
   uint32_t q_max_seq_len = 0;
   std::vector<int32_t> cu_seq_lens = {0};
@@ -107,8 +106,6 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
     const auto token_ids = sequence->token_ids();
     const uint32_t n_tokens = token_ids.size();
     const uint32_t n_kv_cache_tokens = sequence->num_kv_cache_tokens();
-
-    empty_kv_cache = empty_kv_cache && (n_kv_cache_tokens == 0);
 
     const uint32_t remaining_token_budget = token_budgets_[i] - budget_used_[i];
     if (remaining_token_budget == 0) {
@@ -223,11 +220,10 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
   if (num_sequences < min_decoding_bach_size) {
     const uint32_t n_tokens = flatten_tokens_vec.size();
     // kv_cache is not empty in decoding phase
-    const bool in_decoding_phase = !empty_kv_cache;
     const bool same_num_decoding_tokens =
         q_max_seq_len == num_decoding_tokens &&
         n_tokens == num_sequences * num_decoding_tokens;
-    if (in_decoding_phase && same_num_decoding_tokens) {
+    if (same_num_decoding_tokens) {
       // add padding tokens to the batch
       for (int32_t i = num_sequences; i < min_decoding_bach_size; ++i) {
         for (int32_t k = 0; k < num_decoding_tokens; ++k) {
@@ -248,7 +244,6 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
   model_inputs.positions = torch::tensor(flatten_positions_vec, torch::kInt);
 
   auto& input_params = model_inputs.input_params;
-  input_params.empty_kv_cache = empty_kv_cache;
   input_params.num_sequences = num_sequences;
   input_params.kv_max_seq_len = max_seq_len;
   input_params.q_max_seq_len = q_max_seq_len;
