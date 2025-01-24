@@ -57,9 +57,9 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
   const int m_block = blockIdx.x;
-  const auto batch_idx = blockIdx.y;
-  const auto head_idx = blockIdx.z;
-  const auto tidx = threadIdx.x;
+  const int batch_idx = blockIdx.y;
+  const int head_idx = blockIdx.z;
+  const int tidx = threadIdx.x;
 
   AttentionTile<Params> tile(params);
 
@@ -75,7 +75,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   const int kv_len = size<0>(K);
 
   if (m_block * kBlockM >= q_len) {
-    // out of bound, return
+    // m out of bound, return
     return;
   }
 
@@ -154,7 +154,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     // skip zfill_mn for k since mask will mask out oob with -inf
     safe_copy</*EVEN_MN=*/false,
               EVEN_K,
-              /*ZERO_FILL_MN=*/false>(
+              /*ZFILL_MN=*/false>(
         gmem_tiled_copy_KV, tKgK, tKsK, tKVcKV, max_coord);
   };
 
@@ -290,8 +290,8 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     auto max_coord = make_coord(q_len - m_block * kBlockM, head_dim);
     safe_copy</*EVEN_MN=*/false,
               EVEN_K,
-              /*ZERO_FILL_MN=*/false,
-              /*ZERO_FILL_K=*/false>(
+              /*ZFILL_MN=*/false,
+              /*ZFILL_K=*/false>(
         gmem_tiled_copy_O, tOsO, tOgO, tOcO, max_coord);
   };
 
