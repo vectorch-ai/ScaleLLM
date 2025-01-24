@@ -28,17 +28,6 @@ class AttentionHandler {
       const torch::Tensor& key,
       const torch::Tensor& /*positions*/) = 0;
 
-  // batch prefill for attention, optimized for prefill stage
-  // common optimizations include: 1> leverage tensor-core 2> contuguous memory
-  // limitation?: all sequences in the batch are all in prefill stage
-  virtual void batch_prefill(
-      const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
-      const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
-      const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
-      const InputParameters& input_params,  // input paras used for attention
-      int32_t sliding_window,               // sliding window size
-      torch::Tensor& output) = 0;
-
   // batch decode for attention, optimized for decode stage
   // support multiple queries: one sequence with multiple query tokens
   virtual void batch_decode(

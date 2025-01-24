@@ -189,6 +189,7 @@ void RefHandler::batch_decode(
     int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
   // retrieval key and value from kv_cache
+  // TODO: fix the potential bug here
   auto [key, value] = kv_cache.get_kv_cache(input_params.block_tables,
                                             input_params.kv_cu_seq_lens);
 
