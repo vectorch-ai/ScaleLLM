@@ -308,10 +308,11 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   const int n_block_min = LOCAL ? kv_idx_min / kBlockN : 0;
   const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
 
-  // if (n_block_min >= n_block_max) {
-  //   epilogue(tOrAccO);
-  //   return;
-  // }
+  if (n_block_min >= n_block_max) {
+    // write output to gmem
+    epilogue(tOrAccO);
+    return;
+  }
 
   // ###############  Prologue  ###############
   int n_block_idx = n_block_max - 1;
@@ -324,15 +325,14 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
   // ###############  Mainloop  ###############
 
-  // attention score accumulator, (MMA,MMA_M,MMA_N)
-  auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-  auto tSrAccS_rc_view =
-      make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
-
   OnlineSoftmax<kRowsPerMMA * size<1>(tOrAccO)> softmax(sm_scale_log2);
   Mask<kBlockM, kBlockM, ALIBI, LOCAL> mask(
       q_len, kv_len, sliding_window, alibi_slope);
 
+  // attention score accumulator, (MMA,MMA_M,MMA_N)
+  auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
+  auto tSrAccS_rc_view =
+      make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
   // seperate oob mask iterations for better performance
   constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
 

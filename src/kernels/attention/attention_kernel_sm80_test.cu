@@ -10,6 +10,32 @@
 #include "static_dispatch.h"
 
 namespace llm {
+#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
+  [&] {                                                    \
+    if (HEAD_DIM_V <= 64) {                                \
+      constexpr static int HEAD_DIM_NAME = 64;             \
+      return __VA_ARGS__();                                \
+    } else if (HEAD_DIM_V <= 256) {                        \
+      constexpr static int HEAD_DIM_NAME = 256;            \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
+
+#define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, TYPE_NAME, ...) \
+  [&] {                                                    \
+    if (TORCH_DTYPE == torch::kHalf) {                     \
+      using TYPE_NAME = cute::half_t;                      \
+      return __VA_ARGS__();                                \
+    } else if (TORCH_DTYPE == torch::kBFloat16) {          \
+      using TYPE_NAME = cute::bfloat16_t;                  \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
+
 namespace {
 torch::Tensor attention_sm80(
     torch::Tensor query,  // [batch_size, q_len, n_heads, head_dim]
@@ -57,8 +83,8 @@ torch::Tensor attention_sm80(
   params.logits_soft_cap = logits_soft_cap;
   params.sliding_window = sliding_window;
 
-  DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
-    DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
+  DISPATCH_TORCH_DTYPE_(query.dtype(), DTYPE, [&] {
+    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
       run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params);
     });
   });
