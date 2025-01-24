@@ -6,9 +6,21 @@
 #include "attention_params.h"
 #include "attention_ref.h"
 #include "cute/layout.hpp"
-#include "static_dispatch.h"
 
 namespace llm {
+#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
+  [&] {                                                    \
+    if (HEAD_DIM_V <= 64) {                                \
+      constexpr static int HEAD_DIM_NAME = 64;             \
+      return __VA_ARGS__();                                \
+    } else if (HEAD_DIM_V <= 256) {                        \
+      constexpr static int HEAD_DIM_NAME = 256;            \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
+
 namespace {
 torch::Tensor attention_varlen_sm80(
     torch::Tensor query,       // [q_len, n_heads, head_dim]
@@ -54,10 +66,8 @@ torch::Tensor attention_varlen_sm80(
   params.q_cu_lens = q_cu_lens.const_data_ptr<int32_t>();
   params.kv_cu_lens = kv_cu_lens.const_data_ptr<int32_t>();
 
-  DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
-    DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params);
-    });
+  DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+    run_attention_kernel_sm80<cute::half_t, HEAD_DIM>(params);
   });
   return out;
 }

@@ -22,7 +22,7 @@ struct Mask {
         alibi_slope_(alibi_slope) {}
 
   // rAccS: ((2, MMA_M), (2, MMA_N))
-  template <typename FragmentS>
+  template <bool OOB_MASK = true, typename FragmentS>
   CUTE_HOST_DEVICE void apply(FragmentS& rAccS,
                               int m_block,
                               int n_block,
@@ -55,13 +55,20 @@ struct Mask {
             const int kv_idx = kv_index_base + j;
 
             const bool out_of_boundary = [&]() {
-              if constexpr (LOCAL) {
-                return kv_idx > q_idx || kv_idx >= kv_len_  // causal + oob mask
-                       || (q_idx - kv_idx) >
-                              sliding_window_;  // sliding window mask
+              if constexpr (OOB_MASK && LOCAL) {
+                // causal + oob mask + local mask
+                return kv_idx > q_idx || kv_idx >= kv_len_ ||
+                       (q_idx - kv_idx) > sliding_window_;
+              } else if constexpr (OOB_MASK && !LOCAL) {
+                // causal + oob mask
+                return kv_idx > q_idx || kv_idx >= kv_len_;
+              } else if constexpr (!OOB_MASK && LOCAL) {
+                // local mask
+                return (q_idx - kv_idx) > sliding_window_;
+
               } else {
-                return kv_idx > q_idx ||
-                       kv_idx >= kv_len_;  // causal + oob mask
+                // !OOB_MASK && !LOCAL
+                return false;
               }
             }();
 
