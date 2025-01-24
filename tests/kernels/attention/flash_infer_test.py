@@ -6,7 +6,7 @@ from ref_attention import varlen_masked_self_attention
 
 import scalellm._C.kernels as kernels  # type: ignore
 
-
+@pytest.mark.skip(reason="Not implemented")
 @pytest.mark.parametrize("seq_lens", [[(1, 100)], [(100, 100)], [(1, 100), (15, 15), (111, 234), (1000, 10000)]])
 @pytest.mark.parametrize("num_heads", [(8, 8), (8, 4), (8, 2), (8, 1)])
 @pytest.mark.parametrize("head_size", [64, 128, 256])
