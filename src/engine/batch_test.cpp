@@ -87,7 +87,6 @@ TEST(BatchTest, Basic) {
 
   // check the input parameters
   const InputParameters& input_params = model_input.input_params;
-  EXPECT_FALSE(input_params.empty_kv_cache);
   EXPECT_EQ(input_params.num_sequences, 3);
   EXPECT_EQ(input_params.q_max_seq_len, 9);
   EXPECT_EQ(input_params.kv_max_seq_len, 16);

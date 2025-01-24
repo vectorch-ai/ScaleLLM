@@ -12,7 +12,6 @@ struct InputParameters {
   InputParameters to(const torch::Device& device) const {
     InputParameters params;
     // copy scalar values
-    params.empty_kv_cache = empty_kv_cache;
     params.num_sequences = num_sequences;
     params.kv_max_seq_len = kv_max_seq_len;
     params.q_max_seq_len = q_max_seq_len;
@@ -26,9 +25,6 @@ struct InputParameters {
     params.cu_block_lens = safe_to(cu_block_lens, device);
     return params;
   }
-
-  // whether the kv-cache is empty for all sequences.
-  bool empty_kv_cache = true;
 
   // total number of sequences in the batch
   int32_t num_sequences = 0;
