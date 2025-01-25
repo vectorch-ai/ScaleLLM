@@ -52,8 +52,8 @@ CUTE_HOST_DEVICE void zfill(const Copy_Atom& copy_atom,
 
 template <bool EVEN_MN,
           bool EVEN_K,
-          bool ZFILL_MN = true,
-          bool ZFILL_K = true,
+          bool ZFILL_MN,
+          bool ZFILL_K,
           class CopyAtom,
           class TV,
           class Tiler,
@@ -80,15 +80,19 @@ CUTE_HOST_DEVICE void safe_copy(
         for (int ki = 0; ki < size<2>(src); ++ki) {
           if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
             copy(copy_atom, src(_, mi, ki), dst(_, mi, ki));
-          } else {
-            if constexpr (ZFILL_K) {
-              zfill(copy_atom, src(_, mi, ki), dst(_, mi, ki));
-            }
+          } else if constexpr (ZFILL_K) {
+            zfill(copy_atom, src(_, mi, ki), dst(_, mi, ki));
           }
         }
-      } else {
-        if constexpr (ZFILL_MN) {
-          zfill(copy_atom, src(_, mi, _), dst(_, mi, _));
+      } else if constexpr (ZFILL_MN) {
+        zfill(copy_atom, src(_, mi, _), dst(_, mi, _));
+      } else if constexpr (ZFILL_K) {
+        // still need to handle k oob even if m/n is not zfilled
+        CUTE_UNROLL
+        for (int ki = 0; ki < size<2>(src); ++ki) {
+          if (!elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+            zfill(copy_atom, src(_, mi, ki), dst(_, mi, ki));
+          }
         }
       }
     }
@@ -98,10 +102,8 @@ CUTE_HOST_DEVICE void safe_copy(
     for (int mi = 0; mi < size<1>(src); ++mi) {
       if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
         copy(copy_atom, src(_, mi, _), dst(_, mi, _));
-      } else {
-        if constexpr (ZFILL_MN) {
-          zfill(copy_atom, src(_, mi, _), dst(_, mi, _));
-        }
+      } else if constexpr (ZFILL_MN) {
+        zfill(copy_atom, src(_, mi, _), dst(_, mi, _));
       }
     }
   } else if constexpr (EVEN_MN && !EVEN_K) {
@@ -110,10 +112,8 @@ CUTE_HOST_DEVICE void safe_copy(
     for (int ki = 0; ki < size<2>(src); ++ki) {
       if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
         copy(copy_atom, src(_, _, ki), dst(_, _, ki));
-      } else {
-        if constexpr (ZFILL_K) {
-          zfill(copy_atom, src(_, _, ki), dst(_, _, ki));
-        }
+      } else if constexpr (ZFILL_K) {
+        zfill(copy_atom, src(_, _, ki), dst(_, _, ki));
       }
     }
   } else {
