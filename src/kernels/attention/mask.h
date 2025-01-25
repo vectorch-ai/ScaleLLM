@@ -65,7 +65,6 @@ struct Mask {
               } else if constexpr (!OOB_MASK && LOCAL) {
                 // local mask
                 return (q_idx - kv_idx) > sliding_window_;
-
               } else {
                 // !OOB_MASK && !LOCAL
                 return false;
@@ -74,12 +73,10 @@ struct Mask {
 
             if (out_of_boundary) {
               rAccS(make_coord(i, mi), make_coord(j, nj)) = -INFINITY;
-            } else {
+            } else if constexpr (ALIBI) {
               // Apply alibi bias
-              if constexpr (ALIBI) {
-                rAccS(make_coord(i, mi), make_coord(j, nj)) +=
-                    alibi_slope_ * kv_idx;
-              }
+              rAccS(make_coord(i, mi), make_coord(j, nj)) +=
+                  alibi_slope_ * kv_idx;
             }
           }
         }
