@@ -1,37 +1,41 @@
 #pragma once
 
+#include <driver_types.h>
 #include <torch/torch.h>
 
 #include "handler.h"
+#include "layers/pos_embedding.h"
 #include "memory/kv_cache.h"
 #include "models/parameters.h"
 
 namespace llm {
 
 // an flash attn implementation for attention operations
-class FlashInferHandler : public AttentionHandler {
+class ScaleAttnHandler : public AttentionHandler {
  public:
   // create a flash attn handler with rope positional embedding
-  FlashInferHandler(float scale,
-                    int64_t rotary_dim,
-                    int64_t max_position,
-                    float rope_scaling,
-                    float rope_theta,
-                    bool interleaved,
-                    const torch::TensorOptions& options);
+  ScaleAttnHandler(float sm_scale,
+                   float logits_soft_cap,
+                   int64_t rotary_dim,
+                   int64_t max_position,
+                   torch::Tensor inv_freq,
+                   bool interleaved,
+                   const torch::TensorOptions& options);
 
-  // constructor for attention with alibi
-  FlashInferHandler(float scale, torch::optional<torch::Tensor> alibi_slopes);
+  // create a flash attn handler with alibi slopes
+  ScaleAttnHandler(float sm_scale,
+                   float logits_soft_cap,
+                   torch::optional<torch::Tensor> alibi_slopes);
 
-  virtual ~FlashInferHandler() = default;
+  ~ScaleAttnHandler() override = default;
+
+  // set workspace for temporary storage before calling any attention operations
+  void set_workspace(const torch::Tensor& workspace) override {}
 
   std::tuple<torch::Tensor, torch::Tensor> apply_pos_emb(
       const torch::Tensor& query,
       const torch::Tensor& key,
-      const torch::Tensor& /*positions*/) override {
-    // no positional embedding since we will apply pos emb on the fly
-    return {query, key};
-  }
+      const torch::Tensor& positions) override;
 
   // batch decode for attention, optimized for decode stage
   // support multiple queries: one sequence with multiple query tokens
@@ -50,10 +54,16 @@ class FlashInferHandler : public AttentionHandler {
       const InputParameters& input_params) override;
 
  private:
-  // scale factor
-  float scale_ = 0.0;
+  // softmax scale factor
+  float sm_scale_ = 0.0;
 
-  // alibi slops
+  // logits softcap
+  float logits_soft_cap_ = 0.0;
+
+  // ROPE positional embedding
+  RotaryEmbedding pos_emb_{nullptr};
+
+  // alibi slopes
   torch::optional<torch::Tensor> alibi_slopes_;
 };
 

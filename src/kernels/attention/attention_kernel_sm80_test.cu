@@ -94,7 +94,8 @@ torch::Tensor attention_sm80(
 }  // namespace
 
 class AttentionKernelTest
-    : public ::testing::TestWithParam<std::tuple<int64_t /*batch_size*/,
+    : public ::testing::TestWithParam<std::tuple<torch::ScalarType /*q_dtype*/,
+                                                 int64_t /*batch_size*/,
                                                  int64_t /*q_len*/,
                                                  int64_t /*kv_len*/,
                                                  int64_t /*n_heads*/,
@@ -111,7 +112,8 @@ class AttentionKernelTest
 };
 
 TEST_P(AttentionKernelTest, MHA) {
-  const auto [batch_size,
+  const auto [dtype,
+              batch_size,
               q_len,
               kv_len,
               n_heads,
@@ -121,7 +123,7 @@ TEST_P(AttentionKernelTest, MHA) {
               alibi,
               sliding_window] = GetParam();
 
-  const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
+  const auto options = torch::dtype(dtype).device(torch::kCUDA);
 
   // construct non-contiguous query, key and value
   const auto data = torch::randn(
@@ -143,13 +145,18 @@ TEST_P(AttentionKernelTest, MHA) {
   auto out = attention_sm80(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window, q_len);
 
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  if (dtype == torch::kBFloat16) {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-2, /*atol=*/1e-2));
+  } else {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MHA,
     AttentionKernelTest,
     ::testing::Combine(
+        ::testing::Values(torch::kHalf, torch::kBFloat16),   // q_dtype
         ::testing::Values(1, 2, 4),                          // batch_size
         ::testing::Values(1, 62, 125),                       // q_len
         ::testing::Values(127, 287, 1000),                   // kv_len

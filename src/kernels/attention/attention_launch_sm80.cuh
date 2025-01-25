@@ -51,35 +51,35 @@ void run_attention_kernel(const Params& params, cudaStream_t stream) {
 }  // namespace detail
 
 // user-facing function to run the attention kernel
-template <typename Element, int HEAD_DIM, typename Params>
+template <typename Dtype, int HEAD_DIM, typename Params>
 void run_attention_kernel_sm80(Params& params, cudaStream_t stream = nullptr) {
   // normalize params that for performance optimization
   params.normalize();
 
   // TODO: tune block shape MNK based on the head dim and smem size
   if constexpr (HEAD_DIM == 64) {
-    using Traits = AttentionTraitsSM80<Element,
+    using Traits = AttentionTraitsSM80<Dtype,
                                        HEAD_DIM,
                                        /*BLK_M=*/64,
                                        /*BLK_N=*/64,
                                        /*BLK_K=*/64>;
     detail::run_attention_kernel<Traits>(params, stream);
   } else if constexpr (HEAD_DIM == 96) {
-    using Traits = AttentionTraitsSM80<Element,
+    using Traits = AttentionTraitsSM80<Dtype,
                                        HEAD_DIM,
                                        /*BLK_M=*/64,
                                        /*BLK_N=*/64,
                                        /*BLK_K=*/32>;
     detail::run_attention_kernel<Traits>(params, stream);
   } else if constexpr (HEAD_DIM == 128) {
-    using Traits = AttentionTraitsSM80<Element,
+    using Traits = AttentionTraitsSM80<Dtype,
                                        HEAD_DIM,
                                        /*BLK_M=*/64,
                                        /*BLK_N=*/64,
                                        /*BLK_K=*/64>;
     detail::run_attention_kernel<Traits>(params, stream);
   } else if constexpr (HEAD_DIM == 256) {
-    using Traits = AttentionTraitsSM80<Element,
+    using Traits = AttentionTraitsSM80<Dtype,
                                        HEAD_DIM,
                                        /*BLK_M=*/64,
                                        /*BLK_N=*/64,
@@ -87,7 +87,7 @@ void run_attention_kernel_sm80(Params& params, cudaStream_t stream = nullptr) {
     detail::run_attention_kernel<Traits>(params, stream);
   } else {
     // use the default block size
-    using Traits = AttentionTraitsSM80<Element,
+    using Traits = AttentionTraitsSM80<Dtype,
                                        HEAD_DIM,
                                        /*BLK_M=*/64,
                                        /*BLK_N=*/64,

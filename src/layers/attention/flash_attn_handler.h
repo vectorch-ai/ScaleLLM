@@ -66,9 +66,6 @@ class FlashAttnHandler : public AttentionHandler {
 
   // alibi slopes
   torch::optional<torch::Tensor> alibi_slopes_;
-
-  // stream for kv cache
-  cudaStream_t stream_ = nullptr;
 };
 
 }  // namespace llm
