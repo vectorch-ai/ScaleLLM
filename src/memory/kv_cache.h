@@ -24,6 +24,13 @@ class KVCache final {
     return {key_cache_, value_cache_};
   }
 
+  std::tuple<torch::Tensor, torch::Tensor, int32_t> get_kv_cache_slot_view()
+      const {
+    return {key_cache_.view({-1, num_kv_heads_, head_size_}),
+            value_cache_.view({-1, num_kv_heads_, head_size_}),
+            block_size_};
+  }
+
   // set key and value cache for the given slot_ids
   // the slot_ids are the indices of the key/value cache, [num_slots] IntTensor
   // keys/values: [num_slots, num_heads, head_dim]

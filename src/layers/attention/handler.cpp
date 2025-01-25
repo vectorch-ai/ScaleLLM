@@ -8,7 +8,7 @@
 #include <memory>
 
 #include "flash_attn_handler.h"
-#include "flash_infer_handler.h"
+#include "scale_attn_handler.h"
 #include "layers/pos_embedding.h"
 #include "ref_handler.h"
 
@@ -73,7 +73,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_alibi(
   // choose the best handler based on device type
   if (is_cuda) {
     // use flash_attn for cuda device
-    return std::make_unique<FlashAttnHandler>(
+    return std::make_unique<ScaleAttnHandler>(
         sm_scale, args.attn_logit_soft_cap(), alibi_slopes);
   }
 
@@ -125,7 +125,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
   // choose the best handler based on device type
   if (is_cuda) {
     // use flash_attn for cuda device
-    return std::make_unique<FlashAttnHandler>(sm_scale,
+    return std::make_unique<ScaleAttnHandler>(sm_scale,
                                               args.attn_logit_soft_cap(),
                                               rotary_dim,
                                               args.max_position_embeddings(),

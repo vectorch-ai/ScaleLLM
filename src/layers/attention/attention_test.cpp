@@ -11,7 +11,7 @@
 
 #include <cstdint>
 
-#include "flash_attn_handler.h"
+#include "scale_attn_handler.h"
 #include "gtest/gtest.h"
 #include "models/parameters.h"
 #include "ref_handler.h"
@@ -229,10 +229,10 @@ TEST_P(AttentionDecodeTest, KVCache) {
   ref_handler.batch_prefill(
       query, key, value, input_params, sliding_window, ref_output);
 
-  // flash attn handler
-  FlashAttnHandler flash_attn_handler(sm_scale, logits_soft_cap, alibi_slopes);
+  // attn handler
+  ScaleAttnHandler attn_handler(sm_scale, logits_soft_cap, alibi_slopes);
   torch::Tensor output = torch::empty_like(query);
-  flash_attn_handler.batch_decode(
+  attn_handler.batch_decode(
       query, kv_cache, input_params, sliding_window, output);
 
   const bool success =

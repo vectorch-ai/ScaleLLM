@@ -37,11 +37,11 @@ file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/*.cu")
 
 cc_library(
   NAME 
-    attention.kernel
+    attention.kernels
   HDRS
-    # attention.h
+    attn_api.h
   SRCS
-    # attention.cpp
+    attn_api.cpp
     ${GENERATED_SRC_FILES}
   INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
