@@ -8,13 +8,11 @@ cc_library(
   HDRS 
     handler.h
     ref_handler.h
-    flash_attn_handler.h
     scale_attn_handler.h
     attention.h
   SRCS 
     handler.cpp
     ref_handler.cpp
-    flash_attn_handler.cpp
     scale_attn_handler.cpp
     attention.cpp
   DEPS
@@ -22,7 +20,6 @@ cc_library(
     :memory
     :pos_embedding
     :kernels
-    :flash_attn.kernels
     :attention.kernels
     glog::glog
     gflags::gflags

@@ -7,7 +7,6 @@
 #include <boost/algorithm/string.hpp>
 #include <memory>
 
-#include "flash_attn_handler.h"
 #include "scale_attn_handler.h"
 #include "layers/pos_embedding.h"
 #include "ref_handler.h"
@@ -15,7 +14,7 @@
 // decide which attention implementation to use
 DEFINE_string(attention_handler,
               "auto",
-              "attention handler, e.g. auto, pytorch, flash_attn");
+              "attention handler, e.g. auto, pytorch, scale_attn");
 
 namespace llm {
 
@@ -64,15 +63,15 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_alibi(
   }
 
   const bool is_cuda = options.device().is_cuda();
-  if (boost::iequals(FLAGS_attention_handler, "flash_attn")) {
-    CHECK(is_cuda) << "flash_attn only supports cuda device";
-    return std::make_unique<FlashAttnHandler>(
+  if (boost::iequals(FLAGS_attention_handler, "scale_attn")) {
+    CHECK(is_cuda) << "scale_attn only supports cuda device";
+    return std::make_unique<ScaleAttnHandler>(
         sm_scale, args.attn_logit_soft_cap(), alibi_slopes);
   }
 
   // choose the best handler based on device type
   if (is_cuda) {
-    // use flash_attn for cuda device
+    // use scale_attn for cuda device
     return std::make_unique<ScaleAttnHandler>(
         sm_scale, args.attn_logit_soft_cap(), alibi_slopes);
   }
@@ -111,9 +110,9 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
   }
 
   const bool is_cuda = options.device().is_cuda();
-  if (boost::iequals(FLAGS_attention_handler, "flash_attn")) {
-    CHECK(is_cuda) << "flash_attn only supports cuda device";
-    return std::make_unique<FlashAttnHandler>(sm_scale,
+  if (boost::iequals(FLAGS_attention_handler, "scale_attn")) {
+    CHECK(is_cuda) << "scale_attn only supports cuda device";
+    return std::make_unique<ScaleAttnHandler>(sm_scale,
                                               args.attn_logit_soft_cap(),
                                               rotary_dim,
                                               args.max_position_embeddings(),
@@ -124,7 +123,7 @@ std::unique_ptr<AttentionHandler> AttentionHandler::create_handler_with_rope(
 
   // choose the best handler based on device type
   if (is_cuda) {
-    // use flash_attn for cuda device
+    // use scale_attn for cuda device
     return std::make_unique<ScaleAttnHandler>(sm_scale,
                                               args.attn_logit_soft_cap(),
                                               rotary_dim,

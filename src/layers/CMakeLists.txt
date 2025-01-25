@@ -58,7 +58,6 @@ cc_library(
     :pos_embedding
     :attention
     :kernels
-    :flash_attn.kernels
     glog::glog
     gflags::gflags
     torch
