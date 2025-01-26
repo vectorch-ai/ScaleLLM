@@ -40,14 +40,6 @@ RUN if [ -n "${CCACHE_VERSION}" ]; then bash ./install_ccache.sh; fi
 RUN rm install_ccache.sh
 RUN ccache --version
 
-# Install cuda, cudnn and nccl
-ARG CUDA_VERSION=12.1
-COPY ./common/install_cuda.sh install_cuda.sh
-RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
-ENV DESIRED_CUDA=${CUDA_VERSION}
-ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
-RUN nvcc --version
-
 # Install rust
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
@@ -57,13 +49,12 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 RUN chmod -R a+w ${RUSTUP_HOME} ${CARGO_HOME}
 RUN rustup --version; cargo --version; rustc --version
 
-# Install jemalloc (optional)
-RUN cd /tmp && \
-    wget -nc --no-check-certificate https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2 && \
-    tar -xvf jemalloc-5.3.0.tar.bz2 && \
-    (cd jemalloc-5.3.0 && \
-        ./configure --enable-prof --disable-initial-exec-tls && \
-        make -j$(nproc) && make install && \
-        ldconfig)
+# Install cuda, cudnn and nccl
+ARG CUDA_VERSION=12.1
+COPY ./common/install_cuda.sh install_cuda.sh
+RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
+ENV DESIRED_CUDA=${CUDA_VERSION}
+ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
+RUN nvcc --version
 
 CMD ["bash"]
