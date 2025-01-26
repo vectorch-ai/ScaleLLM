@@ -17,6 +17,8 @@ cc_library(
 )
 
 add_subdirectory(sentencepiece)
-add_subdirectory(nvbench)
+if (BUILD_NVBENCH)
+  add_subdirectory(nvbench)
+endif()
 # add_subdirectory(jinja2cpp)
 
