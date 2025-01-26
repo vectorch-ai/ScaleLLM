@@ -203,9 +203,9 @@ ModelInput Batch::prepare_model_input(uint32_t num_decoding_tokens,
     new_token_slot_ids.insert(
         new_token_slot_ids.end(), slot_ids.begin(), slot_ids.end());
 
-    // add block ids for each sequence
     for (const auto& block : blocks) {
-      block_tables.push_back(block.id());
+      // put first slot id of each block into block_table
+      block_tables.push_back(block.id() * block.size());
     }
     cu_block_lens.push_back(static_cast<int32_t>(block_tables.size()));
   }

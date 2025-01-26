@@ -12,7 +12,9 @@ namespace llm {
 BlockAllocator::BlockAllocator(uint32_t total_blocks, uint32_t block_size)
     : num_free_blocks_(total_blocks), block_size_(block_size) {
   CHECK_GT(total_blocks, 0) << "No blocks to allocate";
-  CHECK_GT(block_size, 0) << "Block size must be positive";
+  auto power_of_2 = [](int32_t x) { return (x > 0) && ((x & (x - 1)) == 0); };
+  CHECK(power_of_2(block_size))
+      << "Block size must be positive and a power of 2, got " << block_size;
 
   free_blocks_.reserve(total_blocks);
   for (int32_t i = 0; i < total_blocks; ++i) {

@@ -42,7 +42,7 @@ DEFINE_string(
 
 static constexpr int64_t GB = int64_t(1024) * 1024 * 1024;
 
-DEFINE_int32(block_size, 16, "slots per block, value must be multiple of 16");
+DEFINE_int32(block_size, 8, "slots per block, value must be power of 2");
 
 DEFINE_int64(max_cache_size, 10 * GB, "max cache size in bytes, default 10GB");
 

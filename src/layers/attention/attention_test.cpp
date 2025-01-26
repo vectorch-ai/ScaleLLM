@@ -107,8 +107,8 @@ TEST_P(AttentionDecodeTest, KVCache) {
       ASSERT_FALSE(available_block_ids.empty());
       const int32_t block_id = available_block_ids.back();
       available_block_ids.pop_back();
-
-      block_table.push_back(block_id);
+      // put first slot id of each block into block_table
+      block_table.push_back(block_id * block_size);
     }
     block_tables_vec.insert(
         block_tables_vec.end(), block_table.begin(), block_table.end());
@@ -116,9 +116,9 @@ TEST_P(AttentionDecodeTest, KVCache) {
 
     // assign slots for each sequence
     for (int j = 0; j < kv_len; ++j) {
-      const int32_t block_id = block_table[j / block_size];
+      const int32_t slot_base = block_table[j / block_size];
       const int32_t block_offset = j % block_size;
-      slot_ids_vec.push_back(block_id * block_size + block_offset);
+      slot_ids_vec.push_back(slot_base + block_offset);
     }
   }
 

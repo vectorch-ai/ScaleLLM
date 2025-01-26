@@ -13,13 +13,13 @@
 namespace llm {
 
 template <typename T>
-bool equal(const torch::Tensor& t, const std::vector<T>& d) {
+bool equal(const torch::Tensor& t, const std::vector<T>& d, T scale = 1) {
   auto flatten_t = t.flatten();
   if (flatten_t.size(0) != d.size()) {
     return false;
   }
   for (int i = 0; i < d.size(); i++) {
-    if (flatten_t[i].item<T>() != d[i]) {
+    if (flatten_t[i].item<T>() != d[i] * scale) {
       return false;
     }
   }
@@ -27,8 +27,8 @@ bool equal(const torch::Tensor& t, const std::vector<T>& d) {
 }
 
 TEST(BatchTest, Basic) {
-  const uint32_t n_blocks = 20;
-  const uint32_t block_size = 4;
+  const int32_t n_blocks = 20;
+  const int32_t block_size = 4;
 
   BlockAllocator allocator(n_blocks, block_size);
   // reserve block 0
@@ -103,11 +103,12 @@ TEST(BatchTest, Basic) {
     /*seq3*/ 47};
   EXPECT_TRUE(equal(input_params.new_cache_slots, new_cache_slots));
 
-  const std::vector<int32_t> block_tables = {
+  const std::vector<int32_t> block_id_tables = {
     /*seq1*/ 1, 2, 3,
     /*seq2*/ 4, 5, 6,  7,
     /*seq3*/ 8, 9, 10, 11, 12};
-  EXPECT_TRUE(equal(input_params.block_tables, block_tables));
+  
+  EXPECT_TRUE(equal(input_params.block_tables, block_id_tables, block_size));
   const std::vector<int32_t> cu_block_lens = {0, 3, 7, 12};
   EXPECT_TRUE(equal(input_params.cu_block_lens, cu_block_lens));
 

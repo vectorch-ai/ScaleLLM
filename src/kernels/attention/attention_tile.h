@@ -164,13 +164,12 @@ struct AttentionTile<PagedKVAttentionParams> {
         params_.block_table + params_.block_cu_lens[batch_idx];
     auto idx_to_slot = [block_table,
                         right_shift = params_.block_shift_right,
-                        mask = params_.block_mask,
-                        block_size = params_.block_size](int idx) {
+                        mask = params_.block_mask](int idx) {
       // idx / block_size;
       const int block_idx = idx >> right_shift;
       // idx % block_size;
       const int block_offset = idx & mask;
-      return block_table[block_idx] * block_size + block_offset;
+      return block_table[block_idx] + block_offset;
     };
 
     // v[:, kv_head_idx, :]

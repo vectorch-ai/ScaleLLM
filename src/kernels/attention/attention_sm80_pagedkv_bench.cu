@@ -65,7 +65,8 @@ void attention_bench_sm80(nvbench::state& state) {
       // random assign block size
       const int32_t id = absl::Uniform<int>(
           absl::IntervalClosedClosed, gen, 1, total_blocks - 1);
-      block_bases.push_back(id);
+      // put first slot id of each block into block_table
+      block_bases.push_back(id * block_size);
     }
     block_table_vec.insert(
         block_table_vec.end(), block_bases.begin(), block_bases.end());
