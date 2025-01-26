@@ -13,7 +13,6 @@ class KVCache final {
  public:
   KVCache() = default;
 
-  // TODO: pass in kv_shape and options instead
   KVCache(torch::Tensor key_cache, torch::Tensor value_cache);
 
   // check if the key and value cache is empty
@@ -26,12 +25,7 @@ class KVCache final {
     return {key_cache_, value_cache_};
   }
 
-  std::tuple<torch::Tensor, torch::Tensor, int32_t> get_kv_cache_slot_view()
-      const {
-    return {key_cache_.view({-1, n_kv_heads_, head_dim_}),
-            value_cache_.view({-1, n_kv_heads_, head_dim_}),
-            block_size_};
-  }
+  int64_t block_size() const { return block_size_; }
 
   // set key and value cache for the given slot_ids
   // the slot_ids are the indices of the key/value cache, [num_slots] IntTensor
@@ -60,16 +54,15 @@ class KVCache final {
       const torch::Tensor& slot_ids) const;
 
  private:
-  int64_t n_kv_heads_ = 0;
-  int64_t head_dim_ = 0;
   int64_t block_size_ = 0;
 
+  // TODO: allocate cache with shape: [n_slots, num_heads, 2, head_dim]
   // the contunuous memory region for key and value cache would be splited into
   // fixed size blocks. the blocks allocation would be managed by the
   // blockallocator.
-  // [num_blocks, block_size, num_heads, head_dim]
+  // [n_slots, num_heads, head_dim]
   torch::Tensor key_cache_;
-  // [num_blocks, block_size, num_heads, head_dim]
+  // [n_slots, num_heads, head_dim]
   torch::Tensor value_cache_;
 };
 

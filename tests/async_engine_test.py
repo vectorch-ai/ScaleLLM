@@ -7,7 +7,7 @@ from scalellm import AsyncLLMEngine, SamplingParams
 
 @pytest.fixture(scope="module")
 def engine():
-    with AsyncLLMEngine(model="gpt2", devices="cpu") as engine:
+    with AsyncLLMEngine(model="gpt2", devices="cuda") as engine:
         yield engine
 
 def test_stream_output(engine: AsyncLLMEngine):

@@ -7,7 +7,7 @@ from scalellm import LLM, SamplingParams
 
 @pytest.fixture(scope="module")
 def llm():
-    with LLM(model="gpt2", devices="cpu") as llm:
+    with LLM(model="gpt2", devices="cuda") as llm:
         yield llm
 
 
