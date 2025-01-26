@@ -11,15 +11,19 @@
 #include "kernels/kv_cache_kernels.h"
 
 namespace llm {
-using ISlice = torch::indexing::Slice;
 
-// [num_blocks, block_size, num_kv_heads, head_dim]
-KVCache::KVCache(torch::Tensor key_cache, torch::Tensor value_cache)
-    : block_size_(value_cache.size(-3)) {
-  // [n_slots, num_kv_heads, head_dim]
-  key_cache_ = key_cache.view({-1, key_cache.size(-2), key_cache.size(-1)});
+KVCache::KVCache(int64_t n_blocks,
+                 int64_t block_size,
+                 int64_t n_kv_heads,
+                 int64_t head_dim,
+                 const torch::TensorOptions& options)
+    : block_size_(block_size) {
+  // TODO: allocate cache with shape: [n_slots, num_heads, 2, head_dim]
+  // [n_slots, n_kv_heads, head_dim]
+  key_cache_ =
+      torch::empty({n_blocks * block_size, n_kv_heads, head_dim}, options);
   value_cache_ =
-      value_cache.view({-1, value_cache.size(-2), value_cache.size(-1)});
+      torch::empty({n_blocks * block_size, n_kv_heads, head_dim}, options);
 }
 
 void KVCache::set_kv_cache(const torch::Tensor& slot_ids,

@@ -314,9 +314,9 @@ bool LLMEngine::init_kv_cache(int64_t n_blocks) {
   const int32_t block_size = options_.block_size();
 
   // init kv cache for each worker
-  const std::vector<int64_t> kv_cache_shape = {
-      n_blocks, block_size, n_local_kv_heads_, head_dim_};
-  LOG(INFO) << "Initializing kv cache with shape: [" << kv_cache_shape << "]";
+  LOG(INFO) << "Initializing kv cache with shape: [" << n_blocks << ", "
+            << block_size << ", " << n_local_kv_heads_ << ", " << head_dim_
+            << "]";
 
   // initialize block manager
   BlockManager::Options options;
@@ -329,7 +329,8 @@ bool LLMEngine::init_kv_cache(int64_t n_blocks) {
   std::vector<folly::SemiFuture<bool>> futures;
   futures.reserve(workers_.size());
   for (auto& worker : workers_) {
-    futures.push_back(worker->init_kv_cache_async(kv_cache_shape));
+    futures.push_back(worker->init_kv_cache_async(
+        n_blocks, block_size, n_local_kv_heads_, head_dim_));
   }
   // wait for all futures to complete
   auto results = folly::collectAll(futures).get();

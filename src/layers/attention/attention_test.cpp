@@ -135,11 +135,7 @@ TEST_P(AttentionDecodeTest, KVCache) {
       torch::rand({n_kv_tokens, n_kv_heads, head_dim}, options);
 
   // construct key and value cache
-  const std::vector<int64_t> kv_shape = {
-      n_blocks, block_size, n_kv_heads, head_dim};
-  torch::Tensor k_cache = torch::empty(kv_shape, options);
-  torch::Tensor v_cache = torch::empty(kv_shape, options);
-  KVCache kv_cache(k_cache, v_cache);
+  KVCache kv_cache(n_blocks, block_size, n_kv_heads, head_dim, options);
 
   // set key and value into cache
   kv_cache.set_kv_cache(slot_ids_vec, key, value);
@@ -149,8 +145,8 @@ TEST_P(AttentionDecodeTest, KVCache) {
   torch::Tensor k_cu_seq_lens = torch::tensor(
       k_cu_seq_lens_vec, torch::dtype(torch::kInt32).device(device));
 
-  auto slot_ids = torch::tensor(
-      slot_ids_vec, torch::dtype(torch::kInt32).device(device));
+  auto slot_ids =
+      torch::tensor(slot_ids_vec, torch::dtype(torch::kInt32).device(device));
   auto block_tables = torch::tensor(block_tables_vec,
                                     torch::dtype(torch::kInt32).device(device));
   auto cu_block_lens = torch::tensor(

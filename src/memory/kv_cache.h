@@ -2,7 +2,6 @@
 #include <torch/torch.h>
 
 #include <cstdint>
-#include <vector>
 
 #include "common/slice.h"
 
@@ -13,19 +12,21 @@ class KVCache final {
  public:
   KVCache() = default;
 
-  KVCache(torch::Tensor key_cache, torch::Tensor value_cache);
+  KVCache(int64_t n_blocks,
+          int64_t block_size,
+          int64_t n_kv_heads,
+          int64_t head_dim,
+          const torch::TensorOptions& options);
 
   // check if the key and value cache is empty
-  bool empty() const {
-    return !key_cache_.defined() || !value_cache_.defined();
-  }
+  bool empty() const { return block_size_ == 0; }
+
+  int64_t block_size() const { return block_size_; }
 
   // get key and value cache tensors
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache() const {
     return {key_cache_, value_cache_};
   }
-
-  int64_t block_size() const { return block_size_; }
 
   // set key and value cache for the given slot_ids
   // the slot_ids are the indices of the key/value cache, [num_slots] IntTensor
@@ -56,7 +57,6 @@ class KVCache final {
  private:
   int64_t block_size_ = 0;
 
-  // TODO: allocate cache with shape: [n_slots, num_heads, 2, head_dim]
   // the contunuous memory region for key and value cache would be splited into
   // fixed size blocks. the blocks allocation would be managed by the
   // blockallocator.

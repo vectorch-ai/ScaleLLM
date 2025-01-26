@@ -64,19 +64,20 @@ bool Worker::init_model(torch::ScalarType dtype,
   return true;
 }
 
-bool Worker::init_kv_cache(const std::vector<int64_t>& kv_cache_shape) {
+bool Worker::init_kv_cache(int64_t n_blocks,
+                           int64_t block_size,
+                           int64_t n_kv_heads,
+                           int64_t head_dim) {
   CHECK(model_ != nullptr) << "Model is not initialized.";
   CHECK(kv_caches_.empty()) << "KV caches are already initialized.";
 
+  const auto options = torch::dtype(dtype_).device(device_);
   // create a KVCache for each layer
   const int64_t num_layers = args_.n_layers();
   kv_caches_.reserve(num_layers);
   for (int64_t i = 0; i < num_layers; ++i) {
-    auto key_cache =
-        torch::empty(kv_cache_shape, torch::dtype(dtype_).device(device_));
-    auto value_cache =
-        torch::empty(kv_cache_shape, torch::dtype(dtype_).device(device_));
-    kv_caches_.emplace_back(key_cache, value_cache);
+    kv_caches_.emplace_back(
+        n_blocks, block_size, n_kv_heads, head_dim, options);
   }
   return true;
 }
@@ -238,15 +239,22 @@ folly::SemiFuture<bool> Worker::init_model_async(torch::ScalarType dtype,
   return future;
 }
 
-folly::SemiFuture<bool> Worker::init_kv_cache_async(
-    const std::vector<int64_t>& kv_cache_shape) {
+folly::SemiFuture<bool> Worker::init_kv_cache_async(int64_t n_blocks,
+                                                    int64_t block_size,
+                                                    int64_t n_kv_heads,
+                                                    int64_t head_dim) {
   folly::Promise<bool> promise;
   auto future = promise.getSemiFuture();
-  threadpool_.schedule(
-      [this, &kv_cache_shape, promise = std::move(promise)]() mutable {
-        const bool success = this->init_kv_cache(kv_cache_shape);
-        promise.setValue(success);
-      });
+  threadpool_.schedule([this,
+                        n_blocks,
+                        block_size,
+                        n_kv_heads,
+                        head_dim,
+                        promise = std::move(promise)]() mutable {
+    const bool success =
+        this->init_kv_cache(n_blocks, block_size, n_kv_heads, head_dim);
+    promise.setValue(success);
+  });
   return future;
 }
 

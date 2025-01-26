@@ -39,7 +39,10 @@ class Worker final {
   std::tuple<int64_t, int64_t> profile_device_memory();
 
   // initialize kv cache. blocking call
-  bool init_kv_cache(const std::vector<int64_t>& kv_cache_shape);
+  bool init_kv_cache(int64_t n_blocks,
+                     int64_t block_size,
+                     int64_t n_kv_heads,
+                     int64_t head_dim);
 
   // Run the model on the given input. blocking call
   std::optional<ModelOutput> execute_model(const ModelInput& inputs);
@@ -60,8 +63,10 @@ class Worker final {
   folly::SemiFuture<std::tuple<int64_t, int64_t>> profile_device_memory_async();
 
   // initialize kv cache. async call
-  folly::SemiFuture<bool> init_kv_cache_async(
-      const std::vector<int64_t>& kv_cache_shape);
+  folly::SemiFuture<bool> init_kv_cache_async(int64_t n_blocks,
+                                              int64_t block_size,
+                                              int64_t n_kv_heads,
+                                              int64_t head_dim);
 
   // Run the model on the given input. async call
   // the future returns a successfull status with no meaningful value
