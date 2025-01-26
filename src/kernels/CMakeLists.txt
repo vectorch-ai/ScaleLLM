@@ -28,7 +28,6 @@ cc_library(
 
 add_subdirectory(attention)
 add_subdirectory(quantization)
-add_subdirectory(bench)
 add_subdirectory(playground)
 add_subdirectory(triton)
 

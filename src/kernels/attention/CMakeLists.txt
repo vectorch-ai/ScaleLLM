@@ -1,4 +1,5 @@
 include(cc_binary)
+include(nvbench_binary)
 include(cc_library)
 include(cc_test)
 
@@ -66,31 +67,23 @@ cc_test(
     torch
 )
 
-cc_binary(
+nvbench_binary(
   NAME 
     attention_sm80_bench
   SRCS 
     attention_sm80_bench.cu
   DEPS
-    nvbench::nvbench
-    nvbench::main
-    :attention.template
-  COPTS
-    -lineinfo 
+    :attention.template 
 )
 
-cc_binary(
+nvbench_binary(
   NAME 
     attention_sm80_pagedkv_bench
   SRCS 
     attention_sm80_pagedkv_bench.cu
   DEPS
     absl::random_random
-    nvbench::nvbench
-    nvbench::main
     :attention.template
-  COPTS
-    -lineinfo 
 )
 
 add_subdirectory(tools)

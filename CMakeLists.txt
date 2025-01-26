@@ -5,6 +5,8 @@ option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
 option(USE_CXX11_ABI "Use the new C++-11 ABI, which is not backwards compatible." ON)
 option(USE_MANYLINUX "Build for manylinux" OFF)
 
+option(BUILD_NVBENCH "Build the nvbench binary" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
