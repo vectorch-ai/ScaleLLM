@@ -148,8 +148,9 @@ TEST_P(AttentionKernelPagedKVTest, PageKV) {
     block_ids.reserve(n_blocks);
     for (int j = 0; j < n_blocks; ++j) {
       // random assign block size
-      block_ids.push_back(absl::Uniform<int>(
-          absl::IntervalClosedClosed, gen, 1, total_blocks - 1));
+      const int32_t id = absl::Uniform<int>(
+          absl::IntervalClosedClosed, gen, 1, total_blocks - 1);
+      block_ids.push_back(id);
     }
     block_table_vec.insert(
         block_table_vec.end(), block_ids.begin(), block_ids.end());

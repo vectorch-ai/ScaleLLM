@@ -37,15 +37,6 @@ class RefHandler : public AttentionHandler {
       const torch::Tensor& key,
       const torch::Tensor& positions) override;
 
-  // batch prefill for attention, optimized for prefill stage
-  void batch_prefill(
-      const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
-      const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
-      const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
-      const InputParameters& input_params,  // input paras used for attention
-      int32_t sliding_window,               // sliding window size
-      torch::Tensor& output);
-
   // batch decode for attention, optimized for decode stage
   // support multiple queries: one sequence with multiple query tokens
   void batch_decode(

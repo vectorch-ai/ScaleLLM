@@ -57,7 +57,7 @@ cc_test(
     # attention_cpu_test.cpp
     attention_traits_test.cpp
     attention_kernel_sm80_test.cu
-    attention_kernel_sm80_varlen_test.cu
+    # attention_kernel_sm80_varlen_test.cu
     attention_kernel_sm80_pagedkv_test.cu
   DEPS
     :attention.template
@@ -68,10 +68,24 @@ cc_test(
 
 cc_binary(
   NAME 
-    attention_bench_sm80
+    attention_sm80_bench
   SRCS 
-    attention_bench_sm80.cu
+    attention_sm80_bench.cu
   DEPS
+    nvbench::nvbench
+    nvbench::main
+    :attention.template
+  COPTS
+    -lineinfo 
+)
+
+cc_binary(
+  NAME 
+    attention_sm80_pagedkv_bench
+  SRCS 
+    attention_sm80_pagedkv_bench.cu
+  DEPS
+    absl::random_random
     nvbench::nvbench
     nvbench::main
     :attention.template

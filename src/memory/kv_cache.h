@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "common/slice.h"
+
 namespace llm {
 // Physical memory used for key and value cache in attention layers
 // the fixed memory is allocated in the constructor for each attention layer.
@@ -26,8 +28,8 @@ class KVCache final {
 
   std::tuple<torch::Tensor, torch::Tensor, int32_t> get_kv_cache_slot_view()
       const {
-    return {key_cache_.view({-1, num_kv_heads_, head_size_}),
-            value_cache_.view({-1, num_kv_heads_, head_size_}),
+    return {key_cache_.view({-1, n_kv_heads_, head_dim_}),
+            value_cache_.view({-1, n_kv_heads_, head_dim_}),
             block_size_};
   }
 
@@ -38,14 +40,6 @@ class KVCache final {
                     const torch::Tensor& keys,
                     const torch::Tensor& values);
 
-  // get key and value cache for a sequence based on physical memory blocks
-  // block_table: [num_blocks] IntTensor
-  // context_len: the length of the sequence
-  // returns keys/values: [context_len, num_heads, head_dim]
-  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
-      const torch::Tensor& block_table,
-      int64_t context_len) const;
-
   // put following functions as public for testing/benchmarking
   void set_kv_cache_slow(const torch::Tensor& slot_ids,
                          const torch::Tensor& keys,
@@ -55,19 +49,19 @@ class KVCache final {
                          const torch::Tensor& keys,
                          const torch::Tensor& values);
 
+  void set_kv_cache(const Slice<int32_t>& slot_ids,
+                    const torch::Tensor& keys,
+                    const torch::Tensor& values);
+
+  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
+      const Slice<int32_t>& slot_ids) const;
+
   std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
       const torch::Tensor& slot_ids) const;
 
-  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
-      const torch::Tensor& block_tables,
-      const torch::Tensor& kv_cu_seq_lens) const;
-
  private:
-  std::tuple<torch::Tensor, torch::Tensor> get_kv_cache(
-      const std::vector<int>& slot_ids) const;
-
-  int64_t num_kv_heads_ = 0;
-  int64_t head_size_ = 0;
+  int64_t n_kv_heads_ = 0;
+  int64_t head_dim_ = 0;
   int64_t block_size_ = 0;
 
   // the contunuous memory region for key and value cache would be splited into
