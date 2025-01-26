@@ -62,7 +62,7 @@ class LLMHandler {
 
     DEFINE_ARG(std::optional<std::string>, draft_devices);
 
-    // the number of slots per block, default 16, value must be multiple of 16
+    // the number of slots per block, default 16, value must be power of 2
     DEFINE_ARG(int32_t, block_size) = 16;
 
     // the maximum cache size in bytes, default is 0 which means cache size is

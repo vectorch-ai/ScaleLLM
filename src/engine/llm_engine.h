@@ -32,8 +32,8 @@ class LLMEngine : public Engine {
   struct Options {
     DEFINE_ARG(std::vector<torch::Device>, devices);
 
-    // the number of slots per block, default 16, value must be multiple of 16
-    DEFINE_ARG(int32_t, block_size) = 16;
+    // the number of slots per block, default 8, value must be a power of 2
+    DEFINE_ARG(int32_t, block_size) = 8;
 
     // 0 means that cache size is caculated by available memory
     DEFINE_ARG(int64_t, max_cache_size) = 0;

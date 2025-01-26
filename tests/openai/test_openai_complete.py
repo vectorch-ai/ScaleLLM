@@ -15,7 +15,7 @@ def server():
             "--model",
             MODEL_NAME,
             "--devices",
-            "cpu",
+            "cuda",
             "--max_cache_size",
             1024 * 1024 * 1024,  # 1GB
             "--convert_to_safetensors=True",

@@ -47,8 +47,8 @@ def parse_args():
     parser.add_argument(
         "--block_size",
         type=int,
-        default=16,
-        help="Number of slots per kv cache block. Default is 16.",
+        default=8,
+        help="Number of slots per kv cache block, must be a power of 2. Default is 8.",
     )
     parser.add_argument(
         "--max_cache_size",

@@ -42,12 +42,12 @@ struct InputParameters {
   int32_t kv_max_seq_len = 0;  // kv seq len
   int32_t q_max_seq_len = 0;   // query seq len
 
-  // logical cache slot for each *new* token.
+  // logical kv cache slot for each *new* token.
   // used to store kv-cache to right slot/block
   // IntTensor: [n_tokens]
   torch::Tensor new_cache_slots;
 
-  // block ids for each sequence, flattend into 1D tensor.
+  // kv cache blocks for each sequence, flattend into 1D tensor.
   // IntTensor: [n_blocks]
   torch::Tensor block_tables;
   // cumulative block length for each sequence.

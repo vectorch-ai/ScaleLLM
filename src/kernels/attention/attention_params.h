@@ -31,13 +31,19 @@ struct AttentionParamsCommon {
 
   // softmax scaling
   float sm_scale = 1.0;
-  
-  // used for performance optimization, don't change it
-  bool normalized = false;
-  float sm_scale_log2 = 0.0;
 
   // alibi
   const float* __restrict__ alibi_slopes_ptr = nullptr;  // [n_heads]
+
+  // block size, only used for paged KV cache
+  int block_size = 0;
+
+  // private:
+  // used for performance optimization, don't change it
+  bool normalized = false;
+  float sm_scale_log2 = 0.0;
+  int32_t block_shift_right = 0;
+  int32_t block_mask = 0;
 
   // used to initialize the params that used for performance optimization
   void normalize() {
@@ -59,6 +65,16 @@ struct AttentionParamsCommon {
       sm_scale = sm_scale_hat;
     }
     sm_scale_log2 = static_cast<float>(sm_scale * M_LOG2E);
+
+    auto int_log2 = [](int x) {
+      int n = 0;
+      while (x >>= 1) {
+        ++n;
+      }
+      return n;
+    };
+    block_shift_right = int_log2(block_size);
+    block_mask = block_size - 1;
 
     normalized = true;
   }
@@ -99,7 +115,6 @@ struct PagedKVAttentionParams : public VarLenAttentionParams {
   // Paged KV cache
   const int* __restrict__ block_table = nullptr;
   const int* __restrict__ block_cu_lens = nullptr;
-  int block_size = 0;
 };
 
 }  // namespace llm

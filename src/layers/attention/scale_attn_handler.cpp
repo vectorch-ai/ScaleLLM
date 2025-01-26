@@ -47,7 +47,9 @@ void ScaleAttnHandler::batch_decode(
     const InputParameters& input_params,  // input paras used for attention
     int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
-  auto [key_cache, value_cache, block_size] = kv_cache.get_kv_cache_slot_view();
+  auto [key_cache, value_cache] = kv_cache.get_kv_cache();
+  const auto block_size = kv_cache.block_size();
+
   paged_kv_varlen_mha(output,
                       query,
                       key_cache,

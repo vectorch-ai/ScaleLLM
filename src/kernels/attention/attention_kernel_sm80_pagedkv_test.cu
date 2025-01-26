@@ -148,16 +148,18 @@ TEST_P(AttentionKernelPagedKVTest, PageKV) {
     block_ids.reserve(n_blocks);
     for (int j = 0; j < n_blocks; ++j) {
       // random assign block size
-      block_ids.push_back(absl::Uniform<int>(
-          absl::IntervalClosedClosed, gen, 1, total_blocks - 1));
+      const int32_t id = absl::Uniform<int>(
+          absl::IntervalClosedClosed, gen, 1, total_blocks - 1);
+      // put first slot id of each block into block_table
+      block_ids.push_back(id * block_size);
     }
     block_table_vec.insert(
         block_table_vec.end(), block_ids.begin(), block_ids.end());
     block_cu_lens_vec.push_back(block_table_vec.size());
     for (int j = 0; j < kv_len; ++j) {
-      const int32_t block_id = block_ids[j / block_size];
+      const int32_t slot_base = block_ids[j / block_size];
       const int32_t block_offset = j % block_size;
-      slot_ids.push_back(block_id * block_size + block_offset);
+      slot_ids.push_back(slot_base + block_offset);
     }
   }
 

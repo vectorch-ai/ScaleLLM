@@ -159,27 +159,6 @@ std::tuple<torch::Tensor, torch::Tensor> RefHandler::apply_pos_emb(
   return {query, key};
 }
 
-// batch prefill for attention, optimized for prefill stage
-void RefHandler::batch_prefill(
-    const torch::Tensor& query,           // [n_tokens, n_heads, head_dim]
-    const torch::Tensor& key,             // [n_tokens, n_kv_heads, head_dim]
-    const torch::Tensor& value,           // [n_tokens, n_kv_heads, head_dim]
-    const InputParameters& input_params,  // input paras used for attention
-    int32_t sliding_window,               // sliding window size
-    torch::Tensor& output) {
-  // don't use kv cache in prefill stage
-  varlen_masked_self_attention(query,
-                               key,
-                               value,
-                               input_params.q_cu_seq_lens,
-                               input_params.kv_cu_seq_lens,
-                               alibi_slopes_,
-                               sm_scale_,
-                               logits_soft_cap_,
-                               sliding_window,
-                               output);
-}
-
 // batch decode for attention, optimized for decode stage
 // support multiple queries: one sequence with multiple query tokens
 void RefHandler::batch_decode(
@@ -189,9 +168,7 @@ void RefHandler::batch_decode(
     int32_t sliding_window,               // sliding window size
     torch::Tensor& output) {
   // retrieval key and value from kv_cache
-  // TODO: fix the potential bug here
-  auto [key, value] = kv_cache.get_kv_cache(input_params.block_tables,
-                                            input_params.kv_cu_seq_lens);
+  auto [key, value] = kv_cache.get_kv_cache(input_params.new_cache_slots);
 
   varlen_masked_self_attention(query,
                                key,

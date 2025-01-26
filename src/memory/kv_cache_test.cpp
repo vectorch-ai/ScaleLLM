@@ -27,15 +27,7 @@ TEST(KVCacheTest, Basic) {
   torch::set_default_dtype(
       torch::scalarTypeToTypeMeta(torch::ScalarType::BFloat16));
   torch::Device device(torch::kCUDA);
-
-  torch::Tensor key_cache =
-      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
-                  /*device=*/device);
-  torch::Tensor value_cache =
-      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
-                  /*device=*/device);
-
-  KVCache kv_cache(key_cache, value_cache);
+  KVCache kv_cache(num_blocks, block_size, num_kv_heads, head_dim, device);
 
   // set key and value cache for the given slot_ids
   for (int32_t i = 0; i < num_blocks * block_size; ++i) {
@@ -76,15 +68,7 @@ TEST(KVCacheTest, Random) {
   torch::Device device(torch::kCUDA);
 
   torch::manual_seed(10);
-
-  torch::Tensor key_cache =
-      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
-                  /*device=*/device);
-  torch::Tensor value_cache =
-      torch::rand({num_blocks, block_size, num_kv_heads, head_dim},
-                  /*device=*/device);
-
-  KVCache kv_cache(key_cache, value_cache);
+  KVCache kv_cache(num_blocks, block_size, num_kv_heads, head_dim, device);
 
   for (int32_t i = 0; i < 10000; ++i) {
     using ISlice = torch::indexing::Slice;

@@ -19,7 +19,7 @@ class LLM:
         convert_to_safetensors: bool = False,
         devices: Optional[str] = None,
         draft_devices: Optional[str] = None,
-        block_size: int = 16,
+        block_size: int = 8,
         max_cache_size: int = 0, # 0 means that cache size is caculated by available memory
         max_memory_utilization: float = 0.9,
         enable_prefix_cache: bool = True,
