@@ -56,18 +56,26 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
   const int m_block = blockIdx.x;
   const int batch_idx = blockIdx.y;
-  const int head_idx = blockIdx.z;
+  const int kv_head_idx = blockIdx.z;
   const int tidx = threadIdx.x;
 
   AttentionTile<Params> tile(params);
 
-  const int group_size = params.n_heads / params.n_kv_heads;
+  // preprocess input parameters
+  const int head_dim = params.head_dim;
+  const int group_size = params.group_size;
+  const float logits_soft_cap = params.logits_soft_cap;
+  const float sm_scale = params.sm_scale;
+  const float sm_scale_log2 = params.sm_scale_log2;
+  // TODO: handle alibi_slope for qpack
+  const float alibi_slope =
+      ALIBI ? (params.alibi_slopes_ptr[kv_head_idx] / sm_scale) : 0.0f;
+
   // ProblemShape
-  // (q_len, HEAD_DIM)
-  auto [Q, O] = tile.template get_qo_tile<DType>(batch_idx, head_idx);
+  // (q_packed_len, HEAD_DIM)
+  auto [Q, O] = tile.template get_qo_tile<DType>(batch_idx, kv_head_idx);
   // (kv_len, HEAD_DIM)
-  auto [K, V] =
-      tile.template get_kv_tile<DType>(batch_idx, head_idx / group_size);
+  auto [K, V] = tile.template get_kv_tile<DType>(batch_idx, kv_head_idx);
 
   const int q_len = size<0>(Q);
   const int kv_len = size<0>(K);
@@ -77,23 +85,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     return;
   }
 
-  const int head_dim = params.head_dim;
   const int sliding_window = LOCAL ? params.sliding_window : kv_len;
-  const float logits_soft_cap = params.logits_soft_cap;
-  const float sm_scale = params.sm_scale;
-  const float sm_scale_log2 = params.sm_scale_log2;
-  const float alibi_slope =
-      ALIBI ? (params.alibi_slopes_ptr[head_idx] / sm_scale) : 0.0f;
-
-  // preprocess input parameters
-  auto apply_logits_soft_cap = [&](auto& tSrAccS) {
-    if constexpr (SOFT_CAP) {
-      CUTE_UNROLL
-      for (int i = 0; i < size(tSrAccS); ++i) {
-        tSrAccS(i) = ptx::tanh(tSrAccS(i) * logits_soft_cap);
-      }
-    }
-  };
 
   // Gmem
   // (BLK_M, HEAD_DIM)
@@ -322,12 +314,22 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
   OnlineSoftmax<kRowsPerMMA * size<1>(tOrAccO)> softmax(sm_scale_log2);
   Mask<kBlockM, kBlockM, ALIBI, LOCAL> mask(
-      q_len, kv_len, sliding_window, alibi_slope);
+      q_len, kv_len, group_size, sliding_window, alibi_slope);
 
   // attention score accumulator, (MMA,MMA_M,MMA_N)
   auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
   auto tSrAccS_rc_view =
       make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
+
+  auto apply_logits_soft_cap = [&](auto& tSrAccS) {
+    if constexpr (SOFT_CAP) {
+      CUTE_UNROLL
+      for (int i = 0; i < size(tSrAccS); ++i) {
+        tSrAccS(i) = ptx::tanh(tSrAccS(i) * logits_soft_cap);
+      }
+    }
+  };
+
   // seperate oob mask iterations for better performance
   constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
 

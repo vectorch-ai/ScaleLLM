@@ -9,15 +9,18 @@ template <int BLK_M, int BLK_N, bool ALIBI, bool LOCAL>
 struct Mask {
   int q_len_;
   int kv_len_;
+  int group_size_;
   int sliding_window_;
   float alibi_slope_;
 
   CUTE_HOST_DEVICE Mask(int q_len,
                         int kv_len,
+                        int group_size,
                         int sliding_window,
                         float alibi_slope)
       : q_len_(q_len),
         kv_len_(kv_len),
+        group_size_(group_size),
         sliding_window_(sliding_window),
         alibi_slope_(alibi_slope) {}
 
@@ -38,11 +41,13 @@ struct Mask {
     // TiledMMA: 64x16x16, MMA_Atom: 16x8x16
     CUTE_UNROLL
     for (int mi = 0; mi < size<0, 1>(rAccS); ++mi) {  //  MMA_M
-      const int q_idx_base = m_base + mi * 64;
+      const int q_packed_idx_base = m_base + mi * 64;
       CUTE_UNROLL
       for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2
         // m inner stride = 8
-        const int q_idx = q_idx_base + i * 8 + kv_len_ - q_len_;  // diagonal
+        const int q_packed_idx = q_packed_idx_base + i * 8;
+        // diagonal
+        const int q_idx = q_packed_idx / group_size_ + kv_len_ - q_len_;
 
         CUTE_UNROLL
         for (int nj = 0; nj < size<1, 1>(rAccS); ++nj) {  // MMA_N

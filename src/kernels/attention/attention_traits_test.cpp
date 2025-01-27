@@ -3,6 +3,8 @@
 #include <cute/tensor.hpp>
 
 #include "attention_traits_sm80.h"
+#include "cute/layout_composed.hpp"
+#include "gather_tensor.hpp"
 
 namespace llm {
 
@@ -51,6 +53,23 @@ TEST(AttentionTraitsTest, TraitsSM80) {
                                             /*BLK_M=*/64,
                                             /*BLK_N=*/64,
                                             /*BLK_K=*/64>>();
+}
+
+TEST(GatherTensorTest, Stride) {
+  auto idx_to_cord = [](int idx) { 
+    return make_coord(_0{}, idx); 
+  };
+
+  auto gtensor = make_gather_tensor(counting_iterator<int>(0),
+                                    make_shape(4, 8),
+                                    make_stride(make_stride(8, 16), _1{}),
+                                    idx_to_cord);
+  auto layout = gtensor.layout();
+  print(layout); print("\n");
+  print_tensor(gtensor);
+
+  auto layout_128 = recast_layout<cute::uint16_t, cute::uint128_t>(layout);
+  print(layout_128); print("\n");
 }
 
 }  // namespace llm
