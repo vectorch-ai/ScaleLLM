@@ -154,13 +154,13 @@ template <class ShapeA,
           class StrideA,
           class OuterShapeB,
           class OuterStrideB,
-          class Offset,
+          class OffsetB,
           class ShapeB,
           class StrideB>
 CUTE_HOST_DEVICE constexpr auto max_common_vector(
     Layout<ShapeA, StrideA> const& a,
     ComposedLayout<Layout<OuterShapeB, OuterStrideB>,
-                   Offset,
+                   OffsetB,
                    Layout<ShapeB, StrideB>> const& b) {
   return max_common_vector(a, b.layout_b());
 }

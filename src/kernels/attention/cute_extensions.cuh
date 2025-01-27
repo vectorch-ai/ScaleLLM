@@ -8,6 +8,18 @@
 
 namespace cute {
 
+namespace detail {
+// Trait that detects if atom's traits has a member function with(bool)
+template <class, class Enable = void>
+constexpr bool has_with_bool = false;
+
+template <class Copy_Atom>
+constexpr bool
+    has_with_bool<Copy_Atom,
+                  cute::void_t<decltype(declval<typename Copy_Atom::Traits>()
+                                            .with(declval<bool>()))>> = true;
+}  // namespace detail
+
 template <size_t I, class IntTupleA, class IntTupleB>
 CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
                                           IntTupleB const& b) {
@@ -19,12 +31,7 @@ CUTE_HOST_DEVICE void zfill(const Copy_Atom& copy_atom,
                             const TensorS& src,
                             TensorD&& dst) {
   CUTE_STATIC_ASSERT(TensorS::rank == TensorD::rank, "rank-mismatch.");
-
-  auto has_with_bool = cute::is_valid(
-      [](auto t) -> void_t<decltype(declval<typename decltype(t)::Traits>()
-                                        .with(true))> {},
-      copy_atom);
-  if constexpr (has_with_bool) {
+  if constexpr (detail::has_with_bool<Copy_Atom>) {
     constexpr int R = TensorD::rank;
     if constexpr (R == 1) {  // Dispatch the copy
       copy_atom.with(false).call(src, dst);
