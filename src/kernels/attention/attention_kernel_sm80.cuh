@@ -77,10 +77,11 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // (kv_len, HEAD_DIM)
   auto [K, V] = tile.template get_kv_tile<DType>(batch_idx, kv_head_idx);
 
-  const int q_len = size<0>(Q);
+  const int q_packed_len = size<0>(Q);
+  const int q_len = q_packed_len / group_size;
   const int kv_len = size<0>(K);
 
-  if (m_block * kBlockM >= q_len) {
+  if (m_block * kBlockM >= q_packed_len) {
     // m out of bound, return
     return;
   }
@@ -128,7 +129,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto produce_query = [&]() {
     auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
     auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
-    auto max_coord = make_coord(q_len - m_block * kBlockM, head_dim);
+    auto max_coord = make_coord(q_packed_len - m_block * kBlockM, head_dim);
     safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/true, /*ZFILL_K=*/true>(
         gmem_tiled_copy_Q, tQgQ, tQsQ, tQcQ, max_coord);
   };
@@ -277,7 +278,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     // wait for smem copy done before gmem copy
     __syncthreads();
 
-    auto max_coord = make_coord(q_len - m_block * kBlockM, head_dim);
+    auto max_coord = make_coord(q_packed_len - m_block * kBlockM, head_dim);
     safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/false, /*ZFILL_K=*/false>(
         gmem_tiled_copy_O, tOsO, tOgO, tOcO, max_coord);
   };
@@ -288,7 +289,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
       make_tensor(tOrAccO.data(), Layout::to_rowcol(tOrAccO.layout()));
   clear(tOrAccO);
 
-  const int diagonal = m_block * kBlockM + kv_len - q_len;
+  const int diagonal = (m_block * kBlockM) / group_size + kv_len - q_len;
   // process kv in range: [kv_idx_min, kv_idx_max)
   const int kv_idx_min = std::max(0, diagonal - sliding_window);
   const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);

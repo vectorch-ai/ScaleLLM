@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cute/int_tuple.hpp>
+#include <cute/layout.hpp>
+
 #include "attention_kernel_sm80.cuh"
 #include "attention_traits_sm80.h"
 #include "static_dispatch.h"
@@ -14,8 +17,8 @@ template <typename Traits,
           bool LOCAL>
 void launch_attention_kernel(const Params& params, cudaStream_t stream) {
   const auto batch_size = params.batch_size;
-  const auto n_heads = params.n_heads;
-  const auto max_q_len = params.max_q_len;
+  const auto n_kv_heads = params.n_kv_heads;
+  const auto max_q_packed_len = params.max_q_len * params.group_size;
 
   const auto smem_size = Traits::kSmemSize;
   auto attention_kernel =
@@ -23,8 +26,9 @@ void launch_attention_kernel(const Params& params, cudaStream_t stream) {
   cudaFuncSetAttribute(
       attention_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   // TODO: support persistent kernels
-  dim3 grid(
-      (max_q_len + Traits::kBlockM - 1) / Traits::kBlockM, batch_size, n_heads);
+  dim3 grid(cute::ceil_div(max_q_packed_len, Traits::kBlockM),
+            batch_size,
+            n_kv_heads);
   dim3 block = Traits::kThreadNum;
   attention_kernel<<<grid, block, smem_size, stream>>>(params);
 }
