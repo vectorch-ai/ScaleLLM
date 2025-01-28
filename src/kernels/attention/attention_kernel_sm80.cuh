@@ -67,9 +67,6 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   const float logits_soft_cap = params.logits_soft_cap;
   const float sm_scale = params.sm_scale;
   const float sm_scale_log2 = params.sm_scale_log2;
-  // TODO: handle alibi_slope for qpack
-  const float alibi_slope =
-      ALIBI ? (params.alibi_slopes_ptr[kv_head_idx] / sm_scale) : 0.0f;
 
   // ProblemShape
   // (q_packed_len, HEAD_DIM)
@@ -312,15 +309,23 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   cp_async_fence();
 
   // ###############  Mainloop  ###############
-
-  OnlineSoftmax<kRowsPerMMA * size<1>(tOrAccO)> softmax(sm_scale_log2);
-  Mask<kBlockM, kBlockM, ALIBI, LOCAL> mask(
-      q_len, kv_len, group_size, sliding_window, alibi_slope);
-
   // attention score accumulator, (MMA,MMA_M,MMA_N)
   auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
   auto tSrAccS_rc_view =
       make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
+
+  constexpr int kMMA_M = size<1>(tSrAccS);
+  OnlineSoftmax<kRowsPerMMA * kMMA_M> softmax(sm_scale_log2);
+  Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL> mask(
+      q_len,
+      kv_len,
+      group_size,
+      sliding_window,
+      m_block,
+      kv_head_idx,
+      tidx,
+      sm_scale,
+      params.alibi_slopes_ptr);
 
   auto apply_logits_soft_cap = [&](auto& tSrAccS) {
     if constexpr (SOFT_CAP) {
@@ -357,7 +362,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     if constexpr (SOFT_CAP) {
       apply_logits_soft_cap(tSrAccS);
     }
-    mask.apply(tSrAccS_rc_view, m_block, n_block_idx, tidx);
+    mask.apply(tSrAccS_rc_view, n_block_idx);
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
 
     // wait value, [v] => []
@@ -399,7 +404,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     if constexpr (SOFT_CAP) {
       apply_logits_soft_cap(tSrAccS);
     }
-    mask.apply</*OOB_MASK=*/false>(tSrAccS_rc_view, m_block, n_block_idx, tidx);
+    mask.apply</*OOB_MASK=*/false>(tSrAccS_rc_view, n_block_idx);
     softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
 
     // wait value, [v] => []
