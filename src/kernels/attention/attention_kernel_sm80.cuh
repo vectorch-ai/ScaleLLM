@@ -314,19 +314,6 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto tSrAccS_rc_view =
       make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
 
-  constexpr int kMMA_M = size<1>(tSrAccS);
-  OnlineSoftmax<kRowsPerMMA * kMMA_M> softmax(sm_scale_log2);
-  Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL> mask(
-      q_len,
-      kv_len,
-      group_size,
-      sliding_window,
-      m_block,
-      kv_head_idx,
-      tidx,
-      sm_scale,
-      params.alibi_slopes_ptr);
-
   auto apply_logits_soft_cap = [&](auto& tSrAccS) {
     if constexpr (SOFT_CAP) {
       CUTE_UNROLL
@@ -335,6 +322,21 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
       }
     }
   };
+
+  constexpr int kMMA_M = size<1>(tSrAccS);
+  using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
+  using Mask = Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL>;
+
+  Softmax softmax(sm_scale_log2);
+  Mask mask(tidx,
+            m_block,
+            q_len,
+            kv_len,
+            kv_head_idx,
+            group_size,
+            sliding_window,
+            sm_scale,
+            params.alibi_slopes_ptr);
 
   // seperate oob mask iterations for better performance
   constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;

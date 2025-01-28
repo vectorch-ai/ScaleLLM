@@ -56,7 +56,7 @@ cc_test(
     attention_kernel_test
   SRCS
     # attention_cpu_test.cpp
-    # attention_traits_test.cpp
+    attention_traits_test.cpp
     attention_kernel_sm80_test.cu
     # attention_kernel_sm80_varlen_test.cu
     attention_kernel_sm80_pagedkv_test.cu

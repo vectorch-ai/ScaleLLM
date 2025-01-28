@@ -20,35 +20,36 @@ struct Mask {
   int kv_len_;
   int group_size_;
   int sliding_window_;
-  int lane_id_;
-  int m_base_;
+
+  int lane_idx_;
+  int m_base_idx_;
   int diagonal_offset_;
 
   FragmentT alibi_slopes_;
 
-  CUTE_HOST_DEVICE Mask(int q_len,
+  CUTE_HOST_DEVICE Mask(int tidx,
+                        int m_block,
+                        int q_len,
                         int kv_len,
+                        int kv_head_idx,
                         int group_size,
                         int sliding_window,
-                        int m_block,
-                        int kv_head_idx,
-                        int tidx,
                         float sm_scale,
                         const float* alibi_slops_ptr)
       : q_len_(q_len),
         kv_len_(kv_len),
         group_size_(group_size),
         sliding_window_(sliding_window) {
+    lane_idx_ = tidx % 32;
     // Warp layout 4x1, each warp processes 16 rows (4 threads per row)
-    lane_id_ = tidx % 32;
-    m_base_ = m_block * BLK_M + tidx / 32 * 16 + lane_id_ / 4;
+    m_base_idx_ = m_block * BLK_M + tidx / 32 * 16 + lane_idx_ / 4;
     diagonal_offset_ = kv_len - q_len;
 
     if constexpr (ALIBI) {
       // copy alibi slopes to registers
       CUTE_UNROLL
-      for (int mi = 0; mi < MMA_M; ++mi) {                //  MMA_M
-        const int q_packed_idx_base = m_base_ + mi * 64;  // outer stride = 64
+      for (int mi = 0; mi < MMA_M; ++mi) {                    //  MMA_M
+        const int q_packed_idx_base = m_base_idx_ + mi * 64;  // stride = 64
         CUTE_UNROLL
         for (int i = 0; i < ROWS_PER_MMA; ++i) {               // 2
           const int q_packed_idx = q_packed_idx_base + i * 8;  // stride = 8
@@ -64,27 +65,27 @@ struct Mask {
   template <bool OOB_MASK = true, typename FragmentS>
   CUTE_HOST_DEVICE void apply(FragmentS& rAccS, int n_block) const {
     // Warp layout 4x1, each warp processes 16 rows (4 threads per row)
-    const int n_base = n_block * BLK_N + (lane_id_ % 4) * 2;
+    const int n_base_idx = n_block * BLK_N + (lane_idx_ % 4) * 2;
 
     // TiledMMA: 64x16x16, MMA_Atom: 16x8x16
     CUTE_UNROLL
-    for (int mi = 0; mi < size<0, 1>(rAccS); ++mi) {    //  MMA_M
-      const int q_packed_idx_base = m_base_ + mi * 64;  // m outer stride = 64
+    for (int mi = 0; mi < size<0, 1>(rAccS); ++mi) {        //  MMA_M
+      const int q_packed_idx_base = m_base_idx_ + mi * 64;  // stride = 64
       CUTE_UNROLL
-      for (int i = 0; i < size<0, 0>(rAccS); ++i) {  // 2
-        const auto m_coord = make_coord(i, mi);
-        const auto alibi_slope = ALIBI ? alibi_slopes_(i, mi) : 0.0f;
+      for (int i = 0; i < size<0, 0>(rAccS); ++i) {          // 2
         const int q_packed_idx = q_packed_idx_base + i * 8;  // m stride = 8
         const int q_idx = q_packed_idx / group_size_ + diagonal_offset_;
 
+        const auto m_coord = make_coord(i, mi);
+        const auto alibi_slope = ALIBI ? alibi_slopes_(i, mi) : 0.0f;
+
         CUTE_UNROLL
         for (int nj = 0; nj < size<1, 1>(rAccS); ++nj) {  // MMA_N
-          const auto kv_index_base = n_base + nj * 8;     // n outer stride = 8
+          const auto kv_base_idx = n_base_idx + nj * 8;   // n outer stride = 8
 
           CUTE_UNROLL
           for (int j = 0; j < size<1, 0>(rAccS); ++j) {  // 2
-            const auto n_coord = make_coord(j, nj);
-            const int kv_idx = kv_index_base + j;  // n stride = 1
+            const int kv_idx = kv_base_idx + j;          // n stride = 1
 
             const bool out_of_boundary = [&]() {
               if constexpr (OOB_MASK && LOCAL) {
@@ -103,6 +104,7 @@ struct Mask {
               }
             }();
 
+            const auto n_coord = make_coord(j, nj);
             if (out_of_boundary) {
               rAccS(m_coord, n_coord) = -INFINITY;
             } else if constexpr (ALIBI) {
