@@ -35,10 +35,10 @@ CUTE_DEVICE T group_reduce_max(T val) {
 }  // namespace detail
 
 // online softmax kernel
-template <int ROWS_PER_THREAD>
+template <int ROWS_PER_THR>
 struct OnlineSoftmax {
   // Fragment type for row_max and row_sum
-  using FragmentT = decltype(make_tensor<float>(Int<ROWS_PER_THREAD>{}));
+  using FragmentT = decltype(make_tensor<float>(Int<ROWS_PER_THR>{}));
 
   FragmentT row_max_;
   FragmentT row_sum_;

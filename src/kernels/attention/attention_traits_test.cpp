@@ -3,6 +3,8 @@
 #include <cute/tensor.hpp>
 
 #include "attention_traits_sm80.h"
+#include "cute/layout_composed.hpp"
+#include "gather_tensor.hpp"
 
 namespace llm {
 

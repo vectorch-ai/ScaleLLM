@@ -7,7 +7,6 @@
 #include "attention_params.h"
 #include "attention_ref.h"
 #include "cute/layout.hpp"
-#include "static_dispatch.h"
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
