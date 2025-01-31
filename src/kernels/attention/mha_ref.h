@@ -4,7 +4,7 @@
 
 namespace llm {
 // Multi-head attention implementation using pytorch
-inline torch::Tensor attention_batch_ref(
+inline torch::Tensor mha_batch_ref(
     torch::Tensor query,  // [batch_size, q_len, n_heads, head_dim]
     torch::Tensor key,    // [batch_size, kv_len, n_kv_heads, head_dim]
     torch::Tensor value,  // [batch_size, kv_len, n_kv_heads, head_dim]
@@ -68,7 +68,7 @@ inline torch::Tensor attention_batch_ref(
       .type_as(query);
 }
 
-inline torch::Tensor attention_ref(
+inline torch::Tensor mha_ref(
     torch::Tensor query,  // [q_len, n_heads, head_dim]
     torch::Tensor key,    // [kv_len, n_kv_heads, head_dim]
     torch::Tensor value,  // [kv_len, n_kv_heads, head_dim]
@@ -132,7 +132,7 @@ inline torch::Tensor attention_ref(
       .type_as(query);
 }
 
-inline torch::Tensor attention_varlen_ref(
+inline torch::Tensor mha_varlen_ref(
     torch::Tensor query,       // [q_len, n_heads, head_dim]
     torch::Tensor key,         // [kv_len, n_kv_heads, head_dim]
     torch::Tensor value,       // [kv_len, n_kv_heads, head_dim]
@@ -162,7 +162,7 @@ inline torch::Tensor attention_varlen_ref(
         value.slice(/*dim=*/0, /*start=*/kv_start, /*end=*/kv_end);
 
     auto output =
-        attention_ref(q, k, v, alibi_slopes, logits_soft_cap, sliding_window);
+        mha_ref(q, k, v, alibi_slopes, logits_soft_cap, sliding_window);
     out_list.push_back(output);
   }
   return torch::cat(out_list, /*dim=*/0);

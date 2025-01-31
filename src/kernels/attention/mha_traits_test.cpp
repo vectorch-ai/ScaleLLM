@@ -2,16 +2,16 @@
 
 #include <cute/tensor.hpp>
 
-#include "attention_traits_sm80.h"
 #include "cute/layout_composed.hpp"
 #include "gather_tensor.hpp"
+#include "mha_traits_sm80.h"
 
 namespace llm {
 
 using namespace cute;
 
 template <typename Traits>
-void test_attention_traits() {
+void test_mha_traits() {
   // type alias
   using TiledMma = typename Traits::TiledMma;
   using Layout = typename Traits::LayoutConvertor;
@@ -47,12 +47,12 @@ void test_attention_traits() {
   // TODO: add tests for layout conformance
 }
 
-TEST(AttentionTraitsTest, TraitsSM80) {
-  test_attention_traits<AttentionTraitsSM80<cute::half_t,
-                                            /*HEAD_DIM=*/64,
-                                            /*BLK_M=*/64,
-                                            /*BLK_N=*/64,
-                                            /*BLK_K=*/64>>();
+TEST(MHATraitsTest, TraitsSM80) {
+  test_mha_traits<MHATraitsSM80<cute::half_t,
+                                /*HEAD_DIM=*/64,
+                                /*BLK_M=*/64,
+                                /*BLK_N=*/64,
+                                /*BLK_K=*/64>>();
 }
 
 }  // namespace llm

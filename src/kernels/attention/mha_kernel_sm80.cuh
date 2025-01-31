@@ -6,11 +6,11 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "attention_tile.h"
 #include "cute/config.hpp"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 #include "mask.h"
+#include "mha_tile.h"
 #include "online_softmax.cuh"
 #include "ptx.cuh"
 
@@ -59,7 +59,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   const int kv_head_idx = blockIdx.z;
   const int tidx = threadIdx.x;
 
-  AttentionTile<Params> tile(params);
+  MHATile<Params> tile(params);
 
   // preprocess input parameters
   const int head_dim = params.head_dim;

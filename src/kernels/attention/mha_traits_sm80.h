@@ -32,7 +32,7 @@ struct LayoutConvertor {
 }  // namespace detail
 
 template <typename DTYPE, int HEAD_DIM, int BLK_M, int BLK_N, int BLK_K>
-struct AttentionTraitsSM80 {
+struct MHATraitsSM80 {
   // helpful aliases
   static constexpr int kHeadDim = HEAD_DIM;
   static constexpr int kBlockM = BLK_M;

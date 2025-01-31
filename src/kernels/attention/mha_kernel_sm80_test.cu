@@ -3,10 +3,10 @@
 
 #include <cstdint>
 
-#include "attention_launch_sm80.cuh"
-#include "attention_params.h"
-#include "attention_ref.h"
 #include "cute/layout.hpp"
+#include "mha_launch_sm80.cuh"
+#include "mha_params.h"
+#include "mha_ref.h"
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
@@ -36,7 +36,7 @@ namespace llm {
   }()
 
 namespace {
-torch::Tensor attention_sm80(
+torch::Tensor mha_sm80(
     torch::Tensor query,  // [batch_size, q_len, n_heads, head_dim]
     torch::Tensor key,    // [batch_size, kv_len, n_kv_heads, head_dim]
     torch::Tensor value,  // [batch_size, kv_len, n_kv_heads, head_dim]
@@ -56,7 +56,7 @@ torch::Tensor attention_sm80(
   const float sm_scale = 1.0 / sqrt(head_dim);
 
   // construct attention params
-  AttentionParams params;
+  MHAParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride =
       make_stride(query.stride(0), query.stride(1), query.stride(2));
@@ -84,7 +84,7 @@ torch::Tensor attention_sm80(
 
   DISPATCH_TORCH_DTYPE_(query.dtype(), DTYPE, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params);
+      run_mha_kernel_sm80<DTYPE, HEAD_DIM>(params);
     });
   });
   return out;
@@ -92,7 +92,7 @@ torch::Tensor attention_sm80(
 
 }  // namespace
 
-class AttentionKernelTest
+class MHAKernelTest
     : public ::testing::TestWithParam<std::tuple<torch::ScalarType /*q_dtype*/,
                                                  int64_t /*batch_size*/,
                                                  int64_t /*q_len*/,
@@ -110,7 +110,7 @@ class AttentionKernelTest
   }
 };
 
-TEST_P(AttentionKernelTest, MHA) {
+TEST_P(MHAKernelTest, MHA) {
   const auto [dtype,
               batch_size,
               q_len,
@@ -139,9 +139,9 @@ TEST_P(AttentionKernelTest, MHA) {
         {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
-  auto ref_out = attention_batch_ref(
+  auto ref_out = mha_batch_ref(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
-  auto out = attention_sm80(
+  auto out = mha_sm80(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window, q_len);
 
   if (dtype == torch::kBFloat16) {
@@ -153,7 +153,7 @@ TEST_P(AttentionKernelTest, MHA) {
 
 INSTANTIATE_TEST_SUITE_P(
     MHA,
-    AttentionKernelTest,
+    MHAKernelTest,
     ::testing::Combine(
         ::testing::Values(torch::kHalf, torch::kBFloat16),   // q_dtype
         ::testing::Values(1, 2, 4),                          // batch_size

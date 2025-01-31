@@ -15,12 +15,12 @@ DTYPE_MAP = {
 HEAD_DIMENSIONS = [64, 96, 128, 256]
 
 PAGEDKV_KERNEL_IMPL_TEMPLATE = """
-#include "attention_launch_sm80.cuh" // IWYU pragma: keep
+#include "mha_launch_sm80.cuh" // IWYU pragma: keep
 
 namespace llm {{
 
-using Params = PagedKVAttentionParams;
-template void run_attention_kernel_sm80<{DTYPE}, {HEAD_DIM}, Params>(
+using Params = MHAPagedKVParams;
+template void run_mha_kernel_sm80<{DTYPE}, {HEAD_DIM}, Params>(
     Params& params, cudaStream_t stream);
 
 }}  // namespace llm
@@ -39,7 +39,7 @@ class Kernel:
 
     @property
     def filename(self) -> str:
-        return f"attention_{self.dtype}_hd{self.head_dim}_sm80.cu"
+        return f"mha_{self.dtype}_hd{self.head_dim}_sm80.cu"
 
 
 def get_all_kernels() -> Iterator[Kernel]:
