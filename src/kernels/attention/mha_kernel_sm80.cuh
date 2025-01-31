@@ -6,7 +6,7 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "attention_tile.h"
+#include "mha_tile.h"
 #include "cute/config.hpp"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"

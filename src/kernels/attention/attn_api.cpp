@@ -2,8 +2,8 @@
 
 #include <ATen/cuda/CUDAContext.h>
 
-#include "attention_params.h"
 #include "cute/layout.hpp"
+#include "mha_params.h"
 #include "static_dispatch.h"
 
 namespace llm {
@@ -11,7 +11,7 @@ using namespace cute;
 
 // forward declaration
 template <typename Dtype, int HEAD_DIM, typename Params>
-void run_attention_kernel_sm80(Params& params, cudaStream_t stream);
+void run_mha_kernel_sm80(Params& params, cudaStream_t stream);
 
 void paged_kv_varlen_mha(
     torch::Tensor& out,                // [n_tokens, n_heads, head_dim]
@@ -68,7 +68,7 @@ void paged_kv_varlen_mha(
   cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
   DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
     DISPATCH_TORCH_DTYPE(query.scalar_type(), DTYPE, [&] {
-      run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params, stream);
+      run_mha_kernel_sm80<DTYPE, HEAD_DIM>(params, stream);
     });
   });
 }

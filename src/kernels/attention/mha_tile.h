@@ -2,8 +2,8 @@
 #include <cute/config.hpp>
 #include <cute/tensor.hpp>
 
-#include "attention_params.h"
 #include "gather_tensor.hpp"
+#include "mha_params.h"
 
 namespace llm {
 using namespace cute;

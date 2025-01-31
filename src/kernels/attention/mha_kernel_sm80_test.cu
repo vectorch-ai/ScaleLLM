@@ -3,9 +3,9 @@
 
 #include <cstdint>
 
-#include "attention_launch_sm80.cuh"
-#include "attention_params.h"
-#include "attention_ref.h"
+#include "mha_launch_sm80.cuh"
+#include "mha_params.h"
+#include "mha_ref.h"
 #include "cute/layout.hpp"
 
 namespace llm {
@@ -36,7 +36,7 @@ namespace llm {
   }()
 
 namespace {
-torch::Tensor attention_sm80(
+torch::Tensor mha_sm80(
     torch::Tensor query,  // [batch_size, q_len, n_heads, head_dim]
     torch::Tensor key,    // [batch_size, kv_len, n_kv_heads, head_dim]
     torch::Tensor value,  // [batch_size, kv_len, n_kv_heads, head_dim]
@@ -84,7 +84,7 @@ torch::Tensor attention_sm80(
 
   DISPATCH_TORCH_DTYPE_(query.dtype(), DTYPE, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<DTYPE, HEAD_DIM>(params);
+      run_mha_kernel_sm80<DTYPE, HEAD_DIM>(params);
     });
   });
   return out;
@@ -139,9 +139,9 @@ TEST_P(AttentionKernelTest, MHA) {
         {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
-  auto ref_out = attention_batch_ref(
+  auto ref_out = mha_batch_ref(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
-  auto out = attention_sm80(
+  auto out = mha_sm80(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window, q_len);
 
   if (dtype == torch::kBFloat16) {

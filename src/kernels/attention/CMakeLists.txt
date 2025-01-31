@@ -12,11 +12,11 @@ cc_library(
     online_softmax.cuh
     mask.h
     static_dispatch.h
-    attention_params.h
-    attention_tile.h
-    attention_traits_sm80.h
-    attention_kernel_sm80.cuh
-    attention_launch_sm80.cuh
+    mha_params.h
+    mha_tile.h
+    mha_traits_sm80.h
+    mha_kernel_sm80.cuh
+    mha_launch_sm80.cuh
   DEPS
     cutlass
 )
@@ -53,13 +53,13 @@ cc_library(
 
 cc_test(
   NAME
-    attention_kernel_test
+    mha_kernel_test
   SRCS
-    # attention_cpu_test.cpp
-    attention_traits_test.cpp
-    attention_kernel_sm80_test.cu
-    # attention_kernel_sm80_varlen_test.cu
-    attention_kernel_sm80_pagedkv_test.cu
+    # mha_cpu_test.cpp
+    mha_traits_test.cpp
+    mha_kernel_sm80_test.cu
+    # mha_kernel_sm80_varlen_test.cu
+    mha_kernel_sm80_pagedkv_test.cu
   DEPS
     :attention.template
     absl::random_random
@@ -69,18 +69,18 @@ cc_test(
 
 nvbench_binary(
   NAME 
-    attention_sm80_bench
+    mha_sm80_bench
   SRCS 
-    attention_sm80_bench.cu
+    mha_sm80_bench.cu
   DEPS
     :attention.template 
 )
 
 nvbench_binary(
   NAME 
-    attention_sm80_pagedkv_bench
+    mha_sm80_pagedkv_bench
   SRCS 
-    attention_sm80_pagedkv_bench.cu
+    mha_sm80_pagedkv_bench.cu
   DEPS
     absl::random_random
     :attention.template

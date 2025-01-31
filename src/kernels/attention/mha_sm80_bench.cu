@@ -4,8 +4,8 @@
 #include <cuda/std/chrono>
 #include <nvbench/nvbench.cuh>
 
-#include "attention_launch_sm80.cuh"
-#include "attention_params.h"
+#include "mha_launch_sm80.cuh"
+#include "mha_params.h"
 
 using namespace llm;
 
@@ -22,7 +22,7 @@ using namespace llm;
     }                                                      \
   }()
 
-void attention_bench_sm80(nvbench::state& state) {
+void mha_bench_sm80(nvbench::state& state) {
   // Collect CUPTI metrics
   state.collect_cupti_metrics();
 
@@ -82,13 +82,12 @@ void attention_bench_sm80(nvbench::state& state) {
 
   state.exec([&](nvbench::launch& launch) {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      run_attention_kernel_sm80<cute::half_t, HEAD_DIM>(params,
-                                                        launch.get_stream());
+      run_mha_kernel_sm80<cute::half_t, HEAD_DIM>(params, launch.get_stream());
     });
   });
 }
 
-NVBENCH_BENCH(attention_bench_sm80)
+NVBENCH_BENCH(mha_bench_sm80)
     .add_int64_axis("batch_size", {1})
     .add_int64_axis("q_len", {1024})
     .add_int64_axis("kv_len", {1024})

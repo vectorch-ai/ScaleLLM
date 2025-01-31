@@ -1,7 +1,7 @@
 #include <cute/tensor.hpp>
 #include <fstream>
 
-#include "../attention_traits_sm80.h"
+#include "../mha_traits_sm80.h"
 #include "print_svg.hpp"
 
 using namespace cute;
