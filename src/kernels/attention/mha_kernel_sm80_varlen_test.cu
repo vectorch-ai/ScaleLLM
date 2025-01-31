@@ -2,10 +2,10 @@
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
+#include "cute/layout.hpp"
 #include "mha_launch_sm80.cuh"
 #include "mha_params.h"
 #include "mha_ref.h"
-#include "cute/layout.hpp"
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
@@ -42,7 +42,7 @@ torch::Tensor mha_varlen_sm80(
   const float sm_scale = 1.0 / sqrt(head_dim);
 
   // construct attention params
-  VarLenAttentionParams params;
+  MHAVarLenParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride = make_stride(query.stride(0), query.stride(1));
   params.k_ptr = key.const_data_ptr();
@@ -74,7 +74,7 @@ torch::Tensor mha_varlen_sm80(
 
 }  // namespace
 
-class AttentionKernelVarlenTest
+class MHAKernelVarlenTest
     : public ::testing::TestWithParam<std::tuple<int64_t /*batch_size*/,
                                                  int64_t /*q_len*/,
                                                  int64_t /*kv_len*/,
@@ -91,7 +91,7 @@ class AttentionKernelVarlenTest
   }
 };
 
-TEST_P(AttentionKernelVarlenTest, VarLen) {
+TEST_P(MHAKernelVarlenTest, VarLen) {
   const auto [batch_size,
               max_q_len,
               max_kv_len,
@@ -148,29 +148,29 @@ TEST_P(AttentionKernelVarlenTest, VarLen) {
   }
 
   auto ref_out = mha_varlen_ref(query,
-                                      key,
-                                      value,
-                                      q_cu_lens,
-                                      kv_cu_lens,
-                                      alibi_slopes,
-                                      logits_soft_cap,
-                                      sliding_window);
+                                key,
+                                value,
+                                q_cu_lens,
+                                kv_cu_lens,
+                                alibi_slopes,
+                                logits_soft_cap,
+                                sliding_window);
   auto out = mha_varlen_sm80(query,
-                                   key,
-                                   value,
-                                   q_cu_lens,
-                                   kv_cu_lens,
-                                   alibi_slopes,
-                                   logits_soft_cap,
-                                   sliding_window,
-                                   max_q_len);
+                             key,
+                             value,
+                             q_cu_lens,
+                             kv_cu_lens,
+                             alibi_slopes,
+                             logits_soft_cap,
+                             sliding_window,
+                             max_q_len);
 
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    VarLen,
-    AttentionKernelVarlenTest,
+    MHA,
+    MHAKernelVarlenTest,
     ::testing::Combine(
         ::testing::Values(1, 2, 4),                          // batch_size
         ::testing::Values(1, 62, 125),                       // max_q_len

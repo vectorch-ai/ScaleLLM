@@ -47,12 +47,12 @@ void test_mha_traits() {
   // TODO: add tests for layout conformance
 }
 
-TEST(AttentionTraitsTest, TraitsSM80) {
-  test_mha_traits<AttentionTraitsSM80<cute::half_t,
-                                      /*HEAD_DIM=*/64,
-                                      /*BLK_M=*/64,
-                                      /*BLK_N=*/64,
-                                      /*BLK_K=*/64>>();
+TEST(MHATraitsTest, TraitsSM80) {
+  test_mha_traits<MHATraitsSM80<cute::half_t,
+                                /*HEAD_DIM=*/64,
+                                /*BLK_M=*/64,
+                                /*BLK_N=*/64,
+                                /*BLK_K=*/64>>();
 }
 
 }  // namespace llm

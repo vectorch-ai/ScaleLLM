@@ -7,7 +7,7 @@
 namespace llm {
 
 // common params for attention kernels
-struct AttentionParamsCommon {
+struct MHAParamsCommon {
   const void* __restrict__ q_ptr = nullptr;
   const void* __restrict__ k_ptr = nullptr;
   const void* __restrict__ v_ptr = nullptr;
@@ -86,7 +86,7 @@ struct AttentionParamsCommon {
   }
 };
 
-struct AttentionParams : public AttentionParamsCommon {
+struct MHAParams : public MHAParamsCommon {
   // (batch, seq, head, dim): last dimension is contiguous
   using Stride = cute::Stride<int64_t, int64_t, int64_t /*,_1*/>;
 
@@ -101,7 +101,7 @@ struct AttentionParams : public AttentionParamsCommon {
 };
 
 // variable length sequence
-struct VarLenAttentionParams : public AttentionParamsCommon {
+struct MHAVarLenParams : public MHAParamsCommon {
   // (seq, head, dim): last dimension is contiguous
   using Stride = cute::Stride<int64_t, int64_t /*,_1*/>;
 
@@ -117,7 +117,7 @@ struct VarLenAttentionParams : public AttentionParamsCommon {
 };
 
 // paged KV cache
-struct PagedKVAttentionParams : public VarLenAttentionParams {
+struct MHAPagedKVParams : public MHAVarLenParams {
   // Paged KV cache
   // the first slot id of each block
   const int* __restrict__ block_table = nullptr;

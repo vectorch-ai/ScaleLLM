@@ -35,7 +35,7 @@ void paged_kv_varlen_mha(
   const int head_dim = query.size(-1);
 
   // construct attention params
-  PagedKVAttentionParams params;
+  MHAPagedKVParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride = make_stride(query.stride(0), query.stride(1));
   params.k_ptr = key_cache.const_data_ptr();

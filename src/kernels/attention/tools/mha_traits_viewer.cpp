@@ -123,8 +123,7 @@ int main(int argc, char** argv) {
   constexpr int kBlockN = 64;
   constexpr int kBlockK = 64;
 
-  using Traits =
-      AttentionTraitsSM80<Element, kHeadDim, kBlockM, kBlockN, kBlockK>;
+  using Traits = MHATraitsSM80<Element, kHeadDim, kBlockM, kBlockN, kBlockK>;
   print_attn_traits<Traits>();
 
   return 0;

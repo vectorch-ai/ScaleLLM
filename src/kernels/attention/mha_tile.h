@@ -9,18 +9,17 @@ namespace llm {
 using namespace cute;
 
 template <typename Params>
-struct AttentionTile {
+struct MHATile {
   static_assert(cute::dependent_false<Params>, "not implemented");
 };
 
 // AttentionTile specialization for AttentionParams
 template <>
-struct AttentionTile<AttentionParams> {
+struct MHATile<MHAParams> {
   // NOLINTNEXTLINE
-  const AttentionParams& params_;
+  const MHAParams& params_;
 
-  CUTE_HOST_DEVICE AttentionTile(const AttentionParams& params)
-      : params_(params) {}
+  CUTE_HOST_DEVICE MHATile(const MHAParams& params) : params_(params) {}
 
   // return the query/output tile: (q_len, head_dim)
   template <typename Element>
@@ -88,12 +87,11 @@ struct AttentionTile<AttentionParams> {
 
 // variable length sequence
 template <>
-struct AttentionTile<VarLenAttentionParams> {
+struct MHATile<MHAVarLenParams> {
   // NOLINTNEXTLINE
-  const VarLenAttentionParams& params_;
+  const MHAVarLenParams& params_;
 
-  CUTE_HOST_DEVICE AttentionTile(const VarLenAttentionParams& params)
-      : params_(params) {}
+  CUTE_HOST_DEVICE MHATile(const MHAVarLenParams& params) : params_(params) {}
 
   // return the query tile: (q_len, head_dim)
   template <typename Element>
@@ -158,12 +156,11 @@ struct AttentionTile<VarLenAttentionParams> {
 
 // paged KV cache
 template <>
-struct AttentionTile<PagedKVAttentionParams> {
+struct MHATile<MHAPagedKVParams> {
   // NOLINTNEXTLINE
-  const PagedKVAttentionParams& params_;
+  const MHAPagedKVParams& params_;
 
-  CUTE_HOST_DEVICE AttentionTile(const PagedKVAttentionParams& params)
-      : params_(params) {}
+  CUTE_HOST_DEVICE MHATile(const MHAPagedKVParams& params) : params_(params) {}
 
   // return the query/output tile: (q_len, head_dim)
   template <typename Element>

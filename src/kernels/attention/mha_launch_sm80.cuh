@@ -40,12 +40,8 @@ void run_mha_kernel(const Params& params, cudaStream_t stream) {
     DISPATCH_BOOL(params.alibi_slopes_ptr != nullptr, ALIBI, [&] {
       DISPATCH_BOOL(params.logits_soft_cap > 0, SOFT_CAP, [&] {
         DISPATCH_BOOL(params.sliding_window >= 0, LOCAL, [&] {
-          launch_mha_kernel<Traits,
-                                  Params,
-                                  EVEN_K,
-                                  ALIBI,
-                                  SOFT_CAP,
-                                  LOCAL>(params, stream);
+          launch_mha_kernel<Traits, Params, EVEN_K, ALIBI, SOFT_CAP, LOCAL>(
+              params, stream);
         });
       });
     });
@@ -62,40 +58,40 @@ void run_mha_kernel_sm80(Params& params, cudaStream_t stream = nullptr) {
 
   // TODO: tune block shape MNK based on the head dim and smem size
   if constexpr (HEAD_DIM == 64) {
-    using Traits = AttentionTraitsSM80<Dtype,
-                                       HEAD_DIM,
-                                       /*BLK_M=*/64,
-                                       /*BLK_N=*/64,
-                                       /*BLK_K=*/64>;
+    using Traits = MHATraitsSM80<Dtype,
+                                 HEAD_DIM,
+                                 /*BLK_M=*/64,
+                                 /*BLK_N=*/64,
+                                 /*BLK_K=*/64>;
     detail::run_mha_kernel<Traits>(params, stream);
   } else if constexpr (HEAD_DIM == 96) {
-    using Traits = AttentionTraitsSM80<Dtype,
-                                       HEAD_DIM,
-                                       /*BLK_M=*/64,
-                                       /*BLK_N=*/64,
-                                       /*BLK_K=*/32>;
+    using Traits = MHATraitsSM80<Dtype,
+                                 HEAD_DIM,
+                                 /*BLK_M=*/64,
+                                 /*BLK_N=*/64,
+                                 /*BLK_K=*/32>;
     detail::run_mha_kernel<Traits>(params, stream);
   } else if constexpr (HEAD_DIM == 128) {
-    using Traits = AttentionTraitsSM80<Dtype,
-                                       HEAD_DIM,
-                                       /*BLK_M=*/64,
-                                       /*BLK_N=*/64,
-                                       /*BLK_K=*/64>;
+    using Traits = MHATraitsSM80<Dtype,
+                                 HEAD_DIM,
+                                 /*BLK_M=*/64,
+                                 /*BLK_N=*/64,
+                                 /*BLK_K=*/64>;
     detail::run_mha_kernel<Traits>(params, stream);
   } else if constexpr (HEAD_DIM == 256) {
-    using Traits = AttentionTraitsSM80<Dtype,
-                                       HEAD_DIM,
-                                       /*BLK_M=*/64,
-                                       /*BLK_N=*/64,
-                                       /*BLK_K=*/64>;
+    using Traits = MHATraitsSM80<Dtype,
+                                 HEAD_DIM,
+                                 /*BLK_M=*/64,
+                                 /*BLK_N=*/64,
+                                 /*BLK_K=*/64>;
     detail::run_mha_kernel<Traits>(params, stream);
   } else {
     // use the default block size
-    using Traits = AttentionTraitsSM80<Dtype,
-                                       HEAD_DIM,
-                                       /*BLK_M=*/64,
-                                       /*BLK_N=*/64,
-                                       /*BLK_K=*/64>;
+    using Traits = MHATraitsSM80<Dtype,
+                                 HEAD_DIM,
+                                 /*BLK_M=*/64,
+                                 /*BLK_N=*/64,
+                                 /*BLK_K=*/64>;
     detail::run_mha_kernel<Traits>(params, stream);
   }
 }

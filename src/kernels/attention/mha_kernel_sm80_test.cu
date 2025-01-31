@@ -3,10 +3,10 @@
 
 #include <cstdint>
 
+#include "cute/layout.hpp"
 #include "mha_launch_sm80.cuh"
 #include "mha_params.h"
 #include "mha_ref.h"
-#include "cute/layout.hpp"
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
@@ -56,7 +56,7 @@ torch::Tensor mha_sm80(
   const float sm_scale = 1.0 / sqrt(head_dim);
 
   // construct attention params
-  AttentionParams params;
+  MHAParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride =
       make_stride(query.stride(0), query.stride(1), query.stride(2));
@@ -92,7 +92,7 @@ torch::Tensor mha_sm80(
 
 }  // namespace
 
-class AttentionKernelTest
+class MHAKernelTest
     : public ::testing::TestWithParam<std::tuple<torch::ScalarType /*q_dtype*/,
                                                  int64_t /*batch_size*/,
                                                  int64_t /*q_len*/,
@@ -110,7 +110,7 @@ class AttentionKernelTest
   }
 };
 
-TEST_P(AttentionKernelTest, MHA) {
+TEST_P(MHAKernelTest, MHA) {
   const auto [dtype,
               batch_size,
               q_len,
@@ -153,7 +153,7 @@ TEST_P(AttentionKernelTest, MHA) {
 
 INSTANTIATE_TEST_SUITE_P(
     MHA,
-    AttentionKernelTest,
+    MHAKernelTest,
     ::testing::Combine(
         ::testing::Values(torch::kHalf, torch::kBFloat16),   // q_dtype
         ::testing::Values(1, 2, 4),                          // batch_size

@@ -101,7 +101,7 @@ void mha_bench_sm80(nvbench::state& state) {
   }
 
   // construct attention params
-  PagedKVAttentionParams params;
+  MHAPagedKVParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride = make_stride(query.stride(0), query.stride(1));
   params.k_ptr = key_cache.const_data_ptr();
@@ -130,8 +130,7 @@ void mha_bench_sm80(nvbench::state& state) {
 
   state.exec([&](nvbench::launch& launch) {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      run_mha_kernel_sm80<cute::half_t, HEAD_DIM>(params,
-                                                        launch.get_stream());
+      run_mha_kernel_sm80<cute::half_t, HEAD_DIM>(params, launch.get_stream());
     });
   });
 }

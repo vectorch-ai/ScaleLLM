@@ -19,7 +19,7 @@ PAGEDKV_KERNEL_IMPL_TEMPLATE = """
 
 namespace llm {{
 
-using Params = PagedKVAttentionParams;
+using Params = MHAPagedKVParams;
 template void run_mha_kernel_sm80<{DTYPE}, {HEAD_DIM}, Params>(
     Params& params, cudaStream_t stream);
 

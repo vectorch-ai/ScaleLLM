@@ -56,7 +56,7 @@ void mha_bench_sm80(nvbench::state& state) {
   }
 
   // construct attention params
-  AttentionParams params;
+  MHAParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride =
       make_stride(query.stride(0), query.stride(1), query.stride(2));
