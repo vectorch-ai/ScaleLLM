@@ -1,0 +1,35 @@
+Function:add_kernel
+--:-:-:-:2	IMAD.MOV.U32 R1, RZ, RZ, c[0x0][0x28];
+--:-:0:-:1	S2R R6, SR_TID.X;
+--:-:-:-:1	IMAD.MOV.U32 R7, RZ, RZ, 0x2;
+--:-:-:-:1	PRMT R8, RZ, 0x7610, R8;
+--:-:-:-:1	ULDC.64 UR4, c[0x0][0x118];
+--:-:1:-:1	S2R R3, SR_CTAID.X;
+--:-:-:-:2	PRMT R9, RZ, 0x7610, R9;
+01:-:-:Y:5	LOP3.LUT R0, R6, 0xf, RZ, 0xc0, !PT;
+02:-:-:Y:4	IMAD R0, R3, 0x10, R0;
+--:-:-:-:1	IMAD.WIDE R2, R0.reuse, R7, c[0x0][0x160];
+--:-:-:Y:3	ISETP.GE.AND P0, PT, R0, c[0x0][0x178], PT;
+--:-:-:Y:a	IMAD.WIDE R4, R0, R7, c[0x0][0x168];
+--:-:2:-:4	@!P0 LDG.E.U16 R8, [R2.64];
+--:-:2:-:1	@!P0 LDG.E.U16 R9, [R4.64];
+--:-:-:-:1	LOP3.LUT P0, RZ, R6, 0x10, RZ, 0xc0, !PT;
+--:-:-:Y:3	IMAD.WIDE R6, R0, R7, c[0x0][0x170];
+--:-:-:-:1	ISETP.LT.AND P0, PT, R0, c[0x0][0x178], !P0;
+04:-:-:Y:c	HADD2 R8, R8.H0_H0, R9.H0_H0;
+--:-:-:-:5	@!P0 EXIT;
+--:-:-:-:1	STG.E.U16 [R6.64], R8;
+--:-:-:-:5	EXIT;
+LBB0:
+--:-:-:Y:0	BRA LBB0;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+
