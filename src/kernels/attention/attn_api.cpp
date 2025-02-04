@@ -3,15 +3,12 @@
 #include <ATen/cuda/CUDAContext.h>
 
 #include "cute/layout.hpp"
+#include "mha_dispatch_sm80.cuh"
 #include "mha_params.h"
 #include "static_dispatch.h"
 
 namespace llm {
 using namespace cute;
-
-// forward declaration
-template <typename Dtype, int HEAD_DIM, typename Params>
-void run_mha_kernel_sm80(Params& params, cudaStream_t stream);
 
 void paged_kv_varlen_mha(
     torch::Tensor& out,                // [n_tokens, n_heads, head_dim]

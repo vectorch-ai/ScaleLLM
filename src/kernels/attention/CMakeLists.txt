@@ -16,7 +16,7 @@ cc_library(
     mha_tile.h
     mha_traits_sm80.h
     mha_kernel_sm80.cuh
-    mha_launch_sm80.cuh
+    mha_dispatch_sm80.cuh
   DEPS
     cutlass
 )

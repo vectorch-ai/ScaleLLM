@@ -40,6 +40,8 @@ struct MHATraitsSM80 {
   static constexpr int kBlockK = BLK_K;
   static constexpr int kRowsPerMMA = 2;
 
+  static_assert(kHeadDim % kBlockK == 0);
+
   using DType = DTYPE;
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
