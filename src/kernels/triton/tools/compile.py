@@ -170,7 +170,7 @@ if __name__ == "__main__":
         "gridZ": grid[2],
         "_placeholder": "",
     }
-    for ext in ['h', 'c']:
+    for ext in ['cuh', 'cu']:
         template_path = Path(__file__).parent / f"compile.{ext}"
         with out_path.with_suffix(f".{sig_hash}_{suffix}.{ext}").open("w") as fp:
             fp.write(Path(template_path).read_text().format(**params))
