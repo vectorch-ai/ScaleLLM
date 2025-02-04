@@ -3,9 +3,9 @@
 #include <ATen/cuda/CUDAContext.h>
 
 #include "cute/layout.hpp"
+#include "mha_dispatch_sm80.cuh"
 #include "mha_params.h"
 #include "static_dispatch.h"
-#include "mha_launch_sm80.cuh"
 
 namespace llm {
 using namespace cute;
