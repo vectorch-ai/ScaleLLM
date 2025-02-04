@@ -1,7 +1,6 @@
-extern "C" {
-#include "aot/add_kernel_fp16.h"
-#include "aot/add_kernel_fp32.h"
-}
+
+#include "aot/add_kernel_fp16_sm80.cuh"
+#include "aot/add_kernel_fp32_sm80.cuh"
 
 #include <c10/cuda/CUDAStream.h>
 #include <gtest/gtest.h>
@@ -24,11 +23,11 @@ TEST(TritionTest, ExampleFp16Kernel) {
   auto output = torch::empty_like(output_ref);
 
   // load kernel before using it
-  load_add_kernel_fp16();
+  load_add_kernel_fp16_sm80();
 
   // launch kernel and compare results
   auto stream = at::cuda::getCurrentCUDAStream();
-  CUresult result = add_kernel_fp16_default(
+  CUresult result = add_kernel_fp16_sm80_default(
       stream, reinterpret_cast<CUdeviceptr>(x.data_ptr()),
       reinterpret_cast<CUdeviceptr>(y.data_ptr()),
       reinterpret_cast<CUdeviceptr>(output.data_ptr()), n_elements);
@@ -40,7 +39,7 @@ TEST(TritionTest, ExampleFp16Kernel) {
   EXPECT_TRUE(torch::equal(output, output_ref));
 
   // unload kernel after using it
-  unload_add_kernel_fp16();
+  unload_add_kernel_fp16_sm80();
 }
 
 TEST(TritionTest, ExampleFp32Kernel) {
@@ -58,11 +57,11 @@ TEST(TritionTest, ExampleFp32Kernel) {
   auto output = torch::empty_like(output_ref);
 
   // load kernel before using it
-  load_add_kernel_fp32();
+  load_add_kernel_fp32_sm80();
 
   // launch kernel and compare results
   auto stream = at::cuda::getCurrentCUDAStream();
-  CUresult result = add_kernel_fp32_default(
+  CUresult result = add_kernel_fp32_sm80_default(
       stream, reinterpret_cast<CUdeviceptr>(x.data_ptr()),
       reinterpret_cast<CUdeviceptr>(y.data_ptr()),
       reinterpret_cast<CUdeviceptr>(output.data_ptr()), n_elements);
@@ -74,7 +73,7 @@ TEST(TritionTest, ExampleFp32Kernel) {
   EXPECT_TRUE(torch::equal(output, output_ref));
 
   // unload kernel after using it
-  unload_add_kernel_fp32();
+  unload_add_kernel_fp32_sm80();
 }
 
 } // namespace llm

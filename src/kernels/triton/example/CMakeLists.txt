@@ -1,9 +1,9 @@
 include(cc_library)
 include(cc_test)
 
-# find all *.h/*.c files in folder aot recursively
-file(GLOB_RECURSE AOT_HEADERS aot/*.h)
-file(GLOB_RECURSE AOT_SOURCES aot/*.c)
+# globbing all generated files *.h/*.c in folder aot
+file(GLOB AOT_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/aot/*.cuh)
+file(GLOB AOT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/aot/*.cu)
 
 cc_library(
   NAME 

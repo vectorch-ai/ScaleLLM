@@ -1,0 +1,35 @@
+Function:add_kernel
+--:-:-:-:2	MOV R1, c[0x0][0x28];
+--:-:0:-:1	S2R R6, SR_TID.X;
+--:-:-:-:1	HFMA2.MMA R7, -RZ, RZ, 0, 2.384185791015625e-07;
+--:-:-:-:1	CS2R R8, SRZ;
+--:-:-:-:1	ULDC.64 UR4, c[0x0][0x118];
+--:-:1:-:1	S2R R3, SR_CTAID.X;
+01:-:-:Y:4	LOP3.LUT R0, R6, 0xf, RZ, 0xc0, !PT;
+02:-:-:Y:4	LEA R0, R3, R0, 0x4;
+--:-:-:-:1	ISETP.GE.AND P0, PT, R0.reuse, c[0x0][0x178], PT;
+--:-:-:Y:4	IMAD.WIDE R2, R0, R7, c[0x0][0x160];
+--:-:-:Y:8	IMAD.WIDE R4, R0, R7, c[0x0][0x168];
+--:-:2:-:4	@!P0 LDG.E R8, [R2.64];
+--:-:2:-:1	@!P0 LDG.E R9, [R4.64];
+--:-:-:-:1	LOP3.LUT P0, RZ, R6, 0x10, RZ, 0xc0, !PT;
+--:-:-:Y:3	IMAD.WIDE R6, R0, R7, c[0x0][0x170];
+--:-:-:-:1	ISETP.LT.AND P0, PT, R0, c[0x0][0x178], !P0;
+04:-:-:Y:c	FADD R9, R9, R8;
+--:-:-:-:5	@!P0 EXIT;
+--:-:-:-:1	STG.E [R6.64], R9;
+--:-:-:-:5	EXIT;
+LBB0:
+--:-:-:Y:0	BRA LBB0;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+--:-:-:Y:0	NOP;
+
