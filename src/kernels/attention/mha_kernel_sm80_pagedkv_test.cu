@@ -3,6 +3,7 @@
 #include <torch/torch.h>
 
 #include "cute/layout.hpp"
+#include "mha_kernel_sm80.cuh"
 #include "mha_launch_sm80.cuh"
 #include "mha_params.h"
 #include "mha_ref.h"

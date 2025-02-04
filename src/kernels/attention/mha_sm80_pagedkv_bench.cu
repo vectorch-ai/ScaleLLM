@@ -5,6 +5,7 @@
 #include <cuda/std/chrono>
 #include <nvbench/nvbench.cuh>
 
+#include "mha_kernel_sm80.cuh"
 #include "mha_launch_sm80.cuh"
 #include "mha_params.h"
 
