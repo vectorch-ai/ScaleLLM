@@ -3,7 +3,7 @@
 #include <torch/torch.h>
 
 namespace llm {
-// Multi-head latten attention implementation using pytorch
+// Multi-head latent attention implementation using pytorch
 // reference implementation:
 // https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py#L477
 inline torch::Tensor mla_batch_ref(
