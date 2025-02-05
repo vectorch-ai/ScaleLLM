@@ -2,6 +2,7 @@
 #include <fstream>
 
 #include "../mha_traits_sm80.h"
+#include "common/pretty_print.h"
 #include "print_svg.hpp"
 
 using namespace cute;
@@ -33,6 +34,10 @@ void print_attn_traits() {
   using SmemTiledCopyK = typename Traits::SmemTiledCopyK;
   using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
+  // print dynamic smem size
+  print("Dynamic Smem Size: ");
+  print(readable_size(Traits::kSmemSize).c_str());
+  print("\n");
 
   // print tiled mma
   print("TiledMma: \n");

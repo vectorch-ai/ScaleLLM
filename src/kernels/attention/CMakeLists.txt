@@ -17,6 +17,10 @@ cc_library(
     mha_traits_sm80.h
     mha_kernel_sm80.cuh
     mha_dispatch_sm80.cuh
+    mla_params.h
+    mla_tile.h
+    mla_traits_sm80.h
+    mla_kernel_sm80.cuh
   DEPS
     cutlass
 )
@@ -60,6 +64,18 @@ cc_test(
     mha_kernel_sm80_test.cu
     # mha_kernel_sm80_varlen_test.cu
     mha_kernel_sm80_pagedkv_test.cu
+  DEPS
+    :attention.template
+    absl::random_random
+    GTest::gtest_main
+    torch
+)
+
+cc_test(
+  NAME
+    mla_kernel_test
+  SRCS
+    mla_kernel_sm80_test.cu
   DEPS
     :attention.template
     absl::random_random

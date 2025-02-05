@@ -6,6 +6,7 @@ cc_binary(
   SRCS 
     mha_traits_viewer.cpp
   DEPS
+    :common
     cutlass
     absl::strings
     absl::str_format
