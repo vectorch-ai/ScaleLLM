@@ -299,21 +299,6 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     return;
   }
 
-  // ###############  Prologue  ###############
-  int n_block_idx = n_block_max - 1;
-  // produce query: [] => [q]
-  produce_query();
-  cp_async_fence();
-  // produce key: [q] => [q, k]
-  produce_key(n_block_idx);
-  cp_async_fence();
-
-  // ###############  Mainloop  ###############
-  // attention score accumulator, (MMA,MMA_M,MMA_N)
-  auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-  auto tSrAccS_rc_view =
-      make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
-
   auto apply_logits_soft_cap = [&](auto& tSrAccS) {
     if constexpr (SOFT_CAP) {
       CUTE_UNROLL
@@ -323,7 +308,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     }
   };
 
-  constexpr int kMMA_M = size<1>(tSrAccS);
+  constexpr int kMMA_M = size<1>(tOrAccO);
   using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
   using Mask = Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL>;
 
@@ -338,12 +323,26 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
             sm_scale,
             params.alibi_slopes_ptr);
 
-  // seperate oob mask iterations for better performance
-  constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
+  // ###############  Prologue  ###############
+  // produce query: [] => [q]
+  produce_query();
+  cp_async_fence();
+  // produce key: [q] => [q, k]
+  produce_key(n_block_max - 1);
+  cp_async_fence();
 
-  // oob mask iterations
-  CUTE_UNROLL
-  for (int i = 0; i < n_oob_mask; ++i) {
+  // ###############  Mainloop  ###############
+  constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
+  const int n_blocks = n_block_max - n_block_min;
+
+  CUTE_NO_UNROLL
+  for (int i = 0; i < n_blocks; ++i) {
+    const int n_block_idx = n_block_max - 1 - i;
+
+    // attention score accumulator, (MMA,MMA_M,MMA_N)
+    auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
+    auto tSrAccS_rc_view =
+        make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
     clear(tSrAccS);
 
     // wait key, queue: [q, k] => []
@@ -361,57 +360,20 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     // 1> S = Q@K.T
     compute_qk(tSrAccS);
 
-    if constexpr (SOFT_CAP) {
-      apply_logits_soft_cap(tSrAccS);
-    }
-    mask.apply(tSrAccS_rc_view, n_block_idx);
-    softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
-
     // wait value, [v] => []
     cp_async_wait<0>();
     __syncthreads();
 
-    // produce next key: [] => [k]
-    if (n_block_idx > n_block_min) {
-      produce_key_no_oob(n_block_idx - 1);
-    }
-    cp_async_fence();
-
-    // 2> O = softmax(S)*V
-    compute_sv(tSrAccS, tOrAccO);
-
-    --n_block_idx;
-    if (n_block_idx < n_block_min) {
-      // no more kv blocks to process
-      break;
-    }
-  }
-
-  // non-oob mask iterations
-  CUTE_NO_UNROLL
-  for (; n_block_idx >= n_block_min; --n_block_idx) {
-    clear(tSrAccS);
-
-    // wait key, queue: [q, k] => []
-    cp_async_wait<0>();
-    __syncthreads();
-
-    // produce value, [] => [v]
-    produce_value_no_oob(n_block_idx);
-    cp_async_fence();
-
-    // 1> S = Q@K.T
-    compute_qk(tSrAccS);
-
     if constexpr (SOFT_CAP) {
       apply_logits_soft_cap(tSrAccS);
     }
-    mask.apply</*OOB_MASK=*/false>(tSrAccS_rc_view, n_block_idx);
-    softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
 
-    // wait value, [v] => []
-    cp_async_wait<0>();
-    __syncthreads();
+    if (i < n_oob_mask) {
+      mask.apply(tSrAccS_rc_view, n_block_idx);
+    } else {
+      mask.apply</*OOB_MASK=*/false>(tSrAccS_rc_view, n_block_idx);
+    }
+    softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
 
     // produce next key: [] => [k]
     if (n_block_idx > n_block_min) {
