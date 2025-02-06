@@ -7,21 +7,9 @@
 #include "mha_dispatch_sm80.cuh"
 #include "mha_kernel_sm80.cuh"  // IWYU pragma: keep
 #include "mha_params.h"
+#include "static_dispatch.h"
 
 using namespace llm;
-
-#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
-  [&] {                                                    \
-    if (HEAD_DIM_V <= 64) {                                \
-      constexpr static int HEAD_DIM_NAME = 64;             \
-      return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V <= 128) {                        \
-      constexpr static int HEAD_DIM_NAME = 128;            \
-      return __VA_ARGS__();                                \
-    } else {                                               \
-      assert(false);                                       \
-    }                                                      \
-  }()
 
 void mha_bench_sm80(nvbench::state& state) {
   // Collect CUPTI metrics
@@ -82,7 +70,7 @@ void mha_bench_sm80(nvbench::state& state) {
   params.sliding_window = sliding_window;
 
   state.exec([&](nvbench::launch& launch) {
-    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+    DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
       run_mha_kernel_sm80<cute::half_t, HEAD_DIM>(params, launch.get_stream());
     });
   });
