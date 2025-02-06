@@ -52,53 +52,72 @@ struct OnlineSoftmax {
 
   // computes the softmax scores and rescales the output
   //  - score = exp(score - row_max`)
-  //  - O = O * s_scale
+  //  - o = o * s_scale
   //  - internal: row_sum = row_sum * s_scale + row_sum`
   template <typename FragmentS, typename FragmentO>
   CUTE_DEVICE void rescale(FragmentS& rAccS, FragmentO& rAccO) {
+    // row_max = max(row_max, scores)
+    FragmentT pre_row_max;
+    cute::copy(row_max_, pre_row_max);
     CUTE_UNROLL
     for (int si = 0; si < size<0>(rAccS); ++si) {
-      // rowmax across 4 threads
-      float cur_rowmax = row_max_(si);
+      float row_max = row_max_(si);
+      // rowmax within a thread
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS); ++sj) {
-        cur_rowmax = max(cur_rowmax, rAccS(si, sj));
+        row_max = max(row_max, rAccS(si, sj));
       }
-      cur_rowmax = detail::group_reduce_max<4>(cur_rowmax);
+      // rowmax across 4 threads
+      row_max_(si) = detail::group_reduce_max<4>(row_max);
+    }
 
-      // scores = exp(scores - row_max)
-      const float rowmax_scale = cur_rowmax * sm_scale_;
-      float cur_rowsum = 0;
+    // o = o * s_scale
+    CUTE_UNROLL
+    for (int si = 0; si < size<0>(rAccO); ++si) {
+      const float s_scale =
+          ptx::exp2((pre_row_max(si) - row_max_(si)) * sm_scale_);
+      CUTE_UNROLL
+      for (int sj = 0; sj < size<1>(rAccO); ++sj) {
+        rAccO(si, sj) *= s_scale;
+      }
+    }
+
+    // scores = exp(scores - row_max)
+    CUTE_UNROLL
+    for (int si = 0; si < size<0>(rAccS); ++si) {
+      const float rowmax_scale = row_max_(si) * sm_scale_;
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS); sj++) {
         rAccS(si, sj) = ptx::exp2(rAccS(si, sj) * sm_scale_ - rowmax_scale);
-        cur_rowsum += rAccS(si, sj);
       }
+    }
 
-      // scores_scale = exp(max - cur_rowmax)
-      const float scores_scale =
-          ptx::exp2(row_max_(si) * sm_scale_ - rowmax_scale);
-      // o_2 = o_1 * s_scale
+    // row_sum = row_sum * s_scale + row_sum`
+    CUTE_UNROLL
+    for (int si = 0; si < size<0>(rAccS); ++si) {
+      const float s_scale =
+          ptx::exp2((pre_row_max(si) - row_max_(si)) * sm_scale_);
+      row_sum_(si) *= s_scale;
       CUTE_UNROLL
-      for (int sj = 0; sj < size<1>(rAccO); ++sj) {
-        rAccO(si, sj) *= scores_scale;
+      for (int sj = 0; sj < size<1>(rAccS); sj++) {
+        // rowsum within a thread
+        row_sum_(si) += rAccS(si, sj);
       }
-
-      // update row_max and row_sum
-      row_max_(si) = cur_rowmax;
-      // s_2 = s_1 * s_scale + row_sum
-      row_sum_(si) = row_sum_(si) * scores_scale + cur_rowsum;
     }
   }
 
-  // finalizes the softmax computation with O = O / row_sum
+  // finalizes the softmax computation with o = o / row_sum
   template <typename FragmentO>
   CUTE_DEVICE void finalize(FragmentO& rAccO) {
     CUTE_UNROLL
-    for (int oi = 0; oi < size<0>(rAccO); ++oi) {
+    for (int i = 0; i < size(row_sum_); ++i) {
       // rowsum across 4 threads
-      row_sum_(oi) = detail::group_reduce_sum<4>(row_sum_(oi));
+      row_sum_(i) = detail::group_reduce_sum<4>(row_sum_(i));
+    }
 
+    // o = o / row_sum
+    CUTE_UNROLL
+    for (int oi = 0; oi < size<0>(rAccO); ++oi) {
       CUTE_UNROLL
       for (int oj = 0; oj < size<1>(rAccO); ++oj) {
         rAccO(oi, oj) *= ptx::rcp(row_sum_(oi));

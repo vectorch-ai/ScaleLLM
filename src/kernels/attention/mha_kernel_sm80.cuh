@@ -189,22 +189,10 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // S = Q@K.T
   // tSrAccS: (MMA,MMA_M,MMA_N)
   auto compute_qk = [&](auto& tSrAccS) {
-    // prefetch kv
-    cute::copy(smem_tiled_copy_Q, tSsQ(_, _, _0{}), tSrQ_copy_view(_, _, _0{}));
-    cute::copy(smem_tiled_copy_K, tSsK(_, _, _0{}), tSrK_copy_view(_, _, _0{}));
-
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(tSrQ); ++ki) {
-      // prefetch next kv
-      if (ki != size<2>(tSrQ) - 1) {
-        const auto next_ki = ki + 1;
-        cute::copy(smem_tiled_copy_Q,
-                   tSsQ(_, _, next_ki),
-                   tSrQ_copy_view(_, _, next_ki));
-        cute::copy(smem_tiled_copy_K,
-                   tSsK(_, _, next_ki),
-                   tSrK_copy_view(_, _, next_ki));
-      }
+      cute::copy(smem_tiled_copy_Q, tSsQ(_, _, ki), tSrQ_copy_view(_, _, ki));
+      cute::copy(smem_tiled_copy_K, tSsK(_, _, ki), tSrK_copy_view(_, _, ki));
       cute::gemm(tiled_mma, tSrQ(_, _, ki), tSrK(_, _, ki), tSrAccS);
     }
   };
@@ -228,18 +216,10 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     // convert layout from gemm-I C to gemm-II A
     auto tOrS = make_tensor(tSrS.data(), Layout::to_mma_a(tSrS.layout()));
 
-    // prefetch V^t
-    cute::copy(
-        smem_tiled_copy_Vt, tOsVt(_, _, _0{}), tOrVt_copy_view(_, _, _0{}));
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(tOrS); ++ki) {
-      // prefetch next V^t
-      if (ki != size<2>(tOrS) - 1) {
-        const auto next_ki = ki + 1;
-        cute::copy(smem_tiled_copy_Vt,
-                   tOsVt(_, _, next_ki),
-                   tOrVt_copy_view(_, _, next_ki));
-      }
+      cute::copy(
+          smem_tiled_copy_Vt, tOsVt(_, _, ki), tOrVt_copy_view(_, _, ki));
       cute::gemm(tiled_mma, tOrS(_, _, ki), tOrVt(_, _, ki), tOrAccO);
     }
   };
