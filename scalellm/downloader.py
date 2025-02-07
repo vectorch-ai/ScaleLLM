@@ -16,7 +16,12 @@ def convert_pickle_to_safetensors(path):
                 continue
             
             # load the model
-            model = torch.load(file_path, map_location="cpu")
+            try:
+                model = torch.load(file_path, map_location="cpu")
+            except Exception as e:
+                print(f"Error loading {filename}: {e}")
+                continue
+
             if hasattr(model, "state_dict"):
                 state_dict = model.state_dict()
             else:
