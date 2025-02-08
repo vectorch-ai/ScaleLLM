@@ -92,7 +92,7 @@ struct MHATraitsSM80 {
   // Tiled copy for QKV
   // g2s tiled copy for q
   using GmemTiledCopyQ = decltype(make_tiled_copy(
-      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL_ZFILL<cute::uint128_t>, DType>{},
+      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, DType>{},
       GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
