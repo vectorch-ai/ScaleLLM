@@ -30,7 +30,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   constexpr int kBlockN = Traits::kBlockN;
   constexpr int kHeadDim = Traits::kHeadDim;
   constexpr int kRopeHeadDim = Traits::kRopeHeadDim;
-  // constexpr int kRowsPerMMA = Traits::kRowsPerMMA;
+  constexpr int kRowsPerMMA = Traits::kRowsPerMMA;
 
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
@@ -62,6 +62,8 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   const int m_block = blockIdx.x;
   const int batch_idx = blockIdx.y;
   const int tidx = threadIdx.x;
+
+  const float sm_scale_log2 = params.sm_scale_log2;
 
   MLATile<Params> tile(params);
 
@@ -300,6 +302,10 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   cp_async_fence();
 
   // ###############  Mainloop  ###############
+  constexpr int kMMA_M = size<1>(tOrO);
+  using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
+  Softmax softmax(sm_scale_log2);
+
   CUTE_NO_UNROLL
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
     // attention score accumulator, (MMA,MMA_M,MMA_N)
@@ -317,6 +323,8 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
     // 2> S += Q_rope@K_rope.T
     compute_qk_rope(tSrS);
 
+    softmax.rescale(tSrS_mn, tOrO_mn);
+
     // 3> O = softmax(S)*V
     compute_sv(tSrS, tOrO);
 
@@ -329,6 +337,10 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   }
 
   // ###############  Epilogue  ###############
+
+  // normalize output: o /= rowsum
+  softmax.finalize(tOrO_mn);
+
   // write output to gmem
   epilogue(tOrO);
 }
@@ -344,7 +356,6 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
   const auto smem_size = Traits::kSmemSize;
-  print("smem_size: %d \n", smem_size);
 
   auto mla_kernel =
       mla_kernel_sm80<Traits, Params, EVEN_K, ALIBI, SOFT_CAP, LOCAL>;

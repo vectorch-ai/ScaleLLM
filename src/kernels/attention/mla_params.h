@@ -9,8 +9,9 @@ namespace llm {
 // common params for attention kernels
 struct MLAParamsCommon {
   const void* __restrict__ q_ptr = nullptr;
-  const void* __restrict__ q_rope_ptr = nullptr;
   const void* __restrict__ kv_ptr = nullptr;
+
+  const void* __restrict__ q_rope_ptr = nullptr;
   const void* __restrict__ k_rope_ptr = nullptr;
 
   void* __restrict__ o_ptr = nullptr;
@@ -22,7 +23,8 @@ struct MLAParamsCommon {
   int head_dim = 0;
   int rope_head_dim = 0;
 
-  // int v_head_dim = 0;
+    // softmax scaling
+  float sm_scale = 1.0;
 
   // used for scheduling
   // TODO: remove it after persistent kernel
@@ -31,6 +33,7 @@ struct MLAParamsCommon {
   // private:
   // used for performance optimization, don't change it
   bool normalized = false;
+  float sm_scale_log2 = 0.0;
 
   // used to initialize the params that used for performance optimization
   void normalize() {
@@ -38,6 +41,8 @@ struct MLAParamsCommon {
       // already normalized
       return;
     }
+    sm_scale_log2 = static_cast<float>(sm_scale * M_LOG2E);
+    
     normalized = true;
   }
 };

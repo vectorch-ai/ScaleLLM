@@ -22,7 +22,7 @@ void test_mla_traits() {
   using SmemLayoutKRope = typename Traits::SmemLayoutKRope;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
-  
+
   using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
   using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
   using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
@@ -40,13 +40,13 @@ void test_mla_traits() {
   Tensor sQ_rope = make_tensor(counting_iterator<int>(0), SmemLayoutQRope{});
   Tensor sKV_rope = make_tensor(counting_iterator<int>(0), SmemLayoutKRope{});
 
-  print("sQ:"); print(sQ);print("\n");
-  print("sKV:"); print(sKV);print("\n");
+  // print("sQ:"); print(sQ);print("\n");
+  // print("sKV:"); print(sKV);print("\n");
 
-  print("sQ_rope:"); print(sQ_rope);print("\n");
-  print("sKV_rope:"); print(sKV_rope);print("\n");
+  // print("sQ_rope:"); print(sQ_rope);print("\n");
+  // print("sKV_rope:"); print(sKV_rope);print("\n");
 
-  print("sVt:"); print(sVt);print("\n");
+  // print("sVt:"); print(sVt);print("\n");
 
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(0);

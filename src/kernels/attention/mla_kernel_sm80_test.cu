@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cute/layout.hpp>
+#include <iostream>
 
 #include "cute/numeric/numeric_types.hpp"
 #include "mla_kernel_sm80.cuh"  // IWYU pragma: keep
@@ -51,7 +52,8 @@ torch::Tensor mla_sm80(
   params.kv_len = kv_len;
   params.head_dim = head_dim;
   params.rope_head_dim = rope_head_dim;
-  // params.sm_scale = sm_scale;
+  params.sm_scale = sm_scale;
+  params.normalize();
 
   using Traits = MLATraitsSM80<cute::half_t,
                                /*HEAD_DIM=*/64,
@@ -59,7 +61,6 @@ torch::Tensor mla_sm80(
                                /*BLK_M=*/64,
                                /*BLK_N=*/64,
                                /*BLK_K=*/64>;
-
   launch_mla_kernel_sm80<Traits>(params, nullptr);
   return out;
 }
@@ -104,13 +105,11 @@ TEST_P(MLAKernelTest, MLA) {
   const auto k_rope =
       torch::randn({batch_size, kv_len, rope_head_dim}, options);
 
-  const float sm_scale = 1.0 / sqrt(head_dim);
+  const float sm_scale = 1.0 / sqrt(head_dim + rope_head_dim);
 
   auto ref_out = mla_batch_ref(q, kv, q_rope, k_rope, sm_scale);
   auto out = mla_sm80(q, kv, q_rope, k_rope, sm_scale);
-
-  std::cerr << "max diff: " << (ref_out - out).abs().max() << std::endl;
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-1, /*atol=*/1e-1));
+  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(

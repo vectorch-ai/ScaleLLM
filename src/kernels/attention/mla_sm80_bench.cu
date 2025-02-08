@@ -83,6 +83,8 @@ void mla_bench_sm80(nvbench::state& state) {
   params.kv_len = kv_len;
   params.head_dim = head_dim;
   params.rope_head_dim = rope_head_dim;
+  params.sm_scale = 1.0;
+  params.normalize();
 
   state.exec([&](nvbench::launch& launch) {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {

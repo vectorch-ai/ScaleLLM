@@ -19,17 +19,23 @@ inline torch::Tensor mla_batch_ref(
   const auto qk_rope_head_dim = q_rope.size(-1);
   assert(kv_len >= q_len);
 
+  // use float32 for better precision
+  auto q_ = q.to(torch::kFloat);
+  auto kv_ = kv.to(torch::kFloat);
+  auto q_rope_ = q_rope.to(torch::kFloat);
+  auto k_rope_ = k_rope.to(torch::kFloat);
+
   // query * key => [batch, q_len, n_heads, kv_len]
-  auto scores = torch::einsum("bqhr,bkr->bqhk", {q, kv}) +
-                torch::einsum("bqhp,bkp->bqhk", {q_rope, k_rope});
+  auto scores = torch::einsum("bqhr,bkr->bqhk", {q_, kv_}) +
+                torch::einsum("bqhp,bkp->bqhk", {q_rope_, k_rope_});
   // apply scale
-  // scores *= sm_scale;
+  scores *= sm_scale;
 
   // safe softmax
-  // scores = scores.softmax(/*dim=*/-1, /*dtype=*/torch::kFloat).type_as(q);
+  scores = torch::softmax(scores, /*dim=*/-1);
 
   // score * value => [batch_size, q_len, n_heads, kv_lora_rank]
-  return torch::einsum("bqhk,bkr->bqhr", {scores, kv});
+  return torch::einsum("bqhk,bkr->bqhr", {scores, kv_}).type_as(q);
 }
 
 }  // namespace llm
