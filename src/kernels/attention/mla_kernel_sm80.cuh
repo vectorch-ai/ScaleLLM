@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ATen/cuda/CUDAContext.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 
@@ -284,10 +285,12 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
   const auto smem_size = Traits::kSmemSize;
+  print("smem_size: %d \n", smem_size);
+
   auto mla_kernel =
       mla_kernel_sm80<Traits, Params, EVEN_K, ALIBI, SOFT_CAP, LOCAL>;
-  cudaFuncSetAttribute(
-      mla_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+  C10_CUDA_CHECK(cudaFuncSetAttribute(
+      mla_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
   // TODO: support persistent kernels
   dim3 grid(cute::ceil_div(max_q_packed_len, Traits::kBlockM), batch_size, 1);
   dim3 block = Traits::kThreadNum;

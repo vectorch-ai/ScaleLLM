@@ -20,6 +20,12 @@ constexpr bool
                                             .with(declval<bool>()))>> = true;
 }  // namespace detail
 
+template <int... Is, int B, int M, int S, class Offset, class LayoutB>
+CUTE_HOST_DEVICE constexpr auto permute(
+    const ComposedLayout<Swizzle<B, M, S>, Offset, LayoutB>& c) {
+  return composition(c.layout_a(), c.offset(), select<Is...>(c.layout_b()));
+}
+
 template <size_t I, class IntTupleA, class IntTupleB>
 CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
                                           IntTupleB const& b) {

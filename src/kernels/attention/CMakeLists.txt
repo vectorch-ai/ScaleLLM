@@ -75,6 +75,7 @@ cc_test(
   NAME
     mla_kernel_test
   SRCS
+    mla_traits_test.cpp
     mla_kernel_sm80_test.cu
   DEPS
     :attention.template

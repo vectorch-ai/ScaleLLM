@@ -2,6 +2,8 @@
 #include <cute/config.hpp>
 #include <cute/tensor.hpp>
 
+#include "cute_extensions.cuh"
+
 namespace llm {
 using namespace cute;
 
@@ -84,10 +86,8 @@ struct MLATraitsSM80 {
   using SmemLayoutKV =
       decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
 
-  // V^T smem: (HEAD_DIM, BLK_N) row-major
-  using SmemLayoutVt = decltype(composition(
-      SmemLayoutKV{},
-      make_layout(Shape<_HEAD_DIM, _BLK_N>{}, GenRowMajor{})));
+  // V^T smem: (HEAD_DIM, BLK_N)
+  using SmemLayoutVt = decltype(permute<1, 0>(SmemLayoutKV{}));
 
   // Thr layout for gmem copy
   using GmemCopyThrLayout =
