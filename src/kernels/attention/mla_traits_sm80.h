@@ -82,9 +82,17 @@ struct MLATraitsSM80 {
   using SmemLayoutQ =
       decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _HEAD_DIM>{}));
 
+  using SmemLayoutQRope =
+      decltype(tile_to_shape(SmemLayoutAtom{},
+                             Shape<_BLK_M, _ROPE_HEAD_DIM>{}));
+
   // KV smem: (BLK_N, HEAD_DIM)
   using SmemLayoutKV =
       decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
+
+  using SmemLayoutKRope =
+      decltype(tile_to_shape(SmemLayoutAtom{},
+                             Shape<_BLK_N, _ROPE_HEAD_DIM>{}));
 
   // V^T smem: (HEAD_DIM, BLK_N)
   using SmemLayoutVt = decltype(permute<1, 0>(SmemLayoutKV{}));
@@ -142,7 +150,8 @@ struct MLATraitsSM80 {
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
-      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{})) * sizeof(DType);
+      sizeof(DType) * (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) +
+                       cosize(SmemLayoutQRope{}) + cosize(SmemLayoutKRope{}));
 
   static constexpr size_t kThreadNum = size(TiledMma{});
 };

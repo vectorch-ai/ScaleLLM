@@ -18,8 +18,11 @@ void test_mla_traits() {
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  using SmemLayoutQRope = typename Traits::SmemLayoutQRope;
+  using SmemLayoutKRope = typename Traits::SmemLayoutKRope;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
+  
   using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
   using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
   using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
@@ -34,9 +37,16 @@ void test_mla_traits() {
   Tensor sKV = make_tensor(counting_iterator<int>(0), SmemLayoutKV{});
   Tensor sVt = make_tensor(sKV.data(), SmemLayoutVt{});
 
-  // print("sQ:"); print(sQ);print("\n");
-  // print("sKV:"); print(sKV);print("\n");
-  // print("sVt:"); print(sVt);print("\n");
+  Tensor sQ_rope = make_tensor(counting_iterator<int>(0), SmemLayoutQRope{});
+  Tensor sKV_rope = make_tensor(counting_iterator<int>(0), SmemLayoutKRope{});
+
+  print("sQ:"); print(sQ);print("\n");
+  print("sKV:"); print(sKV);print("\n");
+
+  print("sQ_rope:"); print(sQ_rope);print("\n");
+  print("sKV_rope:"); print(sKV_rope);print("\n");
+
+  print("sVt:"); print(sVt);print("\n");
 
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(0);
@@ -46,10 +56,10 @@ void test_mla_traits() {
 
 TEST(MLATraitsTest, TraitsSM80) {
   test_mla_traits<MLATraitsSM80<cute::half_t,
-                                /*HEAD_DIM=*/64,
+                                /*HEAD_DIM=*/256,
                                 /*ROPE_HEAD_DIM=*/64,
                                 /*BLK_M=*/64,
-                                /*BLK_N=*/64,
+                                /*BLK_N=*/32,
                                 /*BLK_K=*/64>>();
 }
 

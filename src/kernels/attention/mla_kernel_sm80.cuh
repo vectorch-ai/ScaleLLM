@@ -45,6 +45,8 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  using SmemLayoutQRope = typename Traits::SmemLayoutQRope;
+  using SmemLayoutKRope = typename Traits::SmemLayoutKRope;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
 
@@ -65,12 +67,10 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
 
   // ProblemShape
   // Q/O: (q_packed_len, HEAD_DIM)
-  auto [Q, O] = tile.template get_qo_tile<DType>(batch_idx);
   // KV: (kv_len, HEAD_DIM)
-  auto KV = tile.template get_kv_tile<DType>(batch_idx);
-
   // Q/K_ROPE: (q_packed_len, ROPE_HEAD_DIM)
-  // auto [Q_ROPE, K_ROPE] = tile.template get_qk_rope_tile<DType>(batch_idx);
+  auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(batch_idx);
+  auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
 
   const int q_packed_len = size<0>(Q);
   // const int q_len = q_packed_len / group_size;
@@ -90,15 +90,29 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   // (BLK_N, HEAD_DIM, n)
   Tensor gKV = local_tile(KV, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
 
+  // (BLK_M, ROPE_HEAD_DIM)
+  Tensor gQ_rope = local_tile(
+      Q_ROPE, Shape<_BLK_M, _ROPE_HEAD_DIM>{}, make_coord(m_block, _0{}));
+  // (BLK_N, ROPE_HEAD_DIM, n)
+  Tensor gK_rope =
+      local_tile(K_ROPE, Shape<_BLK_N, _ROPE_HEAD_DIM>{}, make_coord(_, _0{}));
+
   // Smem
   extern __shared__ char smem[];
   DType* q_smem = (DType*)smem;
   DType* kv_smem = q_smem + cosize(SmemLayoutQ{});
+  DType* q_rope_smem = kv_smem + cosize(SmemLayoutKV{});
+  DType* k_rope_smem = q_rope_smem + cosize(SmemLayoutQRope{});
 
   // (BLK_M, HEAD_DIM), k-major
   Tensor sQ = make_tensor(make_smem_ptr(q_smem), SmemLayoutQ{});
   // (BLK_N, HEAD_DIM), k-major
   Tensor sK = make_tensor(make_smem_ptr(kv_smem), SmemLayoutKV{});
+
+  // (BLK_M, ROPE_HEAD_DIM), k-major
+  Tensor sQ_rope = make_tensor(make_smem_ptr(q_rope_smem), SmemLayoutQRope{});
+  // (BLK_N, ROPE_HEAD_DIM), k-major
+  Tensor sK_rope = make_tensor(make_smem_ptr(k_rope_smem), SmemLayoutKRope{});
 
   // Tensor for V^t; used in GEMM-II.
   // (HEAD_DIM, BLK_N), m-major
@@ -117,17 +131,32 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
     cute::copy(gmem_tiled_copy_Q, tQgQ, tQsQ);
   };
 
+  auto produce_q_rope = [&]() {
+    auto tQgQ_rope = gmem_thr_copy_Q.partition_S(gQ_rope);
+    auto tQsQ_rope = gmem_thr_copy_Q.partition_D(sQ_rope);
+    cute::copy(gmem_tiled_copy_Q, tQgQ_rope, tQsQ_rope);
+  };
+
   Tensor tKsKV = gmem_thr_copy_KV.partition_D(sK);
   auto produce_kv = [&](int ni) {
     auto tKgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni));
     cute::copy(gmem_tiled_copy_KV, tKgKV, tKsKV);
   };
 
+  Tensor tKsK_rope = gmem_thr_copy_KV.partition_D(sK_rope);
+  auto produce_k_rope = [&](int ni) {
+    auto tKgK_rope = gmem_thr_copy_KV.partition_S(gK_rope(_, _, ni));
+    cute::copy(gmem_tiled_copy_KV, tKgK_rope, tKsK_rope);
+  };
+
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(tidx);
   // GEMM-I: S = Q@K.T
-  auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA,MMA_M,MMA_K)
-  auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA,MMA_N,MMA_K)
+  auto tSrQ = thr_mma.partition_fragment_A(sQ);            // (MMA,MMA_M,MMA_K)
+  auto tSrK = thr_mma.partition_fragment_B(sK);            // (MMA,MMA_N,MMA_K)
+
+  auto tSrQ_rope = thr_mma.partition_fragment_A(sQ_rope);  // (MMA,MMA_M,MMA_K)
+  auto tSrK_rope = thr_mma.partition_fragment_B(sK_rope);  // (MMA,MMA_N,MMA_K)
 
   // s2r tiled copy for qkv
   SmemTiledCopyQ smem_tiled_copy_Q;
@@ -135,10 +164,16 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   auto tSsQ = smem_thr_copy_Q.partition_S(sQ);
   auto tSrQ_copy_view = smem_thr_copy_Q.retile_D(tSrQ);
 
+  auto tSsQ_rope = smem_thr_copy_Q.partition_S(sQ_rope);
+  auto tSrQ_rope_copy_view = smem_thr_copy_Q.retile_D(tSrQ_rope);
+
   SmemTiledCopyK smem_tiled_copy_K;
   auto smem_thr_copy_K = smem_tiled_copy_K.get_thread_slice(tidx);
   auto tSsK = smem_thr_copy_K.partition_S(sK);
   auto tSrK_copy_view = smem_thr_copy_K.retile_D(tSrK);
+
+  auto tSsK_rope = smem_thr_copy_K.partition_S(sK_rope);
+  auto tSrK_rope_copy_view = smem_thr_copy_K.retile_D(tSrK_rope);
 
   // S = Q@K.T
   // tSrAccS: (MMA,MMA_M,MMA_N)
@@ -160,6 +195,31 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
                    tSrK_copy_view(_, _, next_ki));
       }
       cute::gemm(tiled_mma, tSrQ(_, _, ki), tSrK(_, _, ki), tSrAccS);
+    }
+  };
+
+  auto compute_qk_rope = [&](auto& tSrAccS) {
+    // prefetch qk_rope
+    cute::copy(smem_tiled_copy_Q,
+               tSsQ_rope(_, _, _0{}),
+               tSrQ_rope_copy_view(_, _, _0{}));
+    cute::copy(smem_tiled_copy_K,
+               tSsK_rope(_, _, _0{}),
+               tSrK_rope_copy_view(_, _, _0{}));
+
+    CUTE_UNROLL
+    for (int ki = 0; ki < size<2>(tSrQ_rope); ++ki) {
+      // prefetch next qk_rope
+      if (ki != size<2>(tSrQ_rope) - 1) {
+        const auto next_ki = ki + 1;
+        cute::copy(smem_tiled_copy_Q,
+                   tSsQ_rope(_, _, next_ki),
+                   tSrQ_rope_copy_view(_, _, next_ki));
+        cute::copy(smem_tiled_copy_K,
+                   tSsK_rope(_, _, next_ki),
+                   tSrK_rope_copy_view(_, _, next_ki));
+      }
+      cute::gemm(tiled_mma, tSrQ_rope(_, _, ki), tSrK_rope(_, _, ki), tSrAccS);
     }
   };
 
@@ -238,9 +298,13 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   // ###############  Prologue  ###############
   // produce query: [] => [q]
   produce_q();
+  // produce q_rope: [q] => [q, q_rope]
+  produce_q_rope();
   cp_async_fence();
-  // produce key: [q] => [q, kv]
+  // produce key: [q, q_rope] => [q, q_rope, kv]
   produce_kv(0);
+  // produce k_rope: [q, q_rope, kv] => [q, q_rope, kv, k_rope]
+  produce_k_rope(0);
   cp_async_fence();
 
   // ###############  Mainloop  ###############
@@ -252,19 +316,23 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
         make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
     clear(tSrAccS);
 
-    // wait key, queue: [q, kv] => []
+    // wait key, queue: [q, q_rope, kv, k_rope] => []
     cp_async_wait<0>();
     __syncthreads();
 
     // 1> S = Q@K.T
     compute_qk(tSrAccS);
 
-    // 2> O = softmax(S)*V
+    // 2> S = Q@K.T + Q_rope@K_rope.T
+    compute_qk_rope(tSrAccS);
+
+    // 3> O = softmax(S)*V
     compute_sv(tSrAccS, tOrAccO);
 
-    // produce next key: [] => [kv]
+    // produce next key: [] => [kv, k_rope]
     if (ni != n_block_max - 1) {
       produce_kv(ni + 1);
+      produce_k_rope(ni + 1);
     }
     cp_async_fence();
   }
