@@ -17,6 +17,10 @@ cc_library(
     mha_traits_sm80.h
     mha_kernel_sm80.cuh
     mha_dispatch_sm80.cuh
+    mla_params.h
+    mla_tile.h
+    mla_traits_sm80.h
+    mla_kernel_sm80.cuh
   DEPS
     cutlass
 )
@@ -67,6 +71,19 @@ cc_test(
     torch
 )
 
+cc_test(
+  NAME
+    mla_kernel_test
+  SRCS
+    mla_traits_test.cpp
+    mla_kernel_sm80_test.cu
+  DEPS
+    :attention.template
+    absl::random_random
+    GTest::gtest_main
+    torch
+)
+
 nvbench_binary(
   NAME 
     mha_sm80_bench
@@ -84,6 +101,15 @@ nvbench_binary(
   DEPS
     absl::random_random
     :attention.template
+)
+
+nvbench_binary(
+  NAME 
+    mla_sm80_bench
+  SRCS 
+    mla_sm80_bench.cu
+  DEPS
+    :attention.template 
 )
 
 add_subdirectory(tools)
