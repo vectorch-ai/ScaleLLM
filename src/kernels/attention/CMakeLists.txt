@@ -102,4 +102,13 @@ nvbench_binary(
     :attention.template
 )
 
+nvbench_binary(
+  NAME 
+    mla_sm80_bench
+  SRCS 
+    mla_sm80_bench.cu
+  DEPS
+    :attention.template 
+)
+
 add_subdirectory(tools)

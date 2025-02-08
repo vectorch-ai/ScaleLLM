@@ -31,22 +31,30 @@ struct LayoutConvertor {
 
 }  // namespace detail
 
-template <typename DTYPE, int HEAD_DIM, int BLK_M, int BLK_N, int BLK_K>
+template <typename DTYPE,
+          int HEAD_DIM,
+          int ROPE_HEAD_DIM,
+          int BLK_M,
+          int BLK_N,
+          int BLK_K>
 struct MLATraitsSM80 {
   // helpful aliases
   static constexpr int kHeadDim = HEAD_DIM;
+  static constexpr int kRopeHeadDim = ROPE_HEAD_DIM;
   static constexpr int kBlockM = BLK_M;
   static constexpr int kBlockN = BLK_N;
   static constexpr int kBlockK = BLK_K;
   static constexpr int kRowsPerMMA = 2;
 
   static_assert(kHeadDim % kBlockK == 0);
+  static_assert(kRopeHeadDim % kBlockK == 0);
 
   using DType = DTYPE;
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
   using _BLK_K = Int<kBlockK>;
   using _HEAD_DIM = Int<kHeadDim>;
+  using _ROPE_HEAD_DIM = Int<kRopeHeadDim>;
 
   // ******* Mainloop *******
   // TiledMMA (64x16x16) for gemm-I and gemm-II
@@ -73,15 +81,12 @@ struct MLATraitsSM80 {
       decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _HEAD_DIM>{}));
 
   // KV smem: (BLK_N, HEAD_DIM)
-  using SmemLayoutK =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
-
-  using SmemLayoutV =
+  using SmemLayoutKV =
       decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
 
   // V^T smem: (HEAD_DIM, BLK_N) row-major
   using SmemLayoutVt = decltype(composition(
-      SmemLayoutV{},
+      SmemLayoutKV{},
       make_layout(Shape<_HEAD_DIM, _BLK_N>{}, GenRowMajor{})));
 
   // Thr layout for gmem copy
@@ -93,7 +98,7 @@ struct MLATraitsSM80 {
   // Tiled copy for QKV
   // g2s tiled copy for q
   using GmemTiledCopyQ = decltype(make_tiled_copy(
-      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL_ZFILL<cute::uint128_t>, DType>{},
+      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, DType>{},
       GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
@@ -116,8 +121,9 @@ struct MLATraitsSM80 {
 
   // ******* Epilogue *******
 
-  // O smem: (BLK_M, K):(K, 1), k-major, same as Q
-  using SmemLayoutO = SmemLayoutQ;
+  // O smem: (BLK_M, HEAD_DIM):(K, 1), k-major
+  using SmemLayoutO =
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _HEAD_DIM>{}));
 
   // use 128-bit vectorizing copy
   using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
@@ -136,8 +142,7 @@ struct MLATraitsSM80 {
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
-      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutK{}) + cosize(SmemLayoutV{})) *
-      sizeof(DType);
+      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{})) * sizeof(DType);
 
   static constexpr size_t kThreadNum = size(TiledMma{});
 };
