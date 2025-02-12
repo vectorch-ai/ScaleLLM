@@ -272,33 +272,31 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   // tOrO: (MMA,MMA_M,MMA_K,STAGES)
   auto epilogue = [&](const auto& tOrO) {
     // write output to gmem
-    // 1. copy output from reg to smem stage by stage
-    SmemTiledCopyO smem_tiled_copy_O;
-    auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
-    // reusing sQ for output
-    auto sO = make_tensor(sQ.data(), SmemLayoutO{});
-    CUTE_UNROLL
-    for (int s = 0; s < kStages; ++s) {
-      auto tOrO_ = tOrO(_, _, _, s);
-      auto tOrO_s = make_tensor_like<DType>(tOrO_);
-      fast_cast(tOrO_, tOrO_s);
+    // 1. cast output from ElementAccumulator to Element
+    auto tOrO_ = make_tensor_like<DType>(tOrO);
+    fast_cast(tOrO, tOrO_);
 
-      // sO: (BLK_M, BLK_K, STAGES)
-      auto sO_s = sO(_, _, s);
-      auto tCrO = smem_thr_copy_O.retile_S(tOrO_s);
-      auto tCsO = smem_thr_copy_O.partition_D(sO_s);
+    auto sO = make_tensor(sQ.data(), SmemLayoutO{});
+    // 2. copy output from reg to smem (reuse sQ)
+    {
+      SmemTiledCopyO smem_tiled_copy_O;
+      auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
+      auto tCrO = smem_thr_copy_O.retile_S(tOrO_);
+      auto tCsO = smem_thr_copy_O.partition_D(sO);
       cute::copy(smem_tiled_copy_O, tCrO, tCsO);
     }
     // wait for smem copy done before gmem copy
     __syncthreads();
 
-    // 2. copy output from smem to gmem
-    GmemTiledCopyO gmem_tiled_copy_O;
-    auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
+    // 3. copy output from smem to gmem
+    {
+      GmemTiledCopyO gmem_tiled_copy_O;
+      auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-    auto tCsO = gmem_thr_copy_O.partition_S(sO);
-    auto tCgO = gmem_thr_copy_O.partition_D(gO);
-    cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
+      auto tCsO = gmem_thr_copy_O.partition_S(sO);
+      auto tCgO = gmem_thr_copy_O.partition_D(gO);
+      cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
+    }
   };
 
   // output accumulator: (MMA, MMA_M, MMA_K, STAGES)
@@ -362,19 +360,12 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
     fast_cast(tSrS, tSrS_);
     // convert layout from gemm-I C to gemm-II A
     auto tOrS = make_tensor(tSrS_.data(), Layout::to_mma_a(tSrS_.layout()));
-    const auto next_ni = ni + 1;
-    if (next_ni != n_block_max) {
-      produce_k_rope(next_ni);
-      CUTE_UNROLL
-      for (int s = 0; s < kStages; ++s) {
-        compute_sv(tOrS, tOrO, s);
-        produce_kv(next_ni, s);
-      }
-    } else {
-      CUTE_UNROLL
-      for (int s = 0; s < kStages; ++s) {
-        compute_sv(tOrS, tOrO, s);
-      }
+    const auto next_ni = (ni + 1 < n_block_max) ? ni + 1 : ni;
+    produce_k_rope(next_ni);
+    CUTE_UNROLL
+    for (int s = 0; s < kStages; ++s) {
+      compute_sv(tOrS, tOrO, s);
+      produce_kv(next_ni, s);
     }
   }
 
