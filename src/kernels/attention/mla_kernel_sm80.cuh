@@ -63,40 +63,30 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
-  const int m_block = blockIdx.x;
-  const int batch_idx = blockIdx.y;
-  const int tidx = threadIdx.x;
-
-  const float sm_scale_log2 = params.sm_scale_log2;
-
   MLATile<Params> tile(params);
 
   // ProblemShape
   // Q/O: (q_packed_len, HEAD_DIM)
   // KV: (kv_len, HEAD_DIM)
   // Q/K_ROPE: (q_packed_len, ROPE_HEAD_DIM)
-  auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(batch_idx);
-  auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
+  auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(blockIdx.y);
+  auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(blockIdx.y);
 
-  const int q_packed_len = size<0>(Q);
-  // const int q_len = q_packed_len / group_size;
-  const int kv_len = size<0>(KV);
-
-  if (m_block * kBlockM >= q_packed_len) {
+  if (blockIdx.x * kBlockM >= size<0>(Q)) {
     // m out of bound, return
     return;
   }
 
   // Gmem
   // (BLK_M, BLK_K, STAGES)
-  Tensor gQ = local_tile(Q, Shape<_BLK_M, _BLK_K>{}, make_coord(m_block, _));
-  Tensor gO = local_tile(O, Shape<_BLK_M, _BLK_K>{}, make_coord(m_block, _));
+  Tensor gQ = local_tile(Q, Shape<_BLK_M, _BLK_K>{}, make_coord(blockIdx.x, _));
+  Tensor gO = local_tile(O, Shape<_BLK_M, _BLK_K>{}, make_coord(blockIdx.x, _));
   // (BLK_N, BLK_K, n, STAGES)
   Tensor gKV = local_tile(KV, Shape<_BLK_N, _BLK_K>{}, make_coord(_, _));
 
   // (BLK_M, ROPE_HEAD_DIM)
   Tensor gQ_rope = local_tile(
-      Q_ROPE, Shape<_BLK_M, _ROPE_HEAD_DIM>{}, make_coord(m_block, _0{}));
+      Q_ROPE, Shape<_BLK_M, _ROPE_HEAD_DIM>{}, make_coord(blockIdx.x, _0{}));
   // (BLK_N, ROPE_HEAD_DIM, n)
   Tensor gK_rope =
       local_tile(K_ROPE, Shape<_BLK_N, _ROPE_HEAD_DIM>{}, make_coord(_, _0{}));
@@ -126,8 +116,8 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   // g2s tiled copy for qkv
   GmemTiledCopyQ gmem_tiled_copy_Q;
   GmemTiledCopyKV gmem_tiled_copy_KV;
-  auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_thread_slice(tidx);
-  auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_thread_slice(tidx);
+  auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_slice(threadIdx.x);
+  auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_slice(threadIdx.x);
 
   auto produce_q = [&](int stage) {
     // gQ/sQ: (BLK_M, BLK_K, STAGES)
@@ -162,7 +152,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   };
 
   TiledMma tiled_mma;
-  auto thr_mma = tiled_mma.get_slice(tidx);
+  auto thr_mma = tiled_mma.get_slice(threadIdx.x);
   // GEMM-I: S = Q@K.T
   // gQ/sQ: (BLK_M, BLK_K, STAGES)
   auto tSrQ = thr_mma.partition_fragment_A(sQ(_, _, _0{}));
@@ -173,7 +163,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
 
   // s2r tiled copy for qkv
   SmemTiledCopyQ smem_tiled_copy_Q;
-  auto smem_thr_copy_Q = smem_tiled_copy_Q.get_thread_slice(tidx);
+  auto smem_thr_copy_Q = smem_tiled_copy_Q.get_slice(threadIdx.x);
   // (CPY, CPY_M, CPY_K, STAGES)
   auto tCsQ = smem_thr_copy_Q.partition_S(sQ);
   // (CPY, CPY_M, CPY_K)
@@ -183,7 +173,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   auto tCrQ_rope = smem_thr_copy_Q.retile_D(tSrQ_rope);
 
   SmemTiledCopyK smem_tiled_copy_K;
-  auto smem_thr_copy_K = smem_tiled_copy_K.get_thread_slice(tidx);
+  auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(threadIdx.x);
   // (CPY, CPY_N, CPY_K, STAGES)
   auto tCsK = smem_thr_copy_K.partition_S(sK);
   // (CPY, CPY_M, CPY_K)
@@ -242,7 +232,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   auto tOrVt = thr_mma.partition_fragment_B(sVt(_, _, _0{}));
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
-  auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
+  auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_slice(threadIdx.x);
   // (CPY, CPY_N, CPY_K, STAGES)
   auto tCsVt = smem_thr_copy_Vt.partition_S(sVt);
   // (CPY, CPY_M, CPY_K)
@@ -280,7 +270,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
     // 2. copy output from reg to smem (reuse sQ)
     {
       SmemTiledCopyO smem_tiled_copy_O;
-      auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
+      auto smem_thr_copy_O = smem_tiled_copy_O.get_slice(threadIdx.x);
       auto tCrO = smem_thr_copy_O.retile_S(tOrO_);
       auto tCsO = smem_thr_copy_O.partition_D(sO);
       cute::copy(smem_tiled_copy_O, tCrO, tCsO);
@@ -291,7 +281,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
     // 3. copy output from smem to gmem
     {
       GmemTiledCopyO gmem_tiled_copy_O;
-      auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
+      auto gmem_thr_copy_O = gmem_tiled_copy_O.get_slice(threadIdx.x);
 
       auto tCsO = gmem_thr_copy_O.partition_S(sO);
       auto tCgO = gmem_thr_copy_O.partition_D(gO);
@@ -305,7 +295,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   clear(tOrO);
 
   const int n_block_min = 0;
-  const int n_block_max = cute::ceil_div(kv_len, kBlockN);
+  const int n_block_max = cute::ceil_div(size<0>(KV), kBlockN);
 
   // ###############  Prologue  ###############
   // produce q_rope: [] => [q_rope, q...]
@@ -325,7 +315,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   // ###############  Mainloop  ###############
   constexpr int kMMA_M = size<1>(tOrO);
   using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
-  Softmax softmax(sm_scale_log2);
+  Softmax softmax(params.sm_scale_log2);
 
   CUTE_NO_UNROLL
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
