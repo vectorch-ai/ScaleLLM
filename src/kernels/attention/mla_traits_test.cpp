@@ -42,11 +42,10 @@ void test_mla_traits() {
 
   // print("sQ:"); print(sQ);print("\n");
   // print("sKV:"); print(sKV);print("\n");
+  // print("sVt:"); print(sVt);print("\n");
 
   // print("sQ_rope:"); print(sQ_rope);print("\n");
   // print("sKV_rope:"); print(sKV_rope);print("\n");
-
-  // print("sVt:"); print(sVt);print("\n");
 
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(0);
@@ -60,7 +59,7 @@ TEST(MLATraitsTest, TraitsSM80) {
                                 /*ROPE_HEAD_DIM=*/64,
                                 /*BLK_M=*/64,
                                 /*BLK_N=*/32,
-                                /*BLK_K=*/64>>();
+                                /*BLK_K=*/256>>();
 }
 
 }  // namespace llm

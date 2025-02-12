@@ -13,12 +13,20 @@ namespace detail {
 // Only works for TiledMMA (64x16x16) with SM80_16x8x16_F32F16F16F32_TN
 struct LayoutConvertor {
   // Convert fragment layout to rowcol layout for iterating
-  // (MMA=4, MMA_M, MMA_N) => ((2, MMA_M), (2, MMA_N))
+  // (MMA=4, MMA_M, MMA_N, STAGES) => ((2, MMA_M), (2, MMA_N), STAGES)
   template <typename LayoutC>
-  CUTE_HOST_DEVICE static constexpr auto to_rowcol(const LayoutC& layout) {
+  CUTE_HOST_DEVICE static constexpr auto to_mn(const LayoutC& layout) {
     auto l = logical_divide(layout, Shape<_2>{});
     return make_layout(make_layout(get<0, 1>(l), get<1>(l)),
                        make_layout(get<0, 0>(l), get<2>(l)));
+  }
+
+  template <typename LayoutC>
+  CUTE_HOST_DEVICE static constexpr auto to_mns(const LayoutC& layout) {
+    auto l = logical_divide(layout, Shape<_2>{});
+    return make_layout(make_layout(get<0, 1>(l), get<1>(l)),
+                       make_layout(get<0, 0>(l), get<2>(l)),
+                       get<3>(l));
   }
 
   // Convert fragment layout from gemm-I C to gemm-II A
@@ -49,12 +57,13 @@ struct MLATraitsSM80 {
   static constexpr int kRowsPerMMA = 2;
 
   static_assert(kHeadDim % kBlockK == 0);
-  static_assert(kRopeHeadDim % kBlockK == 0);
+  static constexpr int kStages = kHeadDim / kBlockK;
 
   using DType = DTYPE;
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
   using _BLK_K = Int<kBlockK>;
+  using _STAGES = Int<kStages>;
   using _HEAD_DIM = Int<kHeadDim>;
   using _ROPE_HEAD_DIM = Int<kRopeHeadDim>;
 
@@ -76,26 +85,29 @@ struct MLATraitsSM80 {
   // Atom layout: (8, BLK_K):(BLK_K, 1) k-major
   using SmemLayoutAtom =
       decltype(composition(Swizzle<3, 3, 3>{},
-                           Layout<Shape<_8, _BLK_K>, Stride<_BLK_K, _1>>{}));
+                           Layout<Shape<_8, _64>, Stride<_64, _1>>{}));
 
-  // Q smem: (BLK_M, HEAD_DIM)
-  using SmemLayoutQ =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _HEAD_DIM>{}));
+  // Q smem: (BLK_M, BLK_K, STAGES)
+  using SmemLayoutQ = decltype(tile_to_shape(SmemLayoutAtom{},
+                                             Shape<_BLK_M, _BLK_K, _STAGES>{}));
 
+  // KV smem: (BLK_N, BLK_K, STAGES)
+  using SmemLayoutKV =
+      decltype(tile_to_shape(SmemLayoutAtom{},
+                             Shape<_BLK_N, _BLK_K, _STAGES>{}));
+
+  // V^T smem: (BLK_K, BLK_N, STAGES)
+  using SmemLayoutVt = decltype(permute<1, 0, 2>(SmemLayoutKV{}));
+
+  // QRope smem: (BLK_M, ROPE_HEAD_DIM)
   using SmemLayoutQRope =
       decltype(tile_to_shape(SmemLayoutAtom{},
                              Shape<_BLK_M, _ROPE_HEAD_DIM>{}));
 
-  // KV smem: (BLK_N, HEAD_DIM)
-  using SmemLayoutKV =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
-
+  // KRoep smem: (BLK_N, ROPE_HEAD_DIM)
   using SmemLayoutKRope =
       decltype(tile_to_shape(SmemLayoutAtom{},
                              Shape<_BLK_N, _ROPE_HEAD_DIM>{}));
-
-  // V^T smem: (HEAD_DIM, BLK_N)
-  using SmemLayoutVt = decltype(permute<1, 0>(SmemLayoutKV{}));
 
   // Thr layout for gmem copy
   using GmemCopyThrLayout =
@@ -129,9 +141,9 @@ struct MLATraitsSM80 {
 
   // ******* Epilogue *******
 
-  // O smem: (BLK_M, HEAD_DIM):(K, 1), k-major
-  using SmemLayoutO =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _HEAD_DIM>{}));
+  // O smem: (BLK_M, BLK_K, STAGES) k-major
+  using SmemLayoutO = decltype(tile_to_shape(SmemLayoutAtom{},
+                                             Shape<_BLK_M, _BLK_K, _STAGES>{}));
 
   // use 128-bit vectorizing copy
   using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
