@@ -28,12 +28,16 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
 
   constexpr int kBlockM = Traits::kBlockM;
   constexpr int kBlockN = Traits::kBlockN;
+  constexpr int kBlockK = Traits::kBlockK;
   constexpr int kHeadDim = Traits::kHeadDim;
+  constexpr int kStages = Traits::kStages;
   constexpr int kRopeHeadDim = Traits::kRopeHeadDim;
   constexpr int kRowsPerMMA = Traits::kRowsPerMMA;
 
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
+  using _BLK_K = Int<kBlockK>;
+  using _STAGES = Int<kStages>;
   using _HEAD_DIM = Int<kHeadDim>;
   using _ROPE_HEAD_DIM = Int<kRopeHeadDim>;
 
@@ -84,13 +88,11 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   }
 
   // Gmem
-  // (BLK_M, HEAD_DIM)
-  Tensor gQ =
-      local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
-  Tensor gO =
-      local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
-  // (BLK_N, HEAD_DIM, n)
-  Tensor gKV = local_tile(KV, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
+  // (BLK_M, BLK_K, STAGES)
+  Tensor gQ = local_tile(Q, Shape<_BLK_M, _BLK_K>{}, make_coord(m_block, _));
+  Tensor gO = local_tile(O, Shape<_BLK_M, _BLK_K>{}, make_coord(m_block, _));
+  // (BLK_N, BLK_K, n, STAGES)
+  Tensor gKV = local_tile(KV, Shape<_BLK_N, _BLK_K>{}, make_coord(_, _));
 
   // (BLK_M, ROPE_HEAD_DIM)
   Tensor gQ_rope = local_tile(
@@ -106,9 +108,9 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   DType* q_rope_smem = kv_smem + cosize(SmemLayoutKV{});
   DType* k_rope_smem = q_rope_smem + cosize(SmemLayoutQRope{});
 
-  // (BLK_M, HEAD_DIM), k-major
+  // (BLK_M, BLK_K, STAGES), k-major
   Tensor sQ = make_tensor(make_smem_ptr(q_smem), SmemLayoutQ{});
-  // (BLK_N, HEAD_DIM), k-major
+  // (BLK_N, BLK_K, STAGES), k-major
   Tensor sK = make_tensor(make_smem_ptr(kv_smem), SmemLayoutKV{});
 
   // (BLK_M, ROPE_HEAD_DIM), k-major
@@ -117,7 +119,7 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   Tensor sK_rope = make_tensor(make_smem_ptr(k_rope_smem), SmemLayoutKRope{});
 
   // Tensor for V^t; used in GEMM-II.
-  // (HEAD_DIM, BLK_N), m-major
+  // (BLK_K, BLK_N, STAGES)
   Tensor sVt = make_tensor(make_smem_ptr(kv_smem), SmemLayoutVt{});
 
   // Tiled Copy
@@ -127,43 +129,54 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_thread_slice(tidx);
   auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_thread_slice(tidx);
 
-  auto produce_q = [&]() {
-    auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
-    auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
-    cute::copy(gmem_tiled_copy_Q, tQgQ, tQsQ);
+  auto produce_q = [&](int stage) {
+    // gQ/sQ: (BLK_M, BLK_K, STAGES)
+    auto tGCgQ = gmem_thr_copy_Q.partition_S(gQ(_, _, stage));
+    auto tGCsQ = gmem_thr_copy_Q.partition_D(sQ(_, _, stage));
+    cute::copy(gmem_tiled_copy_Q, tGCgQ, tGCsQ);
+    cp_async_fence();
   };
 
   auto produce_q_rope = [&]() {
     auto tQgQ_rope = gmem_thr_copy_Q.partition_S(gQ_rope);
     auto tQsQ_rope = gmem_thr_copy_Q.partition_D(sQ_rope);
     cute::copy(gmem_tiled_copy_Q, tQgQ_rope, tQsQ_rope);
+    cp_async_fence();
   };
 
-  Tensor tKsKV = gmem_thr_copy_KV.partition_D(sK);
-  auto produce_kv = [&](int ni) {
-    auto tKgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni));
-    cute::copy(gmem_tiled_copy_KV, tKgKV, tKsKV);
+  // (CPY, CPY_N, CPY_K, STAGES)
+  auto produce_kv = [&](int ni, int stage) {
+    // gKV: (BLK_N, BLK_K, n, STAGES)
+    auto tGCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, stage));
+    // sK: (BLK_N, BLK_K, STAGES)
+    Tensor tGCsKV = gmem_thr_copy_KV.partition_D(sK(_, _, stage));
+    cute::copy(gmem_tiled_copy_KV, tGCgKV, tGCsKV);
+    cp_async_fence();
   };
 
   Tensor tKsK_rope = gmem_thr_copy_KV.partition_D(sK_rope);
   auto produce_k_rope = [&](int ni) {
     auto tKgK_rope = gmem_thr_copy_KV.partition_S(gK_rope(_, _, ni));
     cute::copy(gmem_tiled_copy_KV, tKgK_rope, tKsK_rope);
+    cp_async_fence();
   };
 
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(tidx);
   // GEMM-I: S = Q@K.T
-  auto tSrQ = thr_mma.partition_fragment_A(sQ);  // (MMA,MMA_M,MMA_K)
-  auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA,MMA_N,MMA_K)
+  // gQ/sQ: (BLK_M, BLK_K, STAGES)
+  auto tSrQ = thr_mma.partition_fragment_A(sQ(_, _, _0{}));
+  auto tSrK = thr_mma.partition_fragment_B(sK(_, _, _0{}));
 
-  auto tSrQ_rope = thr_mma.partition_fragment_A(sQ_rope);  // (MMA,MMA_M,MMA_K)
-  auto tSrK_rope = thr_mma.partition_fragment_B(sK_rope);  // (MMA,MMA_N,MMA_K)
+  auto tSrQ_rope = thr_mma.partition_fragment_A(sQ_rope);
+  auto tSrK_rope = thr_mma.partition_fragment_B(sK_rope);
 
   // s2r tiled copy for qkv
   SmemTiledCopyQ smem_tiled_copy_Q;
   auto smem_thr_copy_Q = smem_tiled_copy_Q.get_thread_slice(tidx);
+  // (CPY, CPY_M, CPY_K, STAGES)
   auto tCsQ = smem_thr_copy_Q.partition_S(sQ);
+  // (CPY, CPY_M, CPY_K)
   auto tCrQ = smem_thr_copy_Q.retile_D(tSrQ);
 
   auto tCsQ_rope = smem_thr_copy_Q.partition_S(sQ_rope);
@@ -171,7 +184,9 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
 
   SmemTiledCopyK smem_tiled_copy_K;
   auto smem_thr_copy_K = smem_tiled_copy_K.get_thread_slice(tidx);
+  // (CPY, CPY_N, CPY_K, STAGES)
   auto tCsK = smem_thr_copy_K.partition_S(sK);
+  // (CPY, CPY_M, CPY_K)
   auto tCrK = smem_thr_copy_K.retile_D(tSrK);
 
   auto tCsK_rope = smem_thr_copy_K.partition_S(sK_rope);
@@ -179,18 +194,23 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
 
   // S = Q@K.T
   // tSrS: (MMA,MMA_M,MMA_N)
-  auto compute_qk = [&](auto& tSrS) {
+  auto compute_qk = [&](auto& tSrS, int stage) {
+    // (CPY, CPY_M, CPY_K, STAGES)
+    auto tCsQ_ = tCsQ(_, _, _, stage);
+    auto tCsK_ = tCsK(_, _, _, stage);
     // prefetch kv
-    cute::copy(smem_tiled_copy_Q, tCsQ(_, _, _0{}), tCrQ(_, _, _0{}));
-    cute::copy(smem_tiled_copy_K, tCsK(_, _, _0{}), tCrK(_, _, _0{}));
+    cute::copy(smem_tiled_copy_Q, tCsQ_(_, _, _0{}), tCrQ(_, _, _0{}));
+    cute::copy(smem_tiled_copy_K, tCsK_(_, _, _0{}), tCrK(_, _, _0{}));
 
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(tSrQ); ++ki) {
       // prefetch next kv
       if (ki != size<2>(tSrQ) - 1) {
         const auto next_ki = ki + 1;
-        cute::copy(smem_tiled_copy_Q, tCsQ(_, _, next_ki), tCrQ(_, _, next_ki));
-        cute::copy(smem_tiled_copy_K, tCsK(_, _, next_ki), tCrK(_, _, next_ki));
+        cute::copy(
+            smem_tiled_copy_Q, tCsQ_(_, _, next_ki), tCrQ(_, _, next_ki));
+        cute::copy(
+            smem_tiled_copy_K, tCsK_(_, _, next_ki), tCrK(_, _, next_ki));
       }
       cute::gemm(tiled_mma, tSrQ(_, _, ki), tSrK(_, _, ki), tSrS);
     }
@@ -218,88 +238,91 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   };
 
   // GEMM-II: O = softmax(S)@V
-  auto tOrVt = thr_mma.partition_fragment_B(sVt);  // (MMA,MMA_K,MMA_N)
+  // (MMA, MMA_M, MMA_N)
+  auto tOrVt = thr_mma.partition_fragment_B(sVt(_, _, _0{}));
 
   SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_thread_slice(tidx);
+  // (CPY, CPY_N, CPY_K, STAGES)
   auto tCsVt = smem_thr_copy_Vt.partition_S(sVt);
+  // (CPY, CPY_M, CPY_K)
   auto tCrVt = smem_thr_copy_Vt.retile_D(tOrVt);
 
   // O = softmax(S)*V
-  // tSrS: (MMA,MMA_M,MMA_N)
-  // tOrAccO: (MMA,MMA_M,MMA_K)
-  auto compute_sv = [&](const auto& tSrS, auto& tOrO) {
-    // cast scores from Accumulator to Element
-    auto tSrS_ = make_tensor_like<DType>(tSrS);
-    fast_cast(tSrS, tSrS_);
-
-    // convert layout from gemm-I C to gemm-II A
-    auto tOrS = make_tensor(tSrS_.data(), Layout::to_mma_a(tSrS_.layout()));
-
+  // tOrS: (MMA,MMA_M,MMA_K)
+  // tOrO: (MMA,MMA_M,MMA_N, STAGES)
+  auto compute_sv = [&](const auto& tOrS, auto& tOrO, int stage) {
+    // (CPY, CPY_N, CPY_K, STAGES)
+    auto tCsVt_ = tCsVt(_, _, _, stage);
+    auto tOrO_ = tOrO(_, _, _, stage);
     // prefetch V^t
-    cute::copy(smem_tiled_copy_Vt, tCsVt(_, _, _0{}), tCrVt(_, _, _0{}));
+    cute::copy(smem_tiled_copy_Vt, tCsVt_(_, _, _0{}), tCrVt(_, _, _0{}));
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(tOrS); ++ki) {
       // prefetch next V^t
       if (ki != size<2>(tOrS) - 1) {
         const auto next_ki = ki + 1;
         cute::copy(
-            smem_tiled_copy_Vt, tCsVt(_, _, next_ki), tCrVt(_, _, next_ki));
+            smem_tiled_copy_Vt, tCsVt_(_, _, next_ki), tCrVt(_, _, next_ki));
       }
-      cute::gemm(tiled_mma, tOrS(_, _, ki), tOrVt(_, _, ki), tOrO);
+      cute::gemm(tiled_mma, tOrS(_, _, ki), tOrVt(_, _, ki), tOrO_);
     }
   };
 
-  // tOrO: (MMA,MMA_M,MMA_K)
+  // tOrO: (MMA,MMA_M,MMA_K,STAGES)
   auto epilogue = [&](const auto& tOrO) {
     // write output to gmem
-    // 1> cast output from ElementAccumulator to Element
-    auto tOrO_ = make_tensor_like<DType>(tOrO);
-    fast_cast(tOrO, tOrO_);
-
+    // 1. copy output from reg to smem stage by stage
+    SmemTiledCopyO smem_tiled_copy_O;
+    auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
+    // reusing sQ for output
     auto sO = make_tensor(sQ.data(), SmemLayoutO{});
-    // 2. copy output from reg to smem (reuse sQ)
-    {
-      SmemTiledCopyO smem_tiled_copy_O;
-      auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
-      auto tCrO = smem_thr_copy_O.retile_S(tOrO_);
-      auto tCsO = smem_thr_copy_O.partition_D(sO);
+    CUTE_UNROLL
+    for (int s = 0; s < kStages; ++s) {
+      auto tOrO_ = tOrO(_, _, _, s);
+      auto tOrO_s = make_tensor_like<DType>(tOrO_);
+      fast_cast(tOrO_, tOrO_s);
+
+      // sO: (BLK_M, BLK_K, STAGES)
+      auto sO_s = sO(_, _, s);
+      auto tCrO = smem_thr_copy_O.retile_S(tOrO_s);
+      auto tCsO = smem_thr_copy_O.partition_D(sO_s);
       cute::copy(smem_tiled_copy_O, tCrO, tCsO);
     }
+    // wait for smem copy done before gmem copy
+    __syncthreads();
 
-    // 3. copy output from smem to gmem
-    {
-      GmemTiledCopyO gmem_tiled_copy_O;
-      auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
+    // 2. copy output from smem to gmem
+    GmemTiledCopyO gmem_tiled_copy_O;
+    auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-      auto tCsO = gmem_thr_copy_O.partition_S(sO);  // (CPY,CPY_M,CPY_K)
-      auto tCgO = gmem_thr_copy_O.partition_D(gO);  // (CPY,CPY_M,CPY_K)
-
-      // wait for smem copy done before gmem copy
-      __syncthreads();
-      cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
-    }
+    auto tCsO = gmem_thr_copy_O.partition_S(sO);
+    auto tCgO = gmem_thr_copy_O.partition_D(gO);
+    cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
   };
 
-  // output accumulator, (MMA,MMA_M,MMA_K)
-  auto tOrO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
-  auto tOrO_mn = make_tensor(tOrO.data(), Layout::to_rowcol(tOrO.layout()));
+  // output accumulator: (MMA, MMA_M, MMA_K, STAGES)
+  auto tOrO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_K, _STAGES>{});
+  auto tOrO_mn = make_tensor(tOrO.data(), Layout::to_mns(tOrO.layout()));
   clear(tOrO);
 
   const int n_block_min = 0;
   const int n_block_max = cute::ceil_div(kv_len, kBlockN);
 
   // ###############  Prologue  ###############
-  // produce query: [] => [q]
-  produce_q();
-  // produce q_rope: [q] => [q, q_rope]
+  // produce q_rope: [] => [q_rope, q...]
   produce_q_rope();
-  cp_async_fence();
-  // produce key: [q, q_rope] => [q, q_rope, kv]
-  produce_kv(0);
-  // produce k_rope: [q, q_rope, kv] => [q, q_rope, kv, k_rope]
+  CUTE_UNROLL
+  for (int s = 0; s < kStages; ++s) {
+    produce_q(s);
+  }
+
+  // produce k_rope: [q_rope, q...] => [q_rope, q..., k_rope, kv...]
   produce_k_rope(0);
-  cp_async_fence();
+  CUTE_UNROLL
+  for (int s = 0; s < kStages; ++s) {
+    produce_kv(0, s);
+  }
 
   // ###############  Mainloop  ###############
   constexpr int kMMA_M = size<1>(tOrO);
@@ -310,30 +333,49 @@ __global__ void mla_kernel_sm80(__grid_constant__ const Params params) {
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
     // attention score accumulator, (MMA,MMA_M,MMA_N)
     auto tSrS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-    auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_rowcol(tSrS.layout()));
+    auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
     clear(tSrS);
 
     // wait key, queue: [q, q_rope, kv, k_rope] => []
-    cp_async_wait<0>();
+    cp_async_wait<kStages>();
     __syncthreads();
 
-    // 1> S = Q@K.T
-    compute_qk(tSrS);
-
-    // 2> S += Q_rope@K_rope.T
+    // 1> S = Q_rope@K_rope.T
     compute_qk_rope(tSrS);
+    cp_async_fence();
+
+    // 2> S += Q@K.T
+    CUTE_UNROLL
+    for (int s = 0; s < kStages; ++s) {
+      cp_async_wait<kStages>();
+      __syncthreads();
+
+      compute_qk(tSrS, s);
+      cp_async_fence();
+    }
 
     softmax.rescale(tSrS_mn, tOrO_mn);
 
     // 3> O = softmax(S)*V
-    compute_sv(tSrS, tOrO);
-
-    // produce next key: [] => [kv, k_rope]
-    if (ni != n_block_max - 1) {
-      produce_kv(ni + 1);
-      produce_k_rope(ni + 1);
+    // cast scores from Accumulator to Element
+    auto tSrS_ = make_tensor_like<DType>(tSrS);
+    fast_cast(tSrS, tSrS_);
+    // convert layout from gemm-I C to gemm-II A
+    auto tOrS = make_tensor(tSrS_.data(), Layout::to_mma_a(tSrS_.layout()));
+    const auto next_ni = ni + 1;
+    if (next_ni != n_block_max) {
+      produce_k_rope(next_ni);
+      CUTE_UNROLL
+      for (int s = 0; s < kStages; ++s) {
+        compute_sv(tOrS, tOrO, s);
+        produce_kv(next_ni, s);
+      }
+    } else {
+      CUTE_UNROLL
+      for (int s = 0; s < kStages; ++s) {
+        compute_sv(tOrS, tOrO, s);
+      }
     }
-    cp_async_fence();
   }
 
   // ###############  Epilogue  ###############
