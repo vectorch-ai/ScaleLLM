@@ -18,7 +18,44 @@ constexpr bool
     has_with_bool<Copy_Atom,
                   cute::void_t<decltype(declval<typename Copy_Atom::Traits>()
                                             .with(declval<bool>()))>> = true;
+
+template <typename Layout, typename Shape>
+CUTE_HOST_DEVICE constexpr auto with_shape(Layout l, Shape s) {
+  if constexpr (is_underscore<Shape>::value) {
+    return l;
+  } else {
+    return l.with_shape(s);
+  }
+}
+
 }  // namespace detail
+
+// returns a fragment with the a shape (MMA, mma_m, mma_k)
+template <typename ThrMMA, class ATensor, typename ShapeM, typename ShapeK>
+CUTE_HOST_DEVICE constexpr auto partition_fragment_A(const ThrMMA& thr_mma,
+                                                     ATensor&& atensor,
+                                                     const ShapeM& mma_m,
+                                                     const ShapeK& mma_k) {
+  auto a = thr_mma.partition_A(atensor);
+  auto l = get_nonswizzle_portion(a.layout());
+  auto a_l = make_layout(get<0>(l),
+                         detail::with_shape(get<1>(l), mma_m),
+                         detail::with_shape(get<2>(l), mma_k));
+  return thr_mma.make_fragment_A(a_l);
+}
+
+template <typename ThrMMA, class BTensor, typename ShapeN, typename ShapeK>
+CUTE_HOST_DEVICE constexpr auto partition_fragment_B(const ThrMMA& thr_mma,
+                                                     BTensor&& btensor,
+                                                     const ShapeN& mma_n,
+                                                     const ShapeK& mma_k) {
+  auto b = thr_mma.partition_B(btensor);
+  auto l = get_nonswizzle_portion(b.layout());
+  auto b_l = make_layout(get<0>(l),
+                         detail::with_shape(get<1>(l), mma_n),
+                         detail::with_shape(get<2>(l), mma_k));
+  return thr_mma.make_fragment_B(b_l);
+}
 
 template <int... Is, int B, int M, int S, class Offset, class LayoutB>
 CUTE_HOST_DEVICE constexpr auto permute(
