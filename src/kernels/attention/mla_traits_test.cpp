@@ -40,12 +40,12 @@ void test_mla_traits() {
   Tensor sQ_rope = make_tensor(counting_iterator<int>(0), SmemLayoutQRope{});
   Tensor sKV_rope = make_tensor(counting_iterator<int>(0), SmemLayoutKRope{});
 
-  print("sQ:"); print(sQ);print("\n");
-  print("sKV:"); print(sKV);print("\n");
-  print("sVt:"); print(sVt);print("\n");
+  // print("sQ:"); print(sQ);print("\n");
+  // print("sKV:"); print(sKV);print("\n");
+  // print("sVt:"); print(sVt);print("\n");
 
-  print("sQ_rope:"); print(sQ_rope);print("\n");
-  print("sKV_rope:"); print(sKV_rope);print("\n");
+  // print("sQ_rope:"); print(sQ_rope);print("\n");
+  // print("sKV_rope:"); print(sKV_rope);print("\n");
 
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_slice(0);

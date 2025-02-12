@@ -80,7 +80,8 @@ struct OnlineSoftmax {
       const float rowmax_scale = row_max_(si) * sm_scale_;
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS_mn); sj++) {
-        rAccS_mn(si, sj) = ptx::exp2(rAccS_mn(si, sj) * sm_scale_ - rowmax_scale);
+        rAccS_mn(si, sj) =
+            ptx::exp2(rAccS_mn(si, sj) * sm_scale_ - rowmax_scale);
       }
     }
 
