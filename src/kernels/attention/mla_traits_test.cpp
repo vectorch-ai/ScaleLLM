@@ -13,7 +13,7 @@ using namespace cute;
 template <typename Traits>
 void test_mla_traits() {
   // type alias
-  using TiledMma = typename Traits::TiledMma;
+  using TiledMma_QK = typename Traits::TiledMma_QK;
   using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
@@ -47,9 +47,9 @@ void test_mla_traits() {
   // print("sQ_rope:"); print(sQ_rope);print("\n");
   // print("sKV_rope:"); print(sKV_rope);print("\n");
 
-  TiledMma tiled_mma;
-  auto thr_mma = tiled_mma.get_slice(0);
-  auto tOrVt = thr_mma.partition_fragment_B(sVt);
+  TiledMma_QK tiled_mma_qk;
+  auto thr_mma_qk = tiled_mma_qk.get_slice(0);
+  // auto tOrVt = thr_mma_qk.partition_fragment_B(sVt);
   // TODO: add tests for layout conformance
 }
 
@@ -58,8 +58,8 @@ TEST(MLATraitsTest, TraitsSM80) {
                                 /*HEAD_DIM=*/256,
                                 /*ROPE_HEAD_DIM=*/64,
                                 /*BLK_M=*/64,
-                                /*BLK_N=*/32,
-                                /*BLK_K=*/256>>();
+                                /*BLK_N=*/64,
+                                /*BLK_K=*/64>>();
 }
 
 }  // namespace llm

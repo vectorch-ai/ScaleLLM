@@ -20,6 +20,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run clang-format
+        shell: /usr/bin/bash {0}
         run: |
           diff=`git-clang-format --extensions="c,h,cc,cp,cpp,c++,cxx,hh,hpp,hxx,inc,cu,cuh" --commit ${{ github.event.pull_request.base.sha }} --diff`
           [ "$diff" = "no modified files to format" ] && exit 0
