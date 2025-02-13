@@ -98,7 +98,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // Smem
   extern __shared__ char smem[];
   DType* q_smem = (DType*)smem;
-  DType* k_smem = q_smem + cosize(SmemLayoutQ{});
+  DType* k_smem = (DType*)smem;
   DType* v_smem = k_smem + cosize(SmemLayoutK{});
 
   // (BLK_M, HEAD_DIM), k-major
@@ -176,6 +176,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto tSrK = thr_mma.partition_fragment_B(sK);  // (MMA,MMA_N,MMA_K)
 
   // s2r tiled copy for qkv
+  // copy query to rmem
   SmemTiledCopyQ smem_tiled_copy_Q;
   auto smem_thr_copy_Q = smem_tiled_copy_Q.get_thread_slice(tidx);
   auto tSsQ = smem_thr_copy_Q.partition_S(sQ);
@@ -189,18 +190,14 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // S = Q@K.T
   // tSrAccS: (MMA,MMA_M,MMA_N)
   auto compute_qk = [&](auto& tSrAccS) {
-    // prefetch kv
-    cute::copy(smem_tiled_copy_Q, tSsQ(_, _, _0{}), tSrQ_copy_view(_, _, _0{}));
+    // prefetch key
     cute::copy(smem_tiled_copy_K, tSsK(_, _, _0{}), tSrK_copy_view(_, _, _0{}));
 
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(tSrQ); ++ki) {
-      // prefetch next kv
+      // prefetch next key
       if (ki != size<2>(tSrQ) - 1) {
         const auto next_ki = ki + 1;
-        cute::copy(smem_tiled_copy_Q,
-                   tSsQ(_, _, next_ki),
-                   tSrQ_copy_view(_, _, next_ki));
         cute::copy(smem_tiled_copy_K,
                    tSsK(_, _, next_ki),
                    tSrK_copy_view(_, _, next_ki));
@@ -327,6 +324,16 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // produce query: [] => [q]
   produce_query();
   cp_async_fence();
+
+  // wait g2s copy done for query
+  cp_async_wait<0>();
+  __syncthreads();
+
+  // copy query from smem to rmem
+  cute::copy(smem_tiled_copy_Q, tSsQ, tSrQ_copy_view);
+  // wait s2r copy done for query
+  __syncthreads();
+
   // produce key: [q] => [q, k]
   produce_key(n_block_max - 1);
   cp_async_fence();
