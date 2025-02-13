@@ -1,6 +1,7 @@
 #pragma once
 #include <cute/config.hpp>
 #include <cute/tensor.hpp>
+
 #include "cute_extensions.cuh"
 
 namespace llm {
@@ -135,8 +136,7 @@ struct MHATraitsSM80 {
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
-      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutK{}) + cosize(SmemLayoutV{})) *
-      sizeof(DType);
+      (cosize(SmemLayoutK{}) + cosize(SmemLayoutV{})) * sizeof(DType);
 
   static constexpr size_t kThreadNum = size(TiledMma{});
 };
