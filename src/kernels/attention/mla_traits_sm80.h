@@ -74,16 +74,9 @@ struct MLATraitsSM80 {
       std::conditional_t<std::is_same_v<DType, cute::half_t>,
                          MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,
                          MMA_Atom<SM80_16x8x16_F32BF16BF16F32_TN>>;
-  using TiledMma_QK = TiledMMA<MMA_Atom_,
-                               Layout<Shape<_4, _1, _1>>,  // warp layout 4x1x1
-                               Tile<_64, _16, _16>>;  // Prom Shape 64x16x16
-
-  using TiledMma_PV = TiledMMA<MMA_Atom_,
-                               Layout<Shape<_4, _1, _1>>,  // warp layout 4x1x1
-                               Tile<_64, _16, _16>>;  // Prom Shape 64x16x16
-
-  // use 128-bit vectorizing copy
-  using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
+  using TiledMma = TiledMMA<MMA_Atom_,
+                            Layout<Shape<_4, _1, _1>>,  // warp layout 4x1x1
+                            Tile<_64, _16, _16>>;       // Prom Shape 64x16x16
 
   // Layout convertor for TiledMMA (64x16x16)
   using LayoutConvertor = detail::LayoutConvertor;
@@ -102,10 +95,6 @@ struct MLATraitsSM80 {
   using SmemLayoutKV =
       decltype(tile_to_shape(SmemLayoutAtom{},
                              Shape<_BLK_N, _BLK_K, _STAGES>{}));
-
-  // P smem: (BLK_M, BLK_N)
-  using SmemLayoutP =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _BLK_N>{}));
 
   // V^T smem: (BLK_K, BLK_N, STAGES)
   using SmemLayoutVt = decltype(permute<1, 0, 2>(SmemLayoutKV{}));
@@ -137,37 +126,27 @@ struct MLATraitsSM80 {
   // g2s tiled copy for kv
   using GmemTiledCopyKV = GmemTiledCopyQ;
 
-  // s2r tiled copy for gemm-I S = Q*K^T
+  // s2r tiled copy for gemm-I
   using SmemTiledCopyQ =
       decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
-                                 TiledMma_QK{}));
+                                 TiledMma{}));
   using SmemTiledCopyK =
       decltype(make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
-                                 TiledMma_QK{}));
+                                 TiledMma{}));
 
-  // r2s tiled copy for gemm-I S
-  using SmemTiledCopyS =
-      decltype(make_tiled_copy_C(Copy_Atom<VectorizingCopy, DType>{},
-                                 TiledMma_QK{}));
-
-  // s2r tiled copy for gemm-II: O = P*V^T
-  using SmemTiledCopyP =
-      decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
-                                 TiledMma_PV{}));
+  // s2r tiled copy for gemm-II
   using SmemTiledCopyVt =
       decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, DType>{},
-                                 TiledMma_PV{}));
-
-  // r2s tiled copy for gemm-II O
-  using SmemTiledCopyO =
-      decltype(make_tiled_copy_C(Copy_Atom<VectorizingCopy, DType>{},
-                                 TiledMma_PV{}));
+                                 TiledMma{}));
 
   // ******* Epilogue *******
 
   // O smem: (BLK_M, BLK_K, STAGES) k-major
   using SmemLayoutO = decltype(tile_to_shape(SmemLayoutAtom{},
                                              Shape<_BLK_M, _BLK_K, _STAGES>{}));
+
+  // use 128-bit vectorizing copy
+  using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
 
   // s2g tiled copy for O
   using GmemTiledCopyO = decltype(make_tiled_copy(
@@ -176,14 +155,17 @@ struct MLATraitsSM80 {
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
+  // r2s tiled copy for O
+  using SmemTiledCopyO =
+      decltype(make_tiled_copy_C(Copy_Atom<VectorizingCopy, DType>{},
+                                 TiledMma{}));
+
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
-      sizeof(DType) *
-      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) + cosize(SmemLayoutP{}) +
-       cosize(SmemLayoutQRope{}) + cosize(SmemLayoutKRope{}));
+      sizeof(DType) * (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) +
+                       cosize(SmemLayoutQRope{}) + cosize(SmemLayoutKRope{}));
 
-  static constexpr size_t kThreadNum =
-      std::max(size(TiledMma_QK{}), size(TiledMma_PV{}));
+  static constexpr size_t kThreadNum = size(TiledMma{});
 };
 
 }  // namespace llm
