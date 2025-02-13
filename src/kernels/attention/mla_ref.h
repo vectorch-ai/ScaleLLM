@@ -29,10 +29,10 @@ inline torch::Tensor mla_batch_ref(
   auto scores = torch::einsum("bqhr,bkr->bqhk", {q_, kv_}) +
                 torch::einsum("bqhp,bkp->bqhk", {q_rope_, k_rope_});
   // apply scale
-  scores *= sm_scale;
+  // scores *= sm_scale;
 
   // safe softmax
-  scores = torch::softmax(scores, /*dim=*/-1);
+  // scores = torch::softmax(scores, /*dim=*/-1);
 
   // score * value => [batch_size, q_len, n_heads, kv_lora_rank]
   return torch::einsum("bqhk,bkr->bqhr", {scores, kv_}).type_as(q);

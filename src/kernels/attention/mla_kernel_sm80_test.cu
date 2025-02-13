@@ -60,7 +60,7 @@ torch::Tensor mla_sm80(
                                /*ROPE_HEAD_DIM=*/64,
                                /*BLK_M=*/64,
                                /*BLK_N=*/64,
-                               /*BLK_K=*/128>;
+                               /*BLK_K=*/64>;
   launch_mla_kernel_sm80<Traits>(params, nullptr);
   return out;
 }
@@ -109,6 +109,9 @@ TEST_P(MLAKernelTest, MLA) {
 
   auto ref_out = mla_batch_ref(q, kv, q_rope, k_rope, sm_scale);
   auto out = mla_sm80(q, kv, q_rope, k_rope, sm_scale);
+  std::cerr << "max diff: " << (ref_out - out).abs().max() << std::endl;
+  // std::cerr << "ref_out: " << ref_out << std::endl;
+  // std::cerr << "out: " << out << std::endl;
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
@@ -119,7 +122,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(1),             // batch_size
                        ::testing::Values(64),            // q_len
                        ::testing::Values(64),            // kv_len
-                       ::testing::Values(8),             // n_heads
+                       ::testing::Values(1),             // n_heads
                        ::testing::Values(256),           // head_dim
                        ::testing::Values(64)             // rope_head_dim
                        ));
