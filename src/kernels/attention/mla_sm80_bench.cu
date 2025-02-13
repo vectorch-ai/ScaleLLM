@@ -14,28 +14,33 @@ using namespace llm;
   [&] {                                                    \
     if (HEAD_DIM_V <= 64) {                                \
       constexpr static int HEAD_DIM_NAME = 64;             \
+      constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 64;                     \
       constexpr static int BLK_K = 64;                     \
       return __VA_ARGS__();                                \
     } else if (HEAD_DIM_V <= 128) {                        \
       constexpr static int HEAD_DIM_NAME = 128;            \
+      constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 64;                     \
-      constexpr static int BLK_K = 64;                     \
+      constexpr static int BLK_K = 128;                    \
       return __VA_ARGS__();                                \
     } else if (HEAD_DIM_V <= 256) {                        \
       constexpr static int HEAD_DIM_NAME = 256;            \
+      constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 64;                     \
-      constexpr static int BLK_K = 64;                     \
+      constexpr static int BLK_K = 128;                    \
       return __VA_ARGS__();                                \
     } else if (HEAD_DIM_V <= 384) {                        \
       constexpr static int HEAD_DIM_NAME = 384;            \
+      constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 64;                     \
-      constexpr static int BLK_K = 64;                     \
+      constexpr static int BLK_K = 128;                    \
       return __VA_ARGS__();                                \
     } else if (HEAD_DIM_V <= 512) {                        \
       constexpr static int HEAD_DIM_NAME = 512;            \
+      constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 32;                     \
-      constexpr static int BLK_K = 64;                     \
+      constexpr static int BLK_K = 256;                    \
       return __VA_ARGS__();                                \
     } else {                                               \
       assert(false);                                       \
@@ -96,7 +101,7 @@ void mla_bench_sm80(nvbench::state& state) {
       using Traits = MLATraitsSM80<cute::half_t,
                                    HEAD_DIM,
                                    /*ROPE_HEAD_DIM=*/64,
-                                   /*BLK_M=*/64,
+                                   BLK_M,
                                    BLK_N,
                                    BLK_K>;
 

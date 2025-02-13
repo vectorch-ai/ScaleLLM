@@ -275,9 +275,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // (CPY, CPY_N, _2)
   auto tCrVt = smem_thr_copy_Vt.retile_D(tOrVt);
 
-  // O = softmax(S)*V
+  // O = P*V = softmax(S)*V
   // tOrS: (MMA,MMA_M,MMA_K)
-  auto compute_sv = [&](auto& tOrO, int s) {
+  auto compute_pv = [&](auto& tOrO, int s) {
     // (MMA,MMA_M,MMA_N, STAGES)
     auto tOrO_s = tOrO(_, _, _, s);
 
@@ -305,7 +305,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   SmemTiledCopyS smem_tiled_copy_S;
   auto smem_thr_copy_S = smem_tiled_copy_S.get_slice(tidx);
 
-  auto save_scores = [&](const auto& tSrS) {
+  auto store_s_to_smem = [&](const auto& tSrS) {
     // cast Accumulator to Element type
     auto tSrS_ = make_tensor_like<DType>(tSrS);
     fast_cast(tSrS, tSrS_);
@@ -405,7 +405,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     // softmax.rescale(tSrS_mn, tOrO_mn);
 
     // save tSrS from rmem to smem
-    save_scores(tSrS);
+    store_s_to_smem(tSrS);
     __syncthreads();
 
     // 3> O = softmax(S)*V
@@ -415,14 +415,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       cp_async_fence();
       CUTE_UNROLL
       for (int s = 0; s < kStages; ++s) {
-        compute_sv(tOrO, s);
+        compute_pv(tOrO, s);
         produce_kv(next_ni, s);
         cp_async_fence();
       }
     } else {
       CUTE_UNROLL
       for (int s = 0; s < kStages; ++s) {
-        compute_sv(tOrO, s);
+        compute_pv(tOrO, s);
       }
     }
   }
@@ -447,6 +447,7 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
   const auto smem_size = Traits::kSmemSize;
+  print("smem_size: %d\n", smem_size);
 
   auto mla_kernel =
       mla_kernel_sm80<Traits, Params, EVEN_K, ALIBI, SOFT_CAP, LOCAL>;

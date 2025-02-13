@@ -56,6 +56,13 @@ struct MLATraitsSM80 {
   static constexpr int kBlockK = BLK_K;
   static constexpr int kRowsPerMMA = 2;
 
+  static_assert(kHeadDim % 32 == 0);
+  static_assert(kRopeHeadDim % 32 == 0);
+
+  static_assert(kBlockM % 64 == 0);
+  static_assert(kBlockN % 32 == 0);
+  static_assert(kBlockK % 32 == 0);
+  
   static_assert(kHeadDim % kBlockK == 0);
   static constexpr int kStages = kHeadDim / kBlockK;
 
@@ -88,46 +95,58 @@ struct MLATraitsSM80 {
   // Layout convertor for TiledMMA (64x16x16)
   using LayoutConvertor = detail::LayoutConvertor;
 
-  // SMEM layout for QKV
-  // Atom layout: (8, BLK_K):(BLK_K, 1) k-major
-  using SmemLayoutAtom =
+  // Smem LayoutAtom
+  using SmemLayoutAtom_8x64 =
       decltype(composition(Swizzle<3, 3, 3>{},
                            Layout<Shape<_8, _64>, Stride<_64, _1>>{}));
+  using SmemLayoutAtom_8x32 =
+      decltype(composition(Swizzle<2, 3, 3>{},
+                           Layout<Shape<_8, _32>, Stride<_32, _1>>{}));
 
+  using SmemLayoutAtomK = std::conditional_t<kBlockK % 64 == 0,
+                                             SmemLayoutAtom_8x64,
+                                             SmemLayoutAtom_8x32>;
+  using SmemLayoutAtomN = std::conditional_t<kBlockN % 64 == 0,
+                                             SmemLayoutAtom_8x64,
+                                             SmemLayoutAtom_8x32>;
+  using SmemLayoutAtomR = std::conditional_t<kRopeHeadDim % 64 == 0,
+                                             SmemLayoutAtom_8x64,
+                                             SmemLayoutAtom_8x32>;
+
+  // SMEM layout for QKV
   // Q smem: (BLK_M, BLK_K, STAGES)
-  using SmemLayoutQ = decltype(tile_to_shape(SmemLayoutAtom{},
+  using SmemLayoutQ = decltype(tile_to_shape(SmemLayoutAtomK{},
                                              Shape<_BLK_M, _BLK_K, _STAGES>{}));
 
   // KV smem: (BLK_N, BLK_K, STAGES)
   using SmemLayoutKV =
-      decltype(tile_to_shape(SmemLayoutAtom{},
+      decltype(tile_to_shape(SmemLayoutAtomK{},
                              Shape<_BLK_N, _BLK_K, _STAGES>{}));
 
   // P smem: (BLK_M, BLK_N)
-  // TODO: support smaller BLK_N
   using SmemLayoutP =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _BLK_N>{}));
+      decltype(tile_to_shape(SmemLayoutAtomN{}, Shape<_BLK_M, _BLK_N>{}));
 
   // V^T smem: (BLK_K, BLK_N, STAGES)
   using SmemLayoutVt = decltype(permute<1, 0, 2>(SmemLayoutKV{}));
 
   // QRope smem: (BLK_M, ROPE_HEAD_DIM)
   using SmemLayoutQRope =
-      decltype(tile_to_shape(SmemLayoutAtom{},
+      decltype(tile_to_shape(SmemLayoutAtomR{},
                              Shape<_BLK_M, _ROPE_HEAD_DIM>{}));
 
   // KRoep smem: (BLK_N, ROPE_HEAD_DIM)
   using SmemLayoutKRope =
-      decltype(tile_to_shape(SmemLayoutAtom{},
+      decltype(tile_to_shape(SmemLayoutAtomR{},
                              Shape<_BLK_N, _ROPE_HEAD_DIM>{}));
 
-  // Thr layout for gmem copy, 32x8 threads layout
+  // Thr layout for gmem copy, 32x8
   using GmemCopyThrLayout = Layout<Shape<_32, _8>, Stride<_8, _1>>;
 
   // Tiled copy for QKV
   // use 128-bit vectorizing copy
   using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
-  
+
   // g2s tiled copy for q
   using GmemTiledCopyQ = decltype(make_tiled_copy(
       Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, DType>{},
@@ -166,14 +185,14 @@ struct MLATraitsSM80 {
 
   // ******* Epilogue *******
 
-  // O smem: (BLK_M, BLK_K, STAGES) k-major
-  using SmemLayoutO = decltype(tile_to_shape(SmemLayoutAtom{},
+  // O smem: (BLK_M, BLK_K, STAGES)
+  using SmemLayoutO = decltype(tile_to_shape(SmemLayoutAtomK{},
                                              Shape<_BLK_M, _BLK_K, _STAGES>{}));
 
   // s2g tiled copy for O
   using GmemTiledCopyO = decltype(make_tiled_copy(
       Copy_Atom<VectorizingCopy, DType>{},
-      GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
+      GmemCopyThrLayout{},     // Thr layout: (_32, _8)
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
