@@ -31,6 +31,14 @@ inline torch::Tensor mla_batch_ref(
   // apply scale
   scores *= sm_scale;
 
+  // apply causal mask
+  auto mask = torch::ones({q_len, kv_len}, torch::kBool);
+  // causal mask: returns the lower triangular part of a matrix
+  mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(q);
+  // [q_len, kv_len] => [q_len, 1, kv_len]
+  mask = mask.unsqueeze(1);
+  scores = scores.masked_fill(mask == 0, -INFINITY);
+
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
 
