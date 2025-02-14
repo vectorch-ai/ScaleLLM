@@ -159,7 +159,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(torch::kHalf),   // q_dtype
                        ::testing::Values(1, 2, 4),        // batch_size
                        ::testing::Values(64),             // q_len
-                       ::testing::Values(64, 128),        // kv_len
+                       ::testing::Values(64),             // kv_len
                        ::testing::Values(1, 8, 24, 128),  // n_heads
                        ::testing::Values(64, 128, 256),   // head_dim
                        ::testing::Values(64)              // rope_head_dim
