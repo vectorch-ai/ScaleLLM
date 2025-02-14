@@ -139,35 +139,33 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   Tensor sRowsum =
       make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowsum{});
 
+  // thread layout: (32, 8), each thread process 2 rows
+  // (store_idx, load_idx) = (0, 64), (1, 65), ...
+  const int row_store_idx = tidx / 4 * 2;
+  const int row_load_idx = row_store_idx ^ kBlockM;
   // reduce rowmax accross 2 warps
   auto reduce_rowmax = [&](auto& row_max) {
-    const int base_idx = tidx / 4 * 2;
-    if (tidx % 4 == 0) {
-      CUTE_UNROLL
-      for (int i = 0; i < size(row_max); ++i) {
-        sRowmax(base_idx + i) = row_max(i);
-      }
+    CUTE_UNROLL
+    for (int i = 0; i < size(row_max); ++i) {
+      sRowmax(row_store_idx + i) = row_max(i);
     }
     __syncthreads();
     CUTE_UNROLL
     for (int i = 0; i < size(row_max); ++i) {
-      row_max(i) = max(row_max(i), sRowmax((base_idx ^ kBlockM) + i));
+      row_max(i) = max(row_max(i), sRowmax(row_load_idx + i));
     }
   };
 
   // reduce rowsum accross 2 warps
   auto reduce_rowsum = [&](auto& row_sum) {
-    const int base_idx = tidx / 4 * 2;
-    if (tidx % 4 == 0) {
-      CUTE_UNROLL
-      for (int i = 0; i < size(row_sum); ++i) {
-        sRowsum(base_idx + i) = row_sum(i);
-      }
+    CUTE_UNROLL
+    for (int i = 0; i < size(row_sum); ++i) {
+      sRowsum(row_store_idx + i) = row_sum(i);
     }
     __syncthreads();
     CUTE_UNROLL
     for (int i = 0; i < size(row_sum); ++i) {
-      row_sum(i) += sRowsum((base_idx ^ kBlockM) + i);
+      row_sum(i) += sRowsum(row_load_idx + i);
     }
   };
 
