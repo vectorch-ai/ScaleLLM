@@ -77,7 +77,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // for MLA/MQA, group_size = n_heads
   const int group_size = params.n_heads;
 
-
   MLATile<Params> tile(params);
 
   // ProblemShape
