@@ -133,13 +133,13 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // (BLK_M, BLK_K, STAGES), reuse smem
   Tensor sO = make_tensor(make_smem_ptr(q_smem), SmemLayoutO{});
 
-  // (BLK_M*2)
+  // (BLK_M, 2)
   Tensor sRowmax =
       make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowmax{});
   Tensor sRowsum =
       make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowsum{});
 
-  // reduce rowmax accross 2 warpgroups
+  // reduce rowmax accross 2 warps
   auto reduce_rowmax = [&](auto& row_max) {
     const int base_idx = tidx / 4 * 2;
     if (tidx % 4 == 0) {
@@ -155,7 +155,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     }
   };
 
-  // reduce rowsum accross 2 warpgroups
+  // reduce rowsum accross 2 warps
   auto reduce_rowsum = [&](auto& row_sum) {
     const int base_idx = tidx / 4 * 2;
     if (tidx % 4 == 0) {
@@ -180,24 +180,24 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   auto produce_q = [&](int stage) {
     // gQ/sQ: (BLK_M, BLK_K, STAGES)
-    auto tGCgQ = gmem_thr_copy_Q.partition_S(gQ(_, _, stage));
-    auto tGCsQ = gmem_thr_copy_Q.partition_D(sQ(_, _, stage));
-    cute::copy(gmem_tiled_copy_Q, tGCgQ, tGCsQ);
+    auto tCgQ = gmem_thr_copy_Q.partition_S(gQ(_, _, stage));
+    auto tCsQ = gmem_thr_copy_Q.partition_D(sQ(_, _, stage));
+    cute::copy(gmem_tiled_copy_Q, tCgQ, tCsQ);
   };
 
   auto produce_q_rope = [&]() {
-    auto tQgQ_rope = gmem_thr_copy_Q.partition_S(gQ_rope);
-    auto tQsQ_rope = gmem_thr_copy_Q.partition_D(sQ_rope);
-    cute::copy(gmem_tiled_copy_Q, tQgQ_rope, tQsQ_rope);
+    auto tCgQ_rope = gmem_thr_copy_Q.partition_S(gQ_rope);
+    auto tCsQ_rope = gmem_thr_copy_Q.partition_D(sQ_rope);
+    cute::copy(gmem_tiled_copy_Q, tCgQ_rope, tCsQ_rope);
   };
 
   // (CPY, CPY_N, CPY_K, STAGES)
   auto produce_kv = [&](int ni, int stage) {
     // gKV: (BLK_N, BLK_K, n, STAGES)
-    auto tGCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, stage));
+    auto tCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, stage));
     // sK: (BLK_N, BLK_K, STAGES)
-    Tensor tGCsKV = gmem_thr_copy_KV.partition_D(sK(_, _, stage));
-    cute::copy(gmem_tiled_copy_KV, tGCgKV, tGCsKV);
+    auto tCsKV = gmem_thr_copy_KV.partition_D(sK(_, _, stage));
+    cute::copy(gmem_tiled_copy_KV, tCgKV, tCsKV);
   };
 
   Tensor tKsK_rope = gmem_thr_copy_KV.partition_D(sK_rope);
@@ -220,7 +220,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   auto tSrK_rope =
       partition_fragment_B(thr_mma_qk, sK_rope, _, _2{});  // (MMA, MMA_N, _2)
 
-  // s2r tiled copy for qkv
+  // s2r tiled copy for q
   SmemTiledCopyQ smem_tiled_copy_Q;
   auto smem_thr_copy_Q = smem_tiled_copy_Q.get_slice(tidx);
   // (CPY, CPY_M, CPY_K, STAGES)
@@ -233,6 +233,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // (CPY, CPY_M, _2)
   auto tCrQ_rope = smem_thr_copy_Q.retile_D(tSrQ_rope);
 
+  // s2r tiled copy for k
   SmemTiledCopyK smem_tiled_copy_K;
   auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(tidx);
   // (CPY, CPY_N, CPY_K, STAGES)
@@ -302,6 +303,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // (MMA, MMA_N, _2)
   auto tOrVt = partition_fragment_B(thr_mma_pv, sVt(_, _, _0{}), _, _2{});
 
+  // s2r tiled copy for p
   SmemTiledCopyP smem_tiled_copy_P;
   auto smem_thr_copy_P = smem_tiled_copy_P.get_slice(tidx);
   // (CPY, CPY_M, CPY_K)
@@ -309,6 +311,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // (CPY, CPY_M, _2)
   auto tCrP = smem_thr_copy_P.retile_D(tOrP);
 
+  // s2r tiled copy for vt
   SmemTiledCopyVt smem_tiled_copy_Vt;
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_slice(tidx);
   // (CPY, CPY_N, CPY_K, STAGES)
@@ -343,6 +346,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     }
   };
 
+  // r2s tiled copy for S/P
   SmemTiledCopyS smem_tiled_copy_S;
   auto smem_thr_copy_S = smem_tiled_copy_S.get_slice(tidx);
 
@@ -379,14 +383,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     __syncthreads();
 
     // 2. copy output from smem to gmem
-    {
-      GmemTiledCopyO gmem_tiled_copy_O;
-      auto gmem_thr_copy_O = gmem_tiled_copy_O.get_slice(tidx);
+    GmemTiledCopyO gmem_tiled_copy_O;
+    auto gmem_thr_copy_O = gmem_tiled_copy_O.get_slice(tidx);
 
-      auto tCsO = gmem_thr_copy_O.partition_S(sO);
-      auto tCgO = gmem_thr_copy_O.partition_D(gO);
-      cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
-    }
+    auto tCsO = gmem_thr_copy_O.partition_S(sO);
+    auto tCgO = gmem_thr_copy_O.partition_D(gO);
+    cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
   };
 
   // output accumulator: (MMA, MMA_M, MMA_K, STAGES)
