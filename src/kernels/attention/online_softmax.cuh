@@ -56,9 +56,14 @@ struct OnlineSoftmax {
   //  - score = exp(score - row_max`)
   //  - o = o * s_scale
   //  - internal: row_sum = row_sum * s_scale + row_sum`
-  template <class EngineS, class LayoutS, class EngineO, class LayoutO>
+  template <typename EngineS,
+            typename LayoutS,
+            typename EngineO,
+            typename LayoutO,
+            typename ReduceFunc>
   CUTE_DEVICE void rescale(Tensor<EngineS, LayoutS>& rAccS_mn,
-                           Tensor<EngineO, LayoutO>& rAccO_mn) {
+                           Tensor<EngineO, LayoutO>& rAccO_mn,
+                           ReduceFunc reduce_rowmax) {
     // row_max = max(row_max, scores)
     FragmentT pre_row_max;
     cute::copy(row_max_, pre_row_max);
@@ -72,6 +77,10 @@ struct OnlineSoftmax {
       }
       // rowmax across 4 threads
       row_max_(si) = detail::group_reduce_max<4>(row_max);
+    }
+
+    if constexpr (!std::is_same_v<ReduceFunc, std::nullptr_t>) {
+      reduce_rowmax(row_max_);
     }
 
     // scores = exp(scores - row_max)
@@ -112,14 +121,28 @@ struct OnlineSoftmax {
     }
   }
 
+  template <typename EngineS,
+            typename LayoutS,
+            typename EngineO,
+            typename LayoutO>
+  CUTE_DEVICE void rescale(Tensor<EngineS, LayoutS>& rAccS_mn,
+                           Tensor<EngineO, LayoutO>& rAccO_mn) {
+    rescale(rAccS_mn, rAccO_mn, nullptr);
+  }
+
   // finalizes the softmax computation with o = o / row_sum
   // rAccO: ((2, MMA_M), (2, MMA_K), STAGES)
-  template <class EngineO, class LayoutO>
-  CUTE_DEVICE void finalize(Tensor<EngineO, LayoutO>& rAccO_mn) {
+  template <typename EngineO, typename LayoutO, typename ReduceFunc>
+  CUTE_DEVICE void finalize(Tensor<EngineO, LayoutO>& rAccO_mn,
+                            ReduceFunc reduce_rowsum) {
     CUTE_UNROLL
     for (int i = 0; i < size(row_sum_); ++i) {
       // rowsum across 4 threads
       row_sum_(i) = detail::group_reduce_sum<4>(row_sum_(i));
+    }
+
+    if constexpr (!std::is_same_v<ReduceFunc, std::nullptr_t>) {
+      reduce_rowsum(row_sum_);
     }
 
     // o = o / row_sum
@@ -127,11 +150,17 @@ struct OnlineSoftmax {
     auto rAccO_mn_ = group_modes<1, R>(rAccO_mn);
     CUTE_UNROLL
     for (int oi = 0; oi < size<0>(rAccO_mn_); ++oi) {
+      const auto row_sum_rcp = ptx::rcp(row_sum_(oi));
       CUTE_UNROLL
       for (int oj = 0; oj < size<1>(rAccO_mn_); ++oj) {
-        rAccO_mn_(oi, oj) *= ptx::rcp(row_sum_(oi));
+        rAccO_mn_(oi, oj) *= row_sum_rcp;
       }
     }
+  }
+
+  template <typename EngineO, typename LayoutO>
+  CUTE_DEVICE void finalize(Tensor<EngineO, LayoutO>& rAccO_mn) {
+    finalize(rAccO_mn, nullptr);
   }
 };
 

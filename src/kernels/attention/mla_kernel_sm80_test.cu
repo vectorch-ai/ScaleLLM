@@ -13,6 +13,41 @@
 
 namespace llm {
 
+#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
+  [&] {                                                    \
+    if (HEAD_DIM_V <= 64) {                                \
+      constexpr static int HEAD_DIM_NAME = 64;             \
+      constexpr static int BLK_M = 64;                     \
+      constexpr static int BLK_N = 64;                     \
+      constexpr static int BLK_K = 64;                     \
+      return __VA_ARGS__();                                \
+    } else if (HEAD_DIM_V <= 128) {                        \
+      constexpr static int HEAD_DIM_NAME = 128;            \
+      constexpr static int BLK_M = 64;                     \
+      constexpr static int BLK_N = 64;                     \
+      constexpr static int BLK_K = 128;                    \
+      return __VA_ARGS__();                                \
+    } else if (HEAD_DIM_V <= 256) {                        \
+      constexpr static int HEAD_DIM_NAME = 256;            \
+      constexpr static int BLK_M = 64;                     \
+      constexpr static int BLK_N = 64;                     \
+      constexpr static int BLK_K = 128;                    \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
+
+#define DISPATCH_ROPE_HEAD_DIM_(ROPE_HEAD_DIM_V, ROPE_HEAD_DIM_NAME, ...) \
+  [&] {                                                                   \
+    if (ROPE_HEAD_DIM_V <= 64) {                                          \
+      constexpr static int ROPE_HEAD_DIM_NAME = 64;                       \
+      return __VA_ARGS__();                                               \
+    } else {                                                              \
+      assert(false);                                                      \
+    }                                                                     \
+  }()
+
 namespace {
 torch::Tensor mla_sm80(
     torch::Tensor q,       // [batch, q_len, n_heads, head_dim]
@@ -55,13 +90,18 @@ torch::Tensor mla_sm80(
   params.sm_scale = sm_scale;
   params.normalize();
 
-  using Traits = MLATraitsSM80<cute::half_t,
-                               /*HEAD_DIM=*/256,
-                               /*ROPE_HEAD_DIM=*/64,
-                               /*BLK_M=*/64,
-                               /*BLK_N=*/64,
-                               /*BLK_K=*/128>;
-  launch_mla_kernel_sm80<Traits>(params, nullptr);
+  DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+    DISPATCH_ROPE_HEAD_DIM_(rope_head_dim, ROPE_HEAD_DIM, [&] {
+      using Traits = MLATraitsSM80<cute::half_t,
+                                   HEAD_DIM,
+                                   ROPE_HEAD_DIM,
+                                   BLK_M,
+                                   BLK_N,
+                                   BLK_K>;
+
+      launch_mla_kernel_sm80<Traits>(params, nullptr);
+    });
+  });
   return out;
 }
 
@@ -109,19 +149,20 @@ TEST_P(MLAKernelTest, MLA) {
 
   auto ref_out = mla_batch_ref(q, kv, q_rope, k_rope, sm_scale);
   auto out = mla_sm80(q, kv, q_rope, k_rope, sm_scale);
+  // std::cerr << "max diff: " << (ref_out - out).abs().max() << std::endl;
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MLA,
     MLAKernelTest,
-    ::testing::Combine(::testing::Values(torch::kHalf),  // q_dtype
-                       ::testing::Values(1),             // batch_size
-                       ::testing::Values(64),            // q_len
-                       ::testing::Values(64),            // kv_len
-                       ::testing::Values(8),             // n_heads
-                       ::testing::Values(256),           // head_dim
-                       ::testing::Values(64)             // rope_head_dim
+    ::testing::Combine(::testing::Values(torch::kHalf),   // q_dtype
+                       ::testing::Values(1, 2, 4),        // batch_size
+                       ::testing::Values(64),             // q_len
+                       ::testing::Values(64),             // kv_len
+                       ::testing::Values(1, 8, 24, 128),  // n_heads
+                       ::testing::Values(64, 128, 256),   // head_dim
+                       ::testing::Values(64)              // rope_head_dim
                        ));
 
 }  // namespace llm
