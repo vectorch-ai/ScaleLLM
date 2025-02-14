@@ -150,9 +150,10 @@ struct OnlineSoftmax {
     auto rAccO_mn_ = group_modes<1, R>(rAccO_mn);
     CUTE_UNROLL
     for (int oi = 0; oi < size<0>(rAccO_mn_); ++oi) {
+      const auto row_sum_rcp = ptx::rcp(row_sum_(oi));
       CUTE_UNROLL
       for (int oj = 0; oj < size<1>(rAccO_mn_); ++oj) {
-        rAccO_mn_(oi, oj) *= ptx::rcp(row_sum_(oi));
+        rAccO_mn_(oi, oj) *= row_sum_rcp;
       }
     }
   }

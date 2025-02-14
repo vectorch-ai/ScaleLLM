@@ -141,7 +141,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   // reduce rowmax accross 2 warpgroups
   auto reduce_rowmax = [&](auto& row_max) {
-    const int base_idx = tidx / 2;
+    const int base_idx = tidx / 4 * 2;
     if (tidx % 4 == 0) {
       CUTE_UNROLL
       for (int i = 0; i < size(row_max); ++i) {
@@ -157,7 +157,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   // reduce rowsum accross 2 warpgroups
   auto reduce_rowsum = [&](auto& row_sum) {
-    const int base_idx = tidx / 2;
+    const int base_idx = tidx / 4 * 2;
     if (tidx % 4 == 0) {
       CUTE_UNROLL
       for (int i = 0; i < size(row_sum); ++i) {
@@ -489,7 +489,7 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
   const auto smem_size = Traits::kSmemSize;
-  print("smem_size: %d\n", smem_size);
+  // print("smem_size: %d\n", smem_size);
 
   auto mla_kernel =
       mla_kernel_sm80<Traits, Params, EVEN_K, ALIBI, SOFT_CAP, LOCAL>;
