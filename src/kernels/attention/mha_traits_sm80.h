@@ -15,7 +15,7 @@ struct LayoutConvertor {
   // Convert fragment layout to rowcol layout for iterating
   // (MMA=4, MMA_M, MMA_N) => ((2, MMA_M), (2, MMA_N))
   template <typename LayoutC>
-  CUTE_HOST_DEVICE static constexpr auto to_rowcol(const LayoutC& layout) {
+  CUTE_HOST_DEVICE static constexpr auto to_mn(const LayoutC& layout) {
     auto l = logical_divide(layout, Shape<_2>{});
     return make_layout(make_layout(get<0, 1>(l), get<1>(l)),
                        make_layout(get<0, 0>(l), get<2>(l)));

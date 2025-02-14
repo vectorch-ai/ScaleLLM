@@ -22,7 +22,8 @@ template <typename Traits,
           bool ALIBI,
           bool SOFT_CAP,
           bool LOCAL>
-__global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
+__global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
+    __grid_constant__ const Params params) {
   using namespace cute;
 
   constexpr int kBlockM = Traits::kBlockM;
@@ -54,7 +55,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
 
-  const int m_block = blockIdx.x;
+  const int m_block_idx = blockIdx.x;
   const int batch_idx = blockIdx.y;
   const int kv_head_idx = blockIdx.z;
   const int tidx = threadIdx.x;
@@ -78,7 +79,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   const int q_len = q_packed_len / group_size;
   const int kv_len = size<0>(K);
 
-  if (m_block * kBlockM >= q_packed_len) {
+  if (m_block_idx * kBlockM >= q_packed_len) {
     // m out of bound, return
     return;
   }
@@ -88,9 +89,9 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   // Gmem
   // (BLK_M, HEAD_DIM)
   Tensor gQ =
-      local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+      local_tile(Q, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
   Tensor gO =
-      local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block, _0{}));
+      local_tile(O, Shape<_BLK_M, _HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
   // (BLK_N, HEAD_DIM, n)
   Tensor gK = local_tile(K, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
   Tensor gV = local_tile(V, Shape<_BLK_N, _HEAD_DIM>{}, make_coord(_, _0{}));
@@ -126,7 +127,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   auto produce_query = [&]() {
     auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
     auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
-    auto max_coord = make_coord(q_packed_len - m_block * kBlockM, head_dim);
+    auto max_coord = make_coord(q_packed_len - m_block_idx * kBlockM, head_dim);
     safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/true, /*ZFILL_K=*/true>(
         gmem_tiled_copy_Q, tQgQ, tQsQ, tQcQ, max_coord);
   };
@@ -272,18 +273,17 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     // wait for smem copy done before gmem copy
     __syncthreads();
 
-    auto max_coord = make_coord(q_packed_len - m_block * kBlockM, head_dim);
+    auto max_coord = make_coord(q_packed_len - m_block_idx * kBlockM, head_dim);
     safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/false, /*ZFILL_K=*/false>(
         gmem_tiled_copy_O, tOsO, tOgO, tOcO, max_coord);
   };
 
   // output accumulator, (MMA,MMA_M,MMA_K)
-  auto tOrAccO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
-  auto tOrAccO_rc_view =
-      make_tensor(tOrAccO.data(), Layout::to_rowcol(tOrAccO.layout()));
-  clear(tOrAccO);
+  auto tOrO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
+  auto tOrO_mn = make_tensor(tOrO.data(), Layout::to_mn(tOrO.layout()));
+  clear(tOrO);
 
-  const int diagonal = (m_block * kBlockM) / group_size + kv_len - q_len;
+  const int diagonal = (m_block_idx * kBlockM) / group_size + kv_len - q_len;
   // process kv in range: [kv_idx_min, kv_idx_max)
   const int kv_idx_min = std::max(0, diagonal - sliding_window);
   const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
@@ -292,7 +292,7 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
 
   if (n_block_min >= n_block_max) {
     // write output to gmem
-    epilogue(tOrAccO);
+    epilogue(tOrO);
     return;
   }
 
@@ -304,21 +304,6 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
       }
     }
   };
-
-  constexpr int kMMA_M = size<1>(tOrAccO);
-  using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
-  using Mask = Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL>;
-
-  Softmax softmax(sm_scale_log2);
-  Mask mask(tidx,
-            m_block,
-            q_len,
-            kv_len,
-            kv_head_idx,
-            group_size,
-            sliding_window,
-            sm_scale,
-            params.alibi_slopes_ptr);
 
   // ###############  Prologue  ###############
   // produce query: [] => [q]
@@ -342,15 +327,30 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
   constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
   const int n_blocks = n_block_max - n_block_min;
 
+  // attention score accumulator, (MMA,MMA_M,MMA_N)
+  auto tSrS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
+  auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
+
+  // identity tensor for score accumulator
+  auto tScS =
+      thr_mma.partition_C(make_identity_tensor(Shape<_BLK_M, _BLK_N>{}));
+  auto tScS_mn = make_tensor(tScS.data(), Layout::to_mn(tScS.layout()));
+
+  constexpr int kMMA_M = size<1>(tSrS);
+  using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
+  using Mask = Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL>;
+
+  Softmax softmax(sm_scale_log2);
+  Mask mask(q_len, kv_len, group_size, sliding_window);
+  if constexpr (ALIBI) {
+    mask.init_alibi(
+        tScS_mn, m_block_idx, kv_head_idx, sm_scale, params.alibi_slopes_ptr);
+  }
+
   CUTE_NO_UNROLL
   for (int i = 0; i < n_blocks; ++i) {
     const int n_block_idx = n_block_max - 1 - i;
-
-    // attention score accumulator, (MMA,MMA_M,MMA_N)
-    auto tSrAccS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-    auto tSrAccS_rc_view =
-        make_tensor(tSrAccS.data(), Layout::to_rowcol(tSrAccS.layout()));
-    clear(tSrAccS);
+    clear(tSrS);
 
     // wait key, queue: [q, k] => []
     cp_async_wait<0>();
@@ -365,22 +365,23 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     cp_async_fence();
 
     // 1> S = Q@K.T
-    compute_qk(tSrAccS);
+    compute_qk(tSrS);
 
     // wait value, [v] => []
     cp_async_wait<0>();
     __syncthreads();
 
     if constexpr (SOFT_CAP) {
-      apply_logits_soft_cap(tSrAccS);
+      apply_logits_soft_cap(tSrS);
     }
 
     if (i < n_oob_mask) {
-      mask.apply(tSrAccS_rc_view, n_block_idx);
+      mask.apply(tSrS_mn, tScS_mn, m_block_idx, n_block_idx);
     } else {
-      mask.apply</*OOB_MASK=*/false>(tSrAccS_rc_view, n_block_idx);
+      mask.apply</*OOB_MASK=*/false>(
+          tSrS_mn, tScS_mn, m_block_idx, n_block_idx);
     }
-    softmax.rescale(tSrAccS_rc_view, tOrAccO_rc_view);
+    softmax.rescale(tSrS_mn, tOrO_mn);
 
     // produce next key: [] => [k]
     if (n_block_idx > n_block_min) {
@@ -389,16 +390,16 @@ __global__ void mha_kernel_sm80(__grid_constant__ const Params params) {
     cp_async_fence();
 
     // 2> O = softmax(S)*V
-    compute_sv(tSrAccS, tOrAccO);
+    compute_sv(tSrS, tOrO);
   }
 
   // ###############  Epilogue  ###############
 
   // normalize output: o /= rowsum
-  softmax.finalize(tOrAccO_rc_view);
+  softmax.finalize(tOrO_mn);
 
   // write output to gmem
-  epilogue(tOrAccO);
+  epilogue(tOrO);
 }
 
 template <typename Traits,
