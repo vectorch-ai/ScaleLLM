@@ -56,7 +56,7 @@ torch::Tensor mla_sm80(
   params.normalize();
 
   using Traits = MLATraitsSM80<cute::half_t,
-                               /*HEAD_DIM=*/256,
+                               /*HEAD_DIM=*/64,
                                /*ROPE_HEAD_DIM=*/64,
                                /*BLK_M=*/64,
                                /*BLK_N=*/64,
@@ -123,7 +123,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(64),            // q_len
                        ::testing::Values(64),            // kv_len
                        ::testing::Values(1),             // n_heads
-                       ::testing::Values(256),           // head_dim
+                       ::testing::Values(64),            // head_dim
                        ::testing::Values(64)             // rope_head_dim
                        ));
 

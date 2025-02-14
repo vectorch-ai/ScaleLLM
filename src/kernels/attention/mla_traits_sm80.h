@@ -62,7 +62,7 @@ struct MLATraitsSM80 {
   static_assert(kBlockM % 64 == 0);
   static_assert(kBlockN % 32 == 0);
   static_assert(kBlockK % 32 == 0);
-  
+
   static_assert(kHeadDim % kBlockK == 0);
   static constexpr int kStages = kHeadDim / kBlockK;
 
@@ -140,6 +140,11 @@ struct MLATraitsSM80 {
       decltype(tile_to_shape(SmemLayoutAtomR{},
                              Shape<_BLK_N, _ROPE_HEAD_DIM>{}));
 
+  // shared memory for sync between warp groups
+  // rowmax/rowsum smem: (_BLK_M, _2)
+  using SmemLayoutRowmax = Layout<Shape<Int<2*kBlockM>>>;
+  using SmemLayoutRowsum = Layout<Shape<Int<2*kBlockM>>>;
+
   // Thr layout for gmem copy, 32x8
   using GmemCopyThrLayout = Layout<Shape<_32, _8>, Stride<_8, _1>>;
 
@@ -198,9 +203,10 @@ struct MLATraitsSM80 {
 
   // constexpr values for kernel launch
   static constexpr size_t kSmemSize =
-      sizeof(DType) *
-      (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) + cosize(SmemLayoutP{}) +
-       cosize(SmemLayoutQRope{}) + cosize(SmemLayoutKRope{}));
+      sizeof(DType) * (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) +
+                       cosize(SmemLayoutP{}) + cosize(SmemLayoutQRope{}) +
+                       cosize(SmemLayoutKRope{})) +
+      sizeof(float) * (cosize(SmemLayoutRowmax{}));
 
   static constexpr size_t kThreadNum = size(TiledMma_PV{});
 };

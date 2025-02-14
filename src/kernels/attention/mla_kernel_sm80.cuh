@@ -56,6 +56,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   using SmemLayoutKRope = typename Traits::SmemLayoutKRope;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
+  using SmemLayoutRowmax = typename Traits::SmemLayoutRowmax;
+  using SmemLayoutRowsum = typename Traits::SmemLayoutRowsum;
 
   using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
   using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
@@ -109,6 +111,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   DType* p_smem = kv_smem + cosize(SmemLayoutKV{});
   DType* q_rope_smem = p_smem + cosize(SmemLayoutP{});
   DType* k_rope_smem = q_rope_smem + cosize(SmemLayoutQRope{});
+  float* row_sync_smem = (float*)(k_rope_smem + cosize(SmemLayoutKRope{}));
 
   // (BLK_M, BLK_K, STAGES), k-major
   Tensor sQ = make_tensor(make_smem_ptr(q_smem), SmemLayoutQ{});
@@ -129,6 +132,44 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   // (BLK_M, BLK_K, STAGES), reuse smem
   Tensor sO = make_tensor(make_smem_ptr(q_smem), SmemLayoutO{});
+
+  // (BLK_M*2)
+  Tensor sRowmax =
+      make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowmax{});
+  Tensor sRowsum =
+      make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowsum{});
+
+  // reduce rowmax accross 2 warpgroups
+  auto reduce_rowmax = [&](auto& row_max) {
+    const int base_idx = tidx / 2;
+    if (tidx % 4 == 0) {
+      CUTE_UNROLL
+      for (int i = 0; i < size(row_max); ++i) {
+        sRowmax(base_idx + i) = row_max(i);
+      }
+    }
+    __syncthreads();
+    CUTE_UNROLL
+    for (int i = 0; i < size(row_max); ++i) {
+      row_max(i) = max(row_max(i), sRowmax((base_idx ^ kBlockM) + i));
+    }
+  };
+
+  // reduce rowsum accross 2 warpgroups
+  auto reduce_rowsum = [&](auto& row_sum) {
+    const int base_idx = tidx / 2;
+    if (tidx % 4 == 0) {
+      CUTE_UNROLL
+      for (int i = 0; i < size(row_sum); ++i) {
+        sRowsum(base_idx + i) = row_sum(i);
+      }
+    }
+    __syncthreads();
+    CUTE_UNROLL
+    for (int i = 0; i < size(row_sum); ++i) {
+      row_sum(i) += sRowsum((base_idx ^ kBlockM) + i);
+    }
+  };
 
   // Tiled Copy
   // g2s tiled copy for qkv
@@ -349,7 +390,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   };
 
   // output accumulator: (MMA, MMA_M, MMA_K, STAGES)
-  auto tOrO = partition_fragment_C(tiled_mma_pv, Shape<_BLK_M, _BLK_K, _STAGES>{});
+  auto tOrO =
+      partition_fragment_C(tiled_mma_pv, Shape<_BLK_M, _BLK_K, _STAGES>{});
   auto tOrO_mn = make_tensor(tOrO.data(), Layout::to_mns(tOrO.layout()));
   clear(tOrO);
 
@@ -402,7 +444,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       cp_async_fence();
     }
 
-    // softmax.rescale(tSrS_mn, tOrO_mn);
+    softmax.rescale(tSrS_mn, tOrO_mn, reduce_rowmax);
 
     // save tSrS from rmem to smem
     store_s_to_smem(tSrS);
@@ -430,7 +472,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // ###############  Epilogue  ###############
 
   // normalize output: o /= rowsum
-  // softmax.finalize(tOrO_mn);
+  softmax.finalize(tOrO_mn, reduce_rowsum);
 
   // write output to gmem
   epilogue(tOrO);
