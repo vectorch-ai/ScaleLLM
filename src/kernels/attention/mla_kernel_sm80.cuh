@@ -139,35 +139,33 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   Tensor sRowsum =
       make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowsum{});
 
+  // thread layout: (32, 8), each thread process 2 rows
+  // (store_idx, load_idx) = (0, 64), (1, 65), ...
+  const int row_store_idx = tidx / 4 * 2;
+  const int row_load_idx = row_store_idx ^ kBlockM;
   // reduce rowmax accross 2 warps
   auto reduce_rowmax = [&](auto& row_max) {
-    const int base_idx = tidx / 4 * 2;
-    if (tidx % 4 == 0) {
-      CUTE_UNROLL
-      for (int i = 0; i < size(row_max); ++i) {
-        sRowmax(base_idx + i) = row_max(i);
-      }
+    CUTE_UNROLL
+    for (int i = 0; i < size(row_max); ++i) {
+      sRowmax(row_store_idx + i) = row_max(i);
     }
     __syncthreads();
     CUTE_UNROLL
     for (int i = 0; i < size(row_max); ++i) {
-      row_max(i) = max(row_max(i), sRowmax((base_idx ^ kBlockM) + i));
+      row_max(i) = max(row_max(i), sRowmax(row_load_idx + i));
     }
   };
 
   // reduce rowsum accross 2 warps
   auto reduce_rowsum = [&](auto& row_sum) {
-    const int base_idx = tidx / 4 * 2;
-    if (tidx % 4 == 0) {
-      CUTE_UNROLL
-      for (int i = 0; i < size(row_sum); ++i) {
-        sRowsum(base_idx + i) = row_sum(i);
-      }
+    CUTE_UNROLL
+    for (int i = 0; i < size(row_sum); ++i) {
+      sRowsum(row_store_idx + i) = row_sum(i);
     }
     __syncthreads();
     CUTE_UNROLL
     for (int i = 0; i < size(row_sum); ++i) {
-      row_sum(i) += sRowsum((base_idx ^ kBlockM) + i);
+      row_sum(i) += sRowsum(row_load_idx + i);
     }
   };
 
@@ -210,27 +208,22 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   auto thr_mma_qk = tiled_mma_qk.get_slice(tidx);
   // GEMM-I: S = Q@K.T
   // sQ/sK: (BLK_M, BLK_K, STAGES)
-  auto tSrQ = partition_fragment_A(
-      thr_mma_qk, sQ(_, _, _0{}), _, _2{});  // (MMA, MMA_M, _2)
-  auto tSrK = partition_fragment_B(
-      thr_mma_qk, sK(_, _, _0{}), _, _2{});  // (MMA, MMA_N, _2)
-
-  auto tSrQ_rope =
-      partition_fragment_A(thr_mma_qk, sQ_rope, _, _2{});  // (MMA, MMA_M, _2)
-  auto tSrK_rope =
-      partition_fragment_B(thr_mma_qk, sK_rope, _, _2{});  // (MMA, MMA_N, _2)
+  auto tSrQ = thr_mma_qk.partition_fragment_A(sQ(_, _, _0{}));
+  auto tSrK = thr_mma_qk.partition_fragment_B(sK(_, _, _0{}));
+  auto tSrQ_rope = thr_mma_qk.partition_fragment_A(sQ_rope);
+  auto tSrK_rope = thr_mma_qk.partition_fragment_B(sK_rope);
 
   // s2r tiled copy for q
   SmemTiledCopyQ smem_tiled_copy_Q;
   auto smem_thr_copy_Q = smem_tiled_copy_Q.get_slice(tidx);
   // (CPY, CPY_M, CPY_K, STAGES)
   auto tCsQ = smem_thr_copy_Q.partition_S(sQ);
-  // (CPY, CPY_M, _2)
+  // (CPY, CPY_M, CPY_K)
   auto tCrQ = smem_thr_copy_Q.retile_D(tSrQ);
 
   // (CPY, CPY_M, CPY_K)
   auto tCsQ_rope = smem_thr_copy_Q.partition_S(sQ_rope);
-  // (CPY, CPY_M, _2)
+  // (CPY, CPY_M, CPY_K)
   auto tCrQ_rope = smem_thr_copy_Q.retile_D(tSrQ_rope);
 
   // s2r tiled copy for k
@@ -238,12 +231,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(tidx);
   // (CPY, CPY_N, CPY_K, STAGES)
   auto tCsK = smem_thr_copy_K.partition_S(sK);
-  // (CPY, CPY_N, _2)
+  // (CPY, CPY_N, CPY_K)
   auto tCrK = smem_thr_copy_K.retile_D(tSrK);
 
   // (CPY, CPY_N, CPY_K)
   auto tCsK_rope = smem_thr_copy_K.partition_S(sK_rope);
-  // (CPY, CPY_N, _2)
+  // (CPY, CPY_N, CPY_K)
   auto tCrK_rope = smem_thr_copy_K.retile_D(tSrK_rope);
 
   // S = Q@K.T
@@ -261,17 +254,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       // prefetch next kv
       if (k != size<2>(tCsQ_s) - 1) {
         const auto next_k = k + 1;
-        cute::copy(
-            smem_tiled_copy_Q, tCsQ_s(_, _, next_k), tCrQ(_, _, (next_k & 1)));
-        cute::copy(
-            smem_tiled_copy_K, tCsK_s(_, _, next_k), tCrK(_, _, (next_k & 1)));
+        cute::copy(smem_tiled_copy_Q, tCsQ_s(_, _, next_k), tCrQ(_, _, next_k));
+        cute::copy(smem_tiled_copy_K, tCsK_s(_, _, next_k), tCrK(_, _, next_k));
       }
-      cute::gemm(tiled_mma_qk, tSrQ(_, _, (k & 1)), tSrK(_, _, (k & 1)), tSrS);
+      cute::gemm(tiled_mma_qk, tSrQ(_, _, k), tSrK(_, _, k), tSrS);
     }
   };
 
   auto compute_qk_rope = [&](auto& tSrS) {
-    // tCsQ_rope: (CPY, CPY_M, CPY_K) => tCrQ_rope: (CPY, CPY_M, _2)
     cute::copy(smem_tiled_copy_Q, tCsQ_rope(_, _, _0{}), tCrQ_rope(_, _, _0{}));
     cute::copy(smem_tiled_copy_K, tCsK_rope(_, _, _0{}), tCrK_rope(_, _, _0{}));
 
@@ -281,15 +271,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
         const auto next_k = k + 1;
         cute::copy(smem_tiled_copy_Q,
                    tCsQ_rope(_, _, next_k),
-                   tCrQ_rope(_, _, (next_k & 1)));
+                   tCrQ_rope(_, _, next_k));
         cute::copy(smem_tiled_copy_K,
                    tCsK_rope(_, _, next_k),
-                   tCrK_rope(_, _, (next_k & 1)));
+                   tCrK_rope(_, _, next_k));
       }
-      cute::gemm(tiled_mma_qk,
-                 tSrQ_rope(_, _, (k & 1)),
-                 tSrK_rope(_, _, (k & 1)),
-                 tSrS);
+      cute::gemm(tiled_mma_qk, tSrQ_rope(_, _, k), tSrK_rope(_, _, k), tSrS);
     }
   };
 
@@ -297,18 +284,18 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   TiledMma_PV tiled_mma_pv;
   auto thr_mma_pv = tiled_mma_pv.get_slice(tidx);
   // sS: (BLK_M, BLK_N)
-  // (MMA, MMA_M, _2)
-  auto tOrP = partition_fragment_A(thr_mma_pv, sP, _, _2{});
+  // (MMA, MMA_M, MMA_K)
+  auto tOrP = thr_mma_pv.partition_fragment_A(sP);
   // sVt: (BLK_K, BLK_N, STAGES)
-  // (MMA, MMA_N, _2)
-  auto tOrVt = partition_fragment_B(thr_mma_pv, sVt(_, _, _0{}), _, _2{});
+  // (MMA, MMA_N, MMA_K)
+  auto tOrVt = thr_mma_pv.partition_fragment_B(sVt(_, _, _0{}));
 
   // s2r tiled copy for p
   SmemTiledCopyP smem_tiled_copy_P;
   auto smem_thr_copy_P = smem_tiled_copy_P.get_slice(tidx);
   // (CPY, CPY_M, CPY_K)
   auto tCsP = smem_thr_copy_P.partition_S(sP);
-  // (CPY, CPY_M, _2)
+  // (CPY, CPY_M, CPY_K)
   auto tCrP = smem_thr_copy_P.retile_D(tOrP);
 
   // s2r tiled copy for vt
@@ -316,7 +303,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_slice(tidx);
   // (CPY, CPY_N, CPY_K, STAGES)
   auto tCsVt = smem_thr_copy_Vt.partition_S(sVt);
-  // (CPY, CPY_N, _2)
+  // (CPY, CPY_N, CPY_K)
   auto tCrVt = smem_thr_copy_Vt.retile_D(tOrVt);
 
   // O = P*V = softmax(S)*V
@@ -327,7 +314,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
     // (CPY, CPY_N, CPY_K, STAGES)
     auto tCsVt_s = tCsVt(_, _, _, s);
-    // tCsVt_s: (CPY, CPY_N, CPY_K) => tCrVt: (CPY, CPY_N, _2)
     cute::copy(smem_tiled_copy_P, tCsP(_, _, _0{}), tCrP(_, _, _0{}));
     cute::copy(smem_tiled_copy_Vt, tCsVt_s(_, _, _0{}), tCrVt(_, _, _0{}));
 
@@ -335,14 +321,11 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     for (int k = 0; k < size<2>(tCsVt_s); ++k) {
       if (k != size<2>(tCsVt_s) - 1) {
         const auto next_k = k + 1;
+        cute::copy(smem_tiled_copy_P, tCsP(_, _, next_k), tCrP(_, _, next_k));
         cute::copy(
-            smem_tiled_copy_P, tCsP(_, _, next_k), tCrP(_, _, (next_k & 1)));
-        cute::copy(smem_tiled_copy_Vt,
-                   tCsVt_s(_, _, next_k),
-                   tCrVt(_, _, (next_k & 1)));
+            smem_tiled_copy_Vt, tCsVt_s(_, _, next_k), tCrVt(_, _, next_k));
       }
-      cute::gemm(
-          tiled_mma_pv, tCrP(_, _, (k & 1)), tOrVt(_, _, (k & 1)), tOrO_s);
+      cute::gemm(tiled_mma_pv, tCrP(_, _, k), tOrVt(_, _, k), tOrO_s);
     }
   };
 
