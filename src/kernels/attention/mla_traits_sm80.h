@@ -133,8 +133,8 @@ struct MLATraitsSM80 {
 
   // shared memory for sync between warp groups
   // rowmax/rowsum smem: (_BLK_M, _2)
-  using SmemLayoutRowmax = Layout<Shape<Int<2*kBlockM>>>;
-  using SmemLayoutRowsum = Layout<Shape<Int<2*kBlockM>>>;
+  using SmemLayoutRowmax = Layout<Shape<Int<2 * kBlockM>>>;
+  using SmemLayoutRowsum = Layout<Shape<Int<2 * kBlockM>>>;
 
   // Thr layout for gmem copy, 32x8
   using GmemCopyThrLayout = Layout<Shape<_32, _8>, Stride<_8, _1>>;
