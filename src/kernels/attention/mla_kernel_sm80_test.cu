@@ -57,7 +57,7 @@ torch::Tensor mla_sm80(
     float sm_scale) {
   const auto batch_size = q.size(0);
   const auto q_len = q.size(-3);
-  const auto kv_len = kv.size(-3);
+  const auto kv_len = kv.size(-2);
   const auto n_heads = q.size(-2);
   const auto head_dim = q.size(-1);
   const auto rope_head_dim = q_rope.size(-1);
@@ -159,7 +159,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(torch::kHalf),   // q_dtype
                        ::testing::Values(1, 2, 4),        // batch_size
                        ::testing::Values(64),             // q_len
-                       ::testing::Values(64),             // kv_len
+                       ::testing::Values(64, 128),        // kv_len
                        ::testing::Values(1, 8, 24, 128),  // n_heads
                        ::testing::Values(64, 128, 256),   // head_dim
                        ::testing::Values(64)              // rope_head_dim

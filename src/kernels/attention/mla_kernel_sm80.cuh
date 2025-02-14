@@ -74,6 +74,10 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   const int batch_idx = blockIdx.y;
   const int tidx = threadIdx.x;
 
+  // for MLA/MQA, group_size = n_heads
+  const int group_size = params.n_heads;
+
+
   MLATile<Params> tile(params);
 
   // ProblemShape
@@ -82,6 +86,10 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // Q/K_ROPE: (q_packed_len, ROPE_HEAD_DIM)
   auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(batch_idx);
   auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
+
+  const int q_len = size<0>(Q) / group_size;
+  const int kv_len = size<0>(KV);
+  const int sliding_window = kv_len;
 
   if (m_block_idx * kBlockM >= size<0>(Q)) {
     // m out of bound, return
@@ -400,15 +408,24 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   }
 
   // ###############  Mainloop  ###############
+  // attention score accumulator, (MMA,MMA_M,MMA_N)
+  auto tSrS = partition_fragment_C(tiled_mma_qk, Shape<_BLK_M, _BLK_N>{});
+  auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
+
+  // identity tensor for score accumulator
+  auto tScS =
+      thr_mma_qk.partition_C(make_identity_tensor(Shape<_BLK_M, _BLK_N>{}));
+  auto tScS_mn = make_tensor(tScS.data(), Layout::to_mn(tScS.layout()));
+
   constexpr int kMMA_M = size<1>(tOrO);
   using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
+  using Mask = Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL>;
+
   Softmax softmax(params.sm_scale_log2);
+  Mask mask(q_len, kv_len, group_size, sliding_window);
 
   CUTE_NO_UNROLL
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
-    // attention score accumulator, (MMA,MMA_M,MMA_N)
-    auto tSrS = partition_fragment_C(tiled_mma_qk, Shape<_BLK_M, _BLK_N>{});
-    auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
     clear(tSrS);
 
     // wait key, queue: [q, q_rope, kv, k_rope] => []
@@ -429,6 +446,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       cp_async_fence();
     }
 
+    // apply mask + softmax
+    mask.apply(tSrS_mn, tScS_mn, m_block_idx, ni);
     softmax.rescale(tSrS_mn, tOrO_mn, reduce_rowmax);
 
     // save tSrS from rmem to smem
