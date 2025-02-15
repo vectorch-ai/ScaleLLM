@@ -184,7 +184,7 @@ struct MLATraitsSM80 {
                                                 GmemTiledCopy_32x64_,
                                                 GmemTiledCopy_16x64_>;
 
-  // s2r tiled copy for gemm-I S = Q*K^T 
+  // s2r tiled copy for gemm-I S = Q*K^T
   // warp layout: 4x2x1, tiledmma mxnxk: 64x32x16 or 64x16x16
   // Smem tiled copy for Q, 4 warps mxk: 64x16
   using SmemTiledCopyQ =
