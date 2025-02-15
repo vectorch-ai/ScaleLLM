@@ -83,9 +83,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   // ProblemShape
   // Q/O: (q_packed_len, HEAD_DIM)
-  // KV: (kv_len, HEAD_DIM)
-  auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(batch_idx);
   // Q_ROPE: (q_packed_len, ROPE_HEAD_DIM)
+  auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(batch_idx);
+  // KV: (kv_len, HEAD_DIM)
   // K_ROPE: (kv_len, ROPE_HEAD_DIM)
   auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
 
