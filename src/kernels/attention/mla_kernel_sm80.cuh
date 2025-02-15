@@ -60,7 +60,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   using SmemLayoutRowsum = typename Traits::SmemLayoutRowsum;
 
   using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
+  using GmemTiledCopyQRope = typename Traits::GmemTiledCopyQRope;
   using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
+  using GmemTiledCopyKRope = typename Traits::GmemTiledCopyKRope;
   using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
 
   using SmemTiledCopyQ = typename Traits::SmemTiledCopyQ;
@@ -176,13 +178,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     }
   };
 
-  // Tiled Copy
-  // g2s tiled copy for qkv
+  // g2s tiled copy for q
   GmemTiledCopyQ gmem_tiled_copy_Q;
-  GmemTiledCopyKV gmem_tiled_copy_KV;
   auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_slice(tidx);
-  auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_slice(tidx);
-
   auto produce_q = [&](int stage) {
     // gQ/sQ: (BLK_M, BLK_K, STAGES)
     auto tCgQ = gmem_thr_copy_Q.partition_S(gQ(_, _, stage));
@@ -190,12 +188,18 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     cute::copy(gmem_tiled_copy_Q, tCgQ, tCsQ);
   };
 
+  // g2s tiled copy for q_rope
+  GmemTiledCopyQRope gmem_tiled_copy_Q_rope;
+  auto gmem_thr_copy_Q_rope = gmem_tiled_copy_Q_rope.get_slice(tidx);
   auto produce_q_rope = [&]() {
-    auto tCgQ_rope = gmem_thr_copy_Q.partition_S(gQ_rope);
-    auto tCsQ_rope = gmem_thr_copy_Q.partition_D(sQ_rope);
-    cute::copy(gmem_tiled_copy_Q, tCgQ_rope, tCsQ_rope);
+    auto tCgQ_rope = gmem_thr_copy_Q_rope.partition_S(gQ_rope);
+    auto tCsQ_rope = gmem_thr_copy_Q_rope.partition_D(sQ_rope);
+    cute::copy(gmem_tiled_copy_Q_rope, tCgQ_rope, tCsQ_rope);
   };
 
+  // g2s tiled copy for kv
+  GmemTiledCopyKV gmem_tiled_copy_KV;
+  auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_slice(tidx);
   // (CPY, CPY_N, CPY_K, STAGES)
   auto produce_kv = [&](int ni, int stage) {
     // gKV: (BLK_N, BLK_K, n, STAGES)
@@ -205,10 +209,13 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     cute::copy(gmem_tiled_copy_KV, tCgKV, tCsKV);
   };
 
-  Tensor tKsK_rope = gmem_thr_copy_KV.partition_D(sK_rope);
+  // g2s tiled copy for k_rope
+  GmemTiledCopyKRope gmem_tiled_copy_K_rope;
+  auto gmem_thr_copy_K_rope = gmem_tiled_copy_K_rope.get_slice(tidx);
+  Tensor tKsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope);
   auto produce_k_rope = [&](int ni) {
-    auto tKgK_rope = gmem_thr_copy_KV.partition_S(gK_rope(_, _, ni));
-    cute::copy(gmem_tiled_copy_KV, tKgK_rope, tKsK_rope);
+    auto tKgK_rope = gmem_thr_copy_K_rope.partition_S(gK_rope(_, _, ni));
+    cute::copy(gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope);
   };
 
   TiledMma_QK tiled_mma_qk;
