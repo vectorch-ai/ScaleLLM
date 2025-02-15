@@ -5,13 +5,9 @@
 namespace llm {
 using namespace cute;
 
-template <int BLK_M,
-          int BLK_N,
-          int ROWS_PER_THR,
-          bool ALIBI,
-          bool LOCAL>
+template <int BLK_M, int BLK_N, int ROWS_PER_THR, bool ALIBI, bool LOCAL>
 struct Mask {
-  // Fragment type for alibi slopes: (2, MMA_M)
+  // Fragment type for alibi slopes
   using FragmentT = decltype(make_tensor<float>(Int<ROWS_PER_THR>{}));
 
   int q_len_;
