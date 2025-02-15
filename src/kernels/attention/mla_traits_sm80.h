@@ -82,15 +82,13 @@ struct MLATraitsSM80 {
                Layout<Shape<_4, _2, _1>>,  // warp layout 4x2x1
                Tile<_64, _16, _16>>;       // Shape 64x16x16
 
-  // TiledMma for P = Softmax(Q*K^T), 8 warps
+  // TiledMma for P = Softmax(Q*K^T), warp layout 4x2x1
   using TiledMma_QK = std::conditional_t<kBlockN % 32 == 0,
                                          TiledMma_64x32x16_,
                                          TiledMma_64x16x16_>;
 
-  // TiledMma for O = P*V^T, 8 warps
-  using TiledMma_PV = std::conditional_t<kBlockN % 32 == 0,
-                                         TiledMma_64x32x16_,
-                                         TiledMma_64x16x16_>;
+  // TiledMma for O = P*V^T, warp layout 4x2x1
+  using TiledMma_PV = TiledMma_64x32x16_;
 
   // Layout convertor for TiledMMA (64x16x16)
   using LayoutConvertor = detail::LayoutConvertor;
@@ -186,7 +184,9 @@ struct MLATraitsSM80 {
                                                 GmemTiledCopy_32x64_,
                                                 GmemTiledCopy_16x64_>;
 
-  // s2r tiled copy for gemm-I S = Q*K^T
+  // s2r tiled copy for gemm-I S = Q*K^T 
+  // warp layout: 4x2x1, tiledmma mxnxk: 64x32x16 or 64x16x16
+  // Smem tiled copy for Q, 4 warps mxk: 64x16
   using SmemTiledCopyQ =
       decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
                                  TiledMma_QK{}));
@@ -194,6 +194,7 @@ struct MLATraitsSM80 {
   using Copy_Atom_K = std::conditional_t<kBlockN % 32 == 0,
                                          Copy_Atom<SM75_U32x4_LDSM_N, DType>,
                                          Copy_Atom<SM75_U32x2_LDSM_N, DType>>;
+  // Smem tiled copy for KV, 2 warps nxk: 32x16 or 16x16
   using SmemTiledCopyK =
       decltype(make_tiled_copy_B(Copy_Atom_K{}, TiledMma_QK{}));
 
@@ -206,15 +207,16 @@ struct MLATraitsSM80 {
                                  TiledMma_QK{}));
 
   // s2r tiled copy for gemm-II: O = P*V^T
+  // warp layout: 4x2x1, TiledMma mxnxk: 64x32x16
+  // Smem tiled copy for P, 4 warps mxk: 64x16
   using SmemTiledCopyP =
       decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
                                  TiledMma_PV{}));
 
-  using Copy_Atom_Vt = std::conditional_t<kBlockN % 32 == 0,
-                                          Copy_Atom<SM75_U16x8_LDSM_T, DType>,
-                                          Copy_Atom<SM75_U16x4_LDSM_T, DType>>;
+  // Smem tiled copy for V^T, 2 warps nxk: 32x16
   using SmemTiledCopyVt =
-      decltype(make_tiled_copy_B(Copy_Atom_Vt{}, TiledMma_PV{}));
+      decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, DType>{},
+                                 TiledMma_PV{}));
 
   // r2s tiled copy for gemm-II O
   using SmemTiledCopyO =
