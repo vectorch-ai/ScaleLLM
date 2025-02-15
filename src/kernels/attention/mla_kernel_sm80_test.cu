@@ -130,16 +130,15 @@ TEST_P(MLAKernelTest, MLA) {
               n_heads,
               head_dim,
               rope_head_dim] = GetParam();
-  // const auto head_dim = kv_lora_rank + rope_head_dim;
   const auto options = torch::dtype(dtype).device(torch::kCUDA);
 
-  // q: [batch, len, n_heads, head_dim]
-  // kv: [batch, len, head_dim]
+  // q: [batch, q_len, n_heads, head_dim]
+  // kv: [batch, kv_len, head_dim]
   const auto q = torch::randn({batch_size, q_len, n_heads, head_dim}, options);
   const auto kv = torch::randn({batch_size, kv_len, head_dim}, options);
 
-  // q_rope: [batch, len, n_heads, rope_head_dim]
-  // kv_rope: [batch, len, rope_head_dim]
+  // q_rope: [batch, q_len, n_heads, rope_head_dim]
+  // kv_rope: [batch, kv_len, rope_head_dim]
   const auto q_rope =
       torch::randn({batch_size, q_len, n_heads, rope_head_dim}, options);
   const auto k_rope =
