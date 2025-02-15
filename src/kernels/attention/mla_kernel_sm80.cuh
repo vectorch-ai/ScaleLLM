@@ -423,9 +423,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       thr_mma_qk.partition_C(make_identity_tensor(Shape<_BLK_M, _BLK_N>{}));
   auto tScS_mn = make_tensor(tScS.data(), Layout::to_mn(tScS.layout()));
 
-  constexpr int kMMA_M = size<1>(tOrO);
-  using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
-  using Mask = Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL>;
+  constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
+  using Softmax = OnlineSoftmax<kRowsPerThr>;
+  using Mask = Mask<kBlockM, kBlockN, kRowsPerThr, ALIBI, LOCAL>;
 
   Softmax softmax(params.sm_scale_log2);
   Mask mask(q_len, kv_len, group_size, sliding_window);
@@ -468,6 +468,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       CUTE_UNROLL
       for (int s = 0; s < kStages; ++s) {
         compute_pv(tOrO, s);
+        __syncthreads();
+
         produce_kv(next_ni, s);
         cp_async_fence();
       }
