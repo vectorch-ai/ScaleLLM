@@ -192,8 +192,8 @@ struct MLATraitsSM80 {
                                  TiledMma_QK{}));
 
   using Copy_Atom_K_ = std::conditional_t<kBlockN % 32 == 0,
-                                         Copy_Atom<SM75_U32x4_LDSM_N, DType>,
-                                         Copy_Atom<SM75_U32x2_LDSM_N, DType>>;
+                                          Copy_Atom<SM75_U32x4_LDSM_N, DType>,
+                                          Copy_Atom<SM75_U32x2_LDSM_N, DType>>;
   // Smem tiled copy for KV, 2 warps nxk: 32x16 or 16x16
   using SmemTiledCopyK =
       decltype(make_tiled_copy_B(Copy_Atom_K_{}, TiledMma_QK{}));
