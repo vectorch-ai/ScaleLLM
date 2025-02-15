@@ -83,9 +83,10 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   // ProblemShape
   // Q/O: (q_packed_len, HEAD_DIM)
-  // KV: (kv_len, HEAD_DIM)
-  // Q/K_ROPE: (q_packed_len, ROPE_HEAD_DIM)
+  // Q_ROPE: (q_packed_len, ROPE_HEAD_DIM)
   auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(batch_idx);
+  // KV: (kv_len, HEAD_DIM)
+  // K_ROPE: (kv_len, ROPE_HEAD_DIM)
   auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
 
   const int q_len = size<0>(Q) / group_size;
@@ -148,11 +149,11 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   Tensor sRowsum =
       make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowsum{});
 
-  // thread layout: (32, 8), each thread process 2 rows
-  // (store_idx, load_idx) = (0, 64), (1, 65), ...
+  // reduce rowmax/rowsum accross 2 warps via shared memory
+  // thread layout: (32, (4, 2)), each thread process 2 rows
+  // (store_idx, load_idx) = (0, 64) or (1, 65), ...
   const int row_store_idx = tidx / 4 * 2;
   const int row_load_idx = row_store_idx ^ kBlockM;
-  // reduce rowmax accross 2 warps
   auto reduce_rowmax = [&](auto& row_max) {
     CUTE_UNROLL
     for (int i = 0; i < size(row_max); ++i) {
@@ -164,8 +165,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       row_max(i) = max(row_max(i), sRowmax(row_load_idx + i));
     }
   };
-
-  // reduce rowsum accross 2 warps
   auto reduce_rowsum = [&](auto& row_sum) {
     CUTE_UNROLL
     for (int i = 0; i < size(row_sum); ++i) {
@@ -218,16 +217,16 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     cute::copy(gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope);
   };
 
+  // GEMM-I: S = Q@K.T
   TiledMma_QK tiled_mma_qk;
   auto thr_mma_qk = tiled_mma_qk.get_slice(tidx);
-  // GEMM-I: S = Q@K.T
   // sQ/sK: (BLK_M, BLK_K, STAGES)
   auto tSrQ = thr_mma_qk.partition_fragment_A(sQ(_, _, _0{}));
   auto tSrK = thr_mma_qk.partition_fragment_B(sK(_, _, _0{}));
   auto tSrQ_rope = thr_mma_qk.partition_fragment_A(sQ_rope);
   auto tSrK_rope = thr_mma_qk.partition_fragment_B(sK_rope);
 
-  // s2r tiled copy for q
+  // s2r tiled copy for q/q_rope
   SmemTiledCopyQ smem_tiled_copy_Q;
   auto smem_thr_copy_Q = smem_tiled_copy_Q.get_slice(tidx);
   // (CPY, CPY_M, CPY_K, STAGES)
@@ -240,7 +239,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // (CPY, CPY_M, CPY_K)
   auto tCrQ_rope = smem_thr_copy_Q.retile_D(tSrQ_rope);
 
-  // s2r tiled copy for k
+  // s2r tiled copy for k/k_rope
   SmemTiledCopyK smem_tiled_copy_K;
   auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(tidx);
   // (CPY, CPY_N, CPY_K, STAGES)
@@ -297,11 +296,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // GEMM-II: O = softmax(S)@V
   TiledMma_PV tiled_mma_pv;
   auto thr_mma_pv = tiled_mma_pv.get_slice(tidx);
-  // sS: (BLK_M, BLK_N)
-  // (MMA, MMA_M, MMA_K)
+  // sP: (BLK_M, BLK_N)
   auto tOrP = thr_mma_pv.partition_fragment_A(sP);
   // sVt: (BLK_K, BLK_N, STAGES)
-  // (MMA, MMA_N, MMA_K)
   auto tOrVt = thr_mma_pv.partition_fragment_B(sVt(_, _, _0{}));
 
   // s2r tiled copy for p
@@ -321,12 +318,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   auto tCrVt = smem_thr_copy_Vt.retile_D(tOrVt);
 
   // O = P*V = softmax(S)*V
-  // tOrS: (MMA,MMA_M,MMA_K)
+  // tOrO: (MMA,MMA_M,MMA_K,STAGES)
   auto compute_pv = [&](auto& tOrO, int s) {
-    // (MMA,MMA_M,MMA_N, STAGES)
     auto tOrO_s = tOrO(_, _, _, s);
-
-    // (CPY, CPY_N, CPY_K, STAGES)
     auto tCsVt_s = tCsVt(_, _, _, s);
     cute::copy(smem_tiled_copy_P, tCsP(_, _, _0{}), tCrP(_, _, _0{}));
     cute::copy(smem_tiled_copy_Vt, tCsVt_s(_, _, _0{}), tCrVt(_, _, _0{}));
@@ -346,7 +340,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // r2s tiled copy for S/P
   SmemTiledCopyS smem_tiled_copy_S;
   auto smem_thr_copy_S = smem_tiled_copy_S.get_slice(tidx);
-
   auto store_s_to_smem = [&](const auto& tSrS) {
     // cast Accumulator to Element type
     auto tSrS_ = make_tensor_like<DType>(tSrS);
@@ -376,7 +369,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       auto tCsO = smem_thr_copy_O.partition_D(sO_s);
       cute::copy(smem_tiled_copy_O, tCrO, tCsO);
     }
-    // wait for smem copy done before gmem copy
+
     __syncthreads();
 
     // 2. copy output from smem to gmem
@@ -388,7 +381,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
   };
 
-  // output accumulator: (MMA, MMA_M, MMA_K, STAGES)
+  // output accumulator: (MMA,MMA_M,MMA_K,STAGES)
   auto tOrO =
       partition_fragment_C(tiled_mma_pv, Shape<_BLK_M, _BLK_K, _STAGES>{});
   auto tOrO_mn = make_tensor(tOrO.data(), Layout::to_mns(tOrO.layout()));
@@ -416,16 +409,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // ###############  Mainloop  ###############
   // attention score accumulator, (MMA,MMA_M,MMA_N)
   auto tSrS = partition_fragment_C(tiled_mma_qk, Shape<_BLK_M, _BLK_N>{});
-  auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
-
-  // identity tensor for score accumulator
   auto tScS =
       thr_mma_qk.partition_C(make_identity_tensor(Shape<_BLK_M, _BLK_N>{}));
+  auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
   auto tScS_mn = make_tensor(tScS.data(), Layout::to_mn(tScS.layout()));
 
-  constexpr int kMMA_M = size<1>(tOrO);
-  using Softmax = OnlineSoftmax<kRowsPerMMA * kMMA_M>;
-  using Mask = Mask<kBlockM, kBlockM, kRowsPerMMA, kMMA_M, ALIBI, LOCAL>;
+  constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
+  using Softmax = OnlineSoftmax<kRowsPerThr>;
+  using Mask = Mask<kBlockM, kBlockN, kRowsPerThr, ALIBI, LOCAL>;
 
   Softmax softmax(params.sm_scale_log2);
   Mask mask(q_len, kv_len, group_size, sliding_window);
@@ -468,6 +459,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       CUTE_UNROLL
       for (int s = 0; s < kStages; ++s) {
         compute_pv(tOrO, s);
+        __syncthreads();
+
         produce_kv(next_ni, s);
         cp_async_fence();
       }
