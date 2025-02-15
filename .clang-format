@@ -9,4 +9,5 @@ DerivePointerAlignment: false
 AlwaysBreakTemplateDeclarations: Yes
 PointerAlignment: Left
 ColumnLimit: 80
+PenaltyBreakScopeResolution: 1000
 ...
