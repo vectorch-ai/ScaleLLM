@@ -397,15 +397,31 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   const int n_block_max = cute::ceil_div(size<0>(KV), kBlockN);
 
   // ###############  Prologue  ###############
-  // produce q_rope/q: [] => [q_rope, q...]
+  // g2s async data copy pipelines
+  // |  stage  |                  queue                            |
+  // |   1     | [k_r, kv0, kv1]                                   |
+  // |   2     | [k_r, kv0, kv1, (nop, nop, nop, k_r, kv0, kv1)]   |
+  // |   3     | [k_r, kv0, kv1, (nop, nop, nop, k_r, kv0, kv1)*2] |
+  //                  ^ kWait = (kSteps + 1) * (2*kStages - 1) - 1
+  constexpr int kWait = (kSteps + 1) * (2 * kStages - 1) - 1;
+  // produce q_rope/q
   produce_q_rope();
   CUTE_UNROLL
   for (int step = 0; step < kSteps; ++step) {
     produce_q(step);
   }
-  // produce k_rope/kv: [q_rope, q...] => [q_rope, q..., k_rope, kv...]
+  // produce k_rope/kv
   CUTE_UNROLL
   for (int stage = 0; stage < kStages; ++stage) {
+    // insert nops between stages for a perfect pipeline
+    if (stage != 0) {
+      cp_async_fence();
+      CUTE_UNROLL
+      for (int step = 0; step < kSteps; ++step) {
+        cp_async_fence();
+      }
+    }
+
     produce_k_rope(stage, stage);
     cp_async_fence();
     CUTE_UNROLL
@@ -430,15 +446,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   Softmax softmax(params.sm_scale_log2);
   Mask mask(q_len, kv_len, group_size, sliding_window);
 
-  constexpr int kWait = kStages * (kSteps + 1) - 1;
   int stage = 0;
 
   CUTE_NO_UNROLL
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
     clear(tSrS);
 
-    // wait queue: [q_rope, q..., (k_rope, kv...), (k_rope, kv...)]
-    //          => [kv..., (k_rope, kv...)]
     cp_async_wait<kWait>();
     __syncthreads();
 
