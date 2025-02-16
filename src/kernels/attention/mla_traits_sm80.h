@@ -13,7 +13,7 @@ namespace detail {
 // Only works for TiledMMA (64x16x16) with SM80_16x8x16_F32F16F16F32_TN
 struct LayoutConvertor {
   // Convert fragment layout to rowcol layout for iterating
-  // (MMA=4, MMA_M, MMA_N, STAGES) => ((2, MMA_M), (2, MMA_N), STAGES)
+  // (MMA=4, MMA_M, MMA_N) => ((2, MMA_M), (2, MMA_N))
   template <typename LayoutC>
   CUTE_HOST_DEVICE static constexpr auto to_mn(const LayoutC& layout) {
     auto l = logical_divide(layout, Shape<_2>{});
@@ -21,6 +21,7 @@ struct LayoutConvertor {
                        make_layout(get<0, 0>(l), get<2>(l)));
   }
 
+  // (MMA=4, MMA_M, MMA_N, STEPS) => ((2, MMA_M), (2, MMA_N), STEPS)
   template <typename LayoutC>
   CUTE_HOST_DEVICE static constexpr auto to_mns(const LayoutC& layout) {
     auto l = logical_divide(layout, Shape<_2>{});
@@ -37,14 +38,15 @@ template <typename DTYPE,
           int ROPE_HEAD_DIM,
           int BLK_M,
           int BLK_N,
-          int BLK_K>
+          int BLK_K,
+          int STAGES>
 struct MLATraitsSM80 {
-  // helpful aliases
   static constexpr int kHeadDim = HEAD_DIM;
   static constexpr int kRopeHeadDim = ROPE_HEAD_DIM;
   static constexpr int kBlockM = BLK_M;
   static constexpr int kBlockN = BLK_N;
   static constexpr int kBlockK = BLK_K;
+  static constexpr int kStages = STAGES;
   static constexpr int kRowsPerMMA = 2;
 
   static_assert(kHeadDim % 64 == 0);
@@ -53,14 +55,18 @@ struct MLATraitsSM80 {
   static_assert(kBlockM % 64 == 0);
   static_assert(kBlockN % 16 == 0);
   static_assert(kBlockK % 64 == 0);
+  static_assert(kStages == 1 || kStages == 2);
 
   static_assert(kHeadDim % kBlockK == 0);
-  static constexpr int kStages = kHeadDim / kBlockK;
+  // number of steps per stage
+  static constexpr int kSteps = kHeadDim / kBlockK;
 
+  // helpful aliases
   using DType = DTYPE;
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
   using _BLK_K = Int<kBlockK>;
+  using _STEPS = Int<kSteps>;
   using _STAGES = Int<kStages>;
   using _HEAD_DIM = Int<kHeadDim>;
   using _ROPE_HEAD_DIM = Int<kRopeHeadDim>;
@@ -118,31 +124,31 @@ struct MLATraitsSM80 {
                                              SmemLayoutAtom_8x32>;
 
   // SMEM layout for Q/K/V/P
-  // Q smem: (BLK_M, BLK_K, STAGES)
+  // Q smem: (BLK_M, BLK_K, STEPS)
   using SmemLayoutQ = decltype(tile_to_shape(SmemLayoutAtomK{},
-                                             Shape<_BLK_M, _BLK_K, _STAGES>{}));
+                                             Shape<_BLK_M, _BLK_K, _STEPS>{}));
 
-  // KV smem: (BLK_N, BLK_K, STAGES)
+  // KV smem: (BLK_N, BLK_K, STEPS, STAGES)
   using SmemLayoutKV =
       decltype(tile_to_shape(SmemLayoutAtomK{},
-                             Shape<_BLK_N, _BLK_K, _STAGES>{}));
+                             Shape<_BLK_N, _BLK_K, _STEPS, _STAGES>{}));
 
   // P smem: (BLK_M, BLK_N)
   using SmemLayoutP =
       decltype(tile_to_shape(SmemLayoutAtomN{}, Shape<_BLK_M, _BLK_N>{}));
 
-  // V^T smem: (BLK_K, BLK_N, STAGES)
-  using SmemLayoutVt = decltype(permute<1, 0, 2>(SmemLayoutKV{}));
+  // V^T smem: (BLK_K, BLK_N, STEPS, STAGES)
+  using SmemLayoutVt = decltype(permute<1, 0, 2, 3>(SmemLayoutKV{}));
 
   // QRope smem: (BLK_M, ROPE_HEAD_DIM)
   using SmemLayoutQRope =
       decltype(tile_to_shape(SmemLayoutAtomR{},
                              Shape<_BLK_M, _ROPE_HEAD_DIM>{}));
 
-  // KRoep smem: (BLK_N, ROPE_HEAD_DIM)
+  // KRoep smem: (BLK_N, ROPE_HEAD_DIM, STAGES)
   using SmemLayoutKRope =
       decltype(tile_to_shape(SmemLayoutAtomR{},
-                             Shape<_BLK_N, _ROPE_HEAD_DIM>{}));
+                             Shape<_BLK_N, _ROPE_HEAD_DIM, _STAGES>{}));
 
   // Shared memory for reduce between warps
   // rowmax/rowsum smem: (_BLK_M, _2)
@@ -225,9 +231,9 @@ struct MLATraitsSM80 {
 
   // ******* Epilogue *******
 
-  // O smem: (BLK_M, BLK_K, STAGES)
+  // O smem: (BLK_M, BLK_K, STEPS)
   using SmemLayoutO = decltype(tile_to_shape(SmemLayoutAtomK{},
-                                             Shape<_BLK_M, _BLK_K, _STAGES>{}));
+                                             Shape<_BLK_M, _BLK_K, _STEPS>{}));
 
   // s2g tiled copy for O (32x64)
   using GmemTiledCopyO = decltype(make_tiled_copy(

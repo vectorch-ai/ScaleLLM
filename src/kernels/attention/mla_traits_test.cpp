@@ -59,7 +59,8 @@ TEST(MLATraitsTest, TraitsSM80) {
                                 /*ROPE_HEAD_DIM=*/64,
                                 /*BLK_M=*/64,
                                 /*BLK_N=*/64,
-                                /*BLK_K=*/64>>();
+                                /*BLK_K=*/64,
+                                /*STAGES=*/1>>();
 }
 
 }  // namespace llm
