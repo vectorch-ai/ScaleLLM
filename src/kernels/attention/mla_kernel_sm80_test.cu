@@ -19,19 +19,22 @@ namespace llm {
       constexpr static int HEAD_DIM_NAME = 128;            \
       constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 64;                     \
-      constexpr static int BLK_K = 64;                     \
+      constexpr static int BLK_K = 128;                    \
+      constexpr static int STAGES = 2;                     \
       return __VA_ARGS__();                                \
     } else if (HEAD_DIM_V <= 256) {                        \
       constexpr static int HEAD_DIM_NAME = 256;            \
       constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 32;                     \
       constexpr static int BLK_K = 128;                    \
+      constexpr static int STAGES = 2;                     \
       return __VA_ARGS__();                                \
     } else if (HEAD_DIM_V <= 512) {                        \
       constexpr static int HEAD_DIM_NAME = 512;            \
       constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 16;                     \
       constexpr static int BLK_K = 128;                    \
+      constexpr static int STAGES = 1;                     \
       return __VA_ARGS__();                                \
     } else {                                               \
       assert(false);                                       \
@@ -97,7 +100,8 @@ torch::Tensor mla_sm80(
                                    ROPE_HEAD_DIM,
                                    BLK_M,
                                    BLK_N,
-                                   BLK_K>;
+                                   BLK_K,
+                                   STAGES>;
 
       launch_mla_kernel_sm80<Traits>(params, nullptr);
     });
@@ -158,7 +162,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(torch::kHalf),   // q_dtype
                        ::testing::Values(1, 2, 4, 10),    // batch_size
                        ::testing::Values(64),             // q_len
-                       ::testing::Values(64, 128),        // kv_len
+                       ::testing::Values(64, 128, 1024),  // kv_len
                        ::testing::Values(1, 8, 128),      // n_heads
                        ::testing::Values(128, 256, 512),  // head_dim
                        ::testing::Values(64)              // rope_head_dim

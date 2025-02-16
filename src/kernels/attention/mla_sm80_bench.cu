@@ -103,7 +103,8 @@ void mla_bench_sm80(nvbench::state& state) {
                                    /*ROPE_HEAD_DIM=*/64,
                                    BLK_M,
                                    BLK_N,
-                                   BLK_K>;
+                                   BLK_K,
+                                   /*STAGES=*/1>;
 
       launch_mla_kernel_sm80<Traits>(params, launch.get_stream());
     });
