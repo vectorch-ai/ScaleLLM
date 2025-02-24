@@ -114,13 +114,13 @@ else()
   if (USE_CXX11_ABI)
     FetchContent_Declare(vcpkg
       GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
-      GIT_TAG "2024.02.14"
+      GIT_TAG "2025.02.14"
       SOURCE_DIR ${VCPKG_SOURCE_DIR}
     )
   else()
     FetchContent_Declare(vcpkg
       GIT_REPOSITORY "https://github.com/vectorch-ai/vcpkg.git"
-      GIT_TAG "ffc42e97c866ce9692f5c441394832b86548422c" # disable cxx11_abi
+      GIT_TAG "6a053bdba45591b4f98b9faab70d2258adaae9c7" # disable cxx11_abi
       SOURCE_DIR ${VCPKG_SOURCE_DIR}
     )
     message(STATUS "Using custom vcpkg with cxx11_abi disabled")
