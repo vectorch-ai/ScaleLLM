@@ -21,7 +21,8 @@ install_ubuntu() {
     jq \
     libtool \
     unzip \
-    gdb
+    gdb \
+    automake
 
   # Cleanup package manager
   apt-get autoclean && apt-get clean
@@ -39,7 +40,8 @@ install_almalinux() {
     vim \
     jq \
     libtool \
-    unzip
+    unzip \
+    automake
   
   # Cleanup
   yum clean all

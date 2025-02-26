@@ -11,7 +11,8 @@ command -v pip3 >/dev/null && pip3 uninstall -y cmake
 rm -f /usr/local/bin/cmake
 
 path="v${CMAKE_VERSION}"
-file="cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"
+ARCH=$(uname -m)
+file="cmake-${CMAKE_VERSION}-linux-${ARCH}.tar.gz"
 
 # Download and install specific CMake version in /usr/local
 pushd /tmp
