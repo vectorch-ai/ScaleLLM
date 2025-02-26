@@ -1,10 +1,12 @@
 // For more config options, see https://aka.ms/devcontainer.json.
 {
-  "name": "cuda12.4",
+  "name": "manylinux:cu12.4",
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
-      "BASE_IMAGE": "vectorchai/scalellm_devel:cuda12.4",
+      "BASE_IMAGE": "vectorchai/scalellm_manylinux:cuda12.4",
+      "TORCH_VERSION": "2.6.0",
+      "CUDA_VERSION": "12.4",
       "USER": "${localEnv:USER:vscode}",
       "UID": "${localEnv:UID:1000}",
       "GID": "${localEnv:GID:1000}"

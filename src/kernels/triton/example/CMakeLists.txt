@@ -25,5 +25,6 @@ cc_test(
     triton_example.kernel
     GTest::gtest_main
     torch
+    glog::glog
 )
 

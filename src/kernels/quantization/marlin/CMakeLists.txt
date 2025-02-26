@@ -30,5 +30,6 @@ cc_library(
     ${CMAKE_CURRENT_SOURCE_DIR}
   DEPS
     torch
+    glog::glog
 )
 

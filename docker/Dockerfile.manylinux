@@ -8,7 +8,7 @@ ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
 
-# Install dependencies for vcpkg
+# Install dependencies
 RUN yum -y update && yum -y install \
     zip \
     unzip \
@@ -17,7 +17,9 @@ RUN yum -y update && yum -y install \
     curl \
     perl \
     perl-IPC-Cmd \
-    sudo 
+    sudo \
+    automake \
+    libtool
 
 # Show versions of gcc, g++, nvcc
 RUN gcc --version; g++ --version; nvcc --version

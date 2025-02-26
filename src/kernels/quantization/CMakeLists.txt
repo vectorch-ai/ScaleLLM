@@ -8,6 +8,7 @@ cc_library(
     gptq/gptq_kernel.cu
   DEPS
     torch
+    glog::glog
 )
 
 cc_library(
@@ -18,6 +19,7 @@ cc_library(
     awq/gemm_cuda_gen.cu
   DEPS
     torch
+    glog::glog
 )
 
 cc_library(
@@ -29,6 +31,7 @@ cc_library(
     exllamav2/cuda/q_gemm.cu
   DEPS
     torch
+    glog::glog
   LINKOPTS 
     cublas
 )

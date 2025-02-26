@@ -1,0 +1,67 @@
+// For more config options, see https://aka.ms/devcontainer.json.
+{
+  "name": "devel:cu12.4",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "BASE_IMAGE": "vectorchai/scalellm_devel:cuda12.4",
+      "USER": "${localEnv:USER:vscode}",
+      "UID": "${localEnv:UID:1000}",
+      "GID": "${localEnv:GID:1000}"
+    }
+  },
+  // Access GPUs from inside the container
+  "runArgs": [
+    "--gpus=all"
+  ],
+  // Environment variables passed to the container.
+  "containerEnv": {
+    "HUGGING_FACE_HUB_TOKEN": "${localEnv:HUGGING_FACE_HUB_TOKEN}"
+  },
+  // Run as the current user
+  "remoteUser": "${localEnv:USER:vscode}",
+  "containerUser": "${localEnv:USER:vscode}",
+  "updateRemoteUserUID": true,
+  // Ports should be forwarded from inside container to the local machine
+  "forwardPorts": [],
+  // For a full avaiable list, see https://containers.dev/features.
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/go:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-python.python",
+        "ms-azuretools.vscode-docker",
+        "ziruiwang.nvidia-monitor",
+        "mutantdino.resourcemonitor"
+      ],
+      "settings": {
+        "extensions.verifySignature": false,
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "C_Cpp.clang_format_sortIncludes": true,
+        "C_Cpp.default.intelliSenseMode": "linux-clang-x64",
+        "C_Cpp.default.cppStandard": "c++17",
+        "cmake.loggingLevel": "info",
+        "cmake.configureOnOpen": false,
+        "cmake.configureOnEdit": false,
+        "cmake.automaticReconfigure": true,
+        "cmake.ctest.allowParallelJobs": true,
+        "python.testing.pytestEnabled": true,
+        "python.analysis.inlayHints.pytestParameters": true,
+        "files.watcherExclude": {
+          "**/.git/objects/**": true,
+          "**/.git/subtree-cache/**": true,
+          "**/node_modules/*/**": true,
+          "third_party/**": true,
+          "build/**": true
+        }
+      }
+    }
+  }
+}
