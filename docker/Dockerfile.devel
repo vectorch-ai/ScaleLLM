@@ -54,6 +54,8 @@ ARG CUDA_VERSION=12.1
 COPY ./common/install_cuda.sh install_cuda.sh
 RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
 ENV DESIRED_CUDA=${CUDA_VERSION}
+ENV CUDA_HOME=/usr/local/cuda
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:$PATH
 RUN nvcc --version
 

@@ -16,12 +16,7 @@
 
 namespace llm {
 
-template <typename Traits,
-          typename Params,
-          bool EVEN_K,
-          bool ALIBI,
-          bool SOFT_CAP,
-          bool LOCAL>
+template <typename Traits, typename Params>
 __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     __grid_constant__ const Params params) {
   using namespace cute;
@@ -89,9 +84,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // K_ROPE: (kv_len, ROPE_HEAD_DIM)
   auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
 
-  const int q_len = size<0>(Q) / group_size;
+  const int q_packed_len = size<0>(Q);
+  const int q_len = q_packed_len / group_size;
   const int kv_len = size<0>(KV);
-  const int sliding_window = kv_len;
 
   if (m_block_idx * kBlockM >= size<0>(Q)) {
     // m out of bound, return
@@ -180,42 +175,84 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // g2s tiled copy for q
   GmemTiledCopyQ gmem_tiled_copy_Q;
   auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_slice(tidx);
+
+  // coordinate tensor for oob handling
+  // (BLK_M, BLK_K) -> (blk_m, blk_k)
+  Tensor cQ = make_identity_tensor(Shape<_BLK_M, _BLK_K>{});
+  Tensor tCcQ = gmem_thr_copy_Q.partition_S(cQ(_, _));
+  auto max_coord_Q = make_coord(q_packed_len - m_block_idx * kBlockM, kBlockK);
+
   auto produce_q = [&](int step) {
     // gQ/sQ: (BLK_M, BLK_K, STEPS)
     auto tCgQ = gmem_thr_copy_Q.partition_S(gQ(_, _, step));
     auto tCsQ = gmem_thr_copy_Q.partition_D(sQ(_, _, step));
-    cute::copy(gmem_tiled_copy_Q, tCgQ, tCsQ);
+    safe_copy</*EVEN_MN=*/false,
+              /*EVEN_K=*/true,
+              /*ZFILL_MN=*/true,
+              /*ZFILL_K=*/true>(
+        gmem_tiled_copy_Q, tCgQ, tCsQ, tCcQ, max_coord_Q);
   };
 
   // g2s tiled copy for q_rope
   GmemTiledCopyQRope gmem_tiled_copy_Q_rope;
   auto gmem_thr_copy_Q_rope = gmem_tiled_copy_Q_rope.get_slice(tidx);
+
+  // (BLK_M, ROPE_HEAD_DIM) -> (blk_m, rope_head_dim)
+  Tensor cQ_rope = make_identity_tensor(Shape<_BLK_M, _ROPE_HEAD_DIM>{});
+  Tensor tCcQ_rope = gmem_thr_copy_Q_rope.partition_S(cQ_rope);
+
   auto produce_q_rope = [&]() {
     auto tCgQ_rope = gmem_thr_copy_Q_rope.partition_S(gQ_rope);
     auto tCsQ_rope = gmem_thr_copy_Q_rope.partition_D(sQ_rope);
-    cute::copy(gmem_tiled_copy_Q_rope, tCgQ_rope, tCsQ_rope);
+    auto max_coord =
+        make_coord(q_packed_len - m_block_idx * kBlockM, kRopeHeadDim);
+    safe_copy</*EVEN_MN=*/false,
+              /*EVEN_K=*/true,
+              /*ZFILL_MN=*/true,
+              /*ZFILL_K=*/true>(
+        gmem_tiled_copy_Q_rope, tCgQ_rope, tCsQ_rope, tCcQ_rope, max_coord);
   };
 
   // g2s tiled copy for kv
   GmemTiledCopyKV gmem_tiled_copy_KV;
   auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_slice(tidx);
+
+  // (BLK_N, BLK_K, STEPS) -> (blk_n, head_dim)
+  Tensor cKV = make_identity_tensor(Shape<_BLK_N, _BLK_K>{});
+  Tensor tCcKV = gmem_thr_copy_KV.partition_S(cKV);
+
   auto produce_kv = [&](int ni, int step, int stage) {
     // gKV: (BLK_N, BLK_K, n, STEPS)
     // sK: (BLK_N, BLK_K, STEPS, STAGES)
     auto tCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, step));
     auto tCsKV = gmem_thr_copy_KV.partition_D(sK(_, _, step, stage));
-    cute::copy(gmem_tiled_copy_KV, tCgKV, tCsKV);
+    auto max_coord = make_coord(kv_len - ni * kBlockN, kBlockK);
+    safe_copy</*EVEN_MN=*/false,
+              /*EVEN_K=*/true,
+              /*ZFILL_MN=*/true,
+              /*ZFILL_K=*/true>(
+        gmem_tiled_copy_KV, tCgKV, tCsKV, tCcKV, max_coord);
   };
 
   // g2s tiled copy for k_rope
   GmemTiledCopyKRope gmem_tiled_copy_K_rope;
   auto gmem_thr_copy_K_rope = gmem_tiled_copy_K_rope.get_slice(tidx);
+
+  // (BLK_N, ROPE_HEAD_DIM) -> (blk_n, rope_head_dim)
+  Tensor cK_rope = make_identity_tensor(Shape<_BLK_N, _ROPE_HEAD_DIM>{});
+  Tensor tKcK_rope = gmem_thr_copy_K_rope.partition_S(cK_rope);
+
   auto produce_k_rope = [&](int ni, int stage) {
     // gK_rope: (BLK_N, ROPE_HEAD_DIM, n)
     // sK_rope: (BLK_N, ROPE_HEAD_DIM, STAGES)
     auto tKgK_rope = gmem_thr_copy_K_rope.partition_S(gK_rope(_, _, ni));
-    Tensor tKsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope(_, _, stage));
-    cute::copy(gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope);
+    auto tKsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope(_, _, stage));
+    auto max_coord = make_coord(kv_len - ni * kBlockN, kRopeHeadDim);
+    safe_copy</*EVEN_MN=*/false,
+              /*EVEN_K=*/true,
+              /*ZFILL_MN=*/true,
+              /*ZFILL_K=*/true>(
+        gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope, tKcK_rope, max_coord);
   };
 
   // GEMM-I: S = Q@K.T
@@ -382,9 +419,23 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     GmemTiledCopyO gmem_tiled_copy_O;
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_slice(tidx);
 
-    auto tCsO = gmem_thr_copy_O.partition_S(sO);
-    auto tCgO = gmem_thr_copy_O.partition_D(gO);
-    cute::copy(gmem_tiled_copy_O, tCsO, tCgO);
+    // (BLK_M, BLK_K) -> (blk_m, blk_k)
+    auto cO = make_identity_tensor(Shape<_BLK_M, _BLK_K>{});
+    auto tCcO = gmem_thr_copy_Q.partition_S(cO);
+    auto max_coord_O =
+        make_coord(q_packed_len - m_block_idx * kBlockM, kBlockK);
+
+    CUTE_UNROLL
+    for (int step = 0; step < kSteps; ++step) {
+      auto tCsO = gmem_thr_copy_O.partition_S(sO(_, _, step));
+      auto tCgO = gmem_thr_copy_O.partition_D(gO(_, _, step));
+
+      safe_copy</*EVEN_MN=*/false,
+                /*EVEN_K=*/true,
+                /*ZFILL_MN=*/false,
+                /*ZFILL_K=*/false>(
+          gmem_tiled_copy_O, tCsO, tCgO, tCcO, max_coord_O);
+    }
   };
 
   // output accumulator: (MMA,MMA_M,MMA_K,STEPS)
@@ -441,13 +492,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
   using Softmax = OnlineSoftmax<kRowsPerThr>;
-  using Mask = Mask<kBlockM, kBlockN, kRowsPerThr, ALIBI, LOCAL>;
+  using Mask = Mask<kRowsPerThr, /*ALIBI=*/false, /*LOCAL=*/false>;
 
   Softmax softmax(params.sm_scale_log2);
-  Mask mask(q_len, kv_len, group_size, sliding_window);
+  Mask mask(q_len, kv_len, group_size, /*sliding_window=*/kv_len);
 
   int stage = 0;
-
   CUTE_NO_UNROLL
   for (int ni = n_block_min; ni < n_block_max; ++ni) {
     clear(tSrS);
@@ -470,7 +520,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     }
 
     // apply mask + softmax
-    mask.apply(tSrS_mn, tScS_mn, m_block_idx, ni);
+    mask.apply(tSrS_mn, tScS_mn, m_block_idx * kBlockM, ni * kBlockN);
     softmax.rescale(tSrS_mn, tOrO_mn, reduce_rowmax);
 
     // save tSrS from rmem to smem
@@ -520,12 +570,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   epilogue(tOrO);
 }
 
-template <typename Traits,
-          typename Params,
-          bool EVEN_K = false,
-          bool ALIBI = false,
-          bool SOFT_CAP = false,
-          bool LOCAL = false>
+template <typename Traits, typename Params>
 void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto batch_size = params.batch_size;
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
@@ -533,8 +578,7 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto smem_size = Traits::kSmemSize;
   // print("smem_size: %d\n", smem_size);
 
-  auto mla_kernel =
-      mla_kernel_sm80<Traits, Params, EVEN_K, ALIBI, SOFT_CAP, LOCAL>;
+  auto mla_kernel = mla_kernel_sm80<Traits, Params>;
   C10_CUDA_CHECK(cudaFuncSetAttribute(
       mla_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
   // TODO: support persistent kernels

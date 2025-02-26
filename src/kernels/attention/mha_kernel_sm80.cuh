@@ -338,13 +338,16 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
 
   constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
   using Softmax = OnlineSoftmax<kRowsPerThr>;
-  using Mask = Mask<kBlockM, kBlockN, kRowsPerThr, ALIBI, LOCAL>;
+  using Mask = Mask<kRowsPerThr, ALIBI, LOCAL>;
 
   Softmax softmax(sm_scale_log2);
   Mask mask(q_len, kv_len, group_size, sliding_window);
   if constexpr (ALIBI) {
-    mask.init_alibi(
-        tScS_mn, m_block_idx, kv_head_idx, sm_scale, params.alibi_slopes_ptr);
+    mask.init_alibi(tScS_mn,
+                    m_block_idx * kBlockM,
+                    kv_head_idx,
+                    sm_scale,
+                    params.alibi_slopes_ptr);
   }
 
   CUTE_NO_UNROLL
@@ -376,10 +379,11 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
     }
 
     if (i < n_oob_mask) {
-      mask.apply(tSrS_mn, tScS_mn, m_block_idx, n_block_idx);
+      mask.apply(
+          tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
     } else {
       mask.apply</*OOB_MASK=*/false>(
-          tSrS_mn, tScS_mn, m_block_idx, n_block_idx);
+          tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
     }
     softmax.rescale(tSrS_mn, tOrO_mn);
 
