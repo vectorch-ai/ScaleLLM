@@ -7,6 +7,7 @@
 #include <cute/tensor.hpp>
 
 #include "cute/config.hpp"
+#include "cute/container/array_aligned.hpp"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 #include "mask.h"
@@ -15,6 +16,31 @@
 #include "ptx.cuh"
 
 namespace llm {
+
+template <typename Traits>
+struct MHASharedStorage {
+  using DType = typename Traits::DType;
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutK = typename Traits::SmemLayoutK;
+  using SmemLayoutV = typename Traits::SmemLayoutV;
+  using SmemLayoutVt = typename Traits::SmemLayoutVt;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+
+  union {
+    union {
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutQ>> q_smem;
+      struct {
+        cute::array_aligned<DType, cute::cosize_v<SmemLayoutK>> k_smem;
+        union {
+          cute::array_aligned<DType, cute::cosize_v<SmemLayoutV>> v_smem;
+          cute::array_aligned<DType, cute::cosize_v<SmemLayoutVt>> vt_smem;
+        };
+      };
+    };
+
+    cute::array_aligned<DType, cute::cosize_v<SmemLayoutO>> o_smem;
+  };
+};
 
 template <typename Traits,
           typename Params,
@@ -46,6 +72,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
   using SmemLayoutV = typename Traits::SmemLayoutV;
   using SmemLayoutVt = typename Traits::SmemLayoutVt;
   using SmemLayoutO = typename Traits::SmemLayoutO;
+  using SharedStorage = MHASharedStorage<Traits>;
+
   using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
   using GmemTiledCopyKV = typename Traits::GmemTiledCopyKV;
   using GmemTiledCopyO = typename Traits::GmemTiledCopyO;
@@ -98,19 +126,20 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
 
   // Smem
   extern __shared__ char smem[];
-  DType* q_smem = (DType*)smem;
-  DType* k_smem = (DType*)smem;
-  DType* v_smem = k_smem + cosize(SmemLayoutK{});
+  auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
   // (BLK_M, HEAD_DIM), k-major
-  Tensor sQ = make_tensor(make_smem_ptr(q_smem), SmemLayoutQ{});
+  Tensor sQ = make_tensor(make_smem_ptr(ss.q_smem.data()), SmemLayoutQ{});
   // (BLK_N, HEAD_DIM), k-major
-  Tensor sK = make_tensor(make_smem_ptr(k_smem), SmemLayoutK{});
-  Tensor sV = make_tensor(make_smem_ptr(v_smem), SmemLayoutV{});
+  Tensor sK = make_tensor(make_smem_ptr(ss.k_smem.data()), SmemLayoutK{});
+  Tensor sV = make_tensor(make_smem_ptr(ss.v_smem.data()), SmemLayoutV{});
 
   // Tensor for V^t; used in GEMM-II.
   // (HEAD_DIM, BLK_N), m-major
-  Tensor sVt = make_tensor(make_smem_ptr(v_smem), SmemLayoutVt{});
+  Tensor sVt = make_tensor(make_smem_ptr(ss.vt_smem.data()), SmemLayoutVt{});
+
+  // (BLK_M, HEAD_DIM)
+  Tensor sO = make_tensor(make_smem_ptr(ss.o_smem.data()), SmemLayoutO{});
 
   // Tiled Copy
   // g2s tiled copy for qkv
@@ -249,9 +278,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
     auto tOrO = make_tensor_like<DType>(tOrAccO);
     fast_cast(tOrAccO, tOrO);
 
-    // 2. copy output from reg to smem (reuse sQ)
-    auto sO = make_tensor(sQ.data(), SmemLayoutO{});
-
+    // 2. copy output from reg to smem
     SmemTiledCopyO smem_tiled_copy_O;
     auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
     auto taccOrO = smem_thr_copy_O.retile_S(tOrO);
@@ -338,13 +365,16 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
 
   constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
   using Softmax = OnlineSoftmax<kRowsPerThr>;
-  using Mask = Mask<kBlockM, kBlockN, kRowsPerThr, ALIBI, LOCAL>;
+  using Mask = Mask<kRowsPerThr, ALIBI, LOCAL>;
 
   Softmax softmax(sm_scale_log2);
   Mask mask(q_len, kv_len, group_size, sliding_window);
   if constexpr (ALIBI) {
-    mask.init_alibi(
-        tScS_mn, m_block_idx, kv_head_idx, sm_scale, params.alibi_slopes_ptr);
+    mask.init_alibi(tScS_mn,
+                    m_block_idx * kBlockM,
+                    kv_head_idx,
+                    sm_scale,
+                    params.alibi_slopes_ptr);
   }
 
   CUTE_NO_UNROLL
@@ -376,10 +406,11 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
     }
 
     if (i < n_oob_mask) {
-      mask.apply(tSrS_mn, tScS_mn, m_block_idx, n_block_idx);
+      mask.apply(
+          tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
     } else {
       mask.apply</*OOB_MASK=*/false>(
-          tSrS_mn, tScS_mn, m_block_idx, n_block_idx);
+          tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
     }
     softmax.rescale(tSrS_mn, tOrO_mn);
 
@@ -413,7 +444,7 @@ void launch_mha_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto n_kv_heads = params.n_kv_heads;
   const auto max_q_packed_len = params.max_q_len * params.group_size;
 
-  const auto smem_size = Traits::kSmemSize;
+  const auto smem_size = sizeof(MHASharedStorage<Traits>);
   auto mha_kernel =
       mha_kernel_sm80<Traits, Params, EVEN_K, ALIBI, SOFT_CAP, LOCAL>;
   cudaFuncSetAttribute(

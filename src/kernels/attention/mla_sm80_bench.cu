@@ -12,35 +12,26 @@ using namespace llm;
 
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
   [&] {                                                    \
-    if (HEAD_DIM_V <= 64) {                                \
-      constexpr static int HEAD_DIM_NAME = 64;             \
-      constexpr static int BLK_M = 64;                     \
-      constexpr static int BLK_N = 64;                     \
-      constexpr static int BLK_K = 64;                     \
-      return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V <= 128) {                        \
+    if (HEAD_DIM_V == 128) {                               \
       constexpr static int HEAD_DIM_NAME = 128;            \
       constexpr static int BLK_M = 64;                     \
       constexpr static int BLK_N = 64;                     \
       constexpr static int BLK_K = 128;                    \
+      constexpr static int STAGES = 2;                     \
       return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V <= 256) {                        \
+    } else if (HEAD_DIM_V == 256) {                        \
       constexpr static int HEAD_DIM_NAME = 256;            \
       constexpr static int BLK_M = 64;                     \
-      constexpr static int BLK_N = 64;                     \
+      constexpr static int BLK_N = 32;                     \
       constexpr static int BLK_K = 128;                    \
+      constexpr static int STAGES = 2;                     \
       return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V <= 384) {                        \
-      constexpr static int HEAD_DIM_NAME = 384;            \
-      constexpr static int BLK_M = 64;                     \
-      constexpr static int BLK_N = 64;                     \
-      constexpr static int BLK_K = 128;                    \
-      return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V <= 512) {                        \
+    } else if (HEAD_DIM_V == 512) {                        \
       constexpr static int HEAD_DIM_NAME = 512;            \
       constexpr static int BLK_M = 64;                     \
-      constexpr static int BLK_N = 32;                     \
-      constexpr static int BLK_K = 256;                    \
+      constexpr static int BLK_N = 16;                     \
+      constexpr static int BLK_K = 128;                    \
+      constexpr static int STAGES = 1;                     \
       return __VA_ARGS__();                                \
     } else {                                               \
       assert(false);                                       \
@@ -104,7 +95,7 @@ void mla_bench_sm80(nvbench::state& state) {
                                    BLK_M,
                                    BLK_N,
                                    BLK_K,
-                                   /*STAGES=*/1>;
+                                   STAGES>;
 
       launch_mla_kernel_sm80<Traits>(params, launch.get_stream());
     });
@@ -115,6 +106,6 @@ NVBENCH_BENCH(mla_bench_sm80)
     .add_int64_axis("batch_size", {1})
     .add_int64_axis("q_len", {1024})
     .add_int64_axis("kv_len", {1024})
-    .add_int64_axis("n_heads", {8})
-    .add_int64_axis("head_dim", {256})
+    .add_int64_axis("n_heads", {128})
+    .add_int64_axis("head_dim", {512})
     .add_int64_axis("rope_head_dim", {64});

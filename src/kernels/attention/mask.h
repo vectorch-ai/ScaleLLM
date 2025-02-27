@@ -5,7 +5,7 @@
 namespace llm {
 using namespace cute;
 
-template <int BLK_M, int BLK_N, int ROWS_PER_THR, bool ALIBI, bool LOCAL>
+template <int ROWS_PER_THR, bool ALIBI, bool LOCAL>
 struct Mask {
   // Fragment type for alibi slopes
   using FragmentT = decltype(make_tensor<float>(Int<ROWS_PER_THR>{}));
@@ -31,7 +31,7 @@ struct Mask {
   // cS_mn: ((2, MMA_M), (2, MMA_N))
   template <typename IdentityS>
   CUTE_HOST_DEVICE void init_alibi(IdentityS& cS_mn,
-                                   int m_block_idx,
+                                   int m_base_idx,
                                    int kv_head_idx,
                                    float sm_scale,
                                    const float* alibi_slops_ptr) {
@@ -39,7 +39,7 @@ struct Mask {
     CUTE_UNROLL
     for (int i = 0; i < size<0>(cS_mn); ++i) {
       const auto [m, n] = cS_mn(i, _0{});
-      const int q_packed_idx = m_block_idx * BLK_M + m;
+      const int q_packed_idx = m_base_idx + m;
       const int offset = q_packed_idx % group_size_;
       const int head_idx = kv_head_idx * group_size_ + offset;
       alibi_slopes_(i) = alibi_slops_ptr[head_idx] / sm_scale;
@@ -50,16 +50,16 @@ struct Mask {
   template <bool OOB_MASK = true, typename FragmentS, typename IdentityS>
   CUTE_HOST_DEVICE void apply(FragmentS& rS_mn,
                               IdentityS& cS_mn,
-                              int m_block_idx,
-                              int n_block_idx) const {
+                              int m_base_idx,
+                              int n_base_idx) const {
     CUTE_UNROLL
     for (int i = 0; i < size<0>(rS_mn); ++i) {
       const auto alibi_slope = ALIBI ? alibi_slopes_(i) : 0.0f;
       CUTE_UNROLL
       for (int j = 0; j < size<1>(rS_mn); ++j) {
         auto [m, n] = cS_mn(i, j);
-        const int q_packed_idx = m_block_idx * BLK_M + m;
-        const int kv_idx = n_block_idx * BLK_N + n;
+        const int q_packed_idx = m_base_idx + m;
+        const int kv_idx = n_base_idx + n;
 
         const int q_idx = q_packed_idx / group_size_ + diagonal_offset_;
 

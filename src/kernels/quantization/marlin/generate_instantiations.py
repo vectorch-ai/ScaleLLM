@@ -104,7 +104,7 @@ class Kernel:
 
     @property
     def filename(self) -> str:
-        return f"marlin_b{self.num_bits}_t{self.threads}_m{self.m_blocks}_n{self.n_blocks}_k{self.k_blocks}_s{self.stages}_{self.has_act_order}_{self.has_zp}_g{self.group_blocks}.cu"
+        return f"marlin_b{self.num_bits}_t{self.threads}_m{self.m_blocks}_n{self.n_blocks}_k{self.k_blocks}_s{self.stages}_{self.has_act_order}_{self.has_zp}_g{self.group_blocks}_sm80.cu"
 
 def all_kernels():
     for num_bits in [4, 8]:
