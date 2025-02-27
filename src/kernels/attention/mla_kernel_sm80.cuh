@@ -541,22 +541,13 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
         cp_async_fence();
       }
     }
-    if (stage == 0) {
-      produce_k_rope(ni, stage);
+    stage == 0 ? produce_k_rope(ni, stage) : produce_k_rope_no_oob(ni, stage);
+    cp_async_fence();
+    CUTE_UNROLL
+    for (int step = 0; step < kSteps; ++step) {
+      stage == 0 ? produce_kv(ni, step, stage)
+                 : produce_kv_no_oob(ni, step, stage);
       cp_async_fence();
-      CUTE_UNROLL
-      for (int step = 0; step < kSteps; ++step) {
-        produce_kv(ni, step, stage);
-        cp_async_fence();
-      }
-    } else {
-      produce_k_rope_no_oob(ni, stage);
-      cp_async_fence();
-      CUTE_UNROLL
-      for (int step = 0; step < kSteps; ++step) {
-        produce_kv_no_oob(ni, step, stage);
-        cp_async_fence();
-      }
     }
   }
 
@@ -623,9 +614,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       CUTE_UNROLL
       for (int step = 0; step < kSteps; ++step) {
         compute_pv(tOrO, step, stage);
-
         __syncthreads();
-
         produce_kv_no_oob(next_ni, step, stage);
         cp_async_fence();
       }
