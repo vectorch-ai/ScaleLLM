@@ -272,12 +272,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     // sKV: (BLK_N, BLK_K, STEPS, STAGES)
     auto tCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, step));
     auto tCsKV = gmem_thr_copy_KV.partition_D(sKV(_, _, step, stage));
-    auto max_coord = make_coord(kv_len - ni * kBlockN, kBlockK);
-    safe_copy</*EVEN_MN=*/true,
-              /*EVEN_K=*/true,
-              /*ZFILL_MN=*/false,
-              /*ZFILL_K=*/false>(
-        gmem_tiled_copy_KV, tCgKV, tCsKV, tCcKV, max_coord);
+    cute::copy(gmem_tiled_copy_KV, tCgKV, tCsKV);
   };
 
   // g2s tiled copy for k_rope
@@ -306,12 +301,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     // sK_rope: (BLK_N, ROPE_HEAD_DIM, STAGES)
     auto tKgK_rope = gmem_thr_copy_K_rope.partition_S(gK_rope(_, _, ni));
     auto tKsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope(_, _, stage));
-    auto max_coord = make_coord(kv_len - ni * kBlockN, kRopeHeadDim);
-    safe_copy</*EVEN_MN=*/true,
-              /*EVEN_K=*/true,
-              /*ZFILL_MN=*/false,
-              /*ZFILL_K=*/false>(
-        gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope, tKcK_rope, max_coord);
+    cute::copy(gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope);
   };
 
   // GEMM-I: S = Q@K.T
