@@ -263,7 +263,20 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     safe_copy</*EVEN_MN=*/false,
               /*EVEN_K=*/true,
               /*ZFILL_MN=*/true,
-              /*ZFILL_K=*/true>(
+              /*ZFILL_K=*/false>(
+        gmem_tiled_copy_KV, tCgKV, tCsKV, tCcKV, max_coord);
+  };
+
+  auto produce_kv_no_oob = [&](int ni, int step, int stage) {
+    // gKV: (BLK_N, BLK_K, n, STEPS)
+    // sKV: (BLK_N, BLK_K, STEPS, STAGES)
+    auto tCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, step));
+    auto tCsKV = gmem_thr_copy_KV.partition_D(sKV(_, _, step, stage));
+    auto max_coord = make_coord(kv_len - ni * kBlockN, kBlockK);
+    safe_copy</*EVEN_MN=*/true,
+              /*EVEN_K=*/true,
+              /*ZFILL_MN=*/false,
+              /*ZFILL_K=*/false>(
         gmem_tiled_copy_KV, tCgKV, tCsKV, tCcKV, max_coord);
   };
 
@@ -284,7 +297,20 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     safe_copy</*EVEN_MN=*/false,
               /*EVEN_K=*/true,
               /*ZFILL_MN=*/true,
-              /*ZFILL_K=*/true>(
+              /*ZFILL_K=*/false>(
+        gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope, tKcK_rope, max_coord);
+  };
+
+  auto produce_k_rope_no_oob = [&](int ni, int stage) {
+    // gK_rope: (BLK_N, ROPE_HEAD_DIM, n)
+    // sK_rope: (BLK_N, ROPE_HEAD_DIM, STAGES)
+    auto tKgK_rope = gmem_thr_copy_K_rope.partition_S(gK_rope(_, _, ni));
+    auto tKsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope(_, _, stage));
+    auto max_coord = make_coord(kv_len - ni * kBlockN, kRopeHeadDim);
+    safe_copy</*EVEN_MN=*/true,
+              /*EVEN_K=*/true,
+              /*ZFILL_MN=*/false,
+              /*ZFILL_K=*/false>(
         gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope, tKcK_rope, max_coord);
   };
 
@@ -478,7 +504,16 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   clear(tOrO);
 
   const int n_block_min = 0;
-  const int n_block_max = cute::ceil_div(size<0>(KV), kBlockN);
+  // process kv in range: [0, kv_idx_max)
+  const int diagonal = (m_block_idx * kBlockM) / group_size + kv_len - q_len;
+  const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
+  const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
+
+  if (n_block_min >= n_block_max) {
+    // write output to gmem
+    epilogue(tOrO);
+    return;
+  }
 
   // ###############  Prologue  ###############
   // g2s async data copy pipelines
@@ -497,6 +532,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // produce k_rope/kv
   CUTE_UNROLL
   for (int stage = 0; stage < kStages; ++stage) {
+    const int ni = n_block_max - 1 - stage;
     // insert nops between stages for a perfect pipeline
     if (stage != 0) {
       cp_async_fence();
@@ -505,13 +541,22 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
         cp_async_fence();
       }
     }
-
-    produce_k_rope(stage, stage);
-    cp_async_fence();
-    CUTE_UNROLL
-    for (int step = 0; step < kSteps; ++step) {
-      produce_kv(stage, step, stage);
+    if (stage == 0) {
+      produce_k_rope(ni, stage);
       cp_async_fence();
+      CUTE_UNROLL
+      for (int step = 0; step < kSteps; ++step) {
+        produce_kv(ni, step, stage);
+        cp_async_fence();
+      }
+    } else {
+      produce_k_rope_no_oob(ni, stage);
+      cp_async_fence();
+      CUTE_UNROLL
+      for (int step = 0; step < kSteps; ++step) {
+        produce_kv_no_oob(ni, step, stage);
+        cp_async_fence();
+      }
     }
   }
 
@@ -530,9 +575,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   Softmax softmax(params.sm_scale_log2);
   Mask mask(q_len, kv_len, group_size, /*sliding_window=*/kv_len);
 
+  constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
+  const int n_blocks = n_block_max - n_block_min;
   int stage = 0;
   CUTE_NO_UNROLL
-  for (int ni = n_block_min; ni < n_block_max; ++ni) {
+  for (int i = 0; i < n_blocks; ++i) {
+    const int ni = n_block_max - 1 - i;
     clear(tSrS);
 
     cp_async_wait<kWait>();
@@ -552,8 +600,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
       cp_async_fence();
     }
 
-    // apply mask + softmax
-    mask.apply(tSrS_mn, tScS_mn, m_block_idx * kBlockM, ni * kBlockN);
+    // apply mask
+    if (i < n_oob_mask) {
+      mask.apply(tSrS_mn, tScS_mn, m_block_idx * kBlockM, ni * kBlockN);
+    } else {
+      mask.apply</*OOB_MASK=*/false>(
+          tSrS_mn, tScS_mn, m_block_idx * kBlockM, ni * kBlockN);
+    }
+
     softmax.rescale(tSrS_mn, tOrO_mn, reduce_rowmax);
 
     // save tSrS from rmem to smem
@@ -561,9 +615,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     __syncthreads();
 
     // 3> O = softmax(S)*V
-    const auto next_ni = ni + kStages;
-    if (next_ni != n_block_max) {
-      produce_k_rope(next_ni, stage);
+    const auto next_ni = ni - kStages;
+    if (next_ni >= n_block_min) {
+      produce_k_rope_no_oob(next_ni, stage);
       cp_async_fence();
 
       CUTE_UNROLL
@@ -572,7 +626,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
         __syncthreads();
 
-        produce_kv(next_ni, step, stage);
+        produce_kv_no_oob(next_ni, step, stage);
         cp_async_fence();
       }
     } else {
