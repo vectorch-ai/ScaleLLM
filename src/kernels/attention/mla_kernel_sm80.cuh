@@ -47,9 +47,7 @@ struct MLASharedStorage {
       };
     };
 
-    struct {
-      cute::array_aligned<DType, cute::cosize_v<SmemLayoutO>> o_smem;
-    };
+    cute::array_aligned<DType, cute::cosize_v<SmemLayoutO>> o_smem;
   };
 };
 
