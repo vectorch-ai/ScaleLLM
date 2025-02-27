@@ -51,6 +51,19 @@ namespace llm {
     }                                                                     \
   }()
 
+#define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, TYPE_NAME, ...) \
+  [&] {                                                    \
+    if (TORCH_DTYPE == torch::kHalf) {                     \
+      using TYPE_NAME = cute::half_t;                      \
+      return __VA_ARGS__();                                \
+    } else if (TORCH_DTYPE == torch::kBFloat16) {          \
+      using TYPE_NAME = cute::bfloat16_t;                  \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
+
 namespace {
 torch::Tensor mla_sm80(
     torch::Tensor q,       // [batch, q_len, n_heads, head_dim]
@@ -93,17 +106,19 @@ torch::Tensor mla_sm80(
   params.sm_scale = sm_scale;
   params.normalize();
 
-  DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-    DISPATCH_ROPE_HEAD_DIM_(rope_head_dim, ROPE_HEAD_DIM, [&] {
-      using Traits = MLATraitsSM80<cute::half_t,
-                                   HEAD_DIM,
-                                   ROPE_HEAD_DIM,
-                                   BLK_M,
-                                   BLK_N,
-                                   BLK_K,
-                                   STAGES>;
+  DISPATCH_TORCH_DTYPE_(q.dtype(), DTYPE, [&] {
+    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+      DISPATCH_ROPE_HEAD_DIM_(rope_head_dim, ROPE_HEAD_DIM, [&] {
+        using Traits = MLATraitsSM80<DTYPE,
+                                     HEAD_DIM,
+                                     ROPE_HEAD_DIM,
+                                     BLK_M,
+                                     BLK_N,
+                                     BLK_K,
+                                     STAGES>;
 
-      launch_mla_kernel_sm80<Traits>(params, nullptr);
+        launch_mla_kernel_sm80<Traits>(params, nullptr);
+      });
     });
   });
   return out;
@@ -153,19 +168,24 @@ TEST_P(MLAKernelTest, MLA) {
   auto ref_out = mla_batch_ref(q, kv, q_rope, k_rope, sm_scale);
   auto out = mla_sm80(q, kv, q_rope, k_rope, sm_scale);
   // std::cerr << "max diff: " << (ref_out - out).abs().max() << std::endl;
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  if (dtype == torch::kBFloat16) {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-2, /*atol=*/1e-2));
+  } else {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MLA,
     MLAKernelTest,
-    ::testing::Combine(::testing::Values(torch::kHalf),    // q_dtype
-                       ::testing::Values(1, 2, 4, 10),     // batch_size
-                       ::testing::Values(1, 62, 125),      // q_len
-                       ::testing::Values(127, 287, 1000),  // kv_len
-                       ::testing::Values(1, 8, 128),       // n_heads
-                       ::testing::Values(128, 256, 512),   // head_dim
-                       ::testing::Values(64)               // rope_head_dim
+    ::testing::Combine(::testing::Values(torch::kHalf,
+                                         torch::kBFloat16),  // q_dtype
+                       ::testing::Values(1, 2, 4, 10),       // batch_size
+                       ::testing::Values(1, 62, 125),        // q_len
+                       ::testing::Values(127, 287, 1000),    // kv_len
+                       ::testing::Values(1, 8, 128),         // n_heads
+                       ::testing::Values(128, 256, 512),     // head_dim
+                       ::testing::Values(64)                 // rope_head_dim
                        ));
 
 }  // namespace llm
