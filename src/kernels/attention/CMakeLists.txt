@@ -77,6 +77,7 @@ cc_test(
   SRCS
     mla_traits_test.cpp
     mla_kernel_sm80_test.cu
+    mla_kernel_sm80_pagedkv_test.cu
   DEPS
     :attention.template
     absl::random_random
