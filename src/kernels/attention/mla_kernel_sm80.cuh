@@ -16,6 +16,43 @@
 
 namespace llm {
 
+template <typename Traits>
+struct MLASharedStorage {
+  using DType = typename Traits::DType;
+  using SmemLayoutQ = typename Traits::SmemLayoutQ;
+  using SmemLayoutKV = typename Traits::SmemLayoutKV;
+  using SmemLayoutP = typename Traits::SmemLayoutP;
+  using SmemLayoutQRope = typename Traits::SmemLayoutQRope;
+  using SmemLayoutKRope = typename Traits::SmemLayoutKRope;
+  using SmemLayoutVt = typename Traits::SmemLayoutVt;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+  using SmemLayoutRowmax = typename Traits::SmemLayoutRowmax;
+  using SmemLayoutRowsum = typename Traits::SmemLayoutRowsum;
+
+  union {
+    struct {
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutQ>> q_smem;
+      union {
+        cute::array_aligned<DType, cute::cosize_v<SmemLayoutKV>> kv_smem;
+        cute::array_aligned<DType, cute::cosize_v<SmemLayoutVt>> vt_smem;
+      };
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutP>> p_smem;
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutQRope>> q_rope_smem;
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutKRope>> k_rope_smem;
+      union {
+        cute::array_aligned<float, cute::cosize_v<SmemLayoutRowmax>>
+            row_max_smem;
+        cute::array_aligned<float, cute::cosize_v<SmemLayoutRowsum>>
+            row_sum_smem;
+      };
+    };
+
+    struct {
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutO>> o_smem;
+    };
+  };
+};
+
 template <typename Traits, typename Params>
 __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     __grid_constant__ const Params params) {
@@ -53,6 +90,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   using SmemLayoutO = typename Traits::SmemLayoutO;
   using SmemLayoutRowmax = typename Traits::SmemLayoutRowmax;
   using SmemLayoutRowsum = typename Traits::SmemLayoutRowsum;
+  using SharedStorage = MLASharedStorage<Traits>;
 
   using GmemTiledCopyQ = typename Traits::GmemTiledCopyQ;
   using GmemTiledCopyQRope = typename Traits::GmemTiledCopyQRope;
@@ -111,38 +149,35 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   // Smem
   extern __shared__ char smem[];
-  DType* q_smem = (DType*)smem;
-  DType* kv_smem = q_smem + cosize(SmemLayoutQ{});
-  DType* p_smem = kv_smem + cosize(SmemLayoutKV{});
-  DType* q_rope_smem = p_smem + cosize(SmemLayoutP{});
-  DType* k_rope_smem = q_rope_smem + cosize(SmemLayoutQRope{});
-  float* row_sync_smem = (float*)(k_rope_smem + cosize(SmemLayoutKRope{}));
+  auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
   // (BLK_M, BLK_K, STEPS), k-major
-  Tensor sQ = make_tensor(make_smem_ptr(q_smem), SmemLayoutQ{});
+  Tensor sQ = make_tensor(make_smem_ptr(ss.q_smem.data()), SmemLayoutQ{});
   // (BLK_N, BLK_K, STEPS, STAGES), k-major
-  Tensor sK = make_tensor(make_smem_ptr(kv_smem), SmemLayoutKV{});
+  Tensor sKV = make_tensor(make_smem_ptr(ss.kv_smem.data()), SmemLayoutKV{});
 
   // (BLK_M, BLK_N), k-major
-  Tensor sP = make_tensor(make_smem_ptr(p_smem), SmemLayoutP{});
+  Tensor sP = make_tensor(make_smem_ptr(ss.p_smem.data()), SmemLayoutP{});
 
   // (BLK_M, ROPE_HEAD_DIM), k-major
-  Tensor sQ_rope = make_tensor(make_smem_ptr(q_rope_smem), SmemLayoutQRope{});
+  Tensor sQ_rope =
+      make_tensor(make_smem_ptr(ss.q_rope_smem.data()), SmemLayoutQRope{});
   // (BLK_N, ROPE_HEAD_DIM, STAGES), k-major
-  Tensor sK_rope = make_tensor(make_smem_ptr(k_rope_smem), SmemLayoutKRope{});
+  Tensor sK_rope =
+      make_tensor(make_smem_ptr(ss.k_rope_smem.data()), SmemLayoutKRope{});
 
   // Tensor for V^t; used in GEMM-II.
   // (BLK_K, BLK_N, STEPS, STAGES)
-  Tensor sVt = make_tensor(make_smem_ptr(kv_smem), SmemLayoutVt{});
+  Tensor sVt = make_tensor(make_smem_ptr(ss.vt_smem.data()), SmemLayoutVt{});
 
   // (BLK_M, BLK_K, STEPS), reuse smem
-  Tensor sO = make_tensor(make_smem_ptr(q_smem), SmemLayoutO{});
+  Tensor sO = make_tensor(make_smem_ptr(ss.o_smem.data()), SmemLayoutO{});
 
   // (BLK_M, 2)
   Tensor sRowmax =
-      make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowmax{});
+      make_tensor(make_smem_ptr(ss.row_max_smem.data()), SmemLayoutRowmax{});
   Tensor sRowsum =
-      make_tensor(make_smem_ptr(row_sync_smem), SmemLayoutRowsum{});
+      make_tensor(make_smem_ptr(ss.row_max_smem.data()), SmemLayoutRowsum{});
 
   // reduce rowmax/rowsum accross 2 warps via shared memory
   // thread layout: (32, (4, 2)), each thread process 2 rows
@@ -223,9 +258,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   auto produce_kv = [&](int ni, int step, int stage) {
     // gKV: (BLK_N, BLK_K, n, STEPS)
-    // sK: (BLK_N, BLK_K, STEPS, STAGES)
+    // sKV: (BLK_N, BLK_K, STEPS, STAGES)
     auto tCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, step));
-    auto tCsKV = gmem_thr_copy_KV.partition_D(sK(_, _, step, stage));
+    auto tCsKV = gmem_thr_copy_KV.partition_D(sKV(_, _, step, stage));
     auto max_coord = make_coord(kv_len - ni * kBlockN, kBlockK);
     safe_copy</*EVEN_MN=*/false,
               /*EVEN_K=*/true,
@@ -260,8 +295,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   auto thr_mma_qk = tiled_mma_qk.get_slice(tidx);
   // sQ: (BLK_M, BLK_K, STEPS)
   auto tSrQ = thr_mma_qk.partition_fragment_A(sQ(_, _, _0{}));
-  // sK: (BLK_N, BLK_K, STEPS, STAGES)
-  auto tSrK = thr_mma_qk.partition_fragment_B(sK(_, _, _0{}, _0{}));
+  // sKV: (BLK_N, BLK_K, STEPS, STAGES)
+  auto tSrK = thr_mma_qk.partition_fragment_B(sKV(_, _, _0{}, _0{}));
 
   // s2r tiled copy for q/q_rope
   SmemTiledCopyQ smem_tiled_copy_Q;
@@ -275,7 +310,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   SmemTiledCopyK smem_tiled_copy_K;
   auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(tidx);
   // (CPY, CPY_N, CPY_K, STEPS, STAGES)
-  auto tCsK = smem_thr_copy_K.partition_S(sK);
+  auto tCsK = smem_thr_copy_K.partition_S(sKV);
   // (CPY, CPY_N, CPY_K)
   auto tCrK = smem_thr_copy_K.retile_D(tSrK);
 
@@ -575,7 +610,7 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto batch_size = params.batch_size;
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
-  const auto smem_size = Traits::kSmemSize;
+  const auto smem_size = sizeof(MLASharedStorage<Traits>);
   // print("smem_size: %d\n", smem_size);
 
   auto mla_kernel = mla_kernel_sm80<Traits, Params>;
