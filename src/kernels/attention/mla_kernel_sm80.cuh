@@ -545,13 +545,22 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
         cp_async_fence();
       }
     }
-    stage == 0 ? produce_k_rope(ni, stage) : produce_k_rope_no_oob(ni, stage);
-    cp_async_fence();
-    CUTE_UNROLL
-    for (int step = 0; step < kSteps; ++step) {
-      stage == 0 ? produce_kv(ni, step, stage)
-                 : produce_kv_no_oob(ni, step, stage);
+    // handle oob kv
+    if (ni >= n_block_min) {
+      stage == 0 ? produce_k_rope(ni, stage) : produce_k_rope_no_oob(ni, stage);
       cp_async_fence();
+      CUTE_UNROLL
+      for (int step = 0; step < kSteps; ++step) {
+        stage == 0 ? produce_kv(ni, step, stage)
+                   : produce_kv_no_oob(ni, step, stage);
+        cp_async_fence();
+      }
+    } else {
+      cp_async_fence();
+      CUTE_UNROLL
+      for (int step = 0; step < kSteps; ++step) {
+        cp_async_fence();
+      }
     }
   }
 
