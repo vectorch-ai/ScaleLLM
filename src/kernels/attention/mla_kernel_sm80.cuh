@@ -120,20 +120,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // K_ROPE: (kv_len, ROPE_HEAD_DIM)
   auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
 
-#if 0
-  if (thread0()) {
-    print("Q: "); print(Q); print("\n");
-    print("Q_ROPE: "); print(Q_ROPE); print("\n");
-    print("O: "); print(O); print("\n");
-    print("KV: "); print(KV); print("\n");
-    print("K_ROPE: "); print(K_ROPE); print("\n");
-    print("m_block_idx: %d, batch_idx: %d, group_size: %d\n",
-          m_block_idx,
-          batch_idx,
-          group_size);
-  }
-#endif
-
   const int q_packed_len = size<0>(Q);
   const int q_len = q_packed_len / group_size;
   const int kv_len = size<0>(KV);
@@ -545,13 +531,22 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
         cp_async_fence();
       }
     }
-    stage == 0 ? produce_k_rope(ni, stage) : produce_k_rope_no_oob(ni, stage);
-    cp_async_fence();
-    CUTE_UNROLL
-    for (int step = 0; step < kSteps; ++step) {
-      stage == 0 ? produce_kv(ni, step, stage)
-                 : produce_kv_no_oob(ni, step, stage);
+    // handle oob kv
+    if (ni >= n_block_min) {
+      stage == 0 ? produce_k_rope(ni, stage) : produce_k_rope_no_oob(ni, stage);
       cp_async_fence();
+      CUTE_UNROLL
+      for (int step = 0; step < kSteps; ++step) {
+        stage == 0 ? produce_kv(ni, step, stage)
+                   : produce_kv_no_oob(ni, step, stage);
+        cp_async_fence();
+      }
+    } else {
+      cp_async_fence();
+      CUTE_UNROLL
+      for (int step = 0; step < kSteps; ++step) {
+        cp_async_fence();
+      }
     }
   }
 

@@ -210,8 +210,7 @@ TEST_P(MLAKernelPagedKVTest, PageKV) {
     }
   }
 
-  // construct non-contiguous query, key and value
-  // generate query, key and value
+  // generate q, kv, q_rope, k_rope
   torch::Tensor q = torch::rand({n_q_tokens, n_heads, head_dim}, options);
   const auto n_slots = total_blocks * block_size;
   torch::Tensor kv_cache = torch::rand({n_slots, head_dim}, options);
@@ -270,14 +269,15 @@ TEST_P(MLAKernelPagedKVTest, PageKV) {
 INSTANTIATE_TEST_SUITE_P(
     MLA,
     MLAKernelPagedKVTest,
-    ::testing::Combine(::testing::Values(torch::kHalf),  // q_dtype
-                       ::testing::Values(1, 2, 4),       // batch_size
-                       ::testing::Values(1, 8, 64),      // block_size
-                       ::testing::Values(1, 125),        // max_q_len
-                       ::testing::Values(127, 1000),     // max_kv_len
-                       ::testing::Values(1, 8, 128),     // n_heads
-                       ::testing::Values(512),           // head_dim
-                       ::testing::Values(64)             // rope_head_dim
+    ::testing::Combine(::testing::Values(torch::kHalf,
+                                         torch::kBFloat16),  // q_dtype
+                       ::testing::Values(1, 2, 4),           // batch_size
+                       ::testing::Values(1, 8, 64),          // block_size
+                       ::testing::Values(1, 125),            // max_q_len
+                       ::testing::Values(127, 1000),         // max_kv_len
+                       ::testing::Values(1, 8, 128),         // n_heads
+                       ::testing::Values(128, 256, 512),     // head_dim
+                       ::testing::Values(64)                 // rope_head_dim
                        ));
 
 }  // namespace llm

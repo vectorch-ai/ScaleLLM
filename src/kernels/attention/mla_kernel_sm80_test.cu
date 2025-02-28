@@ -149,6 +149,11 @@ TEST_P(MLAKernelTest, MLA) {
               n_heads,
               head_dim,
               rope_head_dim] = GetParam();
+  // skip invalid test cases
+  if (kv_len < q_len) {
+    return;
+  }
+
   const auto options = torch::dtype(dtype).device(torch::kCUDA);
 
   // q: [batch, q_len, n_heads, head_dim]
@@ -182,7 +187,7 @@ INSTANTIATE_TEST_SUITE_P(
                                          torch::kBFloat16),  // q_dtype
                        ::testing::Values(1, 2, 4, 10),       // batch_size
                        ::testing::Values(1, 62, 125),        // q_len
-                       ::testing::Values(127, 287, 1000),    // kv_len
+                       ::testing::Values(1, 30, 287, 1000),  // kv_len
                        ::testing::Values(1, 8, 128),         // n_heads
                        ::testing::Values(128, 256, 512),     // head_dim
                        ::testing::Values(64)                 // rope_head_dim
