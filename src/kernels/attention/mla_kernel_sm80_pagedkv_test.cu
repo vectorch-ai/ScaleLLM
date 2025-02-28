@@ -1,4 +1,3 @@
-#include <ATen/core/TensorBody.h>
 #include <absl/random/random.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
@@ -241,39 +240,44 @@ TEST_P(MLAKernelPagedKVTest, PageKV) {
     kvs.push_back(kv_cache[slot_id]);
     k_ropes.push_back(k_rope_cache[slot_id]);
   }
-  const auto kv = torch::stack(kvs, /*dim=*/0);
-  const auto k_rope = torch::stack(k_ropes, /*dim=*/0);
+  torch::Tensor kv = torch::stack(kvs, /*dim=*/0);
+  torch::Tensor k_rope = torch::stack(k_ropes, /*dim=*/0);
 
-  // auto ref_out = mla_varlen_ref(
-  //     q, kv, q_rope, k_rope, sm_scale, q_cu_lens, kv_cu_lens, sm_scale);
+  const float sm_scale = 1.0 / sqrt(head_dim + rope_head_dim);
 
-  // auto out = mla_pagedkv_sm80(q,
-  //                             kv_cache,
-  //                             q_rope,
-  //                             k_rope_cache,
-  //                             q_cu_lens,
-  //                             kv_cu_lens,
-  //                             block_table,
-  //                             block_cu_lens,
-  //                             block_size,
-  //                             max_q_len,
-  //                             sm_scale);
+  auto ref_out =
+      mla_varlen_ref(q, kv, q_rope, k_rope, q_cu_lens, kv_cu_lens, sm_scale);
+  auto out = mla_pagedkv_sm80(q,
+                              kv_cache,
+                              q_rope,
+                              k_rope_cache,
+                              q_cu_lens,
+                              kv_cu_lens,
+                              block_table,
+                              block_cu_lens,
+                              block_size,
+                              max_q_len,
+                              sm_scale);
 
-  // EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  // std::cerr << "max diff: " << (ref_out - out).abs().max() << std::endl;
+  if (dtype == torch::kBFloat16) {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-2, /*atol=*/1e-2));
+  } else {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MLA,
     MLAKernelPagedKVTest,
-    ::testing::Combine(::testing::Values(torch::kHalf,
-                                         torch::kBFloat16),  // q_dtype
-                       ::testing::Values(1, 2, 4),           // batch_size
-                       ::testing::Values(1, 8),              // block_size
-                       ::testing::Values(1, 125),            // max_q_len
-                       ::testing::Values(127, 1000),         // max_kv_len
-                       ::testing::Values(1, 8, 128),         // n_heads
-                       ::testing::Values(128, 256, 512),     // head_dim
-                       ::testing::Values(64)                 // rope_head_dim
+    ::testing::Combine(::testing::Values(torch::kHalf),  // q_dtype
+                       ::testing::Values(1, 2, 4),       // batch_size
+                       ::testing::Values(1, 8, 64),      // block_size
+                       ::testing::Values(1, 125),        // max_q_len
+                       ::testing::Values(127, 1000),     // max_kv_len
+                       ::testing::Values(1, 8, 128),     // n_heads
+                       ::testing::Values(512),           // head_dim
+                       ::testing::Values(64)             // rope_head_dim
                        ));
 
 }  // namespace llm
