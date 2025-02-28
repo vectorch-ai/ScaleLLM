@@ -6,7 +6,7 @@
 #include <iostream>
 
 #include "cute/numeric/numeric_types.hpp"
-#include "mla_kernel_sm80.cuh"  // IWYU pragma: keep
+#include "mla_kernel_sm80.cuh"
 #include "mla_params.h"
 #include "mla_ref.h"
 #include "mla_traits_sm80.h"

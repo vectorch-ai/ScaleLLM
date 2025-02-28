@@ -120,6 +120,20 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // K_ROPE: (kv_len, ROPE_HEAD_DIM)
   auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
 
+#if 0
+  if (thread0()) {
+    print("Q: "); print(Q); print("\n");
+    print("Q_ROPE: "); print(Q_ROPE); print("\n");
+    print("O: "); print(O); print("\n");
+    print("KV: "); print(KV); print("\n");
+    print("K_ROPE: "); print(K_ROPE); print("\n");
+    print("m_block_idx: %d, batch_idx: %d, group_size: %d\n",
+          m_block_idx,
+          batch_idx,
+          group_size);
+  }
+#endif
+
   const int q_packed_len = size<0>(Q);
   const int q_len = q_packed_len / group_size;
   const int kv_len = size<0>(KV);
@@ -642,7 +656,7 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
   const auto smem_size = sizeof(MLASharedStorage<Traits>);
-  // print("smem_size: %d\n", smem_size);
+  // print("smem_size: %d, %d\n", smem_size, Traits::kSmemSize);
 
   auto mla_kernel = mla_kernel_sm80<Traits, Params>;
   C10_CUDA_CHECK(cudaFuncSetAttribute(
