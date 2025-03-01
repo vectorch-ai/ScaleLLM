@@ -24,9 +24,7 @@ struct MHATile<MHAParams> {
   CUTE_HOST_DEVICE MHATile(const MHAParams& params,
                            int batch_idx,
                            int kv_head_idx)
-      : params_(params),
-        batch_idx_(batch_idx),
-        kv_head_idx_(kv_head_idx) {}
+      : params_(params), batch_idx_(batch_idx), kv_head_idx_(kv_head_idx) {}
 
   // return the query/output tile: (q_len, head_dim)
   template <typename Element>
@@ -95,9 +93,7 @@ struct MHATile<MHAPagedKVParams> {
   CUTE_HOST_DEVICE MHATile(const MHAPagedKVParams& params,
                            int batch_idx,
                            int kv_head_idx)
-      : params_(params),
-        batch_idx_(batch_idx),
-        kv_head_idx_(kv_head_idx) {}
+      : params_(params), batch_idx_(batch_idx), kv_head_idx_(kv_head_idx) {}
 
   // return the query/output tile: (q_len, head_dim)
   template <typename Element>

@@ -194,8 +194,8 @@ TEST_P(MLAKernelPagedKVTest, PageKV) {
     block_ids.reserve(n_blocks);
     for (int j = 0; j < n_blocks; ++j) {
       // random assign block size
-      const int32_t id = absl::Uniform<int>(
-          absl::IntervalClosedOpen, gen, 1, total_blocks);
+      const int32_t id =
+          absl::Uniform<int>(absl::IntervalClosedOpen, gen, 1, total_blocks);
       // put first slot id of each block into block_table
       block_ids.push_back(id * block_size);
     }
