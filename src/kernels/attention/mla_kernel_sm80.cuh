@@ -10,6 +10,7 @@
 #include "cute/config.hpp"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
+#include "layout_convertor.h"
 #include "mask.h"
 #include "mla_tile.h"
 #include "online_softmax.cuh"
@@ -77,7 +78,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
 
   using TiledMma_QK = typename Traits::TiledMma_QK;
   using TiledMma_PV = typename Traits::TiledMma_PV;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutKV = typename Traits::SmemLayoutKV;
@@ -107,32 +107,16 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   const int batch_idx = blockIdx.y;
   const int tidx = threadIdx.x;
 
-  // for MLA/MQA, group_size = n_heads
-  const int group_size = params.n_heads;
-
-  MLATile<Params> tile(params);
+  const auto& group_size = params.group_size;
 
   // ProblemShape
   // Q/O: (q_packed_len, HEAD_DIM)
   // Q_ROPE: (q_packed_len, ROPE_HEAD_DIM)
-  auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>(batch_idx);
+  MLATile<Params> tile(params, batch_idx);
+  auto [Q, Q_ROPE, O] = tile.template get_qo_tile<DType>();
   // KV: (kv_len, HEAD_DIM)
   // K_ROPE: (kv_len, ROPE_HEAD_DIM)
-  auto [KV, K_ROPE] = tile.template get_kv_tile<DType>(batch_idx);
-
-#if 0
-  if (thread0()) {
-    print("Q: "); print(Q); print("\n");
-    print("Q_ROPE: "); print(Q_ROPE); print("\n");
-    print("O: "); print(O); print("\n");
-    print("KV: "); print(KV); print("\n");
-    print("K_ROPE: "); print(K_ROPE); print("\n");
-    print("m_block_idx: %d, batch_idx: %d, group_size: %d\n",
-          m_block_idx,
-          batch_idx,
-          group_size);
-  }
-#endif
+  auto [KV, K_ROPE] = tile.template get_kv_tile<DType>();
 
   const int q_packed_len = size<0>(Q);
   const int q_len = q_packed_len / group_size;
@@ -504,7 +488,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // output accumulator: (MMA,MMA_M,MMA_K,STEPS)
   auto tOrO =
       partition_fragment_C(tiled_mma_pv, Shape<_BLK_M, _BLK_K, _STEPS>{});
-  auto tOrO_mn = make_tensor(tOrO.data(), Layout::to_mns(tOrO.layout()));
+  auto tOrO_mn =
+      make_tensor(tOrO.data(), LayoutConvertor::to_mns(tOrO.layout()));
   clear(tOrO);
 
   const int n_block_min = 0;
@@ -524,7 +509,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   // |  stage  |                  queue                            |
   // |   1     | [k_r, kv0, kv1]                                   |
   // |   2     | [k_r, kv0, kv1, (nop, nop, nop, k_r, kv0, kv1)]   |
-  // |   3     | [k_r, kv0, kv1, (nop, nop, nop, k_r, kv0, kv1)*2] |
   //                  ^ kWait = (kSteps + 1) * (2*kStages - 1) - 1
   constexpr int kWait = (kSteps + 1) * (2 * kStages - 1) - 1;
   // produce q_rope/q
@@ -569,8 +553,10 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
   auto tSrS = partition_fragment_C(tiled_mma_qk, Shape<_BLK_M, _BLK_N>{});
   auto tScS =
       thr_mma_qk.partition_C(make_identity_tensor(Shape<_BLK_M, _BLK_N>{}));
-  auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
-  auto tScS_mn = make_tensor(tScS.data(), Layout::to_mn(tScS.layout()));
+  auto tSrS_mn =
+      make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
+  auto tScS_mn =
+      make_tensor(tScS.data(), LayoutConvertor::to_mn(tScS.layout()));
 
   constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
   using Softmax = OnlineSoftmax<kRowsPerThr>;
@@ -665,7 +651,7 @@ void launch_mla_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
   const auto smem_size = sizeof(MLASharedStorage<Traits>);
-  // print("smem_size: %d, %d\n", smem_size, Traits::kSmemSize);
+  // print("smem_size: %d\n", smem_size);
 
   auto mla_kernel = mla_kernel_sm80<Traits, Params>;
   C10_CUDA_CHECK(cudaFuncSetAttribute(

@@ -4,7 +4,7 @@
 
 #include <cute/tensor.hpp>
 
-#include "ptx.cuh"
+#include "fast_math.h"
 
 namespace llm {
 using namespace cute;
@@ -89,16 +89,14 @@ struct OnlineSoftmax {
       const float rowmax_scale = row_max_(si) * sm_scale_;
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS_mn); sj++) {
-        rAccS_mn(si, sj) =
-            ptx::exp2(rAccS_mn(si, sj) * sm_scale_ - rowmax_scale);
+        rAccS_mn(si, sj) = exp2(rAccS_mn(si, sj) * sm_scale_ - rowmax_scale);
       }
     }
 
     // row_sum = row_sum * s_scale + row_sum`
     CUTE_UNROLL
     for (int si = 0; si < size<0>(rAccS_mn); ++si) {
-      const float s_scale =
-          ptx::exp2((pre_row_max(si) - row_max_(si)) * sm_scale_);
+      const float s_scale = exp2((pre_row_max(si) - row_max_(si)) * sm_scale_);
       row_sum_(si) *= s_scale;
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccS_mn); sj++) {
@@ -112,8 +110,7 @@ struct OnlineSoftmax {
     auto rAccO_mn_ = group_modes<1, R>(rAccO_mn);
     CUTE_UNROLL
     for (int si = 0; si < size<0>(rAccO_mn_); ++si) {
-      const float s_scale =
-          ptx::exp2((pre_row_max(si) - row_max_(si)) * sm_scale_);
+      const float s_scale = exp2((pre_row_max(si) - row_max_(si)) * sm_scale_);
       CUTE_UNROLL
       for (int sj = 0; sj < size<1>(rAccO_mn_); ++sj) {
         rAccO_mn_(si, sj) *= s_scale;
@@ -150,7 +147,7 @@ struct OnlineSoftmax {
     auto rAccO_mn_ = group_modes<1, R>(rAccO_mn);
     CUTE_UNROLL
     for (int oi = 0; oi < size<0>(rAccO_mn_); ++oi) {
-      const auto row_sum_rcp = ptx::rcp(row_sum_(oi));
+      const auto row_sum_rcp = rcp(row_sum_(oi));
       CUTE_UNROLL
       for (int oj = 0; oj < size<1>(rAccO_mn_); ++oj) {
         rAccO_mn_(oi, oj) *= row_sum_rcp;

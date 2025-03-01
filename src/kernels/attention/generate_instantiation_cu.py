@@ -47,11 +47,10 @@ MLA_KERNEL_TEMPLATE = """
 namespace llm {{
 
 using Traits = MLATraitsSM80<{DTYPE}, {HEAD_DIM}, {ROPE_HEAD_DIM}, {BLK_M}, {BLK_N}, {BLK_K}, {STAGES}>;
-using Params = MLAParams;
+using Params = MLAPagedKVParams;
 
-template void launch_mla_kernel_sm80<Traits,
-                                     Params>(const Params& params, 
-                                             cudaStream_t stream);
+template void launch_mla_kernel_sm80<Traits, Params>(const Params& params,
+                                                     cudaStream_t stream);
 }}  // namespace llm
 """
 

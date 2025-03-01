@@ -14,7 +14,6 @@ template <typename Traits>
 void test_mha_traits() {
   // type alias
   using TiledMma = typename Traits::TiledMma;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;

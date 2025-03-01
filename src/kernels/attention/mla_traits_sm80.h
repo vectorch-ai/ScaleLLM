@@ -7,32 +7,6 @@
 namespace llm {
 using namespace cute;
 
-namespace detail {
-
-// Convert fragment layout for different purposes
-// Only works for TiledMMA (64x16x16) with SM80_16x8x16_F32F16F16F32_TN
-struct LayoutConvertor {
-  // Convert fragment layout to rowcol layout for iterating
-  // (MMA=4, MMA_M, MMA_N) => ((2, MMA_M), (2, MMA_N))
-  template <typename LayoutC>
-  CUTE_HOST_DEVICE static constexpr auto to_mn(const LayoutC& layout) {
-    auto l = logical_divide(layout, Shape<_2>{});
-    return make_layout(make_layout(get<0, 1>(l), get<1>(l)),
-                       make_layout(get<0, 0>(l), get<2>(l)));
-  }
-
-  // (MMA=4, MMA_M, MMA_N, STEPS) => ((2, MMA_M), (2, MMA_N), STEPS)
-  template <typename LayoutC>
-  CUTE_HOST_DEVICE static constexpr auto to_mns(const LayoutC& layout) {
-    auto l = logical_divide(layout, Shape<_2>{});
-    return make_layout(make_layout(get<0, 1>(l), get<1>(l)),
-                       make_layout(get<0, 0>(l), get<2>(l)),
-                       get<3>(l));
-  }
-};
-
-}  // namespace detail
-
 template <typename DTYPE,
           int HEAD_DIM,
           int ROPE_HEAD_DIM,
@@ -95,9 +69,6 @@ struct MLATraitsSM80 {
 
   // TiledMma for O = P*V^T, warp layout 4x2x1
   using TiledMma_PV = TiledMma_64x32x16_;
-
-  // Layout convertor for TiledMMA (64x16x16)
-  using LayoutConvertor = detail::LayoutConvertor;
 
   // Shared memory LayoutAtom for differnt block sizes
   using SmemLayoutAtom_8x64 =
@@ -243,12 +214,6 @@ struct MLATraitsSM80 {
       ));
 
   // constexpr values for kernel launch
-  static constexpr size_t kSmemSize =
-      sizeof(DType) * (cosize(SmemLayoutQ{}) + cosize(SmemLayoutKV{}) +
-                       cosize(SmemLayoutP{}) + cosize(SmemLayoutQRope{}) +
-                       cosize(SmemLayoutKRope{})) +
-      sizeof(float) * (cosize(SmemLayoutRowmax{}));
-
   static constexpr size_t kThreadNum = size(TiledMma_PV{});
 };
 

@@ -34,6 +34,7 @@ Checks: >
   -readability-isolate-declaration,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-avoid-const-or-ref-data-members,
   -cppcoreguidelines-special-member-functions,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-prefer-member-initializer,

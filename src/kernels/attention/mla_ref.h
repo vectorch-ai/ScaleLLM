@@ -26,8 +26,8 @@ inline torch::Tensor mla_batch_ref(
   auto k_rope_ = k_rope.to(torch::kFloat);
 
   // query * key => [batch, q_len, n_heads, kv_len]
-  auto scores = torch::einsum("bqhr,bkr->bqhk", {q_, kv_}) +
-                torch::einsum("bqhp,bkp->bqhk", {q_rope_, k_rope_});
+  auto scores = torch::einsum("bqhr,bkr->bhqk", {q_, kv_}) +
+                torch::einsum("bqhp,bkp->bhqk", {q_rope_, k_rope_});
   // apply scale
   scores *= sm_scale;
 
@@ -35,15 +35,13 @@ inline torch::Tensor mla_batch_ref(
   auto mask = torch::ones({q_len, kv_len}, torch::kBool);
   // causal mask: returns the lower triangular part of a matrix
   mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(q);
-  // [q_len, kv_len] => [q_len, 1, kv_len]
-  mask = mask.unsqueeze(1);
   scores = scores.masked_fill(mask == 0, -INFINITY);
 
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
 
-  // score * value => [batch_size, q_len, n_heads, kv_lora_rank]
-  return torch::einsum("bqhk,bkr->bqhr", {scores, kv_}).type_as(q);
+  // score * value => [batch_size, q_len, n_heads, head_dim]
+  return torch::einsum("bhqk,bkr->bqhr", {scores, kv_}).type_as(q);
 }
 
 inline torch::Tensor mla_ref(
@@ -66,8 +64,8 @@ inline torch::Tensor mla_ref(
   auto k_rope_ = k_rope.to(torch::kFloat);
 
   // query * key => [q_len, n_heads, kv_len]
-  auto scores = torch::einsum("qhr,kr->qhk", {q_, kv_}) +
-                torch::einsum("qhp,kp->qhk", {q_rope_, k_rope_});
+  auto scores = torch::einsum("qhr,kr->hqk", {q_, kv_}) +
+                torch::einsum("qhp,kp->hqk", {q_rope_, k_rope_});
   // apply scale
   scores *= sm_scale;
 
@@ -75,15 +73,13 @@ inline torch::Tensor mla_ref(
   auto mask = torch::ones({q_len, kv_len}, torch::kBool);
   // causal mask: returns the lower triangular part of a matrix
   mask = torch::tril(mask, /*diagonal=*/kv_len - q_len).to(q);
-  // [q_len, kv_len] => [q_len, 1, kv_len]
-  mask = mask.unsqueeze(1);
   scores = scores.masked_fill(mask == 0, -INFINITY);
 
   // safe softmax
   scores = torch::softmax(scores, /*dim=*/-1);
 
   // score * value => [q_len, n_heads, head_dim]
-  return torch::einsum("qhk,kr->qhr", {scores, kv_}).type_as(q);
+  return torch::einsum("hqk,kr->qhr", {scores, kv_}).type_as(q);
 }
 
 inline torch::Tensor mla_varlen_ref(
