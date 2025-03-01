@@ -22,12 +22,9 @@ jobs:
   build_wheel:
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         cuda: ["11.8", "12.4", "12.6"]
-        torch: ["2.5.1", "2.6.0"]
-        exclude:
-          - cuda: "12.6"
-            torch: "2.5.1"
+        torch: ["2.6.0"]
     runs-on: [self-hosted, linux, release]
     env:
       PYTHON_VERSION: ${{ matrix.python }}

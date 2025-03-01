@@ -27,7 +27,7 @@ ENV PATH="/opt/python/cp312-cp312/bin:$PATH"
 # Install torch and other dependencies
 RUN python -m pip install --upgrade pip
 RUN pip install --upgrade pip
-RUN pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
+RUN pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}/torch"
 RUN pip install numpy jinja2
 RUN pip install --upgrade setuptools wheel
 
