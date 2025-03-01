@@ -52,8 +52,8 @@ void mha_bench_sm80(nvbench::state& state) {
     block_bases.reserve(n_blocks);
     for (int j = 0; j < n_blocks; ++j) {
       // random assign block size
-      const int32_t id = absl::Uniform<int>(
-          absl::IntervalClosedClosed, gen, 1, total_blocks - 1);
+      const int32_t id =
+          absl::Uniform<int>(absl::IntervalClosedOpen, gen, 1, total_blocks);
       // put first slot id of each block into block_table
       block_bases.push_back(id * block_size);
     }

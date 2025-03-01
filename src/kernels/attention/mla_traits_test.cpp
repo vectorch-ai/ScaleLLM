@@ -14,7 +14,6 @@ template <typename Traits>
 void test_mla_traits() {
   // type alias
   using TiledMma_QK = typename Traits::TiledMma_QK;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutKV = typename Traits::SmemLayoutKV;

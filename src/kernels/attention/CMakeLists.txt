@@ -7,7 +7,8 @@ cc_library(
   NAME 
     attention.template
   HDRS
-    ptx.cuh
+    fast_math.h
+    layout_convertor.h
     fast_cast.cuh
     online_softmax.cuh
     mask.h
@@ -62,7 +63,6 @@ cc_test(
     # mha_cpu_test.cpp
     mha_traits_test.cpp
     mha_kernel_sm80_test.cu
-    # mha_kernel_sm80_varlen_test.cu
     mha_kernel_sm80_pagedkv_test.cu
   DEPS
     :attention.template

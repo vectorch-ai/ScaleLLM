@@ -2,6 +2,8 @@
 #include <cute/config.hpp>
 #include <cute/tensor.hpp>
 
+#include "fast_math.h"
+
 namespace llm {
 using namespace cute;
 
@@ -10,17 +12,17 @@ struct Mask {
   // Fragment type for alibi slopes
   using FragmentT = decltype(make_tensor<float>(Int<ROWS_PER_THR>{}));
 
-  int q_len_;
-  int kv_len_;
-  int group_size_;
-  int sliding_window_;
-  int diagonal_offset_;
+  const int q_len_;
+  const int kv_len_;
+  const FastDivmod& group_size_;
+  const int sliding_window_;
+  const int diagonal_offset_;
 
   FragmentT alibi_slopes_;
 
   CUTE_HOST_DEVICE Mask(int q_len,
                         int kv_len,
-                        int group_size,
+                        const FastDivmod& group_size,
                         int sliding_window)
       : q_len_(q_len),
         kv_len_(kv_len),

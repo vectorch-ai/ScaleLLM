@@ -1,9 +1,10 @@
 #pragma once
 
 #include <cute/config.hpp>
+#include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute/layout.hpp"
+#include "fast_math.h"
 namespace llm {
 
 // common params for attention kernels
@@ -31,7 +32,7 @@ struct MLAParamsCommon {
   int max_q_len = 0;
 
   // block size, only used for paged KV cache
-  int block_size = 0;
+  int block_size = 1;
 
   // private:
   // used for performance optimization, don't change it
@@ -39,6 +40,7 @@ struct MLAParamsCommon {
   float sm_scale_log2 = 0.0;
   int32_t block_shift_right = 0;
   int32_t block_mask = 0;
+  FastDivmod group_size;
 
   // used to initialize the params that used for performance optimization
   void normalize() {
@@ -49,16 +51,12 @@ struct MLAParamsCommon {
     sm_scale_log2 = static_cast<float>(sm_scale * M_LOG2E);
 
     // block size must be power of 2
-    assert(block_size > 0 && (block_size & (block_size - 1)) == 0);
-    auto int_log2 = [](int x) {
-      int n = 0;
-      while (x >>= 1) {
-        ++n;
-      }
-      return n;
-    };
-    block_shift_right = int_log2(block_size);
+    assert(block_size > 0 && is_pow2(block_size));
+    block_shift_right = log2(block_size);
     block_mask = block_size - 1;
+
+    // for MLA/MQA, group_size = n_heads
+    group_size = n_heads;
 
     normalized = true;
   }

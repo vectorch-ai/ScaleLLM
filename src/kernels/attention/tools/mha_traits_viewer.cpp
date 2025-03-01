@@ -18,7 +18,6 @@ template <typename Traits>
 void print_attn_traits() {
   // type alias
   using TiledMma = typename Traits::TiledMma;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -34,10 +33,6 @@ void print_attn_traits() {
   using SmemTiledCopyK = typename Traits::SmemTiledCopyK;
   using SmemTiledCopyVt = typename Traits::SmemTiledCopyVt;
   using SmemTiledCopyO = typename Traits::SmemTiledCopyO;
-  // print dynamic smem size
-  print("Dynamic Smem Size: ");
-  print(readable_size(Traits::kSmemSize).c_str());
-  print("\n");
 
   // print tiled mma
   print("TiledMma: \n");

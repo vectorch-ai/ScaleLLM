@@ -10,10 +10,10 @@
 #include "cute/container/array_aligned.hpp"
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
+#include "layout_convertor.h"
 #include "mask.h"
 #include "mha_tile.h"
 #include "online_softmax.cuh"
-#include "ptx.cuh"
 
 namespace llm {
 
@@ -65,7 +65,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
   using DType = typename Traits::DType;
 
   using TiledMma = typename Traits::TiledMma;
-  using Layout = typename Traits::LayoutConvertor;
 
   using SmemLayoutQ = typename Traits::SmemLayoutQ;
   using SmemLayoutK = typename Traits::SmemLayoutK;
@@ -88,20 +87,20 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
   const int kv_head_idx = blockIdx.z;
   const int tidx = threadIdx.x;
 
-  MHATile<Params> tile(params);
-
   // preprocess input parameters
   const int head_dim = params.head_dim;
-  const int group_size = params.group_size;
   const float logits_soft_cap = params.logits_soft_cap;
   const float sm_scale = params.sm_scale;
   const float sm_scale_log2 = params.sm_scale_log2;
 
+  const auto& group_size = params.group_size;
+
   // ProblemShape
   // (q_packed_len, HEAD_DIM)
-  auto [Q, O] = tile.template get_qo_tile<DType>(batch_idx, kv_head_idx);
+  MHATile<Params> tile(params, batch_idx, kv_head_idx);
+  auto [Q, O] = tile.template get_qo_tile<DType>();
   // (kv_len, HEAD_DIM)
-  auto [K, V] = tile.template get_kv_tile<DType>(batch_idx, kv_head_idx);
+  auto [K, V] = tile.template get_kv_tile<DType>();
 
   const int q_packed_len = size<0>(Q);
   const int q_len = q_packed_len / group_size;
@@ -253,7 +252,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
     fast_cast(tSrAccS, tSrS);
 
     // convert layout from gemm-I C to gemm-II A
-    auto tOrS = make_tensor(tSrS.data(), Layout::to_mma_a(tSrS.layout()));
+    auto tOrS =
+        make_tensor(tSrS.data(), LayoutConvertor::to_mma_a(tSrS.layout()));
 
     // prefetch V^t
     cute::copy(
@@ -307,7 +307,8 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
 
   // output accumulator, (MMA,MMA_M,MMA_K)
   auto tOrO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
-  auto tOrO_mn = make_tensor(tOrO.data(), Layout::to_mn(tOrO.layout()));
+  auto tOrO_mn =
+      make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
   clear(tOrO);
 
   const int diagonal = (m_block_idx * kBlockM) / group_size + kv_len - q_len;
@@ -327,7 +328,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
     if constexpr (SOFT_CAP) {
       CUTE_UNROLL
       for (int i = 0; i < size(tSrAccS); ++i) {
-        tSrAccS(i) = ptx::tanh(tSrAccS(i) * logits_soft_cap);
+        tSrAccS(i) = tanh(tSrAccS(i) * logits_soft_cap);
       }
     }
   };
@@ -356,12 +357,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
 
   // attention score accumulator, (MMA,MMA_M,MMA_N)
   auto tSrS = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-  auto tSrS_mn = make_tensor(tSrS.data(), Layout::to_mn(tSrS.layout()));
+  auto tSrS_mn =
+      make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
 
   // identity tensor for score accumulator
   auto tScS =
       thr_mma.partition_C(make_identity_tensor(Shape<_BLK_M, _BLK_N>{}));
-  auto tScS_mn = make_tensor(tScS.data(), Layout::to_mn(tScS.layout()));
+  auto tScS_mn =
+      make_tensor(tScS.data(), LayoutConvertor::to_mn(tScS.layout()));
 
   constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
   using Softmax = OnlineSoftmax<kRowsPerThr>;
