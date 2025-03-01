@@ -28,7 +28,7 @@ export PATH="/opt/python/cp${PYVER}-cp${PYVER}/bin:$PATH"
 python -m pip install --upgrade pip
 
 # install PyTorch
-pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}/torch"
+pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
 # install dependencies
 pip install -r requirements-test.txt
