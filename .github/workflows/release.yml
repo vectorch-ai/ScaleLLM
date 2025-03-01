@@ -29,7 +29,6 @@ jobs:
       tag: ${{ needs.version-tag.outputs.tag }}
     secrets: inherit
     needs:
-      - version-tag
       - release-test
 
   # build wheel for release if tests pass
@@ -39,15 +38,14 @@ jobs:
       tag: ${{ needs.version-tag.outputs.tag }}
     secrets: inherit
     needs:
-      - version-tag
       - publish-wheel
 
   # publish docker image to dockerhub
-  publish-cpp-image:
-    uses: ./.github/workflows/publish_cpp_image.yml
-    with:
-      tag: ${{ needs.version-tag.outputs.tag }}
-    secrets: inherit
-    needs:
-      - version-tag
-      - publish-wheel
+  # publish-cpp-image:
+  #   uses: ./.github/workflows/publish_cpp_image.yml
+  #   with:
+  #     tag: ${{ needs.version-tag.outputs.tag }}
+  #   secrets: inherit
+  #   needs:
+  #     - version-tag
+  #     - publish-wheel

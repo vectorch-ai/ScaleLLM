@@ -11,8 +11,8 @@ crate-type = ["staticlib"]
 lto = "fat"
 
 [dependencies]
-thiserror = "1.0"
-safetensors = "0.4.4"
-tokenizers = { version = "0.20.0", default-features = false, features = ["onig"] }
+thiserror = "2.0"
+safetensors = "0.5.3"
+tokenizers = { version = "0.21.0", default-features = false, features = ["onig"] }
 serde = { version = "1.0", features = [ "derive" ] }
 serde_json = "1.0"
