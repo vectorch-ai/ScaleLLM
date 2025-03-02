@@ -23,8 +23,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12"]
-        cuda: ["11.8", "12.4"]
+        python: ["3.11", "3.12", "3.13"]
+        cuda: ["12.6"]
         torch: ["2.6.0"]
     runs-on: [self-hosted, linux, release]
     env:
