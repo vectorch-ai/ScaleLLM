@@ -18,18 +18,16 @@ namespace llm {
 //  output = sum(softmax(local_lsm) * outAccum)
 //  lsm = log(sum(exp(local_lsm))
 // inputs:
-//    outAccum:   [n_splits, batch_size, seq_len, n_heads, head_dim]
-//    local_lsm:  [n_splits, batch_size, seq_len, n_heads]
+//    outAccum:   [n_splits, batch, seq_len, n_heads, head_dim]
+//    local_lsm:  [n_splits, batch, seq_len, n_heads]
 // output:
-//    out:      [batch_size, seq_len, n_heads, head_dim]
-//    lsm:      [batch_size, seq_len, n_heads]
-template <typename Traits,
-          typename Params,
-          typename Element,
+//    out:      [batch, seq_len, n_heads, head_dim]
+//    lsm:      [batch, seq_len, n_heads]
+template <typename Element,
           typename ElementAccum,
-          typename index_t,
           int kHeadDim,
-          int kMaxSplits>
+          int kSplits,
+          typename Params>
 __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   using namespace cute;
   constexpr int kThreads = 128;
@@ -49,36 +47,37 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   }
 
   // scales[splits]
-  __shared__ ElementAccum sScales[kMaxSplits];
+  __shared__ ElementAccum sScales[kSplits];
 
   // [n_splits, batch, seq_len, n_heads]
   Tensor lseAccum = make_tensor(
-      make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.lseaccum_ptr)),
-      params.lseaccum_shape,
-      params.lseaccum_stride);
+      make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.lse_accum_ptr)),
+      params.lse_accum_shape,
+      append<4>(params.lse_accum_stride, _1{}));
   // [n_splits]
   Tensor gLseAccum = lseAccum(_, b_idx, s_idx, h_idx);
 
-  // [num_splits, batch_size, num_heads, max_seqlen_q, head_dim]
+  // [num_splits, batch, num_heads, max_seqlen_q, head_dim]
   Tensor oAccum = make_tensor(
       make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.oaccum_ptr)),
       params.oaccum_shape,
-      params.oaccum_stride);
+      append<5>(params.oaccum_stride, _1{}));
   // [kMaxSplits, head_dim] => [head_dim, kMaxSplits]
   Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, h_idx, s_idx, _));
 
-  // [batch_size, seqlen_q, num_heads, head_dim]
+  // [batch, seqlen_q, num_heads, head_dim]
   Tensor O =
       make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr)),
                   params.o_shape,
-                  params.o_stride);
+                  append<4>(params.o_stride, _1{}));
   // [head_dim]
   Tensor gO = O(b_idx, s_idx, h_idx, _);
 
+  // use one warp to calculate safe_softmax(lse)
   int warp_idx = cutlass::canonical_warp_idx_sync();
   if (warp_idx == 0) {
     // (SPLITS) -> (splits)
-    auto cLseAccum = make_identity_tensor(Shape<Int<kMaxSplits>>{});
+    auto cLseAccum = make_identity_tensor(Shape<Int<kSplits>>{});
 
     // [n_lses]
     auto tLgLseAccum = local_partition(gLseAccum, _32{}, tidx);
@@ -133,6 +132,9 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
     CUTE_UNROLL
     for (int i = 0; i < kLsePerThr; ++i) {
       const int split_idx = tLcLseAccum(i);
+      // scales[i] = exp(lse[i] - lse_max) / lse_sum
+      //           = exp(lse[i] - lse_max - log(lse_sum))
+      //           = exp(lse[i] - lse_logsum)
       sScales[split_idx] = expf(lse[i] - lse_logsum);
     }
   }
