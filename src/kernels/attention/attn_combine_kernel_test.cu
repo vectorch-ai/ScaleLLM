@@ -43,8 +43,6 @@ torch::Tensor attn_combine_ref(
     torch::Tensor lsm_accum,  // [n_splits, batch, seq_len, n_heads]
     torch::ScalarType dtype) {
   auto scales = torch::softmax(lsm_accum, /*dim=*/0);
-  // std::cerr << "scales: " << scales << std::endl;
-
   auto out = torch::einsum("nbshd,nbsh->bshd", {out_accum, scales});
   return out.to(dtype);
 }
@@ -158,12 +156,12 @@ TEST_P(AttnCombineKernelTest, Combine) {
 INSTANTIATE_TEST_SUITE_P(
     Combine,
     AttnCombineKernelTest,
-    ::testing::Combine(::testing::Values(torch::kHalf),  // q_dtype
-                       ::testing::Values(2, 4, 10),      // n_splits
-                       ::testing::Values(1, 2, 4, 16),   // batch_size
-                       ::testing::Values(1, 10, 20),     // q_len
-                       ::testing::Values(1),             // n_heads
-                       ::testing::Values(128)            // head_dim
+    ::testing::Combine(::testing::Values(torch::kHalf),   // q_dtype
+                       ::testing::Values(2, 4, 10),       // n_splits
+                       ::testing::Values(1, 2, 4, 16),    // batch_size
+                       ::testing::Values(1, 10, 20),      // q_len
+                       ::testing::Values(1, 2, 16, 128),  // n_heads
+                       ::testing::Values(128)             // head_dim
                        ));
 
 }  // namespace llm

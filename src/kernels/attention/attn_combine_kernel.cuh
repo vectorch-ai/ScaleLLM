@@ -54,23 +54,23 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // [n_splits, batch, seq_len, n_heads]
   Tensor lseAccum = make_tensor(
       make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.lse_accum_ptr)),
-      make_shape(Int<kSplits>{}, batch_size, q_len, n_heads),
+      make_shape(n_splits, batch_size, q_len, n_heads),
       append<4>(params.lse_accum_stride, _1{}));
   // [n_splits]
   Tensor gLseAccum = lseAccum(_, b_idx, s_idx, h_idx);
 
-  // [num_splits, batch, seq_len, n_heads, head_dim]
+  // [n_splits, batch, seq_len, n_heads, head_dim]
   Tensor oAccum = make_tensor(
       make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.oaccum_ptr)),
       make_shape(Int<kSplits>{}, batch_size, q_len, n_heads, Int<kHeadDim>{}),
       append<5>(params.oaccum_stride, _1{}));
   // [kMaxSplits, head_dim] => [head_dim, kMaxSplits]
-  Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, h_idx, s_idx, _));
+  Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
 
   // [batch, seq_len, n_heads, head_dim]
   Tensor O =
       make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr)),
-                  make_shape(batch_size, q_len, n_heads, Int<kHeadDim>{}),
+                  make_shape(batch_size, q_len, n_heads, head_dim),
                   append<4>(params.o_stride, _1{}));
   // [head_dim]
   Tensor gO = O(b_idx, s_idx, h_idx, _);
