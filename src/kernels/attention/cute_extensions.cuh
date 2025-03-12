@@ -22,14 +22,9 @@ constexpr bool
 }  // namespace detail
 
 template <int... Is, int B, int M, int S, class Offset, class LayoutB>
-CUTE_HOST_DEVICE constexpr auto permute(
+CUTE_HOST_DEVICE constexpr auto select(
     const ComposedLayout<Swizzle<B, M, S>, Offset, LayoutB>& c) {
   return composition(c.layout_a(), c.offset(), select<Is...>(c.layout_b()));
-}
-
-template <int... Is, class Engine, class Layout>
-CUTE_HOST_DEVICE constexpr auto select(Tensor<Engine, Layout> const& t) {
-  return make_tensor(t.data(), select<Is...>(t.layout()));
 }
 
 template <size_t I, class IntTupleA, class IntTupleB>
@@ -78,7 +73,9 @@ template <bool EVEN_MN,
           class TensorS,
           class TensorD,
           class TensorC,
-          class Coord>
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
+                          TensorC::rank == 3)>
 CUTE_HOST_DEVICE void safe_copy(
     const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const TensorS& src,       // (CPY, CPY_M/N, CPY_K)
@@ -86,7 +83,13 @@ CUTE_HOST_DEVICE void safe_copy(
     const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
     const Coord& max_coord    // max_coord(blk_m/n, blk_k)
 ) {
-  CUTE_STATIC_ASSERT(TensorS::rank == TensorD::rank, "rank-mismatch.");
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_M/N
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_M/N
+  CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(dst));       // CPY_K
+  CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(identity));  // CPY_K
+
   auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
 
   if constexpr (!EVEN_MN && !EVEN_K) {
@@ -132,6 +135,47 @@ CUTE_HOST_DEVICE void safe_copy(
         copy(copy_atom, src(_, _, ki), dst(_, _, ki));
       } else if constexpr (ZFILL_K) {
         zfill(copy_atom, src(_, _, ki), dst(_, _, ki));
+      }
+    }
+  } else {
+    // no oob, just copy
+    copy(copy_atom, src, dst);
+  }
+}
+
+template <bool EVEN_K,
+          bool ZFILL_K,
+          class CopyAtom,
+          class TV,
+          class Tiler,
+          class TensorS,
+          class TensorD,
+          class TensorC,
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 2 && TensorD::rank == 2 &&
+                          TensorC::rank == 2)>
+CUTE_HOST_DEVICE void safe_copy(
+    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
+    const TensorS& src,       // (CPY, CPY_K)
+    TensorD& dst,             // (CPY, CPY_K)
+    const TensorC& identity,  // (CPY, CPY_K) -> (blk_k)
+    const Coord& max_coord    // max_coord(blk_k)
+) {
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_K == CPY_K
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_K == CPY_K
+
+  auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
+
+  if constexpr (!EVEN_K) {
+    // handle k oob
+    CUTE_UNROLL
+    for (int ki = 0; ki < size<1>(src); ++ki) {
+      if (elem_less<0>(identity(_0{}, ki), max_coord)) {
+        copy(copy_atom, src(_, ki), dst(_, ki));
+      } else if constexpr (ZFILL_K) {
+        zfill(copy_atom, src(_, ki), dst(_, ki));
       }
     }
   } else {

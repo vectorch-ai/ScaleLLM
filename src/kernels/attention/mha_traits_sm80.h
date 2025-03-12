@@ -53,7 +53,7 @@ struct MHATraitsSM80 {
       decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _HEAD_DIM>{}));
 
   // V^T smem: (HEAD_DIM, BLK_N)
-  using SmemLayoutVt = decltype(permute<1, 0>(SmemLayoutV{}));
+  using SmemLayoutVt = decltype(select<1, 0>(SmemLayoutV{}));
 
   // Thr layout for gmem copy
   using GmemCopyThrLayout =
