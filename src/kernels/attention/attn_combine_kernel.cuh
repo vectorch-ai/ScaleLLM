@@ -6,7 +6,6 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-
 #include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 
@@ -53,18 +52,19 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
   // [n_splits, batch, seq_len, n_heads]
   Tensor lseAccum = make_tensor(
-      make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.lse_accum_ptr)),
+      make_gmem_ptr(
+          reinterpret_cast<const ElementAccum*>(params.lse_accum_ptr)),
       make_shape(n_splits, batch_size, q_len, n_heads),
       append<4>(params.lse_accum_stride, _1{}));
   // [n_splits]
   Tensor gLseAccum = lseAccum(_, b_idx, s_idx, h_idx);
 
-  // [n_splits, batch, seq_len, n_heads, head_dim]
+  // [n_splits/kSplits, batch, seq_len, n_heads, head_dim/kHeadDim]
   Tensor oAccum = make_tensor(
       make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.oaccum_ptr)),
       make_shape(Int<kSplits>{}, batch_size, q_len, n_heads, Int<kHeadDim>{}),
       append<5>(params.oaccum_stride, _1{}));
-  // [kMaxSplits, head_dim] => [head_dim, kMaxSplits]
+  // [kSplits, kHeadDim] => [kHeadDim, kSplits]
   Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
 
   // [batch, seq_len, n_heads, head_dim]
@@ -74,16 +74,6 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
                   append<4>(params.o_stride, _1{}));
   // [head_dim]
   Tensor gO = O(b_idx, s_idx, h_idx, _);
-
-  // if (thread0()) {
-  //   print("b_idx: %d, s_idx: %d, h_idx: %d\n", b_idx, s_idx, h_idx);
-  //   print("lseAccum: "); print(lseAccum); print("\n");
-  //   print("gLseAccum: "); print(gLseAccum); print("\n");
-  //   print("oAccum: "); print(oAccum); print("\n");
-  //   print("gOaccum: "); print(gOaccum); print("\n");
-  //   print("O: "); print(O); print("\n");
-  //   print("gO: "); print(gO); print("\n");
-  // }
 
   // use one warp to calculate safe_softmax(lse)
   int warp_idx = cutlass::canonical_warp_idx_sync();
@@ -151,17 +141,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
       sScales[split_idx] = expf(lse[i] - lse_logsum);
     }
   }
-
-  // wait for all threads to finish updating sLseScale
   __syncthreads();
-
-  // if (thread0()) {
-  //   print("sScales: "); 
-  //   for (int split_idx = 0; split_idx < kSplits; ++split_idx) {
-  //     print(sScales[split_idx]); print(", ");
-  //   }
-  //   print("\n");
-  // } 
 
   // TODO: handle uneven kHeadDimV
   static_assert(kHeadDim % kThreads == 0);
@@ -175,16 +155,10 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   GmemTiledCopyOaccum gmem_tiled_copy_Oaccum;
   auto gmem_thr_copy_Oaccum = gmem_tiled_copy_Oaccum.get_thread_slice(tidx);
 
-  // (CPY, CPY_K, n_splits)
+  // [kHeaddim, kSplits] => (CPY, CPY_K, kSplits)
   Tensor tOgOaccum = gmem_thr_copy_Oaccum.partition_S(gOaccum);
   // (CPY, CPY_K)
   Tensor tOrOaccum = make_tensor<ElementAccum>(shape(tOgOaccum(_, _, _0{})));
-
-  // if (thread0()) {
-  //   print("gmem_thr_copy_Oaccum: "); print(gmem_thr_copy_Oaccum); print("\n");
-  //   print("tOgOaccum: "); print(tOgOaccum); print("\n");
-  //   print("tOrOaccum: "); print(tOrOaccum); print("\n");
-  // }
 
   // output accumulators
   Tensor tOrO = make_tensor<ElementAccum>(shape(tOgOaccum));
