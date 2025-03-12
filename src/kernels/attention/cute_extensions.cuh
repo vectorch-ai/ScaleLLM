@@ -27,11 +27,6 @@ CUTE_HOST_DEVICE constexpr auto select(
   return composition(c.layout_a(), c.offset(), select<Is...>(c.layout_b()));
 }
 
-template <int... Is, class Engine, class Layout>
-CUTE_HOST_DEVICE constexpr auto select(Tensor<Engine, Layout> const& t) {
-  return make_tensor(t.data(), select<Is...>(t.layout()));
-}
-
 template <size_t I, class IntTupleA, class IntTupleB>
 CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
                                           IntTupleB const& b) {
@@ -174,7 +169,7 @@ CUTE_HOST_DEVICE void safe_copy(
   auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
 
   if constexpr (!EVEN_K) {
-    // only handle k oob
+    // handle k oob
     CUTE_UNROLL
     for (int ki = 0; ki < size<1>(src); ++ki) {
       if (elem_less<0>(identity(_0{}, ki), max_coord)) {

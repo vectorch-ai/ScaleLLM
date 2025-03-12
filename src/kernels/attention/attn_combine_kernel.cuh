@@ -57,8 +57,8 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
       make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.o_accum_ptr)),
       make_shape(n_splits, batch_size, q_len, n_heads, Int<kHeadDim>{}),
       append<5>(params.o_accum_stride, _1{}));
-  // [n_splits, kHeadDim] => [kHeadDim, n_splits]
-  Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
+  // [n_splits, kHeadDim]
+  Tensor gOaccum = oAccum(_, b_idx, s_idx, h_idx, _);
 
   // [n_splits, batch, seq_len, n_heads]
   Tensor lseAccum = make_tensor(
@@ -170,7 +170,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
   // [kHeaddim] => (CPY, CPY_K)
   Tensor tOrOaccum =
-      make_fragment_like(gmem_thr_copy_Oaccum.partition_D(gOaccum(_, _0{})));
+      make_fragment_like(gmem_thr_copy_Oaccum.partition_D(gOaccum(_0{}, _)));
 
   // output accumulators
   Tensor tOrO = make_tensor_like(tOrOaccum);
@@ -178,7 +178,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
   // apply scales to each split and accumulate
   for (int split_idx = 0; split_idx < n_splits; ++split_idx) {
-    Tensor tOgOaccum = gmem_thr_copy_Oaccum.partition_S(gOaccum(_, split_idx));
+    Tensor tOgOaccum = gmem_thr_copy_Oaccum.partition_S(gOaccum(split_idx, _));
 
     // copy oAccum from gmem to rmem directly
     safe_copy<EVEN_K, /*ZFILL_K=*/true>(
