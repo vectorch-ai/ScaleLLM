@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "attn_combine_kernel.cuh"  // IWYU pragma: keep
+#include "static_dispatch.h"
 
 namespace llm {
 
@@ -138,8 +139,10 @@ std::tuple<torch::Tensor, torch::Tensor> attn_combine(
   DISPATCH_TORCH_DTYPE_(dtype, DTYPE, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
       DISPATCH_SPLITS_(n_splits, SPLITS, [&] {
-        launch_attn_combine_kernel<DTYPE, float, HEAD_DIM, SPLITS>(params,
-                                                                   nullptr);
+        DISPATCH_BOOL(head_dim == HEAD_DIM, EVEN_K, [&] {
+          launch_attn_combine_kernel<DTYPE, float, HEAD_DIM, SPLITS, EVEN_K>(
+              params, nullptr);
+        });
       });
     });
   });
@@ -195,7 +198,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(1, 2, 4, 16),       // batch_size
                        ::testing::Values(1, 10, 20),         // q_len
                        ::testing::Values(1, 2, 16, 128),     // n_heads
-                       ::testing::Values(64, 128, 256)       // head_dim
+                       ::testing::Values(32, 64, 80, 128, 192, 256)  // head_dim
                        ));
 
 }  // namespace llm

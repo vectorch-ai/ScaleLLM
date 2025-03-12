@@ -78,7 +78,9 @@ template <bool EVEN_MN,
           class TensorS,
           class TensorD,
           class TensorC,
-          class Coord>
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
+                          TensorC::rank == 3)>
 CUTE_HOST_DEVICE void safe_copy(
     const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const TensorS& src,       // (CPY, CPY_M/N, CPY_K)
@@ -86,7 +88,6 @@ CUTE_HOST_DEVICE void safe_copy(
     const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
     const Coord& max_coord    // max_coord(blk_m/n, blk_k)
 ) {
-  CUTE_STATIC_ASSERT(TensorS::rank == TensorD::rank, "rank-mismatch.");
   auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
 
   if constexpr (!EVEN_MN && !EVEN_K) {
@@ -132,6 +133,42 @@ CUTE_HOST_DEVICE void safe_copy(
         copy(copy_atom, src(_, _, ki), dst(_, _, ki));
       } else if constexpr (ZFILL_K) {
         zfill(copy_atom, src(_, _, ki), dst(_, _, ki));
+      }
+    }
+  } else {
+    // no oob, just copy
+    copy(copy_atom, src, dst);
+  }
+}
+
+template <bool EVEN_K,
+          bool ZFILL_K,
+          class CopyAtom,
+          class TV,
+          class Tiler,
+          class TensorS,
+          class TensorD,
+          class TensorC,
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 2 && TensorD::rank == 2 &&
+                          TensorC::rank == 2)>
+CUTE_HOST_DEVICE void safe_copy(
+    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
+    const TensorS& src,       // (CPY, CPY_K)
+    TensorD& dst,             // (CPY, CPY_K)
+    const TensorC& identity,  // (CPY, CPY_K) -> (blk_k)
+    const Coord& max_coord    // max_coord(blk_k)
+) {
+  auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
+
+  if constexpr (!EVEN_K) {
+    // only handle k oob
+    CUTE_UNROLL
+    for (int ki = 0; ki < size<1>(src); ++ki) {
+      if (elem_less<0>(identity(_0{}, ki), max_coord)) {
+        copy(copy_atom, src(_, ki), dst(_, ki));
+      } else if constexpr (ZFILL_K) {
+        zfill(copy_atom, src(_, ki), dst(_, ki));
       }
     }
   } else {
