@@ -6,11 +6,9 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute/config.hpp"
-#include "cute/tensor_impl.hpp"
 
-// #include "cute/config.hpp"
-// #include "fast_cast.cuh"
+#include "cute_extensions.cuh"
+#include "fast_cast.cuh"
 
 namespace llm {
 
@@ -40,6 +38,10 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
   // TODO: support variable number of splits per batch
   const int n_splits = params.n_splits;
+  const int batch_size = params.batch_size;
+  const int q_len = params.q_len;
+  const int n_heads = params.n_heads;
+  const int head_dim = params.head_dim;
 
   // only one split, handled in attn kernel already
   if (n_splits == 1) {
@@ -51,27 +53,37 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
   // [n_splits, batch, seq_len, n_heads]
   Tensor lseAccum = make_tensor(
-      make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.lse_accum_ptr)),
-      params.lse_accum_shape,
+      make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.lse_accum_ptr)),
+      make_shape(Int<kSplits>{}, batch_size, q_len, n_heads),
       append<4>(params.lse_accum_stride, _1{}));
   // [n_splits]
   Tensor gLseAccum = lseAccum(_, b_idx, s_idx, h_idx);
 
-  // [num_splits, batch, num_heads, max_seqlen_q, head_dim]
+  // [num_splits, batch, seq_len, n_heads, head_dim]
   Tensor oAccum = make_tensor(
-      make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.oaccum_ptr)),
-      params.oaccum_shape,
+      make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.oaccum_ptr)),
+      make_shape(Int<kSplits>{}, batch_size, q_len, n_heads, Int<kHeadDim>{}),
       append<5>(params.oaccum_stride, _1{}));
   // [kMaxSplits, head_dim] => [head_dim, kMaxSplits]
   Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, h_idx, s_idx, _));
 
-  // [batch, seqlen_q, num_heads, head_dim]
+  // [batch, seq_len, n_heads, head_dim]
   Tensor O =
       make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr)),
-                  params.o_shape,
+                  make_shape(batch_size, q_len, n_heads, Int<kHeadDim>{}),
                   append<4>(params.o_stride, _1{}));
   // [head_dim]
   Tensor gO = O(b_idx, s_idx, h_idx, _);
+
+  // if (thread0()) {
+  //   print("b_idx: %d, s_idx: %d, h_idx: %d\n", b_idx, s_idx, h_idx);
+  //   print("lseAccum: "); print(lseAccum); print("\n");
+  //   print("gLseAccum: "); print(gLseAccum); print("\n");
+  //   print("oAccum: "); print(oAccum); print("\n");
+  //   print("gOaccum: "); print(gOaccum); print("\n");
+  //   print("O: "); print(O); print("\n");
+  //   print("gO: "); print(gO); print("\n");
+  // }
 
   // use one warp to calculate safe_softmax(lse)
   int warp_idx = cutlass::canonical_warp_idx_sync();
@@ -79,9 +91,10 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
     // (SPLITS) -> (splits)
     auto cLseAccum = make_identity_tensor(Shape<Int<kSplits>>{});
 
+    auto thr_layout = make_layout(make_shape(_32{}));
     // [n_lses]
-    auto tLgLseAccum = local_partition(gLseAccum, _32{}, tidx);
-    auto tLcLseAccum = local_partition(cLseAccum, _32{}, tidx);
+    auto tLgLseAccum = local_partition(gLseAccum, thr_layout, tidx);
+    auto tLcLseAccum = local_partition(cLseAccum, thr_layout, tidx);
 
     constexpr int kLsePerThr = size(tLcLseAccum);
 
@@ -90,7 +103,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
     CUTE_UNROLL
     for (int i = 0; i < kLsePerThr; ++i) {
-      const int split_idx = tLcLseAccum(i);
+      const int split_idx = get<0>(tLcLseAccum(i));
       lse[i] = split_idx < n_splits ? tLgLseAccum(i) : -INFINITY;
     }
 
@@ -115,13 +128,13 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
     float lse_sum = 0;
     CUTE_UNROLL
     for (int i = 0; i < kLsePerThr; ++i) {
-      lse_sum = lse_sum + expf(lse[i] - lse_max);
+      lse_sum += expf(lse[i] - lse_max);
     }
 
     // lse sum within warp
     CUTE_UNROLL
     for (int offset = 16; offset >= 1; offset /= 2) {
-      lse_sum = lse_sum + __shfl_xor_sync(uint32_t(-1), lse_sum, offset);
+      lse_sum += __shfl_xor_sync(uint32_t(-1), lse_sum, offset);
     }
 
     float lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum)
@@ -131,7 +144,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
     // calculate lsescale for each split
     CUTE_UNROLL
     for (int i = 0; i < kLsePerThr; ++i) {
-      const int split_idx = tLcLseAccum(i);
+      const int split_idx = get<0>(tLcLseAccum(i));
       // scales[i] = exp(lse[i] - lse_max) / lse_sum
       //           = exp(lse[i] - lse_max - log(lse_sum))
       //           = exp(lse[i] - lse_logsum)
@@ -141,6 +154,14 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
   // wait for all threads to finish updating sLseScale
   __syncthreads();
+
+  // if (thread0()) {
+  //   print("sScales: "); 
+  //   for (int split_idx = 0; split_idx < kSplits; ++split_idx) {
+  //     print(sScales[split_idx]); print(", ");
+  //   }
+  //   print("\n");
+  // } 
 
   // TODO: handle uneven kHeadDimV
   static_assert(kHeadDim % kThreads == 0);
@@ -159,15 +180,21 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // (CPY, CPY_K)
   Tensor tOrOaccum = make_tensor<ElementAccum>(shape(tOgOaccum(_, _, _0{})));
 
+  // if (thread0()) {
+  //   print("gmem_thr_copy_Oaccum: "); print(gmem_thr_copy_Oaccum); print("\n");
+  //   print("tOgOaccum: "); print(tOgOaccum); print("\n");
+  //   print("tOrOaccum: "); print(tOrOaccum); print("\n");
+  // }
+
   // output accumulators
   Tensor tOrO = make_tensor<ElementAccum>(shape(tOgOaccum));
   clear(tOrO);
 
   for (int split_idx = 0; split_idx < n_splits; ++split_idx) {
     // copy oAccum from gmem to rmem directly
-    cute::copy(tOgOaccum(_, _, split_idx), tOrOaccum);
+    cute::copy(gmem_tiled_copy_Oaccum, tOgOaccum(_, _, split_idx), tOrOaccum);
 
-    ElementAccum lse_scale = sScales[split_idx];
+    const auto lse_scale = sScales[split_idx];
     CUTE_UNROLL
     for (int i = 0; i < size(tOrO); ++i) {
       tOrO(i) += lse_scale * tOrOaccum(i);
@@ -175,11 +202,28 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   }
 
   // cast output from ElementAccumulator to Element
-  auto tOrO_ = make_tensor_like<Element>(tOrO);
+  Tensor tOrO_ = make_tensor_like<Element>(tOrO);
   fast_cast(tOrO, tOrO_);
 
-  auto tOgO = gmem_thr_copy_Oaccum.partition_D(gO);
-  cute::copy(tOrO_, tOgO);
+  Tensor tOgO = gmem_thr_copy_Oaccum.partition_D(gO);
+  cute::copy(gmem_tiled_copy_Oaccum, tOrO_, tOgO);
+}
+
+template <typename Element,
+          typename ElementAccum,
+          int kHeadDim,
+          int kSplits,
+          typename Params>
+void launch_attn_combine_kernel(const Params& params, cudaStream_t stream) {
+  const auto batch_size = params.batch_size;
+  const auto q_len = params.q_len;
+  const auto n_heads = params.n_heads;
+
+  auto combine_kernel =
+      attn_combine_kernel<Element, ElementAccum, kHeadDim, kSplits, Params>;
+
+  dim3 grid(batch_size, q_len, n_heads);
+  combine_kernel<<<grid, 128, 0, stream>>>(params);
 }
 
 }  // namespace llm

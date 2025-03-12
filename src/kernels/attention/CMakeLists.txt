@@ -22,6 +22,7 @@ cc_library(
     mla_tile.h
     mla_traits_sm80.h
     mla_kernel_sm80.cuh
+    attn_combine_kernel.cuh
   DEPS
     cutlass
 )
@@ -78,6 +79,18 @@ cc_test(
     mla_traits_test.cpp
     mla_kernel_sm80_test.cu
     mla_kernel_sm80_pagedkv_test.cu
+  DEPS
+    :attention.template
+    absl::random_random
+    GTest::gtest_main
+    torch
+)
+
+cc_test(
+  NAME
+    attn_combine_kernel_test
+  SRCS
+    attn_combine_kernel_test.cu
   DEPS
     :attention.template
     absl::random_random
