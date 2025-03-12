@@ -27,6 +27,11 @@ CUTE_HOST_DEVICE constexpr auto permute(
   return composition(c.layout_a(), c.offset(), select<Is...>(c.layout_b()));
 }
 
+template <int... Is, class Engine, class Layout>
+CUTE_HOST_DEVICE constexpr auto select(Tensor<Engine, Layout> const& t) {
+  return make_tensor(t.data(), select<Is...>(t.layout()));
+}
+
 template <size_t I, class IntTupleA, class IntTupleB>
 CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
                                           IntTupleB const& b) {
