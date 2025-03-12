@@ -51,12 +51,12 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // scales[splits]
   __shared__ ElementAccum sScales[kSplits];
 
-  // [n_splits, batch, seq_len, n_heads, kHeadDim]
+  // [n_splits, batch, seq_len, n_heads, head_dim]
   Tensor oAccum = make_tensor(
       make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.o_accum_ptr)),
       make_shape(n_splits, batch_size, q_len, n_heads, head_dim),
       append<5>(params.o_accum_stride, _1{}));
-  // [n_splits, kHeadDim] => [kHeadDim, n_splits]
+  // [n_splits, head_dim] => [head_dim, n_splits]
   Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
 
   // [n_splits, batch, seq_len, n_heads]
@@ -68,12 +68,12 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // [n_splits]
   Tensor gLseAccum = lseAccum(_, b_idx, s_idx, h_idx);
 
-  // [batch, seq_len, n_heads, kHeadDim]
+  // [batch, seq_len, n_heads, head_dim]
   Tensor O =
       make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr)),
                   make_shape(batch_size, q_len, n_heads, head_dim),
                   append<4>(params.o_stride, _1{}));
-  // [kHeadDim]
+  // [head_dim]
   Tensor gO = O(b_idx, s_idx, h_idx, _);
 
   // [batch, seq_len, n_heads]
@@ -157,12 +157,10 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   static_assert(kHeadDim % kThreads == 0);
 
   // each thread copy kHeadDim / kThreads elements
-  using GmemTiledCopyOaccum =
-      decltype(make_tiled_copy(Copy_Atom<VectorizingCopy, ElementAccum>{},
-                               Layout<Shape<Int<kThreads>>>{},
-                               Layout<Shape<Int<kHeadDim / kThreads>>>{}));
-
-  GmemTiledCopyOaccum gmem_tiled_copy_Oaccum;
+  auto gmem_tiled_copy_Oaccum =
+      make_tiled_copy(Copy_Atom<VectorizingCopy, ElementAccum>{},
+                      Layout<Shape<Int<kThreads>>>{},
+                      Layout<Shape<Int<kHeadDim / kThreads>>>{});
   auto gmem_thr_copy_Oaccum = gmem_tiled_copy_Oaccum.get_thread_slice(tidx);
 
   // [head_dim, n_splits] => (CPY, CPY_K, n_splits)
@@ -195,12 +193,11 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   Tensor tOrO_ = make_tensor_like<Element>(tOrO);
   fast_cast(tOrO, tOrO_);
 
-  using GmemTiledCopyO =
-      decltype(make_tiled_copy(Copy_Atom<VectorizingCopy, Element>{},
-                               Layout<Shape<Int<kThreads>>>{},
-                               Layout<Shape<Int<kHeadDim / kThreads>>>{}));
-
-  GmemTiledCopyO gmem_tiled_copy_O;
+  // each thread copy kHeadDim / kThreads elements
+  auto gmem_tiled_copy_O =
+      make_tiled_copy(Copy_Atom<VectorizingCopy, Element>{},
+                      Layout<Shape<Int<kThreads>>>{},
+                      Layout<Shape<Int<kHeadDim / kThreads>>>{});
   auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
   // [head_dim] => (CPY, CPY_K)
