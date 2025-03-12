@@ -88,6 +88,13 @@ CUTE_HOST_DEVICE void safe_copy(
     const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
     const Coord& max_coord    // max_coord(blk_m/n, blk_k)
 ) {
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_M/N
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_M/N
+  CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(dst));       // CPY_K
+  CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(identity));  // CPY_K
+
   auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
 
   if constexpr (!EVEN_MN && !EVEN_K) {
@@ -159,6 +166,11 @@ CUTE_HOST_DEVICE void safe_copy(
     const TensorC& identity,  // (CPY, CPY_K) -> (blk_k)
     const Coord& max_coord    // max_coord(blk_k)
 ) {
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_K == CPY_K
+  CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_K == CPY_K
+
   auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
 
   if constexpr (!EVEN_K) {

@@ -52,16 +52,13 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // scales[splits]
   __shared__ ElementAccum sScales[kSplits];
 
-  // [n_splits, batch, seq_len, n_heads, head_dim]
+  // [n_splits, batch, seq_len, n_heads, kHeadDim]
   Tensor oAccum = make_tensor(
       make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.o_accum_ptr)),
-      make_shape(n_splits, batch_size, q_len, n_heads, head_dim),
+      make_shape(n_splits, batch_size, q_len, n_heads, Int<kHeadDim>{}),
       append<5>(params.o_accum_stride, _1{}));
-  // [n_splits, head_dim] => [head_dim, n_splits]
-  Tensor oAccum_p = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
-  // [head_dim, n_splits] => [kHeadDim, n_splits]
-  Tensor gOaccum =
-      local_tile(oAccum_p, Shape<Int<kHeadDim>>{}, make_coord(_0{}, _));
+  // [n_splits, kHeadDim] => [kHeadDim, n_splits]
+  Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
 
   // [n_splits, batch, seq_len, n_heads]
   Tensor lseAccum = make_tensor(
@@ -72,14 +69,13 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // [n_splits]
   Tensor gLseAccum = lseAccum(_, b_idx, s_idx, h_idx);
 
-  // [batch, seq_len, n_heads, head_dim]
+  // [batch, seq_len, n_heads, kHeadDim]
   Tensor O =
       make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr)),
-                  make_shape(batch_size, q_len, n_heads, head_dim),
+                  make_shape(batch_size, q_len, n_heads, Int<kHeadDim>{}),
                   append<4>(params.o_stride, _1{}));
-  // [head_dim] => [kHeadDim]
-  Tensor gO = local_tile(
-      O(b_idx, s_idx, h_idx, _), Shape<Int<kHeadDim>>{}, make_coord(_0{}));
+  // [kHeadDim]
+  Tensor gO = O(b_idx, s_idx, h_idx, _);
 
   // [batch, seq_len, n_heads]
   Tensor gLse = make_tensor(
@@ -167,7 +163,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
                       Layout<Shape<Int<kHeadDim / kThreads>>>{});
   auto gmem_thr_copy_Oaccum = gmem_tiled_copy_Oaccum.get_thread_slice(tidx);
 
-  // (HEAD_DIM) -> (head_dim)
+  // (kHeadDim) -> (head_dim)
   Tensor cOaccum = make_identity_tensor(Shape<Int<kHeadDim>>{});
   Tensor tOcOaccum = gmem_thr_copy_Oaccum.partition_S(cOaccum);
   auto max_coord = make_coord(head_dim);
@@ -207,10 +203,10 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
   Tensor cO = make_identity_tensor(Shape<Int<kHeadDim>>{});
-  Tensor tOcO = gmem_thr_copy_Oaccum.partition_D(cO);
 
   // [kHeadDim] => (CPY, CPY_K)
   Tensor tOgO = gmem_thr_copy_O.partition_D(gO);
+  Tensor tOcO = gmem_thr_copy_O.partition_D(cO);
 
   safe_copy<EVEN_K, /*ZFILL_K=*/false>(
       gmem_tiled_copy_O, tOrO_, tOgO, tOcO, max_coord);
