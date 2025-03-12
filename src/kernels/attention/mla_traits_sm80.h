@@ -109,7 +109,7 @@ struct MLATraitsSM80 {
       decltype(tile_to_shape(SmemLayoutAtomN{}, Shape<_BLK_M, _BLK_N>{}));
 
   // V^T smem: (BLK_K, BLK_N, STEPS, STAGES)
-  using SmemLayoutVt = decltype(permute<1, 0, 2, 3>(SmemLayoutKV{}));
+  using SmemLayoutVt = decltype(select<1, 0, 2, 3>(SmemLayoutKV{}));
 
   // QRope smem: (BLK_M, ROPE_HEAD_DIM)
   using SmemLayoutQRope =

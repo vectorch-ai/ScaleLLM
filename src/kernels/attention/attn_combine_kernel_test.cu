@@ -15,6 +15,9 @@ using namespace cute;
     if (HEAD_DIM_V <= 64) {                                \
       constexpr static int HEAD_DIM_NAME = 64;             \
       return __VA_ARGS__();                                \
+    } else if (HEAD_DIM_V <= 128) {                        \
+      constexpr static int HEAD_DIM_NAME = 128;            \
+      return __VA_ARGS__();                                \
     } else if (HEAD_DIM_V <= 256) {                        \
       constexpr static int HEAD_DIM_NAME = 256;            \
       return __VA_ARGS__();                                \
@@ -23,17 +26,33 @@ using namespace cute;
     }                                                      \
   }()
 
-#define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, TYPE_NAME, ...) \
-  [&] {                                                    \
-    if (TORCH_DTYPE == torch::kHalf) {                     \
-      using TYPE_NAME = cute::half_t;                      \
-      return __VA_ARGS__();                                \
-    } else if (TORCH_DTYPE == torch::kBFloat16) {          \
-      using TYPE_NAME = cute::bfloat16_t;                  \
-      return __VA_ARGS__();                                \
-    } else {                                               \
-      assert(false);                                       \
-    }                                                      \
+#define DISPATCH_SPLITS_(SPLITS_V, SPLITS_NAME, ...) \
+  [&] {                                              \
+    if (SPLITS_V <= 32) {                            \
+      constexpr static int SPLITS_NAME = 32;         \
+      return __VA_ARGS__();                          \
+    } else if (SPLITS_V <= 64) {                     \
+      constexpr static int SPLITS_NAME = 64;         \
+      return __VA_ARGS__();                          \
+    } else if (SPLITS_V <= 128) {                    \
+      constexpr static int SPLITS_NAME = 128;        \
+      return __VA_ARGS__();                          \
+    } else {                                         \
+      assert(false);                                 \
+    }                                                \
+  }()
+
+#define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, DTYPE_NAME, ...) \
+  [&] {                                                     \
+    if (TORCH_DTYPE == torch::kHalf) {                      \
+      using DTYPE_NAME = cute::half_t;                      \
+      return __VA_ARGS__();                                 \
+    } else if (TORCH_DTYPE == torch::kBFloat16) {           \
+      using DTYPE_NAME = cute::bfloat16_t;                  \
+      return __VA_ARGS__();                                 \
+    } else {                                                \
+      assert(false);                                        \
+    }                                                       \
   }()
 
 namespace {
@@ -116,10 +135,14 @@ std::tuple<torch::Tensor, torch::Tensor> attn_combine(
   params.lse_ptr = lse.mutable_data_ptr();
   params.lse_stride = make_stride(lse.stride(0), lse.stride(1));
 
-  launch_attn_combine_kernel<cute::half_t,
-                             float,
-                             /*kHeadDim=*/128,
-                             /*kSplits=*/32>(params, nullptr);
+  DISPATCH_TORCH_DTYPE_(dtype, DTYPE, [&] {
+    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+      DISPATCH_SPLITS_(n_splits, SPLITS, [&] {
+        launch_attn_combine_kernel<DTYPE, float, HEAD_DIM, SPLITS>(params,
+                                                                   nullptr);
+      });
+    });
+  });
 
   return {out, lse};
 }
@@ -149,25 +172,30 @@ TEST_P(AttnCombineKernelTest, Combine) {
   const auto out_accum =
       torch::randn({n_splits, batch_size, q_len, n_heads, head_dim}, options);
 
-  const auto lsm_accum =
+  const auto lse_accum =
       torch::randn({n_splits, batch_size, q_len, n_heads}, options);
 
-  auto [ref_out, ref_lse] = attn_combine_ref(out_accum, lsm_accum, dtype);
-  auto [out, lse] = attn_combine(out_accum, lsm_accum, dtype);
+  auto [ref_out, ref_lse] = attn_combine_ref(out_accum, lse_accum, dtype);
+  auto [out, lse] = attn_combine(out_accum, lse_accum, dtype);
 
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
-  EXPECT_TRUE(torch::allclose(lse, ref_lse, /*rtol=*/1e-3, /*atol=*/1e-3));
+  if (dtype == torch::kBFloat16) {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-2, /*atol=*/1e-3));
+  } else {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  }
+  EXPECT_TRUE(torch::allclose(lse, ref_lse, /*rtol=*/1e-5, /*atol=*/1e-5));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     Combine,
     AttnCombineKernelTest,
-    ::testing::Combine(::testing::Values(torch::kHalf),   // q_dtype
-                       ::testing::Values(2, 4, 10),       // n_splits
-                       ::testing::Values(1, 2, 4, 16),    // batch_size
-                       ::testing::Values(1, 10, 20),      // q_len
-                       ::testing::Values(1, 2, 16, 128),  // n_heads
-                       ::testing::Values(128)             // head_dim
+    ::testing::Combine(::testing::Values(torch::kHalf,
+                                         torch::kBFloat16),  // q_dtype
+                       ::testing::Values(2, 4, 35, 80),      // n_splits
+                       ::testing::Values(1, 2, 4, 16),       // batch_size
+                       ::testing::Values(1, 10, 20),         // q_len
+                       ::testing::Values(1, 2, 16, 128),     // n_heads
+                       ::testing::Values(64, 128, 256)       // head_dim
                        ));
 
 }  // namespace llm

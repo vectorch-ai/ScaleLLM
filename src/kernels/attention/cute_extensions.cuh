@@ -22,7 +22,7 @@ constexpr bool
 }  // namespace detail
 
 template <int... Is, int B, int M, int S, class Offset, class LayoutB>
-CUTE_HOST_DEVICE constexpr auto permute(
+CUTE_HOST_DEVICE constexpr auto select(
     const ComposedLayout<Swizzle<B, M, S>, Offset, LayoutB>& c) {
   return composition(c.layout_a(), c.offset(), select<Is...>(c.layout_b()));
 }

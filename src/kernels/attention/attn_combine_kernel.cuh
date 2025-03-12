@@ -11,23 +11,24 @@
 
 namespace llm {
 
-// combine ouputs from multiple splits:
-//  output = sum(softmax(local_lsm) * outAccum)
-//  lsm = log(sum(exp(local_lsm))
+// combine attention ouputs from multiple splits:
+//  output = sum(softmax(lseAccum) * outAccum)
+//  lse = log(sum(exp(lseAccum))
 // inputs:
-//    outAccum:   [n_splits, batch, seq_len, n_heads, head_dim]
-//    local_lsm:  [n_splits, batch, seq_len, n_heads]
-// output:
+//    outAccum:  [n_splits, batch, seq_len, n_heads, head_dim]
+//    lseAccum:  [n_splits, batch, seq_len, n_heads]
+// outputs:
 //    out:      [batch, seq_len, n_heads, head_dim]
-//    lsm:      [batch, seq_len, n_heads]
+//    lse:      [batch, seq_len, n_heads]
 template <typename Element,
           typename ElementAccum,
           int kHeadDim,
           int kSplits,
+          int kThreads,
           typename Params>
 __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   using namespace cute;
-  constexpr int kThreads = 128;
+  using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
 
   const int tidx = threadIdx.x;
   // Grid: [batch, seq_len, n_heads]
@@ -53,7 +54,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // [n_splits, batch, seq_len, n_heads, kHeadDim]
   Tensor oAccum = make_tensor(
       make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.o_accum_ptr)),
-      make_shape(n_splits, batch_size, q_len, n_heads, Int<kHeadDim>{}),
+      make_shape(n_splits, batch_size, q_len, n_heads, head_dim),
       append<5>(params.o_accum_stride, _1{}));
   // [n_splits, kHeadDim] => [kHeadDim, n_splits]
   Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
@@ -70,7 +71,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // [batch, seq_len, n_heads, kHeadDim]
   Tensor O =
       make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr)),
-                  make_shape(batch_size, q_len, n_heads, Int<kHeadDim>{}),
+                  make_shape(batch_size, q_len, n_heads, head_dim),
                   append<4>(params.o_stride, _1{}));
   // [kHeadDim]
   Tensor gO = O(b_idx, s_idx, h_idx, _);
@@ -87,20 +88,20 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
     // (SPLITS) -> (splits)
     auto cLseAccum = make_identity_tensor(Shape<Int<kSplits>>{});
 
-    auto thr_layout = make_layout(make_shape(_32{}));
-    // [n_lses]
-    auto tLgLseAccum = local_partition(gLseAccum, thr_layout, tidx);
-    auto tLcLseAccum = local_partition(cLseAccum, thr_layout, tidx);
+    auto thr_layout = Layout<Shape<_32>>{};
+    // [n_lse_per_thr]
+    auto tTgLseAccum = local_partition(gLseAccum, thr_layout, tidx);
+    auto tTcLseAccum = local_partition(cLseAccum, thr_layout, tidx);
 
-    constexpr int kLsePerThr = size(tLcLseAccum);
+    constexpr int kLsePerThr = size(tTcLseAccum);
 
     // local lse
     float lse[kLsePerThr];
 
     CUTE_UNROLL
     for (int i = 0; i < kLsePerThr; ++i) {
-      const int split_idx = get<0>(tLcLseAccum(i));
-      lse[i] = split_idx < n_splits ? tLgLseAccum(i) : -INFINITY;
+      const int split_idx = get<0>(tTcLseAccum(i));
+      lse[i] = split_idx < n_splits ? tTgLseAccum(i) : -INFINITY;
     }
 
     // local lse max
@@ -116,64 +117,69 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
       lse_max = max(lse_max, __shfl_xor_sync(uint32_t(-1), lse_max, offset));
     }
 
-    lse_max = lse_max == -INFINITY
-                  ? 0.0f
-                  : lse_max;  // In case all local LSEs are -inf
+    // In case all local LSEs are -inf
+    lse_max = lse_max == -INFINITY ? 0.0f : lse_max;
 
-    // local sum
-    float lse_sum = 0;
+    // local sum of exp(lse - lse_max)
+    float lse_sumexp = 0;
     CUTE_UNROLL
     for (int i = 0; i < kLsePerThr; ++i) {
-      lse_sum += expf(lse[i] - lse_max);
+      lse_sumexp += expf(lse[i] - lse_max);
     }
 
-    // lse sum within warp
+    // lse sumexp within warp
     CUTE_UNROLL
     for (int offset = 16; offset > 0; offset >>= 1) {
-      lse_sum += __shfl_xor_sync(uint32_t(-1), lse_sum, offset);
+      lse_sumexp += __shfl_xor_sync(uint32_t(-1), lse_sumexp, offset);
     }
 
-    const float lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum)
-                                 ? INFINITY
-                                 : logf(lse_sum) + lse_max;
+    const float lse_logsumexp = (lse_sumexp == 0.f || lse_sumexp != lse_sumexp)
+                                    ? INFINITY
+                                    : logf(lse_sumexp) + lse_max;
 
-    // calculate lsescale for each split
+    // calculate lse scale for each split
     CUTE_UNROLL
     for (int i = 0; i < kLsePerThr; ++i) {
-      const int split_idx = get<0>(tLcLseAccum(i));
-      // scales[i] = exp(lse[i] - lse_max) / lse_sum
-      //           = exp(lse[i] - lse_max - log(lse_sum))
-      //           = exp(lse[i] - lse_logsum)
-      sScales[split_idx] = expf(lse[i] - lse_logsum);
+      const int split_idx = get<0>(tTcLseAccum(i));
+      // scales[i] = exp(lse[i] - lse_max) / lse_sumexp
+      //           = exp(lse[i] - lse_max - log(lse_sumexp))
+      //           = exp(lse[i] - lse_logsumexp)
+      sScales[split_idx] = expf(lse[i] - lse_logsumexp);
     }
 
     if (tidx == 0) {
-      gLse(b_idx, s_idx, h_idx) = lse_logsum;
+      gLse(b_idx, s_idx, h_idx) = lse_logsumexp;
     }
   }
   __syncthreads();
 
-  // TODO: handle uneven kHeadDimV
+  // TODO: handle uneven kHeadDim
   static_assert(kHeadDim % kThreads == 0);
 
-  // kThreads, each thread copy kHeadDim / kThreads elements
-  using GmemTiledCopyOaccum = decltype(make_tiled_copy(
-      Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>, ElementAccum>{},
-      Layout<Shape<Int<kThreads>>>{},
-      Layout<Shape<Int<kHeadDim / kThreads>>>{}));
+  // each thread copy kHeadDim / kThreads elements
+  using GmemTiledCopyOaccum =
+      decltype(make_tiled_copy(Copy_Atom<VectorizingCopy, ElementAccum>{},
+                               Layout<Shape<Int<kThreads>>>{},
+                               Layout<Shape<Int<kHeadDim / kThreads>>>{}));
 
   GmemTiledCopyOaccum gmem_tiled_copy_Oaccum;
   auto gmem_thr_copy_Oaccum = gmem_tiled_copy_Oaccum.get_thread_slice(tidx);
 
-  // [kHeaddim, n_splits] => (CPY, CPY_K, n_splits)
+  // [head_dim, n_splits] => (CPY, CPY_K, n_splits)
   Tensor tOgOaccum = gmem_thr_copy_Oaccum.partition_S(gOaccum);
-  // (CPY, CPY_K)
-  Tensor tOrOaccum = make_tensor<ElementAccum>(shape(tOgOaccum(_, _, _0{})));
+
+  // dummy static tensor for register allocation: [kHeaddim]
+  Tensor gOaccum_ =
+      make_tensor(make_gmem_ptr<ElementAccum>(nullptr), Shape<Int<kHeadDim>>{});
+  // [kHeaddim] => (CPY, CPY_K)
+  Tensor tOrOaccum =
+      make_fragment_like(gmem_thr_copy_Oaccum.partition_D(gOaccum_));
 
   // output accumulators
   Tensor tOrO = make_tensor_like(tOrOaccum);
   clear(tOrO);
 
+  // apply scales to each split and accumulate
   for (int split_idx = 0; split_idx < n_splits; ++split_idx) {
     // copy oAccum from gmem to rmem directly
     cute::copy(gmem_tiled_copy_Oaccum, tOgOaccum(_, _, split_idx), tOrOaccum);
@@ -185,12 +191,21 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
     }
   }
 
-  // cast output from ElementAccumulator to Element
+  // cast output from ElementAccum to Element
   Tensor tOrO_ = make_tensor_like<Element>(tOrO);
   fast_cast(tOrO, tOrO_);
 
-  Tensor tOgO = gmem_thr_copy_Oaccum.partition_D(gO);
-  cute::copy(gmem_tiled_copy_Oaccum, tOrO_, tOgO);
+  using GmemTiledCopyO =
+      decltype(make_tiled_copy(Copy_Atom<VectorizingCopy, Element>{},
+                               Layout<Shape<Int<kThreads>>>{},
+                               Layout<Shape<Int<kHeadDim / kThreads>>>{}));
+
+  GmemTiledCopyO gmem_tiled_copy_O;
+  auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
+
+  // [head_dim] => (CPY, CPY_K)
+  Tensor tOgO = gmem_thr_copy_O.partition_D(gO);
+  cute::copy(gmem_tiled_copy_O, tOrO_, tOgO);
 }
 
 template <typename Element,
@@ -203,11 +218,19 @@ void launch_attn_combine_kernel(const Params& params, cudaStream_t stream) {
   const auto q_len = params.q_len;
   const auto n_heads = params.n_heads;
 
-  auto combine_kernel =
-      attn_combine_kernel<Element, ElementAccum, kHeadDim, kSplits, Params>;
+  // determine kThreads based on kHeadDim
+  constexpr int kThreads = kHeadDim <= 32 ? 32 : kHeadDim <= 64 ? 64 : 128;
+  static_assert(kHeadDim % kThreads == 0);
+
+  auto combine_kernel = attn_combine_kernel<Element,
+                                            ElementAccum,
+                                            kHeadDim,
+                                            kSplits,
+                                            kThreads,
+                                            Params>;
 
   dim3 grid(batch_size, q_len, n_heads);
-  combine_kernel<<<grid, 128, 0, stream>>>(params);
+  combine_kernel<<<grid, kThreads, 0, stream>>>(params);
 }
 
 }  // namespace llm
