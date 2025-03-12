@@ -38,20 +38,22 @@ using namespace cute;
 
 namespace {
 
-torch::Tensor attn_combine_ref(
+std::tuple<torch::Tensor, torch::Tensor> attn_combine_ref(
     torch::Tensor out_accum,  // [n_splits, batch, seq_len, n_heads, head_dim]
-    torch::Tensor lsm_accum,  // [n_splits, batch, seq_len, n_heads]
+    torch::Tensor lse_accum,  // [n_splits, batch, seq_len, n_heads]
     torch::ScalarType dtype) {
-  auto scales = torch::softmax(lsm_accum, /*dim=*/0);
+  auto scales = torch::softmax(lse_accum, /*dim=*/0);
+  auto lse = torch::logsumexp(lse_accum, /*dim=*/0);
   auto out = torch::einsum("nbshd,nbsh->bshd", {out_accum, scales});
-  return out.to(dtype);
+  return {out.to(dtype), lse};
 }
 
 struct CombineParams {
-  const float* __restrict__ lse_accum_ptr = nullptr;
-  const float* __restrict__ oaccum_ptr = nullptr;
+  const void* __restrict__ lse_accum_ptr = nullptr;
+  const void* __restrict__ o_accum_ptr = nullptr;
 
   void* __restrict__ o_ptr = nullptr;
+  void* __restrict__ lse_ptr = nullptr;
 
   // input shapes
   int n_splits = 0;
@@ -67,15 +69,19 @@ struct CombineParams {
   using LseAccumStride = cute::Stride<int64_t, int64_t, int64_t /*,_1*/>;
   // [batch, seq_len, n_heads, head_dim]
   using OStride = cute::Stride<int64_t, int64_t, int64_t /*,_1*/>;
+  // [batch, seq_len, n_heads]
+  using LseStride = cute::Stride<int64_t, int64_t /*,_1*/>;
 
-  OAccumStride oaccum_stride;
+  OAccumStride o_accum_stride;
   LseAccumStride lse_accum_stride;
+
   OStride o_stride;
+  LseStride lse_stride;
 };
 
-torch::Tensor attn_combine(
+std::tuple<torch::Tensor, torch::Tensor> attn_combine(
     torch::Tensor out_accum,  // [n_splits, batch, seq_len, n_heads, head_dim]
-    torch::Tensor lsm_accum,  // [n_splits, batch, seq_len, n_heads]
+    torch::Tensor lse_accum,  // [n_splits, batch, seq_len, n_heads]
     torch::ScalarType dtype) {
   // return out_accum.to(dtype);
   const auto n_splits = out_accum.size(0);
@@ -86,6 +92,7 @@ torch::Tensor attn_combine(
 
   auto out = torch::empty({batch_size, q_len, n_heads, head_dim},
                           out_accum.options().dtype(dtype));
+  auto lse = torch::empty({batch_size, q_len, n_heads}, lse_accum.options());
 
   CombineParams params;
   params.n_splits = n_splits;
@@ -94,25 +101,27 @@ torch::Tensor attn_combine(
   params.n_heads = n_heads;
   params.head_dim = head_dim;
 
-  params.lse_accum_ptr = lsm_accum.const_data_ptr<float>();
+  params.lse_accum_ptr = lse_accum.const_data_ptr();
   params.lse_accum_stride = make_stride(
-      lsm_accum.stride(0), lsm_accum.stride(1), lsm_accum.stride(2));
+      lse_accum.stride(0), lse_accum.stride(1), lse_accum.stride(2));
 
-  params.oaccum_ptr = out_accum.const_data_ptr<float>();
-  params.oaccum_stride = make_stride(out_accum.stride(0),
-                                     out_accum.stride(1),
-                                     out_accum.stride(2),
-                                     out_accum.stride(3));
+  params.o_accum_ptr = out_accum.const_data_ptr();
+  params.o_accum_stride = make_stride(out_accum.stride(0),
+                                      out_accum.stride(1),
+                                      out_accum.stride(2),
+                                      out_accum.stride(3));
 
   params.o_ptr = out.mutable_data_ptr();
   params.o_stride = make_stride(out.stride(0), out.stride(1), out.stride(2));
+  params.lse_ptr = lse.mutable_data_ptr();
+  params.lse_stride = make_stride(lse.stride(0), lse.stride(1));
 
   launch_attn_combine_kernel<cute::half_t,
                              float,
                              /*kHeadDim=*/128,
                              /*kSplits=*/32>(params, nullptr);
 
-  return out;
+  return {out, lse};
 }
 
 }  // namespace
@@ -143,14 +152,11 @@ TEST_P(AttnCombineKernelTest, Combine) {
   const auto lsm_accum =
       torch::randn({n_splits, batch_size, q_len, n_heads}, options);
 
-  auto ref_out = attn_combine_ref(out_accum, lsm_accum, dtype);
-  auto out = attn_combine(out_accum, lsm_accum, dtype);
+  auto [ref_out, ref_lse] = attn_combine_ref(out_accum, lsm_accum, dtype);
+  auto [out, lse] = attn_combine(out_accum, lsm_accum, dtype);
 
-  if (dtype == torch::kBFloat16) {
-    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-2, /*atol=*/1e-2));
-  } else {
-    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
-  }
+  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  EXPECT_TRUE(torch::allclose(lse, ref_lse, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
 
 INSTANTIATE_TEST_SUITE_P(

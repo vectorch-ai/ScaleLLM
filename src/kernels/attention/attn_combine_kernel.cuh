@@ -50,6 +50,14 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // scales[splits]
   __shared__ ElementAccum sScales[kSplits];
 
+  // [n_splits, batch, seq_len, n_heads, kHeadDim]
+  Tensor oAccum = make_tensor(
+      make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.o_accum_ptr)),
+      make_shape(n_splits, batch_size, q_len, n_heads, Int<kHeadDim>{}),
+      append<5>(params.o_accum_stride, _1{}));
+  // [n_splits, kHeadDim] => [kHeadDim, n_splits]
+  Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
+
   // [n_splits, batch, seq_len, n_heads]
   Tensor lseAccum = make_tensor(
       make_gmem_ptr(
@@ -59,14 +67,6 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
   // [n_splits]
   Tensor gLseAccum = lseAccum(_, b_idx, s_idx, h_idx);
 
-  // [n_splits, batch, seq_len, n_heads, kHeadDim]
-  Tensor oAccum = make_tensor(
-      make_gmem_ptr(reinterpret_cast<const ElementAccum*>(params.oaccum_ptr)),
-      make_shape(n_splits, batch_size, q_len, n_heads, Int<kHeadDim>{}),
-      append<5>(params.oaccum_stride, _1{}));
-  // [n_splits, kHeadDim] => [kHeadDim, n_splits]
-  Tensor gOaccum = select<1, 0>(oAccum(_, b_idx, s_idx, h_idx, _));
-
   // [batch, seq_len, n_heads, kHeadDim]
   Tensor O =
       make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.o_ptr)),
@@ -74,6 +74,12 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
                   append<4>(params.o_stride, _1{}));
   // [kHeadDim]
   Tensor gO = O(b_idx, s_idx, h_idx, _);
+
+  // [batch, seq_len, n_heads]
+  Tensor gLse = make_tensor(
+      make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.lse_ptr)),
+      make_shape(batch_size, q_len, n_heads),
+      append<3>(params.lse_stride, _1{}));
 
   // use one warp to calculate safe_softmax(lse)
   int warp_idx = cutlass::canonical_warp_idx_sync();
@@ -106,7 +112,7 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
     // lse max within warp
     CUTE_UNROLL
-    for (int offset = 16; offset >= 1; offset /= 2) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
       lse_max = max(lse_max, __shfl_xor_sync(uint32_t(-1), lse_max, offset));
     }
 
@@ -123,13 +129,13 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
 
     // lse sum within warp
     CUTE_UNROLL
-    for (int offset = 16; offset >= 1; offset /= 2) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
       lse_sum += __shfl_xor_sync(uint32_t(-1), lse_sum, offset);
     }
 
-    float lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum)
-                           ? INFINITY
-                           : logf(lse_sum) + lse_max;
+    const float lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum)
+                                 ? INFINITY
+                                 : logf(lse_sum) + lse_max;
 
     // calculate lsescale for each split
     CUTE_UNROLL
@@ -139,6 +145,10 @@ __global__ void attn_combine_kernel(__grid_constant__ const Params params) {
       //           = exp(lse[i] - lse_max - log(lse_sum))
       //           = exp(lse[i] - lse_logsum)
       sScales[split_idx] = expf(lse[i] - lse_logsum);
+    }
+
+    if (tidx == 0) {
+      gLse(b_idx, s_idx, h_idx) = lse_logsum;
     }
   }
   __syncthreads();
