@@ -80,3 +80,4 @@ cc_test(
 )
 
 add_subdirectory(attention)
+add_subdirectory(moe)
