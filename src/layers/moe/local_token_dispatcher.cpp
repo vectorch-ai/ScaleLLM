@@ -27,6 +27,10 @@ std::tuple<torch::Tensor, torch::Tensor> LocalTokenDispatcher::dispatch(
   this->sorted_indices_ =
       token_indices.masked_select(/*mask=*/this->routing_map_);
 
+  // [n_tokens, n_experts] => [n_experts, n_tokens] => [n_permuted_tokens]
+  this->permuted_probs_ = probs.t().contiguous().masked_select(
+      /*mask=*/this->routing_map_);
+
   auto permuted_tokens = tokens.index_select(/*dim=*/0, this->sorted_indices_);
 
   return {permuted_tokens, tokens_per_expert};
@@ -37,6 +41,11 @@ torch::Tensor LocalTokenDispatcher::combine(
     std::optional<torch::Tensor> bias  // [n_tokens, n_active_experts]
 ) {
   const auto dim = expert_output.size(1);
+
+  // apply weights for each expert
+  // [n_permuted_tokens, dim] * [n_permuted_tokens]
+  expert_output = expert_output * this->permuted_probs_.unsqueeze(/*dim=*/-1);
+
   // [n_tokens, dim]
   auto output = torch::zeros(this->restore_shape_, expert_output.options());
 

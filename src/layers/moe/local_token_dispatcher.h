@@ -20,9 +20,14 @@ class LocalTokenDispatcher : public TokenDispatcher {
       ) override;
 
  private:
+  // [n_permuted_tokens]
   torch::Tensor sorted_indices_;
+  // [n_experts, n_tokens]
   torch::Tensor routing_map_;
+  // [n_tokens, dim]
   torch::IntArrayRef restore_shape_;
+  // [n_permuted_tokens]
+  torch::Tensor permuted_probs_;
 };
 
 }  // namespace llm
