@@ -6,8 +6,9 @@ cc_library(
     moe 
   HDRS
     token_dispatcher.h
+    local_token_dispatcher.h
   SRCS
-    # token_dispatcher.cpp
+    local_token_dispatcher.cpp
   DEPS
     :model_parallel
     glog::glog
