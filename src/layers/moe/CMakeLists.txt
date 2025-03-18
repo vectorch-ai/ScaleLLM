@@ -6,8 +6,9 @@ cc_library(
     moe 
   HDRS
     token_dispatcher.h
+    local_token_dispatcher.h
   SRCS
-    # token_dispatcher.cpp
+    local_token_dispatcher.cpp
   DEPS
     :model_parallel
     glog::glog
@@ -15,13 +16,13 @@ cc_library(
     torch
 )
 
-# cc_test(
-#   NAME
-#     moe_test
-#   SRCS
-#     token_dispatcher_test.cpp
-#   DEPS
-#     :moe
-#     absl::random_random
-#     GTest::gtest_main
-# )
+cc_test(
+  NAME
+    moe_test
+  SRCS
+    token_dispatcher_test.cpp
+  DEPS
+    :moe
+    absl::random_random
+    GTest::gtest_main
+)
