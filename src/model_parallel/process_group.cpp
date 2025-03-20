@@ -228,22 +228,23 @@ void ProcessGroupNCCL::alltoall(torch::Tensor input,
   compute_lengths_and_offsets(
       output_split_sizes, output, &recv_lengths, &recv_offsets);
 
-  char* send_buff = input.data_ptr<char>();
-  char* recv_buff = output.data_ptr<char>();
+  const char* send_buff = static_cast<const char*>(input.data_ptr());
+  char* recv_buff = static_cast<char*>(output.data_ptr());
+  auto stream = at::cuda::getCurrentCUDAStream();
 
   NCCL_CHECK(ncclGroupStart());
-  for (const int r = 0; r < n_ranks; ++r) {
-    NCCL_CHECK(ncclSend(send_buff + send_offsets[r] * size,
+  for (int r = 0; r < n_ranks; ++r) {
+    NCCL_CHECK(ncclSend(send_buff + (send_offsets[r] * size),
                         send_lengths[r],
                         type,
                         r,
-                        comm,
+                        comm_,
                         stream));
-    NCCL_CHECK(ncclRecv(recv_buff + recv_offsets[r] * size,
+    NCCL_CHECK(ncclRecv(recv_buff + (recv_offsets[r] * size),
                         recv_lengths[r],
                         type,
                         r,
-                        comm,
+                        comm_,
                         stream));
   }
   NCCL_CHECK(ncclGroupEnd());
