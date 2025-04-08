@@ -27,17 +27,20 @@ class ProcessGroup {
   virtual void allreduce(torch::Tensor& input) = 0;
 
   // allgather: gather tensors from all processes and concatenate them.
-  virtual void allgather(torch::Tensor input,
+  virtual void allgather(const torch::Tensor& input,
                          std::vector<torch::Tensor>& outputs) = 0;
 
   // allgather: gather tensors from all processes and concatenate them.
-  virtual void allgather(torch::Tensor input, torch::Tensor& outputs) = 0;
+  virtual void allgather(const torch::Tensor& input,
+                         torch::Tensor& outputs) = 0;
 
   // alltoall: scatter input tensor to all processes and gather the result.
-  virtual void alltoall(torch::Tensor input,
+  virtual void alltoall(const torch::Tensor& input, torch::Tensor& output) = 0;
+
+  virtual void alltoall(const torch::Tensor& input,
                         torch::Tensor& output,
-                        const std::vector<int64_t>& output_split_sizes,
-                        const std::vector<int64_t>& input_split_sizes) = 0;
+                        const std::vector<int64_t>& input_split_sizes,
+                        const std::vector<int64_t>& output_split_sizes) = 0;
 
   // Create a process group where each process has a single GPU
   // devices: list of devices to create process groups on.
@@ -75,15 +78,17 @@ class ProcessGroupNCCL : public ProcessGroup {
 
   void allreduce(torch::Tensor& input) override;
 
-  void allgather(torch::Tensor input,
+  void allgather(const torch::Tensor& input,
                  std::vector<torch::Tensor>& outputs) override;
 
-  void allgather(torch::Tensor input, torch::Tensor& outputs) override;
+  void allgather(const torch::Tensor& input, torch::Tensor& outputs) override;
 
-  void alltoall(torch::Tensor input,
+  void alltoall(const torch::Tensor& input, torch::Tensor& output) override;
+
+  void alltoall(const torch::Tensor& input,
                 torch::Tensor& output,
-                const std::vector<int64_t>& output_split_sizes,
-                const std::vector<int64_t>& input_split_sizes) override;
+                const std::vector<int64_t>& input_split_sizes,
+                const std::vector<int64_t>& output_split_sizes) override;
 
  private:
   // nccl communicator.

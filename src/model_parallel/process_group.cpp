@@ -7,6 +7,7 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -55,7 +56,7 @@ ncclDataType_t to_nccl_data_type(const torch::Tensor& input) {
   }
 }
 
-void check_input(torch::Tensor input) {
+void check_input(const torch::Tensor& input) {
   CHECK(input.is_cuda()) << "input should be cuda tensor";
   CHECK(input.is_contiguous()) << "input should be contiguous";
   CHECK(!input.is_sparse()) << "input have to be cuda dense tensor";
@@ -152,7 +153,7 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
       /*stream=*/stream));
 }
 
-void ProcessGroupNCCL::allgather(torch::Tensor input,
+void ProcessGroupNCCL::allgather(const torch::Tensor& input,
                                  std::vector<torch::Tensor>& outputs) {
   check_input(input);
   CHECK(outputs.size() == world_size())
@@ -181,7 +182,8 @@ void ProcessGroupNCCL::allgather(torch::Tensor input,
   }
 }
 
-void ProcessGroupNCCL::allgather(torch::Tensor input, torch::Tensor& output) {
+void ProcessGroupNCCL::allgather(const torch::Tensor& input,
+                                 torch::Tensor& output) {
   check_input(input);
   check_input(output);
   CHECK(input.dtype() == output.dtype())
@@ -203,44 +205,72 @@ void ProcessGroupNCCL::allgather(torch::Tensor input, torch::Tensor& output) {
       /*comm=*/comm_,
       /*stream=*/stream));
 }
-
-void ProcessGroupNCCL::alltoall(torch::Tensor input,
-                                torch::Tensor& output,
-                                const std::vector<int64_t>& output_split_sizes,
-                                const std::vector<int64_t>& input_split_sizes) {
+void ProcessGroupNCCL::alltoall(const torch::Tensor& input,
+                                torch::Tensor& output) {
   check_input(input);
   check_input(output);
   CHECK(input.dtype() == output.dtype())
       << "input and output should have the same dtype";
-  check_split_sizes(output_split_sizes, output, world_size());
-  check_split_sizes(input_split_sizes, input, world_size());
 
-  const auto size = input.element_size();
+  ncclDataType_t type = to_nccl_data_type(input);
+  const int size = world_size();
+  const size_t count = input.numel() / size;
+  const size_t rankdiff = input.nbytes() / size;
+
+  const char* sendbuff = reinterpret_cast<const char*>(input.const_data_ptr());
+  char* recvbuff = reinterpret_cast<char*>(output.data_ptr());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+  NCCL_CHECK(ncclGroupStart());
+  for (int r = 0; r < size; ++r) {
+    NCCL_CHECK(
+        ncclSend(sendbuff + (r * rankdiff), count, type, r, comm_, stream));
+    NCCL_CHECK(
+        ncclRecv(recvbuff + (r * rankdiff), count, type, r, comm_, stream));
+  }
+  NCCL_CHECK(ncclGroupEnd());
+}
+
+void ProcessGroupNCCL::alltoall(
+    const torch::Tensor& input,
+    torch::Tensor& output,
+    const std::vector<int64_t>& input_split_sizes,
+    const std::vector<int64_t>& output_split_sizes) {
+  check_input(input);
+  check_input(output);
+  CHECK(input.dtype() == output.dtype())
+      << "input and output should have the same dtype";
+
+  const int size = world_size();
+  check_split_sizes(input_split_sizes, input, size);
+  check_split_sizes(output_split_sizes, output, size);
+
+  const auto ele_size = input.element_size();
   const auto type = to_nccl_data_type(input);
-  const int n_ranks = world_size();
 
-  std::vector<size_t> send_lengths(n_ranks);
-  std::vector<size_t> send_offsets(n_ranks);
-  std::vector<size_t> recv_lengths(n_ranks);
-  std::vector<size_t> recv_offsets(n_ranks);
+  std::vector<size_t> send_lengths(size);
+  std::vector<size_t> send_offsets(size);
+  std::vector<size_t> recv_lengths(size);
+  std::vector<size_t> recv_offsets(size);
   compute_lengths_and_offsets(
       input_split_sizes, input, &send_lengths, &send_offsets);
   compute_lengths_and_offsets(
       output_split_sizes, output, &recv_lengths, &recv_offsets);
 
-  const char* send_buff = static_cast<const char*>(input.data_ptr());
-  char* recv_buff = static_cast<char*>(output.data_ptr());
+  const char* sendbuff = reinterpret_cast<const char*>(input.const_data_ptr());
+  char* recvbuff = reinterpret_cast<char*>(output.data_ptr());
+
   auto stream = at::cuda::getCurrentCUDAStream();
 
   NCCL_CHECK(ncclGroupStart());
-  for (int r = 0; r < n_ranks; ++r) {
-    NCCL_CHECK(ncclSend(send_buff + (send_offsets[r] * size),
+  for (int r = 0; r < size; ++r) {
+    NCCL_CHECK(ncclSend(sendbuff + (send_offsets[r] * ele_size),
                         send_lengths[r],
                         type,
                         r,
                         comm_,
                         stream));
-    NCCL_CHECK(ncclRecv(recv_buff + (recv_offsets[r] * size),
+    NCCL_CHECK(ncclRecv(recvbuff + (recv_offsets[r] * ele_size),
                         recv_lengths[r],
                         type,
                         r,
