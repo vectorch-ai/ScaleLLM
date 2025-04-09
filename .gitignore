@@ -10,6 +10,9 @@
 # cache
 /.*cache
 
+# virtualenv
+/.venv
+
 # deps
 /.deps
 
