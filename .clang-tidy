@@ -1,6 +1,5 @@
 Checks: >
   abseil-*,
-  boost-*,
   bugprone-*,
   cert-*,
   clang-analyzer-*,

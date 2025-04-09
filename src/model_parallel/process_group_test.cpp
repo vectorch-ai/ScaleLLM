@@ -1,20 +1,19 @@
 #include "process_group.h"
 
-#include <c10/core/Device.h>
 #include <c10/cuda/CUDAStream.h>
 #include <gtest/gtest.h>
-#include <torch/cuda.h>
 #include <torch/types.h>
 
 namespace llm {
 namespace {
 void run_collective_test(int world_size,
+                         torch::DeviceType device_type,
                          std::function<void(ProcessGroup* pg)> func) {
   // create process groups
   std::vector<torch::Device> devices;
   devices.reserve(world_size);
   for (int i = 0; i < world_size; ++i) {
-    devices.emplace_back(torch::kCUDA, i);
+    devices.emplace_back(device_type, i);
   }
   auto process_groups = ProcessGroup::create_process_groups(devices);
   EXPECT_EQ(process_groups.size(), world_size);
@@ -23,7 +22,8 @@ void run_collective_test(int world_size,
   std::vector<std::thread> threads;
   threads.reserve(process_groups.size());
   for (int i = 0; i < world_size; ++i) {
-    threads.emplace_back([func, pg = process_groups[i].get()]() { func(pg); });
+    ProcessGroup* pg = process_groups[i].get();
+    threads.emplace_back([func, pg]() { func(pg); });
   }
 
   // wait for all threads to finish
@@ -33,36 +33,44 @@ void run_collective_test(int world_size,
     }
   }
 }
+
+template <typename T>
+std::vector<T> to_vector(const torch::Tensor& tensor) {
+  auto t = tensor.cpu();
+  return {t.const_data_ptr<T>(), t.const_data_ptr<T>() + t.numel()};
+}
 }  // namespace
 
-TEST(ProcessGroupTest, NCCLAllReduce) {
-  // skip test if less than two gpus
-  if (torch::cuda::device_count() < 2) {
-    GTEST_SKIP() << "Skipping test because less than two gpus";
-  }
+class CollectiveTest : public ::testing::TestWithParam<
+                           std::tuple<torch::DeviceType, torch::ScalarType>> {};
 
-  for (int i = 2; i <= torch::cuda::device_count(); i *= 2) {
+TEST_P(CollectiveTest, AllReduce) {
+  const auto& [device_type, dtype] = GetParam();
+
+  // [1, 2, 4, 8]
+  for (int world_size = 1; world_size <= torch::cuda::device_count();
+       world_size *= 2) {
     // create tensors
     const int num_test_tensors = 50;
     std::vector<torch::Tensor> tensors;
     tensors.reserve(num_test_tensors);
     for (int i = 0; i < num_test_tensors; ++i) {
-      tensors.push_back(torch::ones({100, 4096}, torch::kHalf));
+      tensors.push_back(torch::randn({100, 4096}, dtype));
     }
 
-    run_collective_test(i, [&tensors](ProcessGroup* pg) {
+    run_collective_test(world_size, device_type, [&tensors](ProcessGroup* pg) {
       const int rank = pg->rank();
-      const int world_size = pg->world_size();
+      const int size = pg->world_size();
       const auto& device = pg->device();
       torch::DeviceGuard device_guard(device);
       at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
-      for (int i = 0; i <= tensors.size() - world_size; ++i) {
+      for (int i = 0; i <= tensors.size() - size; ++i) {
         auto tensor = tensors[i + rank].to(device);
         pg->allreduce(tensor);
         stream.synchronize();
         // check the result
         auto expected = torch::zeros_like(tensors[i]);
-        for (int j = 0; j < world_size; ++j) {
+        for (int j = 0; j < size; ++j) {
           expected += tensors[i + j];
         }
         EXPECT_TRUE(torch::equal(tensor.cpu(), expected));
@@ -71,36 +79,34 @@ TEST(ProcessGroupTest, NCCLAllReduce) {
   }
 }
 
-TEST(ProcessGroupTest, NCCLAllGather) {
-  // skip test if less than two gpus
-  if (torch::cuda::device_count() < 2) {
-    GTEST_SKIP() << "Skipping test because less than two gpus";
-  }
+TEST_P(CollectiveTest, AllGather) {
+  const auto& [device_type, dtype] = GetParam();
 
-  for (int i = 2; i <= torch::cuda::device_count(); i *= 2) {
+  for (int world_size = 1; world_size <= torch::cuda::device_count();
+       world_size *= 2) {
     // create tensors
     const int num_test_tensors = 50;
     std::vector<torch::Tensor> tensors;
     tensors.reserve(num_test_tensors);
     for (int i = 0; i < num_test_tensors; ++i) {
-      tensors.push_back(torch::ones({100, 4096}, torch::kHalf));
+      tensors.push_back(torch::ones({100, 4096}, dtype));
     }
 
-    run_collective_test(i, [&tensors](ProcessGroup* pg) {
+    run_collective_test(world_size, device_type, [&tensors](ProcessGroup* pg) {
       const int rank = pg->rank();
-      const int world_size = pg->world_size();
+      const int size = pg->world_size();
       const auto& device = pg->device();
       torch::DeviceGuard device_guard(device);
       at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
-      for (int i = 0; i <= tensors.size() - world_size; ++i) {
+      for (int i = 0; i <= tensors.size() - size; ++i) {
         auto tensor = tensors[i + rank].to(device);
-        std::vector<torch::Tensor> outputs(world_size);
-        for (int j = 0; j < world_size; ++j) {
+        std::vector<torch::Tensor> outputs(size);
+        for (int j = 0; j < size; ++j) {
           outputs[j] = torch::empty_like(tensor);
         }
         pg->allgather(tensor, outputs);
         stream.synchronize();
-        for (int j = 0; j < world_size; ++j) {
+        for (int j = 0; j < size; ++j) {
           EXPECT_TRUE(torch::equal(tensors[i + j], outputs[j].cpu()));
         }
       }
@@ -108,47 +114,58 @@ TEST(ProcessGroupTest, NCCLAllGather) {
   }
 }
 
-TEST(ProcessGroupTest, NCCLAll2All) {
-  // skip test if less than two gpus
-  if (torch::cuda::device_count() < 2) {
-    GTEST_SKIP() << "Skipping test because less than two gpus";
-  }
+TEST_P(CollectiveTest, AllToAll) {
+  const auto& [device_type, dtype] = GetParam();
 
-  // run all to all
-  // >>> input = torch.arange(4) + rank * 4
-  // >>> input
-  // tensor([0, 1, 2, 3])     # Rank 0
-  // tensor([4, 5, 6, 7])     # Rank 1
-  // tensor([8, 9, 10, 11])   # Rank 2
-  // tensor([12, 13, 14, 15]) # Rank 3
-  // >>> output = torch.empty([4], dtype=torch.int64)
-  // >>> dist.all_to_all_single(output, input)
-  // >>> output
-  // tensor([0, 4, 8, 12])    # Rank 0
-  // tensor([1, 5, 9, 13])    # Rank 1
-  // tensor([2, 6, 10, 14])   # Rank 2
-  // tensor([3, 7, 11, 15])   # Rank 3
-
-  for (int i = 2; i <= torch::cuda::device_count(); i *= 2) {
-    run_collective_test(i, [](ProcessGroup* pg) {
-      const int rank = pg->rank();
-      const int world_size = pg->world_size();
+  for (int world_size = 1; world_size <= torch::cuda::device_count();
+       world_size *= 2) {
+    run_collective_test(world_size, device_type, [dtype](ProcessGroup* pg) {
+      const int size = pg->world_size();
       const auto& device = pg->device();
       torch::DeviceGuard device_guard(device);
+      at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
 
       // create size tensors
-      auto options = torch::device(device).dtype(torch::kInt32);
-      auto input_sizes = torch::ones({world_size}, options);
-      auto output_sizes = torch::empty({world_size}, options);
-      at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
-      pg->alltoall(input_sizes, output_sizes);
-      stream.synchronize();
+      auto size_options = torch::device(device).dtype(torch::kInt64);
+      auto input_splits = torch::randint(1, 100, {size}, size_options);
+      auto output_splits = torch::empty({size}, size_options);
+      // alltoall communication for sizes
+      pg->alltoall(input_splits, output_splits);
 
-      LOG(INFO) << "rank: " << rank << ", input_sizes: " << input_sizes
-                << ", output_sizes: " << output_sizes;
-      // EXPECT_TRUE(false);
+      // sizes to vector
+      auto input_split_sizes = to_vector<int64_t>(input_splits);
+      auto output_split_sizes = to_vector<int64_t>(output_splits);
+
+      const auto input_size =
+          std::reduce(input_split_sizes.begin(), input_split_sizes.end());
+      const auto output_size =
+          std::reduce(output_split_sizes.begin(), output_split_sizes.end());
+
+      // create tensors
+      auto options = torch::device(device).dtype(dtype);
+      auto input = torch::randn({input_size}, options);
+      auto output = torch::empty({output_size}, options);
+
+      // alltoall communication for data
+      pg->alltoall(input, output, input_split_sizes, output_split_sizes);
+
+      auto input2 = torch::empty_like(input);
+      // alltoall communication again with swapped input and output
+      // NOLINTNEXTLINE(readability-suspicious-call-argument)
+      pg->alltoall(output, input2, output_split_sizes, input_split_sizes);
+
+      // we should get the same input tensor back
+      EXPECT_TRUE(torch::equal(input, input2));
     });
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    ProcessGroupTest,
+    CollectiveTest,
+    ::testing::Combine(::testing::Values(torch::kCUDA),  // device type
+                       ::testing::Values(torch::kHalf,
+                                         torch::kBFloat16)  // dtype
+                       ));
 
 }  // namespace llm

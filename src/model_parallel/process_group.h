@@ -1,5 +1,4 @@
 #pragma once
-#include <c10/core/Device.h>
 #include <nccl.h>
 #include <torch/torch.h>
 

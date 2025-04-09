@@ -1,9 +1,6 @@
 #include "process_group.h"
 
-#include <ATen/cuda/CUDAEvent.h>
-#include <c10/core/Device.h>
 #include <c10/cuda/CUDAStream.h>
-#include <cuda_runtime.h>
 #include <glog/logging.h>
 #include <torch/torch.h>
 
@@ -14,43 +11,46 @@
 namespace llm {
 namespace {
 
-// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define NCCL_CHECK(cmd)                                              \
-  do {                                                               \
-    ncclResult_t r = cmd;                                            \
-    if (r != ncclSuccess) {                                          \
-      LOG(FATAL) << "Failed, NCCL error :" << ncclGetErrorString(r); \
-    }                                                                \
-  } while (0)
+inline void NCCL_CHECK(ncclResult_t result) {
+  if (result != ncclSuccess) {
+    LOG(FATAL) << "NCCL error: " << ncclGetErrorString(result);
+  }
+}
 
-at::Tensor flatten_for_scatter_gather(std::vector<at::Tensor>& tensors) {
+torch::Tensor flatten_for_scatter_gather(std::vector<torch::Tensor>& tensors) {
   auto& t = tensors[0];
   std::vector<int64_t> sizes{static_cast<int64_t>(tensors.size())};
   sizes.insert(sizes.end(), t.sizes().begin(), t.sizes().end());
-  return at::empty(sizes, t.options());
+  return torch::empty(sizes, t.options());
 }
 
 ncclDataType_t to_nccl_data_type(const torch::Tensor& input) {
   const auto type = input.scalar_type();
   switch (type) {
-    case at::kFloat:
+    case torch::kFloat:
       return ncclDataType_t::ncclFloat;
-    case at::kHalf:
+    case torch::kHalf:
       return ncclDataType_t::ncclHalf;
-    case at::kDouble:
+    case torch::kDouble:
       return ncclDataType_t::ncclDouble;
-    case at::kLong:
+    case torch::kLong:
       return ncclDataType_t::ncclInt64;
-    case at::kInt:
+    case torch::kInt:
       return ncclDataType_t::ncclInt;
-    case at::kChar:
+    case torch::kChar:
       return ncclDataType_t::ncclChar;
-    case at::kByte:
+    // NOLINTNEXTLINE(bugprone-branch-clone)
+    case torch::kByte:
       return ncclDataType_t::ncclUint8;
-    case at::kBool:
+    case torch::kBool:
       return ncclDataType_t::ncclUint8;
-    case at::kBFloat16:
+    case torch::kBFloat16:
       return ncclDataType_t::ncclBfloat16;
+    // NOLINTNEXTLINE(bugprone-branch-clone)
+    case torch::kFloat8_e4m3fn:
+      return ncclDataType_t::ncclUint8;
+    case torch::kFloat8_e5m2:
+      return ncclDataType_t::ncclUint8;
     default:
       TORCH_CHECK(false, "Unconvertible NCCL type ", type);
   }
@@ -141,8 +141,7 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
   const auto count = input.numel();
   const auto data_type = to_nccl_data_type(input);
 
-  auto stream = at::cuda::getCurrentCUDAStream();
-  torch::DeviceGuard device_guard(device());
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
   NCCL_CHECK(ncclAllReduce(
       /*sendbuff=*/input.data_ptr(),
       /*recvbuff=*/input.data_ptr(),
@@ -161,13 +160,12 @@ void ProcessGroupNCCL::allgather(const torch::Tensor& input,
   DCHECK(input.device() == device())
       << "input should be on the same device as the process group";
 
-  torch::DeviceGuard device_guard(device());
   torch::Tensor flattened_output = flatten_for_scatter_gather(outputs);
 
   const auto count = input.numel();
   const auto data_type = to_nccl_data_type(input);
 
-  auto stream = at::cuda::getCurrentCUDAStream();
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
   NCCL_CHECK(ncclAllGather(
       /*sendbuff=*/input.data_ptr(),
       /*recvbuff=*/flattened_output.data_ptr(),
@@ -191,12 +189,10 @@ void ProcessGroupNCCL::allgather(const torch::Tensor& input,
   CHECK(input.numel() * world_size() == output.numel())
       << "output should have the size of world_size times input tensor size";
 
-  torch::DeviceGuard device_guard(device());
-
   const auto count = input.numel();
   const auto data_type = to_nccl_data_type(input);
 
-  auto stream = at::cuda::getCurrentCUDAStream();
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
   NCCL_CHECK(ncclAllGather(
       /*sendbuff=*/input.data_ptr(),
       /*recvbuff=*/output.data_ptr(),
@@ -211,22 +207,35 @@ void ProcessGroupNCCL::alltoall(const torch::Tensor& input,
   check_input(output);
   CHECK(input.dtype() == output.dtype())
       << "input and output should have the same dtype";
+  DCHECK(input.device() == device())
+      << "input should be on the same device as the process group";
+
+  const int size = world_size();
+  CHECK_EQ(input.numel() % size, 0)
+      << "input should be divisible by world size";
 
   ncclDataType_t type = to_nccl_data_type(input);
-  const int size = world_size();
   const size_t count = input.numel() / size;
   const size_t rankdiff = input.nbytes() / size;
 
   const char* sendbuff = reinterpret_cast<const char*>(input.const_data_ptr());
   char* recvbuff = reinterpret_cast<char*>(output.data_ptr());
-  auto stream = at::cuda::getCurrentCUDAStream();
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
 
   NCCL_CHECK(ncclGroupStart());
   for (int r = 0; r < size; ++r) {
-    NCCL_CHECK(
-        ncclSend(sendbuff + (r * rankdiff), count, type, r, comm_, stream));
-    NCCL_CHECK(
-        ncclRecv(recvbuff + (r * rankdiff), count, type, r, comm_, stream));
+    NCCL_CHECK(ncclSend(/*sendbuff=*/sendbuff + (r * rankdiff),
+                        /*count=*/count,
+                        /*datatype=*/type,
+                        /*peer=*/r,
+                        /*comm=*/comm_,
+                        /*stream=*/stream));
+    NCCL_CHECK(ncclRecv(/*recvbuff=*/recvbuff + (r * rankdiff),
+                        /*count=*/count,
+                        /*datatype=*/type,
+                        /*peer=*/r,
+                        /*comm=*/comm_,
+                        /*stream=*/stream));
   }
   NCCL_CHECK(ncclGroupEnd());
 }
@@ -240,6 +249,8 @@ void ProcessGroupNCCL::alltoall(
   check_input(output);
   CHECK(input.dtype() == output.dtype())
       << "input and output should have the same dtype";
+  DCHECK(input.device() == device())
+      << "input should be on the same device as the process group";
 
   const int size = world_size();
   check_split_sizes(input_split_sizes, input, size);
@@ -260,22 +271,22 @@ void ProcessGroupNCCL::alltoall(
   const char* sendbuff = reinterpret_cast<const char*>(input.const_data_ptr());
   char* recvbuff = reinterpret_cast<char*>(output.data_ptr());
 
-  auto stream = at::cuda::getCurrentCUDAStream();
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
 
   NCCL_CHECK(ncclGroupStart());
   for (int r = 0; r < size; ++r) {
-    NCCL_CHECK(ncclSend(sendbuff + (send_offsets[r] * ele_size),
-                        send_lengths[r],
-                        type,
-                        r,
-                        comm_,
-                        stream));
-    NCCL_CHECK(ncclRecv(recvbuff + (recv_offsets[r] * ele_size),
-                        recv_lengths[r],
-                        type,
-                        r,
-                        comm_,
-                        stream));
+    NCCL_CHECK(ncclSend(/*sendbuff=*/sendbuff + (send_offsets[r] * ele_size),
+                        /*count=*/send_lengths[r],
+                        /*datatype=*/type,
+                        /*peer=*/r,
+                        /*comm=*/comm_,
+                        /*stream=*/stream));
+    NCCL_CHECK(ncclRecv(/*recvbuff=*/recvbuff + (recv_offsets[r] * ele_size),
+                        /*count=*/recv_lengths[r],
+                        /*datatype=*/type,
+                        /*peer=*/r,
+                        /*comm=*/comm_,
+                        /*stream=*/stream));
   }
   NCCL_CHECK(ncclGroupEnd());
 }
