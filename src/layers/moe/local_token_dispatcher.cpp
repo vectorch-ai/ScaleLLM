@@ -4,6 +4,25 @@
 
 namespace llm {
 
+// clang-format off
+// for exmple: n_experts = 8, topk = 2
+//  _____________________________________________________________________________
+// |                         |  dispatch   |     Group-GEMM    |     combine     |
+// |                         |_____________|___________________|_________________|
+// |                         |  permute    |       GEMM        |    unpermute    |
+// |_________________________|_____________|___________________|_________________|
+// |        |                |             |                   |                 |
+// |        | t1 -> [e0, e4] |  e0: t1     |  [t1]     -> e0   | [e0, e4] ->  t1 |
+// |        | t2 -> [e4, e5] |  e1:        |  [t1, t2] -> e4   | [e4, e5] ->  t2 |
+// |        |                |  e2:        |  [t2]     -> e5   |                 |
+// |   d0   |                |  e3:        |                   |                 |
+// |        |                |  e4: t1, t2 |                   |                 |
+// |        |                |  e5: t2     |                   |                 |
+// |        |                |  e6:        |                   |                 |
+// |        |                |  e7:        |                   |                 |
+// |________|________________|_____________|___________________|_________________|
+// clang-format on
+
 std::tuple<torch::Tensor, torch::Tensor> LocalTokenDispatcher::dispatch(
     torch::Tensor tokens,      // [n_tokens, dim]
     torch::Tensor probs,       // [n_tokens, n_experts]

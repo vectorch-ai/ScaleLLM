@@ -20,20 +20,21 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
 
   std::tuple<torch::Tensor, torch::Tensor> dispatch(
       torch::Tensor tokens,      // [n_tokens, dim]
-      torch::Tensor probs,       // [n_tokens, n_experts]
-      torch::Tensor routing_map  // [n_tokens, n_experts]
+      torch::Tensor probs,       // [n_tokens, n_experts] float tensor
+      torch::Tensor routing_map  // [n_tokens, n_experts] bool tensor
       ) override;
 
   torch::Tensor combine(
-      torch::Tensor permuted_tokens,       // [n_permuted_tokens, dim]
-      std::optional<torch::Tensor> bias  // [n_tokens, n_active_experts]
+      torch::Tensor permuted_tokens,  // [n_permuted_tokens, dim]
+      std::optional<torch::Tensor>
+          bias  // [n_tokens, n_active_experts] float tensor
       ) override;
 
  private:
   // calculate input and output splits for alltoall communication
   // returns number of tokens for each local expert: [n_local_experts]
   torch::Tensor preprocess(
-      const torch::Tensor& routing_map  // [n_tokens, n_experts];
+      const torch::Tensor& routing_map  // [n_tokens, n_experts]
   );
 
   int64_t ep_size_ = 0;
