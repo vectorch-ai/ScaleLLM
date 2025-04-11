@@ -58,24 +58,25 @@ TEST_P(CollectiveTest, AllReduce) {
       tensors.push_back(torch::randn({100, 4096}, dtype));
     }
 
-    run_collective_test(world_size, device_type, [&tensors](const ProcessGroup* pg) {
-      const int rank = pg->rank();
-      const int size = pg->world_size();
-      const auto& device = pg->device();
-      torch::DeviceGuard device_guard(device);
-      at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
-      for (int i = 0; i <= tensors.size() - size; ++i) {
-        auto tensor = tensors[i + rank].to(device);
-        pg->allreduce(tensor);
-        stream.synchronize();
-        // check the result
-        auto expected = torch::zeros_like(tensors[i]);
-        for (int j = 0; j < size; ++j) {
-          expected += tensors[i + j];
-        }
-        EXPECT_TRUE(torch::equal(tensor.cpu(), expected));
-      }
-    });
+    run_collective_test(
+        world_size, device_type, [&tensors](const ProcessGroup* pg) {
+          const int rank = pg->rank();
+          const int size = pg->world_size();
+          const auto& device = pg->device();
+          torch::DeviceGuard device_guard(device);
+          at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
+          for (int i = 0; i <= tensors.size() - size; ++i) {
+            auto tensor = tensors[i + rank].to(device);
+            pg->allreduce(tensor);
+            stream.synchronize();
+            // check the result
+            auto expected = torch::zeros_like(tensors[i]);
+            for (int j = 0; j < size; ++j) {
+              expected += tensors[i + j];
+            }
+            EXPECT_TRUE(torch::equal(tensor.cpu(), expected));
+          }
+        });
   }
 }
 
@@ -92,25 +93,26 @@ TEST_P(CollectiveTest, AllGather) {
       tensors.push_back(torch::ones({100, 4096}, dtype));
     }
 
-    run_collective_test(world_size, device_type, [&tensors](const ProcessGroup* pg) {
-      const int rank = pg->rank();
-      const int size = pg->world_size();
-      const auto& device = pg->device();
-      torch::DeviceGuard device_guard(device);
-      at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
-      for (int i = 0; i <= tensors.size() - size; ++i) {
-        auto tensor = tensors[i + rank].to(device);
-        std::vector<torch::Tensor> outputs(size);
-        for (int j = 0; j < size; ++j) {
-          outputs[j] = torch::empty_like(tensor);
-        }
-        pg->allgather(tensor, outputs);
-        stream.synchronize();
-        for (int j = 0; j < size; ++j) {
-          EXPECT_TRUE(torch::equal(tensors[i + j], outputs[j].cpu()));
-        }
-      }
-    });
+    run_collective_test(
+        world_size, device_type, [&tensors](const ProcessGroup* pg) {
+          const int rank = pg->rank();
+          const int size = pg->world_size();
+          const auto& device = pg->device();
+          torch::DeviceGuard device_guard(device);
+          at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
+          for (int i = 0; i <= tensors.size() - size; ++i) {
+            auto tensor = tensors[i + rank].to(device);
+            std::vector<torch::Tensor> outputs(size);
+            for (int j = 0; j < size; ++j) {
+              outputs[j] = torch::empty_like(tensor);
+            }
+            pg->allgather(tensor, outputs);
+            stream.synchronize();
+            for (int j = 0; j < size; ++j) {
+              EXPECT_TRUE(torch::equal(tensors[i + j], outputs[j].cpu()));
+            }
+          }
+        });
   }
 }
 
@@ -119,44 +121,45 @@ TEST_P(CollectiveTest, AllToAll) {
 
   for (int world_size = 1; world_size <= torch::cuda::device_count();
        world_size *= 2) {
-    run_collective_test(world_size, device_type, [dtype](const ProcessGroup* pg) {
-      const int size = pg->world_size();
-      const auto& device = pg->device();
-      torch::DeviceGuard device_guard(device);
-      at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
+    run_collective_test(
+        world_size, device_type, [dtype](const ProcessGroup* pg) {
+          const int size = pg->world_size();
+          const auto& device = pg->device();
+          torch::DeviceGuard device_guard(device);
+          at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream();
 
-      // create size tensors
-      auto size_options = torch::device(device).dtype(torch::kInt64);
-      auto input_splits = torch::randint(1, 100, {size}, size_options);
-      auto output_splits = torch::empty({size}, size_options);
-      // alltoall communication for sizes
-      pg->alltoall(input_splits, output_splits);
+          // create size tensors
+          auto size_options = torch::device(device).dtype(torch::kInt64);
+          auto input_splits = torch::randint(1, 100, {size}, size_options);
+          auto output_splits = torch::empty({size}, size_options);
+          // alltoall communication for sizes
+          pg->alltoall(input_splits, output_splits);
 
-      // sizes to vector
-      auto input_split_sizes = to_vector<int64_t>(input_splits);
-      auto output_split_sizes = to_vector<int64_t>(output_splits);
+          // sizes to vector
+          auto input_split_sizes = to_vector<int64_t>(input_splits);
+          auto output_split_sizes = to_vector<int64_t>(output_splits);
 
-      const auto input_size =
-          std::reduce(input_split_sizes.begin(), input_split_sizes.end());
-      const auto output_size =
-          std::reduce(output_split_sizes.begin(), output_split_sizes.end());
+          const auto input_size =
+              std::reduce(input_split_sizes.begin(), input_split_sizes.end());
+          const auto output_size =
+              std::reduce(output_split_sizes.begin(), output_split_sizes.end());
 
-      // create tensors
-      auto options = torch::device(device).dtype(dtype);
-      auto input = torch::randn({input_size}, options);
-      auto output = torch::empty({output_size}, options);
+          // create tensors
+          auto options = torch::device(device).dtype(dtype);
+          auto input = torch::randn({input_size}, options);
+          auto output = torch::empty({output_size}, options);
 
-      // alltoall communication for data
-      pg->alltoall(input, output, input_split_sizes, output_split_sizes);
+          // alltoall communication for data
+          pg->alltoall(input, output, input_split_sizes, output_split_sizes);
 
-      auto input2 = torch::empty_like(input);
-      // alltoall communication again with swapped input and output
-      // NOLINTNEXTLINE(readability-suspicious-call-argument)
-      pg->alltoall(output, input2, output_split_sizes, input_split_sizes);
+          auto input2 = torch::empty_like(input);
+          // alltoall communication again with swapped input and output
+          // NOLINTNEXTLINE(readability-suspicious-call-argument)
+          pg->alltoall(output, input2, output_split_sizes, input_split_sizes);
 
-      // we should get the same input tensor back
-      EXPECT_TRUE(torch::equal(input, input2));
-    });
+          // we should get the same input tensor back
+          EXPECT_TRUE(torch::equal(input, input2));
+        });
   }
 }
 

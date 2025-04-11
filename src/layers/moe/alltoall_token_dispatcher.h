@@ -12,8 +12,7 @@ class ProcessGroup;
 class AlltoAllTokenDispatcher : public TokenDispatcher {
  public:
   // Constructors
-  AlltoAllTokenDispatcher(int64_t n_experts,
-                          const ProcessGroup* ep_pg);
+  AlltoAllTokenDispatcher(int64_t n_experts, const ProcessGroup* ep_pg);
 
   std::tuple<torch::Tensor, torch::Tensor> dispatch(
       torch::Tensor tokens,      // [n_tokens, dim]

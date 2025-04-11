@@ -23,7 +23,7 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
 }
 
 torch::Tensor unpermute(
-    const torch::Tensor& permuted_tokens,      // [n_permuted_tokens, dim]
+    const torch::Tensor& permuted_tokens,    // [n_permuted_tokens, dim]
     const torch::Tensor& sorted_indices,     // [n_permuted_tokens]
     const torch::IntArrayRef& restore_shape  // [n_tokens, dim]
 ) {
