@@ -12,10 +12,7 @@ class ProcessGroup;
 class AlltoAllTokenDispatcher : public TokenDispatcher {
  public:
   // Constructors
-  AlltoAllTokenDispatcher() = default;
-
   AlltoAllTokenDispatcher(int64_t n_experts,
-                          int64_t n_local_experts,
                           ProcessGroup* ep_pg);
 
   std::tuple<torch::Tensor, torch::Tensor> dispatch(
@@ -37,11 +34,7 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
       const torch::Tensor& routing_map  // [n_tokens, n_experts]
   );
 
-  int64_t ep_size_ = 0;
-  int64_t ep_rank_ = 0;
-  int64_t n_experts_ = 0;
   int64_t n_local_experts_ = 0;
-
   ProcessGroup* ep_pg_ = nullptr;
 
   // original token incides, sorted by expert idx

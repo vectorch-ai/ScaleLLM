@@ -5,6 +5,7 @@
 
 #include "alltoall_token_dispatcher.h"
 #include "local_token_dispatcher.h"
+#include "model_parallel/process_group.h"
 
 namespace llm {
 
@@ -55,6 +56,8 @@ TEST(TokenDispatcherTest, AlltoAll) {
   const int64_t n_tokens = 2;
   const int64_t n_experts = 4;
   const int64_t n_topk = 2;
+  const int64_t world_size = 1;
+  const auto device_type = torch::kCUDA;
 
   auto tokens = torch::randn({n_tokens, dim}, options);
   auto logits = torch::rand({n_tokens, n_experts}, options);
@@ -70,7 +73,15 @@ TEST(TokenDispatcherTest, AlltoAll) {
                              /*dim=*/1, /*index=*/indices, /*value=*/1)
                          .to(torch::kBool);
 
-  AlltoAllTokenDispatcher dispatcher;
+  std::vector<torch::Device> devices;
+  devices.reserve(world_size);
+  for (int i = 0; i < world_size; ++i) {
+    devices.emplace_back(device_type, i);
+  }
+  auto process_groups = ProcessGroup::create_process_groups(devices);
+
+  AlltoAllTokenDispatcher dispatcher(n_experts, process_groups[0].get());
+
   auto [permuted_tokens, tokens_per_expert] =
       dispatcher.dispatch(tokens, probs, routing_map);
 
