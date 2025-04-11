@@ -23,19 +23,19 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
 }
 
 torch::Tensor unpermute(
-    const torch::Tensor& expert_output,      // [n_permuted_tokens, dim]
+    const torch::Tensor& permuted_tokens,      // [n_permuted_tokens, dim]
     const torch::Tensor& sorted_indices,     // [n_permuted_tokens]
     const torch::IntArrayRef& restore_shape  // [n_tokens, dim]
 ) {
-  const auto dim = expert_output.size(1);
+  const auto dim = permuted_tokens.size(1);
   // [n_tokens, dim]
-  auto output = torch::zeros(restore_shape, expert_output.options());
+  auto output = torch::zeros(restore_shape, permuted_tokens.options());
 
   // [n_permuted_tokens] => [n_permuted_tokens, dim]
   auto index = sorted_indices.unsqueeze(/*dim=*/1).expand({-1, dim});
 
   // [n_permuted_tokens, dim] => [n_tokens, dim]
-  output.scatter_add_(/*dim=*/0, /*index=*/index, /*src=*/expert_output);
+  output.scatter_add_(/*dim=*/0, /*index=*/index, /*src=*/permuted_tokens);
   return output;
 }
 

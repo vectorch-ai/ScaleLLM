@@ -10,12 +10,8 @@ namespace {
 
 // returns [ep_size, n_experts]
 torch::Tensor allgather(torch::Tensor tokens_per_expert,  // [n_experts]
-                        ProcessGroup* ep_pg) {
-  if (ep_pg == nullptr) {
-    return tokens_per_expert;
-  }
-
-  auto ep_size = ep_pg->world_size();
+                        const ProcessGroup& ep_pg) {
+  auto ep_size = ep_pg.world_size();
   // if (ep_size == 1) {
   //   return tokens_per_expert;
   // }
@@ -25,19 +21,15 @@ torch::Tensor allgather(torch::Tensor tokens_per_expert,  // [n_experts]
   auto output = torch::empty(sizes, tokens_per_expert.options());
   // allgather tokens_per_expert
   // [n_experts] => [ep_size, n_experts]
-  ep_pg->allgather(tokens_per_expert, output);
+  ep_pg.allgather(tokens_per_expert, output);
   return output;
 }
 
 torch::Tensor alltoall(const torch::Tensor& tokens,  // [n_tokens, dim]
                        const std::vector<int64_t>& input_split_sizes,
                        const std::vector<int64_t>& output_split_sizes,
-                       ProcessGroup* ep_pg) {
-  if (ep_pg == nullptr) {
-    return tokens;
-  }
-
-  auto ep_size = ep_pg->world_size();
+                       const ProcessGroup& ep_pg) {
+  auto ep_size = ep_pg.world_size();
   // if (ep_size == 1) {
   //   return tokens;
   // }
@@ -49,7 +41,7 @@ torch::Tensor alltoall(const torch::Tensor& tokens,  // [n_tokens, dim]
   sizes[0] = output_size;
   auto output = torch::empty(sizes, tokens.options());
 
-  ep_pg->alltoall(tokens, output, input_split_sizes, output_split_sizes);
+  ep_pg.alltoall(tokens, output, input_split_sizes, output_split_sizes);
   return output;
 }
 
@@ -129,7 +121,7 @@ std::vector<int64_t> to_vector(const torch::Tensor& tensor) {
 // clang-format on
 
 AlltoAllTokenDispatcher::AlltoAllTokenDispatcher(int64_t n_experts,
-                                                 ProcessGroup* ep_pg)
+                                                 const ProcessGroup* ep_pg)
     : ep_pg_(ep_pg) {
   CHECK_NOTNULL(ep_pg);
   const auto ep_size = ep_pg_->world_size();
@@ -163,12 +155,12 @@ torch::Tensor AlltoAllTokenDispatcher::preprocess(
   // calculate input_splits/output_splits for alltoall communication
   // [n_experts] => [ep_size, n_local_experts] => [ep_size]
   // input_splits: num of tokens to each rank
-  this->input_splits_ =
+  this->input_split_sizes_ =
       to_vector(local_tokens_per_expert.reshape({ep_size, -1}).sum(/*dim=*/1));
 
   // gather the global distribution of tokens accross ranks
   // [n_experts] => [ep_size, n_experts]
-  auto tokens_per_expert = allgather(local_tokens_per_expert, ep_pg_);
+  auto tokens_per_expert = allgather(local_tokens_per_expert, *ep_pg_);
 
   // slice tokens for local experts
   // [ep_size, n_local_experts]
@@ -178,7 +170,7 @@ torch::Tensor AlltoAllTokenDispatcher::preprocess(
                               /*end=*/n_local_experts_ * (ep_rank + 1));
   // number of tokens from each rank
   // [ep_size, n_local_experts] => [ep_size]
-  this->output_splits_ = to_vector(tokens_per_local_expert.sum(/*dim=*/1));
+  this->output_split_sizes_ = to_vector(tokens_per_local_expert.sum(/*dim=*/1));
 
   // [ep_size*n_local_experts]
   this->tokens_per_local_expert_ = to_vector(tokens_per_local_expert.ravel());
@@ -215,15 +207,17 @@ std::tuple<torch::Tensor, torch::Tensor> AlltoAllTokenDispatcher::dispatch(
 
   // alltoall communication to gather tokens for local experts from all ranks
   // sorted by (ep_size, n_local_experts)
-  auto permuted_tokens = alltoall(
-      local_permuted_tokens, this->input_splits_, this->output_splits_, ep_pg_);
+  auto permuted_tokens = alltoall(local_permuted_tokens,
+                                  this->input_split_sizes_,
+                                  this->output_split_sizes_,
+                                  *ep_pg_);
 
-  // if (n_local_experts_ > 1) {
-  // sort tokens by (n_local_experts, ep_size)
-  permuted_tokens = sort_by_idxs(permuted_tokens,
-                                 this->tokens_per_local_expert_,
-                                 this->sort_by_local_experts_);
-  // }
+  if (n_local_experts_ > 1) {
+    // sort tokens by (n_local_experts, ep_size)
+    permuted_tokens = sort_by_idxs(permuted_tokens,
+                                   this->tokens_per_local_expert_,
+                                   this->sort_by_local_experts_);
+  }
   return {permuted_tokens, tokens_per_local_expert};
 }
 
@@ -232,18 +226,18 @@ torch::Tensor AlltoAllTokenDispatcher::combine(
     std::optional<torch::Tensor> bias  // [n_tokens, n_active_experts]
 ) {
   // permuted_tokens sorted by (n_local_experts, ep_size)
-  // if (n_local_experts_ > 1) {
-  // sort tokens by (ep_size, n_local_experts)
-  permuted_tokens = sort_by_idxs(permuted_tokens,
-                                 this->restore_tokens_per_local_expert_,
-                                 this->restore_output_by_local_experts_);
-  // }
+  if (n_local_experts_ > 1) {
+    // sort tokens by (ep_size, n_local_experts)
+    permuted_tokens = sort_by_idxs(permuted_tokens,
+                                   this->restore_tokens_per_local_expert_,
+                                   this->restore_output_by_local_experts_);
+  }
   // alltoall communication to gather local tokens back from all ranks
   auto local_permuted_tokens =
       alltoall(permuted_tokens,
-               /*input_split_sizes=*/this->output_splits_,
-               /*output_split_sizes=*/this->input_splits_,
-               ep_pg_);
+               /*input_split_sizes=*/this->output_split_sizes_,
+               /*output_split_sizes=*/this->input_split_sizes_,
+               *ep_pg_);
 
   // apply weights for each expert
   // [n_permuted_tokens, dim] * [n_permuted_tokens]

@@ -13,7 +13,7 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
  public:
   // Constructors
   AlltoAllTokenDispatcher(int64_t n_experts,
-                          ProcessGroup* ep_pg);
+                          const ProcessGroup* ep_pg);
 
   std::tuple<torch::Tensor, torch::Tensor> dispatch(
       torch::Tensor tokens,      // [n_tokens, dim]
@@ -35,7 +35,7 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
   );
 
   int64_t n_local_experts_ = 0;
-  ProcessGroup* ep_pg_ = nullptr;
+  const ProcessGroup* ep_pg_ = nullptr;
 
   // original token incides, sorted by expert idx
   // [n_permuted_tokens]
@@ -51,10 +51,10 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
   // metadata for alltoall communication
   // num of tokens to each rank
   // [ep_size]
-  std::vector<int64_t> input_splits_;
+  std::vector<int64_t> input_split_sizes_;
   // num of tokens from each rank
   // [ep_size]
-  std::vector<int64_t> output_splits_;
+  std::vector<int64_t> output_split_sizes_;
 
   // metadata for token sorting
   // num of tokens from each rank for local experts
