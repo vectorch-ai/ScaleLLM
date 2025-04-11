@@ -164,7 +164,8 @@ INSTANTIATE_TEST_SUITE_P(
     ProcessGroupTest,
     CollectiveTest,
     ::testing::Combine(::testing::Values(torch::kCUDA),  // device type
-                       ::testing::Values(torch::kHalf,
+                       ::testing::Values(torch::kFloat,
+                                         torch::kHalf,
                                          torch::kBFloat16)  // dtype
                        ));
 
