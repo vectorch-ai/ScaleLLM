@@ -14,7 +14,7 @@ cc_library(
     local_token_dispatcher.cpp
     alltoall_token_dispatcher.cpp
   DEPS
-    :model_parallel
+    :process_group
     glog::glog
     gflags::gflags
     torch

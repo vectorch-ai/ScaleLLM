@@ -15,7 +15,7 @@ class LocalTokenDispatcher : public TokenDispatcher {
       ) override;
 
   torch::Tensor combine(
-      torch::Tensor expert_output,       // [n_permuted_tokens, dim]
+      torch::Tensor permuted_tokens,     // [n_permuted_tokens, dim]
       std::optional<torch::Tensor> bias  // [n_tokens, n_active_experts]
       ) override;
 

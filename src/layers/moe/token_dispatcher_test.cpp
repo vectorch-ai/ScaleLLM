@@ -1,6 +1,4 @@
-#include <c10/core/ScalarType.h>
 #include <gtest/gtest.h>
-#include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/torch.h>
 
 #include <cstdint>
@@ -26,13 +24,12 @@ TEST(TokenDispatcherTest, Local) {
 
   weights = torch::softmax(weights, /*dim=*/-1);
   // construct dense routing map and probs
-  auto routing_map = torch::zeros_like(logits)
-                         .to(torch::kInt)
+  auto probs = torch::zeros_like(logits).scatter(
+      /*dim=*/1, /*index=*/indices, /*value=*/1.0 / n_topk);
+  auto routing_map = torch::zeros_like(logits, torch::kInt)
                          .scatter(
                              /*dim=*/1, /*index=*/indices, /*value=*/1)
                          .to(torch::kBool);
-  auto probs = torch::zeros_like(logits).scatter(
-      /*dim=*/1, /*index=*/indices, /*value=*/1.0 / n_topk);
 
   LocalTokenDispatcher dispatcher;
   auto [permuted_tokens, tokens_per_expert] =
@@ -40,12 +37,11 @@ TEST(TokenDispatcherTest, Local) {
 
   // check shapes
   EXPECT_EQ(permuted_tokens.sizes(),
-            torch::IntArrayRef({n_topk * n_topk, dim}));
+            torch::IntArrayRef({n_tokens * n_topk, dim}));
   EXPECT_EQ(tokens_per_expert.sizes(), torch::IntArrayRef({n_experts}));
 
-  auto expert_output = permuted_tokens;
   auto bias = std::nullopt;
-  auto output = dispatcher.combine(expert_output, bias);
+  auto output = dispatcher.combine(permuted_tokens, bias);
 
   EXPECT_TRUE(torch::allclose(output, tokens));
 }
@@ -66,13 +62,13 @@ TEST(TokenDispatcherTest, AlltoAll) {
 
   weights = torch::softmax(weights, /*dim=*/-1);
   // construct dense routing map and probs
+  auto probs = torch::zeros_like(logits).scatter(
+      /*dim=*/1, /*index=*/indices, /*value=*/1.0 / n_topk);
   auto routing_map = torch::zeros_like(logits)
                          .to(torch::kInt)
                          .scatter(
                              /*dim=*/1, /*index=*/indices, /*value=*/1)
                          .to(torch::kBool);
-  auto probs = torch::zeros_like(logits).scatter(
-      /*dim=*/1, /*index=*/indices, /*value=*/1.0 / n_topk);
 
   AlltoAllTokenDispatcher dispatcher;
   auto [permuted_tokens, tokens_per_expert] =
@@ -80,12 +76,11 @@ TEST(TokenDispatcherTest, AlltoAll) {
 
   // check shapes
   EXPECT_EQ(permuted_tokens.sizes(),
-            torch::IntArrayRef({n_topk * n_topk, dim}));
+            torch::IntArrayRef({n_tokens * n_topk, dim}));
   EXPECT_EQ(tokens_per_expert.sizes(), torch::IntArrayRef({n_experts}));
 
-  auto expert_output = permuted_tokens;
   auto bias = std::nullopt;
-  auto output = dispatcher.combine(expert_output, bias);
+  auto output = dispatcher.combine(permuted_tokens, bias);
 
   EXPECT_TRUE(torch::allclose(output, tokens));
 }

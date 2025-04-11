@@ -2,10 +2,11 @@
 
 #include <cstdint>
 
-#include "model_parallel/process_group.h"
 #include "token_dispatcher.h"
 
 namespace llm {
+// forward declaration
+class ProcessGroup;
 
 // only support expert parallelism for now
 class AlltoAllTokenDispatcher : public TokenDispatcher {
@@ -24,7 +25,7 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
       ) override;
 
   torch::Tensor combine(
-      torch::Tensor expert_output,       // [n_permuted_tokens, dim]
+      torch::Tensor permuted_tokens,       // [n_permuted_tokens, dim]
       std::optional<torch::Tensor> bias  // [n_tokens, n_active_experts]
       ) override;
 
@@ -35,12 +36,12 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
       const torch::Tensor& routing_map  // [n_tokens, n_experts];
   );
 
-  int64_t ep_size_;
-  int64_t ep_rank_;
-  int64_t n_experts_;
-  int64_t n_local_experts_;
+  int64_t ep_size_ = 0;
+  int64_t ep_rank_ = 0;
+  int64_t n_experts_ = 0;
+  int64_t n_local_experts_ = 0;
 
-  ProcessGroup* ep_pg_;
+  ProcessGroup* ep_pg_ = nullptr;
 
   // original token incides, sorted by expert idx
   // [n_permuted_tokens]
@@ -53,21 +54,25 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
   // [n_permuted_tokens]
   torch::Tensor permuted_probs_;
 
+  // metadata for alltoall communication
   // num of tokens to each rank
   // [ep_size]
-  torch::Tensor input_splits_;
+  std::vector<int64_t> input_splits_;
   // num of tokens from each rank
   // [ep_size]
-  torch::Tensor output_splits_;
+  std::vector<int64_t> output_splits_;
 
+  // metadata for token sorting
   // num of tokens from each rank for local experts
-  // [ep_size, n_local_experts]
-  torch::Tensor tokens_per_local_expert_;
+  // sorted by [ep_size*n_local_experts]
+  std::vector<int64_t> tokens_per_local_expert_;
+  // sorted by [n_local_experts*ep_size]
+  std::vector<int64_t> restore_tokens_per_local_expert_;
 
   // [n_local_experts*ep_size]
-  torch::Tensor sort_by_local_experts_;
+  std::vector<int64_t> sort_by_local_experts_;
   // [ep_size*n_local_experts]
-  torch::Tensor restore_output_by_local_experts_;
+  std::vector<int64_t> restore_output_by_local_experts_;
 };
 
 }  // namespace llm
