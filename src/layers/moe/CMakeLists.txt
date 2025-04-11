@@ -6,9 +6,11 @@ cc_library(
     token_dispatcher 
   HDRS
     token_dispatcher.h
+    utils.h
     local_token_dispatcher.h
     alltoall_token_dispatcher.h
   SRCS
+    utils.cpp
     local_token_dispatcher.cpp
     alltoall_token_dispatcher.cpp
   DEPS
