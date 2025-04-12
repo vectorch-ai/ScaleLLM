@@ -3,14 +3,18 @@ include(cc_test)
 
 cc_library(
   NAME
-    moe 
+    token_dispatcher 
   HDRS
     token_dispatcher.h
+    permutation.h
     local_token_dispatcher.h
+    alltoall_token_dispatcher.h
   SRCS
+    permutation.cpp
     local_token_dispatcher.cpp
+    alltoall_token_dispatcher.cpp
   DEPS
-    :model_parallel
+    :process_group
     glog::glog
     gflags::gflags
     torch
@@ -18,11 +22,11 @@ cc_library(
 
 cc_test(
   NAME
-    moe_test
+    token_dispatcher_test
   SRCS
     token_dispatcher_test.cpp
   DEPS
-    :moe
+    :token_dispatcher
     absl::random_random
     GTest::gtest_main
 )

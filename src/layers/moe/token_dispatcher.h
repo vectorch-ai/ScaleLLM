@@ -19,10 +19,6 @@ namespace llm {
 //  output += shared_experts(tokens);
 //  return output;
 //
-// TODO: implement concrete classes for different dispatching strategies.
-// 1> local token dispatcher
-// 2> all-2-all token dispatcher for expert parallelism + tensor parallelism?
-//
 class TokenDispatcher {
  public:
   virtual ~TokenDispatcher() = default;
@@ -42,7 +38,7 @@ class TokenDispatcher {
   // Returns the unpermuted activations.
   //  * unpermuted_output: [n_tokens, dim]
   virtual torch::Tensor combine(
-      torch::Tensor expert_output,       // [n_permuted_tokens, dim]
+      torch::Tensor permuted_tokens,     // [n_permuted_tokens, dim]
       std::optional<torch::Tensor> bias  // [n_tokens, n_active_experts]
       ) = 0;
 };

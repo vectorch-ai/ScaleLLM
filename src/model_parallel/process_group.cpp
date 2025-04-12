@@ -132,7 +132,7 @@ ProcessGroupNCCL::ProcessGroupNCCL(int rank,
 // Destructor.
 ProcessGroupNCCL::~ProcessGroupNCCL() { NCCL_CHECK(ncclCommDestroy(comm_)); }
 
-void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
+void ProcessGroupNCCL::allreduce(torch::Tensor& input) const {
   DCHECK(input.device() == device())
       << "input should be on the same device as the process group";
   check_input(input);
@@ -153,7 +153,7 @@ void ProcessGroupNCCL::allreduce(torch::Tensor& input) {
 }
 
 void ProcessGroupNCCL::allgather(const torch::Tensor& input,
-                                 std::vector<torch::Tensor>& outputs) {
+                                 std::vector<torch::Tensor>& outputs) const {
   check_input(input);
   CHECK(outputs.size() == world_size())
       << "outputs should have the same size as world_size";
@@ -181,7 +181,7 @@ void ProcessGroupNCCL::allgather(const torch::Tensor& input,
 }
 
 void ProcessGroupNCCL::allgather(const torch::Tensor& input,
-                                 torch::Tensor& output) {
+                                 torch::Tensor& output) const {
   check_input(input);
   check_input(output);
   CHECK(input.dtype() == output.dtype())
@@ -202,7 +202,7 @@ void ProcessGroupNCCL::allgather(const torch::Tensor& input,
       /*stream=*/stream));
 }
 void ProcessGroupNCCL::alltoall(const torch::Tensor& input,
-                                torch::Tensor& output) {
+                                torch::Tensor& output) const {
   check_input(input);
   check_input(output);
   CHECK(input.dtype() == output.dtype())
@@ -244,7 +244,7 @@ void ProcessGroupNCCL::alltoall(
     const torch::Tensor& input,
     torch::Tensor& output,
     const std::vector<int64_t>& input_split_sizes,
-    const std::vector<int64_t>& output_split_sizes) {
+    const std::vector<int64_t>& output_split_sizes) const {
   check_input(input);
   check_input(output);
   CHECK(input.dtype() == output.dtype())

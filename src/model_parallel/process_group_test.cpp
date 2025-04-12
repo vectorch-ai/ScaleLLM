@@ -8,7 +8,7 @@ namespace llm {
 namespace {
 void run_collective_test(int world_size,
                          torch::DeviceType device_type,
-                         std::function<void(ProcessGroup* pg)> func) {
+                         std::function<void(const ProcessGroup* pg)> func) {
   // create process groups
   std::vector<torch::Device> devices;
   devices.reserve(world_size);
@@ -41,10 +41,11 @@ std::vector<T> to_vector(const torch::Tensor& tensor) {
 }
 }  // namespace
 
-class CollectiveTest : public ::testing::TestWithParam<
-                           std::tuple<torch::DeviceType, torch::ScalarType>> {};
+class ProcessGroupTest : public ::testing::TestWithParam<
+                             std::tuple<torch::DeviceType, torch::ScalarType>> {
+};
 
-TEST_P(CollectiveTest, AllReduce) {
+TEST_P(ProcessGroupTest, AllReduce) {
   const auto& [device_type, dtype] = GetParam();
 
   // [1, 2, 4, 8]
@@ -58,7 +59,7 @@ TEST_P(CollectiveTest, AllReduce) {
       tensors.push_back(torch::randn({100, 4096}, dtype));
     }
 
-    run_collective_test(world_size, device_type, [&tensors](ProcessGroup* pg) {
+    run_collective_test(world_size, device_type, [&](const ProcessGroup* pg) {
       const int rank = pg->rank();
       const int size = pg->world_size();
       const auto& device = pg->device();
@@ -79,7 +80,7 @@ TEST_P(CollectiveTest, AllReduce) {
   }
 }
 
-TEST_P(CollectiveTest, AllGather) {
+TEST_P(ProcessGroupTest, AllGather) {
   const auto& [device_type, dtype] = GetParam();
 
   for (int world_size = 1; world_size <= torch::cuda::device_count();
@@ -92,7 +93,7 @@ TEST_P(CollectiveTest, AllGather) {
       tensors.push_back(torch::ones({100, 4096}, dtype));
     }
 
-    run_collective_test(world_size, device_type, [&tensors](ProcessGroup* pg) {
+    run_collective_test(world_size, device_type, [&](const ProcessGroup* pg) {
       const int rank = pg->rank();
       const int size = pg->world_size();
       const auto& device = pg->device();
@@ -114,12 +115,12 @@ TEST_P(CollectiveTest, AllGather) {
   }
 }
 
-TEST_P(CollectiveTest, AllToAll) {
+TEST_P(ProcessGroupTest, AllToAll) {
   const auto& [device_type, dtype] = GetParam();
 
   for (int world_size = 1; world_size <= torch::cuda::device_count();
        world_size *= 2) {
-    run_collective_test(world_size, device_type, [dtype](ProcessGroup* pg) {
+    run_collective_test(world_size, device_type, [&](const ProcessGroup* pg) {
       const int size = pg->world_size();
       const auto& device = pg->device();
       torch::DeviceGuard device_guard(device);
@@ -161,10 +162,11 @@ TEST_P(CollectiveTest, AllToAll) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
+    Distributed,
     ProcessGroupTest,
-    CollectiveTest,
     ::testing::Combine(::testing::Values(torch::kCUDA),  // device type
-                       ::testing::Values(torch::kHalf,
+                       ::testing::Values(torch::kFloat,
+                                         torch::kHalf,
                                          torch::kBFloat16)  // dtype
                        ));
 

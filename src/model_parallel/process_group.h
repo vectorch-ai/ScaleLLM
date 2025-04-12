@@ -23,23 +23,25 @@ class ProcessGroup {
   // allreduce: reduce the input tensor across all processes, and all processes
   // get the result.
   // blocking operation.
-  virtual void allreduce(torch::Tensor& input) = 0;
+  virtual void allreduce(torch::Tensor& input) const = 0;
 
   // allgather: gather tensors from all processes and concatenate them.
   virtual void allgather(const torch::Tensor& input,
-                         std::vector<torch::Tensor>& outputs) = 0;
+                         std::vector<torch::Tensor>& outputs) const = 0;
 
   // allgather: gather tensors from all processes and concatenate them.
   virtual void allgather(const torch::Tensor& input,
-                         torch::Tensor& outputs) = 0;
+                         torch::Tensor& outputs) const = 0;
 
   // alltoall: scatter input tensor to all processes and gather the result.
-  virtual void alltoall(const torch::Tensor& input, torch::Tensor& output) = 0;
-
   virtual void alltoall(const torch::Tensor& input,
-                        torch::Tensor& output,
-                        const std::vector<int64_t>& input_split_sizes,
-                        const std::vector<int64_t>& output_split_sizes) = 0;
+                        torch::Tensor& output) const = 0;
+
+  virtual void alltoall(
+      const torch::Tensor& input,
+      torch::Tensor& output,
+      const std::vector<int64_t>& input_split_sizes,
+      const std::vector<int64_t>& output_split_sizes) const = 0;
 
   // Create a process group where each process has a single GPU
   // devices: list of devices to create process groups on.
@@ -75,19 +77,21 @@ class ProcessGroupNCCL : public ProcessGroup {
   // Destructor.
   ~ProcessGroupNCCL() override;
 
-  void allreduce(torch::Tensor& input) override;
+  void allreduce(torch::Tensor& input) const override;
 
   void allgather(const torch::Tensor& input,
-                 std::vector<torch::Tensor>& outputs) override;
+                 std::vector<torch::Tensor>& outputs) const override;
 
-  void allgather(const torch::Tensor& input, torch::Tensor& outputs) override;
+  void allgather(const torch::Tensor& input,
+                 torch::Tensor& outputs) const override;
 
-  void alltoall(const torch::Tensor& input, torch::Tensor& output) override;
+  void alltoall(const torch::Tensor& input,
+                torch::Tensor& output) const override;
 
   void alltoall(const torch::Tensor& input,
                 torch::Tensor& output,
                 const std::vector<int64_t>& input_split_sizes,
-                const std::vector<int64_t>& output_split_sizes) override;
+                const std::vector<int64_t>& output_split_sizes) const override;
 
  private:
   // nccl communicator.
