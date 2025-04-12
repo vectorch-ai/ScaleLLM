@@ -34,6 +34,8 @@ class AlltoAllTokenDispatcher : public TokenDispatcher {
   );
 
   int64_t n_local_experts_ = 0;
+  int64_t ep_size_ = 0;
+  int64_t ep_rank_ = 0;
   const ProcessGroup* ep_pg_ = nullptr;
 
   // original token incides, sorted by expert idx
