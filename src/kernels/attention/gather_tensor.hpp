@@ -108,8 +108,7 @@ CUTE_HOST_DEVICE constexpr auto upcast(Shape const& shape,
     });
   } else if constexpr (is_scaled_basis<Stride>::value) {
     if constexpr (Stride::mode() == I) {
-      return make_layout(shape_div(shape, Int<N>{}),
-                         shape_div(stride, Int<N>{}));
+      return make_layout(ceil_div(shape, Int<N>{}), ceil_div(stride, Int<N>{}));
     } else {
       return make_layout(shape, stride);
     }
@@ -162,7 +161,7 @@ CUTE_HOST_DEVICE constexpr auto max_common_vector(
     ComposedLayout<Layout<OuterShapeB, OuterStrideB>,
                    OffsetB,
                    Layout<ShapeB, StrideB>> const& b) {
-  return max_common_vector(a, b.layout_b());
+  return Int<1>{};
 }
 
 }  // namespace cute
