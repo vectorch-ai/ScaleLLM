@@ -161,6 +161,8 @@ CUTE_HOST_DEVICE constexpr auto max_common_vector(
     ComposedLayout<Layout<OuterShapeB, OuterStrideB>,
                    OffsetB,
                    Layout<ShapeB, StrideB>> const& b) {
+  // we know it is safe to disable auto-vectorization for gather tensors
+  // since we are using vectorized asynchronous copy.
   return Int<1>{};
 }
 
