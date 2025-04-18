@@ -49,10 +49,11 @@ TEST_P(TopkSoftmaxTest, TopkSoftmax) {
 INSTANTIATE_TEST_SUITE_P(
     Moe,
     TopkSoftmaxTest,
-    ::testing::Combine(::testing::Values(torch::kFloat),  // q_dtype
-                       ::testing::Values(10),             // n_tokens
-                       ::testing::Values(8, 16),          // n_experts
-                       ::testing::Values(1, 2, 4)         // topk
-                       ));
+    ::testing::Combine(
+        ::testing::Values(torch::kFloat),               // dtype
+        ::testing::Values(1, 10, 16, 128, 1024),        // n_tokens
+        ::testing::Values(4, 8, 16, 32, 64, 128, 256),  // n_experts
+        ::testing::Values(1, 2, 4)                      // topk
+        ));
 
 }  // namespace llm
