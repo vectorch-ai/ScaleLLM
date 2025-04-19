@@ -131,10 +131,10 @@ INSTANTIATE_TEST_SUITE_P(
     GroupedTopkSigmoidTest,
     ::testing::Combine(::testing::Values(torch::kFloat),  // dtype
                        ::testing::Values(10),             // n_tokens
-                       ::testing::Values(256),            // n_experts
+                       ::testing::Values(128, 256),       // n_experts
                        ::testing::Values(8),              // n_expert_groups
                        ::testing::Values(4),              // topk_group
-                       ::testing::Values(1)               // topk
+                       ::testing::Values(1, 2)            // topk
                        ));
 
 }  // namespace llm

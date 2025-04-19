@@ -65,8 +65,6 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
   using ArrayType = cutlass::AlignedArray<float, ELTS_PER_THR>;
   ArrayType scores_chunk;
   ArrayType tmp_scores_chunk;
-  // whether current thread/expert group is masked out.
-  bool group_masked_out = false;
 
   CUTE_UNROLL
   for (int i = 0; i < ELTS_PER_THR; ++i) {
@@ -91,7 +89,7 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
     float second_max_val = -FLT_MAX;
     CUTE_UNROLL
     for (int i = 0; i < ELTS_PER_THR; ++i) {
-      auto val = tmp_scores_chunk[i];
+      const auto val = tmp_scores_chunk[i];
       if (val > max_val) {
         second_max_val = max_val;
         max_val = val;
@@ -107,7 +105,7 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
     CUTE_UNROLL
     for (int mask = THRS_PER_TOKEN / 2; mask > 0; mask /= 2) {
       float other_sum =
-          __shfl_xor_sync(0xFFFFFFFF, max_val, mask, THRS_PER_TOKEN);
+          __shfl_xor_sync(0xFFFFFFFF, min_sum, mask, THRS_PER_TOKEN);
       int other_col =
           __shfl_xor_sync(0xFFFFFFFF, min_col, mask, THRS_PER_TOKEN);
 
@@ -120,10 +118,11 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
     }
 
     // mask out the expert group with the minimum sum of top2
-    if (k_idx + 1 < THRS_PER_TOKEN - topk_group) {
-      const int thread_idx_to_clear = min_col / ELTS_PER_TOKEN;
-      if (thread_idx_in_group == thread_idx_to_clear) {
-        group_masked_out = true;
+    const int thread_idx_to_clear = min_col / ELTS_PER_THR;
+    if (thread_idx_in_group == thread_idx_to_clear) {
+      CUTE_UNROLL
+      for (int i = 0; i < ELTS_PER_THR; ++i) {
+        tmp_scores_chunk[i] = FLT_MAX;
       }
     }
   }
@@ -131,19 +130,20 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
   // 3. find topk experts for the token.
   for (int k_idx = 0; k_idx < topk; ++k_idx) {
     // local argmax within thread
+    auto max_val = tmp_scores_chunk[0];
     int max_col = start_col;
-    float max_val = -FLT_MAX;
 
-    if (!group_masked_out) {
-      max_val = tmp_scores_chunk[0];
+    if (max_val != FLT_MAX) {
       CUTE_UNROLL
       for (int i = 1; i < ELTS_PER_THR; ++i) {
-        auto val = tmp_scores_chunk[i];
+        const auto val = tmp_scores_chunk[i];
         if (val > max_val) {
           max_val = val;
           max_col = start_col + i;
         }
       }
+    } else {
+      max_val = -FLT_MAX;
     }
 
     // a argmax reduction within threads for the token.
@@ -162,21 +162,17 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
       }
     }
 
-    const auto col_in_thread = max_col % ELTS_PER_TOKEN;
-    // write the max to global memory.
-    if (thread_idx_in_group == 0) {
+    // mask out current max value
+    const int thread_idx_to_clear = max_col / ELTS_PER_THR;
+    if (thread_idx_in_group == thread_idx_to_clear) {
+      const auto col_in_thread = max_col % ELTS_PER_THR;
+      tmp_scores_chunk[col_in_thread] = -FLT_MAX;
+
+      // write the max to global memory.
       const int64_t idx = (topk * token_idx) + k_idx;
       // fetch the original scores
       weights[idx] = scores_chunk[col_in_thread];
       indices[idx] = max_col;
-    }
-
-    // mask out current max value
-    if (k_idx + 1 < topk) {
-      const int thread_idx_to_clear = max_col / ELTS_PER_TOKEN;
-      if (thread_idx_in_group == thread_idx_to_clear) {
-        tmp_scores_chunk[col_in_thread] = -FLT_MAX;
-      }
     }
   }
 
