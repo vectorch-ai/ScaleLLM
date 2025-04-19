@@ -6,7 +6,7 @@ cc_library(
     moe.kernels
   SRCS 
     topk_softmax_kernel.cu
-    grouped_topk_softmax_kernel.cu
+    grouped_topk_sigmoid_kernel.cu
   DEPS
     cutlass
     glog::glog
@@ -19,7 +19,7 @@ cc_test(
     moe_kernel_test
   SRCS
     topk_softmax_kernel_test.cu
-    grouped_topk_softmax_kernel_test.cu
+    grouped_topk_sigmoid_kernel_test.cu
   DEPS
     :moe.kernels
     absl::random_random

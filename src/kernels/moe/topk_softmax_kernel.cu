@@ -113,8 +113,8 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
 
   const float reciprocal_row_sum = 1.f / row_sum;
   CUTE_UNROLL
-  for (int ii = 0; ii < ELTS_PER_THR; ++ii) {
-    row_chunk[ii] = row_chunk[ii] * reciprocal_row_sum;
+  for (int i = 0; i < ELTS_PER_THR; ++i) {
+    row_chunk[i] = row_chunk[i] * reciprocal_row_sum;
   }
 
   // 2. find topk experts for the token.
@@ -269,12 +269,12 @@ void launch_topk_softmax_kernel(const float* logits,
 
 }  // namespace
 
-void topk_softmax(const torch::Tensor& gating_logit,  // [n_tokens, n_experts]
+void topk_softmax(const torch::Tensor& gating_logits,  // [n_tokens, n_experts]
                   torch::Tensor& topk_weights,        // [n_tokens, topk]
                   torch::Tensor& topk_indices         // [n_tokens, topk]
 ) {
-  const int n_tokens = gating_logit.size(0);
-  const int n_experts = gating_logit.size(1);
+  const int n_tokens = gating_logits.size(0);
+  const int n_experts = gating_logits.size(1);
   const int topk = topk_weights.size(-1);
 
   const bool is_pow_2 =
@@ -283,7 +283,7 @@ void topk_softmax(const torch::Tensor& gating_logit,  // [n_tokens, n_experts]
                   << n_experts;
 
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-  launch_topk_softmax_kernel(gating_logit.const_data_ptr<float>(),
+  launch_topk_softmax_kernel(gating_logits.const_data_ptr<float>(),
                              topk_weights.data_ptr<float>(),
                              topk_indices.data_ptr<int>(),
                              n_tokens,
