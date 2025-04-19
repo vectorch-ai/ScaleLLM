@@ -270,8 +270,8 @@ void launch_topk_softmax_kernel(const float* logits,
 }  // namespace
 
 void topk_softmax(const torch::Tensor& gating_logits,  // [n_tokens, n_experts]
-                  torch::Tensor& topk_weights,        // [n_tokens, topk]
-                  torch::Tensor& topk_indices         // [n_tokens, topk]
+                  torch::Tensor& topk_weights,         // [n_tokens, topk]
+                  torch::Tensor& topk_indices          // [n_tokens, topk]
 ) {
   const int n_tokens = gating_logits.size(0);
   const int n_experts = gating_logits.size(1);
