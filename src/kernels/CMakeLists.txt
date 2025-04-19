@@ -27,6 +27,7 @@ cc_library(
 )
 
 add_subdirectory(attention)
+add_subdirectory(moe)
 add_subdirectory(quantization)
 add_subdirectory(playground)
 add_subdirectory(triton)
