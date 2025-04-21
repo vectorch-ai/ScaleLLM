@@ -4,18 +4,35 @@ ScaleLLM
 =================
 <h3> An efficient LLM Inference solution </h3>
 
-[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](https://docs.vectorch.com/)
-[![PyPI](https://badge.fury.io/py/scalellm.svg)](https://badge.fury.io/py/scalellm) 
-[![Twitter](https://img.shields.io/twitter/url?label=%20%40VectorchAI&style=social&url=https://x.com/VectorchAI)](https://x.com/VectorchAI)
-[![Discord](https://dcbadge.vercel.app/api/server/PKe5gvBZfn?compact=true&style=flat)](https://discord.gg/PKe5gvBZfn)
-[![build](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml) 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
+[![Discord][discord-shield]][discord-url]
+[![X][x-shield]][x-url]
+<br>
+[![Docs][docs-shield]][docs-url]
+[![PyPI][pypi-shield]][pypi-url]
+[![downloads][github-downloads-shield]][github-downloads-link]
+[![License][license-shield]][license-url]
+
+[discord-shield]: https://dcbadge.vercel.app/api/server/PKe5gvBZfn?compact=true&style=flat
+[discord-url]: https://discord.gg/PKe5gvBZfn
+[x-shield]: https://img.shields.io/twitter/url?label=%20%40VectorchAI&style=social&url=https://x.com/VectorchAI
+[x-url]: https://x.com/VectorchAI
+
+[docs-shield]: https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat
+[docs-url]: https://docs.vectorch.com/
+[pypi-shield]: https://badge.fury.io/py/scalellm.svg
+[pypi-url]: https://pypi.org/project/scalellm/
+[github-downloads-shield]: https://img.shields.io/github/downloads/vectorch-ai/ScaleLLM/total?style=flat
+[github-downloads-link]: https://github.com/vectorch-ai/ScaleLLM/releases
+[build-shield]: https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml/badge.svg?branch=main
+[build-url]:https://github.com/vectorch-ai/ScaleLLM/actions/workflows/build.yml
+[license-shield]: https://img.shields.io/badge/License-Apache_2.0-blue.svg
+[license-url]: https://opensource.org/licenses/Apache-2.0
 
 ---
 
 <div align="left">
 
-[ScaleLLM](#) is a cutting-edge inference system engineered for large language models (LLMs), designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3.1](https://github.com/meta-llama/llama3), [Gemma2](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more. 
+[ScaleLLM](#) is a cutting-edge inference system engineered for large language models (LLMs), designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3.1](https://github.com/meta-llama/llama3), [Gemma2](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more.
 
 ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
 
@@ -155,7 +172,7 @@ for chunk in stream:
     if delta.content:
         print(delta.content, end="")
 print()
-``` 
+```
 
 #### Completions
 Start rest api server with the following command:
@@ -165,7 +182,7 @@ python3 -m scalellm.serve.api_server --model=meta-llama/Meta-Llama-3.1-8B
 
 For regular completions, you can use this example:
 
-```bash 
+```bash
 curl http://localhost:8080/v1/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -236,7 +253,7 @@ Chunked Prefill splits a long user prompt into multiple chunks and populates the
 - `--max_seqs_per_batch`: The maximum sequences for each batch, default is 128.
 
 ### Speculative Decoding
-Speculative Decoding is a common used technique to speed up LLM inference without 
+Speculative Decoding is a common used technique to speed up LLM inference without
 changing distribution. During inference, it employs an economical approximation to generate speculative tokens, subsequently validated by the target model. For now, ScaleLLM supports Speculative Decoding with a draft model to generate draft tokens, which can be enabled by configuring a draft model and setting the speculative steps.
 
 for example:
@@ -250,7 +267,7 @@ python3 -m scalellm.serve.api_server \
 ```
 
 ### Quantization
-Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization ([GPTQ](https://arxiv.org/abs/2210.17323)) and Activation-aware Weight Quantization ([AWQ](https://arxiv.org/abs/2306.00978)), with seamless integration into the following libraries: autogptq and awq. 
+Quantization is a crucial process for reducing the memory footprint of models. ScaleLLM offers support for two quantization techniques: Accurate Post-Training Quantization ([GPTQ](https://arxiv.org/abs/2210.17323)) and Activation-aware Weight Quantization ([AWQ](https://arxiv.org/abs/2306.00978)), with seamless integration into the following libraries: autogptq and awq.
 
 
 ## Supported Models
@@ -299,7 +316,6 @@ The following open-source projects have been used in this project, either in the
 * [safetensors](https://github.com/huggingface/safetensors/)
 * [sentencepiece](https://github.com/google/sentencepiece)
 * [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway)
-* [chatbot-ui](https://github.com/mckaywrigley/chatbot-ui)
 
 ## License
 This project is released under the [Apache 2.0 license](https://github.com/vectorch-ai/ScaleLLM/blob/main/LICENSE).
