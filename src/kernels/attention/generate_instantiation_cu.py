@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 # This file is run to generate the kernel instantiations for the attention kernels
-import shutil
 import itertools
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Any
+from typing import Iterator
 
 # map from python to c++ types
 DTYPE_MAP = {
@@ -34,7 +34,7 @@ template void launch_mha_kernel_sm80<Traits,
                                      /*EVEN_K=*/{EVEN_K},
                                      /*ALIBI=*/{ALIBI},
                                      /*SOFT_CAP=*/{SOFT_CAP},
-                                     /*LOCAL=*/{LOCAL}>(const Params& params, 
+                                     /*LOCAL=*/{LOCAL}>(const Params& params,
                                                         cudaStream_t stream);
 }}  // namespace llm
 """
@@ -89,7 +89,8 @@ class MHAKernel:
             return "1" if val else "0"
 
         return f"mha_{self.dtype}_hd{self.head_dim}_m{self.blk_m}_n{self.blk_n}_k{self.blk_k}_ek{to_str(self.even_k)}_al{to_str(self.alibi)}_sc{to_str(self.soft_cap)}_lc{to_str(self.local)}_sm80.cu"
-    
+
+
 @dataclass
 class MLAKernel:
     dtype: str
@@ -157,19 +158,20 @@ def gen_mha_kernels() -> Iterator[MHAKernel]:
             local=local,
         )
 
+
 def gen_mla_kernels() -> Iterator[MLAKernel]:
     # TODO: choose BLK_M, BLK_N, BLK_K, STAGES based on compute capability
     # mla kernel instantiations
-    for (
-        dtype,
-        head_dim,
-        rope_head_dim,
-        (blk_m, blk_n, blk_k, stages)
+    for dtype, head_dim, rope_head_dim, (
+        blk_m,
+        blk_n,
+        blk_k,
+        stages,
     ) in itertools.product(
         ["fp16", "bf16"],  # dtype
         [512],  # head_dim
-        [64], # rope_head_dim
-        [(64, 16, 128, 1)],  # blk_m, blk_n, blk_k, stages       
+        [64],  # rope_head_dim
+        [(64, 16, 128, 1)],  # blk_m, blk_n, blk_k, stages
     ):
         yield MLAKernel(
             dtype=dtype,
@@ -181,6 +183,7 @@ def gen_mla_kernels() -> Iterator[MLAKernel]:
             stages=stages,
         )
 
+
 if __name__ == "__main__":
     output_dir = Path.cwd() / "generated"
     shutil.rmtree(output_dir, ignore_errors=True)
@@ -189,6 +192,6 @@ if __name__ == "__main__":
     # written to several files to speed up compilation
     for kernel in gen_mha_kernels():
         (output_dir / kernel.filename).write_text(kernel.template)
-        
+
     for kernel in gen_mla_kernels():
         (output_dir / kernel.filename).write_text(kernel.template)
