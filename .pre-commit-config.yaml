@@ -1,5 +1,5 @@
 # Install the pre-commit from the git repository
-# $ sudo apt install pre-commit && pre-commit install
+# $ pre-commit install
 
 repos:
 # Common
