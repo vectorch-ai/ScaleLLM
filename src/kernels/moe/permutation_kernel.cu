@@ -4,6 +4,7 @@
 #include <torch/torch.h>
 
 #include <cub/cub.cuh>
+#include <cute/config.hpp>
 #include <cute/numeric/numeric_types.hpp>
 
 // clang-format off
@@ -89,8 +90,7 @@ __global__ void permute_row_id_map(
   row_id_map[(k_idx * n_tokens) + t_idx] = p_idx;
 }
 
-template <typename T,
-          int kTopK>
+template <typename T>
 __global__ void permute_kernel(
     const T* tokens,        // [n_tokens, dim]
     T* permuted_tokens,     // [n_permuted_tokens, dim]
@@ -113,11 +113,7 @@ __global__ void permute_kernel(
     frag_ls = __ldlu(reinterpret_cast<const float4*>(token_base + i));
 
     int idx = token_idx;
-    for (int k = 0; k < kTopK; k++) {
-      if (k == topk) {
-        break;
-      }
-
+    for (int k_idx = 0; k_idx < topk; ++k_idx) {
       // row_id_map: [topk, n_tokens] => idx in permuted tokens
       const int p_idx = row_id_map[idx];
       // move to next k
@@ -160,39 +156,28 @@ __global__ void unpermute_kernel(
 
   static constexpr int kFragSize = 16 / sizeof(T);
   for (int i = tid * kFragSize; i < dim; i += blockDim.x * kFragSize) {
-    T frag_sum[kFragSize];
-    for (int d = 0; d < kFragSize; d++) {
-      frag_sum[d] = T(0.0f);
-    }
+    T frag_sum[kFragSize] = {T(0.0f)};
 
     // sum over topk
-    for (int k_idx = 0; k_idx < topk; k_idx++) {
+    for (int k_idx = 0; k_idx < topk; ++k_idx) {
       const int p_idx = row_id_map[(k_idx * n_tokens) + t_idx];
       const T* permuted_token_base = permuted_tokens + p_idx * dim;
       // load fragment into frag_ls (float4)
       frag_ls =
           __ldlu(reinterpret_cast<const float4*>(permuted_token_base + i));
 
-      T frag[kFragSize];
-      for (int d = 0; d < kFragSize; d++) {
-        frag[d] = frag_ls_ptr[d];
-      }
-
       // apply probs & sum
-      for (int d = 0; d < kFragSize; d++) {
-        frag[d] *= s_probs[k_idx];
-        frag_sum[d] += frag[d];
+      const auto prob = s_probs[k_idx];
+      CUTE_UNROLL
+      for (int d = 0; d < kFragSize; ++d) {
+        frag_sum[d] += (frag_ls_ptr[d] * prob);
       }
-    }
-
-    // write back to frag_ls (float4)
-    for (int d = 0; d < kFragSize; d++) {
-      frag_ls_ptr[d] = frag_sum[d];
     }
 
     // store back to tokens: [n_tokens, dim]
     T* token_base = tokens + t_idx * dim;
-    *reinterpret_cast<float4*>(token_base + i) = frag_ls;
+    *reinterpret_cast<float4*>(token_base + i) =
+        *reinterpret_cast<float4*>(frag_sum);
   }
 }
 
@@ -219,8 +204,7 @@ void launch_permute_kernel(
   // one block per source token
   blocks = n_tokens;
   threads = std::min(dim / kFragSize, 1024);
-  // assert(topk <= 128);
-  permute_kernel<T, /*TOPK=*/128><<<blocks, threads, 0, stream>>>(
+  permute_kernel<T><<<blocks, threads, 0, stream>>>(
       tokens, permuted_tokens, row_id_map, n_tokens, topk, dim);
 }
 
