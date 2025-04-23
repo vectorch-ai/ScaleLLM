@@ -7,7 +7,7 @@ cc_library(
   SRCS 
     topk_softmax_kernel.cu
     grouped_topk_sigmoid_kernel.cu
-    permute_kernel.cu
+    permutation_kernel.cu
   DEPS
     cutlass
     glog::glog
@@ -21,7 +21,7 @@ cc_test(
   SRCS
     topk_softmax_kernel_test.cu
     grouped_topk_sigmoid_kernel_test.cu
-    permute_kernel_test.cu
+    permutation_kernel_test.cu
   DEPS
     :moe.kernels
     absl::random_random

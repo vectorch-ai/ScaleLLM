@@ -1,13 +1,18 @@
+// Adapted from
+// https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/common/permutation/permutation.cu
 #include <ATen/cuda/CUDAContext.h>
-// #include <cuda_bf16.h>
-#include <cutlass/arch/memory.h>
-#include <cutlass/array.h>
 #include <torch/torch.h>
 
 #include <cub/cub.cuh>
+#include <cute/numeric/numeric_types.hpp>
 
 // clang-format off
 // for exmple: n_tokens = 2, n_experts = 8, topk = 2
+// f_idx: idx in flatten indices
+// p_idx: idx in permuted tokens
+// k_idx: topk idx
+// t_idx: token idx
+// row_id_map: [topk, n_tokens] => idx in permuted tokens
 //  ____________________________________________________________________________________________________________________________
 // |                 |     flatten indices         |        sort flatten indices          |           row_id_map                |
 // |    Steps        |   sort by (tokens, topk)    |        by (experts, tokens)          |     sort by (topk, tokens)          |
@@ -29,8 +34,30 @@ namespace llm::kernel::moe {
 
 namespace {
 template <typename T>
-inline T* get_ptr(torch::Tensor& t) {
+inline T* data_ptr(torch::Tensor& t) {
   return reinterpret_cast<T*>(t.data_ptr());
+}
+
+template <typename T>
+inline const T* const_data_ptr(torch::Tensor& t) {
+  return reinterpret_cast<const T*>(t.const_data_ptr());
+}
+
+// wrapper for cub::DeviceRadixSort::SortPairs with type
+void radix_sort_pairs(void* temp_storage,
+                      size_t* temp_storage_bytes,
+                      const int* keys_in,
+                      int* keys_out,
+                      const int* values_in,
+                      int* values_out,
+                      size_t num_items) {
+  cub::DeviceRadixSort::SortPairs(temp_storage,
+                                  *temp_storage_bytes,
+                                  keys_in,
+                                  keys_out,
+                                  values_in,
+                                  values_out,
+                                  num_items);
 }
 
 // build a row_id_map that maps [topk, n_tokens] to the index in permuted tokens
@@ -39,7 +66,7 @@ __global__ void permute_row_id_map(
     int* row_id_map,           // [topk, n_tokens]
     const int n_tokens,
     const int topk) {
-  // row_id_map[num_topK][num_rows]
+  // row_id_map[topK][n_tokens]
   const int bid = blockIdx.x;
   const int tid = threadIdx.x;
 
@@ -54,61 +81,56 @@ __global__ void permute_row_id_map(
   // idx in flattened indices
   const int f_idx = sorted_row_id[p_idx];
   // token idx: each token has topk experts in flattened indices
-  const int token_idx = f_idx / topk;
+  const int t_idx = f_idx / topk;
   // topk idx: idx in topk experts for the token
-  const int topk_idx = f_idx % topk;
+  const int k_idx = f_idx % topk;
 
   // row_id_map: [topk, n_tokens] => idx in permuted tokens
-  row_id_map[(topk_idx * n_tokens) + token_idx] = p_idx;
+  row_id_map[(k_idx * n_tokens) + t_idx] = p_idx;
 }
 
 template <typename T,
-          int kFragSize,
           int kTopK>
 __global__ void permute_kernel(
     const T* tokens,        // [n_tokens, dim]
     T* permuted_tokens,     // [n_permuted_tokens, dim]
-    const int* row_id_map,  // [topk, n_tokens] => dst row
+    const int* row_id_map,  // [topk, n_tokens] => p_idx
     const int n_tokens,
     const int topk,
     const int dim) {
-  using Fragment = cutlass::Array<T, kFragSize>;
-
   // one block corresponds to one token
   const int token_idx = blockIdx.x;
   const int tid = threadIdx.x;
 
-  Fragment frag;
+  // frag for load/store
+  float4 frag_ls;
 
+  static constexpr int kFragSize = 16 / sizeof(T);
   // tokens: [n_tokens, dim]
   const T* token_base = tokens + token_idx * dim;
   for (int i = tid * kFragSize; i < dim; i += blockDim.x * kFragSize) {
-    // read one fragment
-    cutlass::arch::global_load<Fragment,
-                               sizeof(Fragment),
-                               cutlass::arch::CacheOperation::LastUse>(
-        frag, (token_base + i), true);
+    // load fragment into frag_ls (float4)
+    frag_ls = __ldlu(reinterpret_cast<const float4*>(token_base + i));
 
-    int src_idx = token_idx;
+    int idx = token_idx;
     for (int k = 0; k < kTopK; k++) {
       if (k == topk) {
         break;
       }
 
       // row_id_map: [topk, n_tokens] => idx in permuted tokens
-      const int dest_idx = row_id_map[src_idx];
+      const int p_idx = row_id_map[idx];
       // move to next k
-      src_idx += n_tokens;
+      idx += n_tokens;
 
-      // permuted_tokens: [n_permuted_tokens, dim]
-      T* permuted_token_base = permuted_tokens + dest_idx * dim;
-      // use 128-bit copy
-      *(float4*)(permuted_token_base + i) = *(float4*)(frag.data());
+      // store back to permuted_tokens: [n_permuted_tokens, dim]
+      T* permuted_token_base = permuted_tokens + p_idx * dim;
+      *reinterpret_cast<float4*>(permuted_token_base + i) = frag_ls;
     }
   }
 }
 
-template <typename T, int kFragSize>
+template <typename T>
 __global__ void unpermute_kernel(
     const T* permuted_tokens,  // [n_permuted_tokens, dim]
     T* tokens,                 // [n_tokens, dim]
@@ -121,48 +143,56 @@ __global__ void unpermute_kernel(
   // [topk] probs for the token
   T* s_probs = reinterpret_cast<T*>(s_mem);
 
-  using Fragment = cutlass::Array<T, kFragSize>;
-
-  // each block corresponds to one source token
-  const int source_token = blockIdx.x;
+  // each block corresponds to one token
+  const int t_idx = blockIdx.x;
   const int tid = threadIdx.x;
 
   // load prob into shared memory for the token
   // let first topk thread to load probs
   for (int i = tid; i < topk; i += blockDim.x * blockDim.y) {
-    s_probs[i] = probs[source_token * topk + i];
+    s_probs[i] = probs[(t_idx * topk) + i];
   }
   __syncthreads();
 
-  // TODO: use float for accumulator
-  Fragment frag_sum;
-  Fragment frag;
+  // float4 for load and store
+  float4 frag_ls;
+  T* frag_ls_ptr = reinterpret_cast<T*>(&frag_ls);
 
+  static constexpr int kFragSize = 16 / sizeof(T);
   for (int i = tid * kFragSize; i < dim; i += blockDim.x * kFragSize) {
-    frag_sum.clear();
+    T frag_sum[kFragSize];
+    for (int d = 0; d < kFragSize; d++) {
+      frag_sum[d] = T(0.0f);
+    }
 
     // sum over topk
-    for (int k = 0; k < topk; k++) {
-      const int source_row = row_id_map[k * n_tokens + source_token];
-      const T* source_row_ptr = permuted_tokens + source_row * dim;
-      // load chunk from permuted tokens
-      cutlass::arch::global_load<Fragment,
-                                 sizeof(Fragment),
-                                 cutlass::arch::CacheOperation::LastUse>(
-          frag, (source_row_ptr + i), true);
+    for (int k_idx = 0; k_idx < topk; k_idx++) {
+      const int p_idx = row_id_map[(k_idx * n_tokens) + t_idx];
+      const T* permuted_token_base = permuted_tokens + p_idx * dim;
+      // load fragment into frag_ls (float4)
+      frag_ls =
+          __ldlu(reinterpret_cast<const float4*>(permuted_token_base + i));
 
-      // apply probs
-      frag = frag * s_probs[k];
-
-      // sum
+      T frag[kFragSize];
       for (int d = 0; d < kFragSize; d++) {
-        frag_sum.at(d) = frag_sum.at(d) + frag.at(d);
+        frag[d] = frag_ls_ptr[d];
+      }
+
+      // apply probs & sum
+      for (int d = 0; d < kFragSize; d++) {
+        frag[d] *= s_probs[k_idx];
+        frag_sum[d] += frag[d];
       }
     }
 
-    // store back to tokens
-    T* dest_row_ptr = tokens + source_token * dim;
-    *(float4*)(dest_row_ptr + i) = *(float4*)(frag_sum.data());
+    // write back to frag_ls (float4)
+    for (int d = 0; d < kFragSize; d++) {
+      frag_ls_ptr[d] = frag_sum[d];
+    }
+
+    // store back to tokens: [n_tokens, dim]
+    T* token_base = tokens + t_idx * dim;
+    *reinterpret_cast<float4*>(token_base + i) = frag_ls;
   }
 }
 
@@ -177,7 +207,7 @@ void launch_permute_kernel(
     const int dim,
     cudaStream_t stream) {
   const int n_permuted_tokens = n_tokens * topk;
-  int threads = 256;
+  int threads = 64;
   int blocks = (n_permuted_tokens + threads - 1) / threads;
   permute_row_id_map<<<blocks, threads, 0, stream>>>(
       sorted_row_id, row_id_map, n_tokens, topk);
@@ -190,7 +220,7 @@ void launch_permute_kernel(
   blocks = n_tokens;
   threads = std::min(dim / kFragSize, 1024);
   // assert(topk <= 128);
-  permute_kernel<T, kFragSize, /*TOPK=*/128><<<blocks, threads, 0, stream>>>(
+  permute_kernel<T, /*TOPK=*/128><<<blocks, threads, 0, stream>>>(
       tokens, permuted_tokens, row_id_map, n_tokens, topk, dim);
 }
 
@@ -215,7 +245,7 @@ void launch_unpermute_kernel(
   size_t smem_bytes = topk * sizeof(T);
 
   // unpermute_topK fwd
-  unpermute_kernel<T, kFragSize><<<blocks, threads, smem_bytes, stream>>>(
+  unpermute_kernel<T><<<blocks, threads, smem_bytes, stream>>>(
       permuted_tokens, tokens, row_id_map, prob, n_tokens, topk, dim);
 }
 
@@ -232,16 +262,17 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
   const auto n_permuted_tokens = n_tokens * topk;
   const auto options = tokens.options();
 
+  // TODO: cache workspace to avoid reallocating
   // calculate the size of temporary storage
   size_t temp_storage_bytes = 0;
-  int* temp_ptr = nullptr;
-  cub::DeviceRadixSort::SortPairs(nullptr,
-                                  temp_storage_bytes,
-                                  temp_ptr,
-                                  temp_ptr,
-                                  temp_ptr,
-                                  temp_ptr,
-                                  n_permuted_tokens);
+  radix_sort_pairs(nullptr,
+                   &temp_storage_bytes,
+                   nullptr,
+                   nullptr,
+                   nullptr,
+                   nullptr,
+                   n_permuted_tokens);
+  // allocate temporary storage
   auto temp_storage =
       torch::empty(temp_storage_bytes, options.dtype(torch::kInt8));
 
@@ -256,14 +287,13 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
   int* sorted_row_id_ptr = sorted_row_id.data_ptr<int>();
   void* d_temp_storage = temp_storage.data_ptr();
 
-  // size_t temp_storage_bytes = std::numeric_limits<size_t>::max();
-  cub::DeviceRadixSort::SortPairs(d_temp_storage,
-                                  temp_storage_bytes,
-                                  indices_ptr,
-                                  sorted_indices_ptr,
-                                  row_id_ptr,
-                                  sorted_row_id_ptr,
-                                  n_tokens * topk);
+  radix_sort_pairs(d_temp_storage,
+                   &temp_storage_bytes,
+                   indices_ptr,
+                   sorted_indices_ptr,
+                   row_id_ptr,
+                   sorted_row_id_ptr,
+                   n_permuted_tokens);
 
   const auto type = tokens.scalar_type();
 
@@ -274,14 +304,14 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
 
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
-#define LAUNCH_PERMUTE_KERNEL(DType)                            \
-  launch_permute_kernel<DType>(get_ptr<DType>(tokens),          \
-                               get_ptr<DType>(permuted_tokens), \
-                               sorted_row_id_ptr,               \
-                               row_id_map.data_ptr<int>(),      \
-                               n_tokens,                        \
-                               topk,                            \
-                               dim,                             \
+#define LAUNCH_PERMUTE_KERNEL(DType)                             \
+  launch_permute_kernel<DType>(const_data_ptr<DType>(tokens),    \
+                               data_ptr<DType>(permuted_tokens), \
+                               sorted_row_id_ptr,                \
+                               row_id_map.data_ptr<int>(),       \
+                               n_tokens,                         \
+                               topk,                             \
+                               dim,                              \
                                stream);
 
   switch (type) {
@@ -290,11 +320,11 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
       break;
     }
     case torch::ScalarType::Half: {
-      LAUNCH_PERMUTE_KERNEL(cutlass::half_t);
+      LAUNCH_PERMUTE_KERNEL(cute::half_t);
       break;
     }
     case torch::ScalarType::BFloat16: {
-      LAUNCH_PERMUTE_KERNEL(cutlass::bfloat16_t);
+      LAUNCH_PERMUTE_KERNEL(cute::bfloat16_t);
       break;
     }
     default:
@@ -320,14 +350,14 @@ torch::Tensor unpermute(
 
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
-#define LAUNCH_UNPERMUTE_KERNEL(DType)                            \
-  launch_unpermute_kernel<DType>(get_ptr<DType>(permuted_tokens), \
-                                 get_ptr<DType>(tokens),          \
-                                 row_id_map.data_ptr<int>(),      \
-                                 get_ptr<DType>(probs),           \
-                                 n_tokens,                        \
-                                 topk,                            \
-                                 dim,                             \
+#define LAUNCH_UNPERMUTE_KERNEL(DType)                                   \
+  launch_unpermute_kernel<DType>(const_data_ptr<DType>(permuted_tokens), \
+                                 data_ptr<DType>(tokens),                \
+                                 row_id_map.data_ptr<int>(),             \
+                                 const_data_ptr<DType>(probs),           \
+                                 n_tokens,                               \
+                                 topk,                                   \
+                                 dim,                                    \
                                  stream);
 
   switch (type) {
@@ -336,11 +366,11 @@ torch::Tensor unpermute(
       break;
     }
     case torch::ScalarType::Half: {
-      LAUNCH_UNPERMUTE_KERNEL(cutlass::half_t);
+      LAUNCH_UNPERMUTE_KERNEL(cute::half_t);
       break;
     }
     case torch::ScalarType::BFloat16: {
-      LAUNCH_UNPERMUTE_KERNEL(cutlass::bfloat16_t);
+      LAUNCH_UNPERMUTE_KERNEL(cute::bfloat16_t);
       break;
     }
     default:

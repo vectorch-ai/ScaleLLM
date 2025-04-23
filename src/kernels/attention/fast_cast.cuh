@@ -4,9 +4,8 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
+#include <cute/numeric/numeric_types.hpp>
 #include <cute/tensor.hpp>
-
-#include "cute/numeric/numeric_types.hpp"
 
 namespace llm {
 
