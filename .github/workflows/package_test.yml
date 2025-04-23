@@ -39,8 +39,8 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.12"]
-        cuda: ["12.4"]
-        torch: ["2.6.0"]
+        cuda: ["12.6"]
+        torch: ["2.7.0"]
     runs-on: [self-hosted, linux, build]
     env:
       PYTHON_VERSION: ${{ matrix.python }}
