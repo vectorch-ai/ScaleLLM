@@ -20,5 +20,4 @@ add_subdirectory(sentencepiece)
 if (BUILD_NVBENCH)
   add_subdirectory(nvbench)
 endif()
-# add_subdirectory(jinja2cpp)
 
