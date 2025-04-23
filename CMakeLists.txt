@@ -35,8 +35,8 @@ endfunction()
 # Set default build type
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - defaulting to Release")
-  set(CMAKE_BUILD_TYPE "Release" 
-      CACHE STRING "Choose the type of build from: Debug Release RelWithDebInfo MinSizeRel Coverage." 
+  set(CMAKE_BUILD_TYPE "Release"
+      CACHE STRING "Choose the type of build from: Debug Release RelWithDebInfo MinSizeRel Coverage."
       FORCE
   )
 endif()
@@ -103,7 +103,7 @@ else()
 
   FetchContent_Declare(vcpkg
     GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
-    GIT_TAG "2024.02.14"
+    GIT_TAG "2025.04.09"
     SOURCE_DIR ${VCPKG_SOURCE_DIR}
   )
   FetchContent_MakeAvailable(vcpkg)
@@ -193,12 +193,12 @@ else()
     set(LIBTORCH_SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/libtorch-src)
   endif()
 
-  FetchContent_Declare(libtorch 
-    URL ${LIBTORCH_URL} 
+  FetchContent_Declare(libtorch
+    URL ${LIBTORCH_URL}
     SOURCE_DIR ${LIBTORCH_SOURCE_DIR}
   )
   FetchContent_MakeAvailable(libtorch)
-  
+
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
   message(STATUS "Downloading and using libtorch 2.7.0 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
