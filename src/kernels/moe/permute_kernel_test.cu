@@ -96,8 +96,7 @@ TEST_P(PermuteTest, Index) {
 
   auto [ref_permuted_tokens, ref_sorted_indices] = permute_ref(tokens, indices);
 
-  EXPECT_TRUE(torch::allclose(
-      permuted_tokens, ref_permuted_tokens, /*rtol=*/1e-2, /*atol=*/1e-2));
+  EXPECT_TRUE(torch::allclose(permuted_tokens, ref_permuted_tokens));
 
   auto unpermute_out = kernel::moe::unpermute(
       permuted_tokens, sorted_indices, probs, n_tokens, topk);
