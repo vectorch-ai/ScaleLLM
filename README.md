@@ -304,13 +304,11 @@ If you have any questions or want to contribute, please don't hesitate to ask in
 
 ## Acknowledgements
 The following open-source projects have been used in this project, either in their original form or modified to meet our needs:
-* [flashinfer](https://github.com/flashinfer-ai/flashinfer)
 * [pytorch](https://github.com/pytorch/pytorch)
 * [FasterTransformer](https://github.com/NVIDIA/FasterTransformer)
 * [vllm](https://github.com/vllm-project/vllm)
 * [AutoGPTQ](https://github.com/PanQiWei/AutoGPTQ)
 * [llm-awq](https://github.com/mit-han-lab/llm-awq)
-* [flash-attn](https://github.com/Dao-AILab/flash-attention)
 * [exllama](https://github.com/turboderp/exllamav2)
 * [tokenizers](https://github.com/huggingface/tokenizers)
 * [safetensors](https://github.com/huggingface/safetensors/)
