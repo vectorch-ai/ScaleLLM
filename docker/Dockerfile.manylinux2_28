@@ -1,5 +1,5 @@
-ARG CUDA_VERSION=12.1
-FROM pytorch/manylinux-builder:cuda${CUDA_VERSION} AS base
+ARG CUDA_VERSION=12.6
+FROM pytorch/manylinux2_28-builder:cuda${CUDA_VERSION} AS base
 
 LABEL maintainer="mi@vectorch.com"
 ENV DEBIAN_FRONTEND=noninteractive
@@ -7,19 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
-
-# Install dependencies
-RUN yum -y update && yum -y install \
-    zip \
-    unzip \
-    tar \
-    wget \
-    curl \
-    perl \
-    perl-IPC-Cmd \
-    sudo \
-    automake \
-    libtool
 
 # Show versions of gcc, g++, nvcc
 RUN gcc --version; g++ --version; nvcc --version
