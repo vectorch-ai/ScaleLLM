@@ -15,15 +15,6 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
-def use_cxx11_abi():
-    try:
-        import torch
-
-        return torch._C._GLIBCXX_USE_CXX11_ABI
-    except ImportError:
-        return False
-
-
 def get_torch_root():
     try:
         import torch
@@ -185,12 +176,6 @@ class CMakeBuild(build_ext):
         # (needed e.g. to build for ARM OSx on conda-forge)
         if "CMAKE_ARGS" in os.environ:
             cmake_args += [item for item in os.environ["CMAKE_ARGS"].split(" ") if item]
-
-        # check if torch binary is built with cxx11 abi
-        if use_cxx11_abi():
-            cmake_args += ["-DUSE_CXX11_ABI=ON"]
-        else:
-            cmake_args += ["-DUSE_CXX11_ABI=OFF"]
 
         build_args = ["--config", build_type]
         max_jobs = os.getenv("MAX_JOBS", str(os.cpu_count()))

@@ -48,7 +48,7 @@ jobs:
             vectorchai/scalellm-gateway:${{ inputs.tag }}
             vectorchai/scalellm-gateway:latest
 
-  publish_scalellm_cuda121:
+  publish_scalellm_cuda126:
     runs-on: [self-hosted, linux, release]
     steps:
       - name: Checkout repository
@@ -56,17 +56,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build ScaleLLM for cuda 12.1
+      - name: Build ScaleLLM for cuda 12.6
         timeout-minutes: 60
         run: |
-          docker pull vectorchai/scalellm_devel:cuda12.1
+          docker pull vectorchai/scalellm_devel:cuda12.6
           docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
             -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
             -e CCACHE_DIR=/ci_cache/.ccache \
             -u $(id -u):$(id -g) \
-            vectorchai/scalellm_devel:cuda12.1 \
+            vectorchai/scalellm_devel:cuda12.6 \
             bash /ScaleLLM/scripts/build_scalellm.sh
 
       - name: Set up QEMU
@@ -81,7 +81,7 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USER }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Build and push scalellm docker image for cuda 12.1
+      - name: Build and push scalellm docker image for cuda 12.6
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -135,48 +135,4 @@ jobs:
           tags: |
             vectorchai/scalellm_cu118:${{ inputs.tag }}
             vectorchai/scalellm_cu118:latest
-
-  publish_scalellm_cuda124:
-    runs-on: [self-hosted, linux, release]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Build ScaleLLM for cuda 12.4
-        timeout-minutes: 60
-        run: |
-          docker pull vectorchai/scalellm_devel:cuda12.4
-          docker run --rm -t \
-            -v "$CI_CACHE_DIR":/ci_cache \
-            -v "$GITHUB_WORKSPACE":/ScaleLLM \
-            -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
-            -e CCACHE_DIR=/ci_cache/.ccache \
-            -u $(id -u):$(id -g) \
-            vectorchai/scalellm_devel:cuda12.4 \
-            bash /ScaleLLM/scripts/build_scalellm.sh
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USER }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
-      - name: Build and push scalellm for cuda 12.4
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./docker/Dockerfile.scalellm
-          push: true
-          no-cache: true
-          tags: |
-            vectorchai/scalellm_cu124:${{ inputs.tag }}
-            vectorchai/scalellm_cu124:latest
 

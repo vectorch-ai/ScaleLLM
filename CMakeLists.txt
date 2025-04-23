@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.26)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
-option(USE_CXX11_ABI "Use the new C++-11 ABI, which is not backwards compatible." ON)
 option(USE_MANYLINUX "Build for manylinux" OFF)
 
 option(BUILD_NVBENCH "Build the nvbench binary" OFF)
@@ -40,15 +39,6 @@ if(NOT CMAKE_BUILD_TYPE)
       CACHE STRING "Choose the type of build from: Debug Release RelWithDebInfo MinSizeRel Coverage." 
       FORCE
   )
-endif()
-
-# Convert the bool variable to integer.
-if(USE_CXX11_ABI)
-  set(USE_CXX11_ABI 1)
-  message(STATUS "Using the C++-11 ABI.")
-else()
-  set(USE_CXX11_ABI 0)
-  message(STATUS "Using the pre C++-11 ABI.")
 endif()
 
 if(USE_CCACHE)
@@ -111,20 +101,11 @@ else()
     set(VCPKG_SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/vcpkg-src)
   endif()
 
-  if (USE_CXX11_ABI)
-    FetchContent_Declare(vcpkg
-      GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
-      GIT_TAG "2024.02.14"
-      SOURCE_DIR ${VCPKG_SOURCE_DIR}
-    )
-  else()
-    FetchContent_Declare(vcpkg
-      GIT_REPOSITORY "https://github.com/vectorch-ai/vcpkg.git"
-      GIT_TAG "ffc42e97c866ce9692f5c441394832b86548422c" # disable cxx11_abi
-      SOURCE_DIR ${VCPKG_SOURCE_DIR}
-    )
-    message(STATUS "Using custom vcpkg with cxx11_abi disabled")
-  endif()
+  FetchContent_Declare(vcpkg
+    GIT_REPOSITORY "https://github.com/microsoft/vcpkg.git"
+    GIT_TAG "2024.02.14"
+    SOURCE_DIR ${VCPKG_SOURCE_DIR}
+  )
   FetchContent_MakeAvailable(vcpkg)
 
   message(STATUS "Downloading and using vcpkg at ${vcpkg_SOURCE_DIR}")
@@ -179,12 +160,9 @@ endif()
 
 find_package(NCCL REQUIRED)
 
-if (USE_CXX11_ABI)
-  # only use jemalloc if using the new C++-11 ABI
-  find_package(Jemalloc)
-  if(Jemalloc_FOUND)
-    link_libraries(Jemalloc::jemalloc)
-  endif()
+find_package(Jemalloc)
+if(Jemalloc_FOUND)
+  link_libraries(Jemalloc::jemalloc)
 endif()
 
 # Important Note: Always invoke find_package for other dependencies
@@ -195,27 +173,15 @@ if (DEFINED ENV{LIBTORCH_ROOT})
   message(STATUS "Using libtorch at $ENV{LIBTORCH_ROOT}")
 else()
   include(FetchContent)
-  if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.4)
-    # download libtorch 2.6.0 with cuda 12.4 from pytorch.org
-    if (USE_CXX11_ABI)
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcu124.zip")
-    else()
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu124/libtorch-shared-with-deps-2.6.0%2Bcu124.zip")
-    endif()
-  elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.1)
-    # download libtorch 2.6.0 with cuda 12.1 from pytorch.org
-    if (USE_CXX11_ABI)
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcu121.zip")
-    else()
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu121/libtorch-shared-with-deps-2.6.0%2Bcu121.zip")
-    endif()
+  if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
+    # download libtorch 2.7.0 with cuda 12.8 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu128/libtorch-cxx11-abi-shared-with-deps-2.7.0%2Bcu128.zip")
+  elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.6)
+    # download libtorch 2.7.0 with cuda 12.6 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu126/libtorch-cxx11-abi-shared-with-deps-2.7.0%2Bcu126.zip")
   elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 11.8)
-    # download libtorch 2.6.0 with cuda 11.8 from pytorch.org
-    if (USE_CXX11_ABI)
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcu118.zip")
-    else()
-      set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-shared-with-deps-2.6.0%2Bcu118.zip")
-    endif()
+    # download libtorch 2.7.0 with cuda 11.8 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.7.0%2Bcu118.zip")
   else()
     # error out if cuda version is not supported
     message(FATAL_ERROR "Unsupported CUDA version: ${CUDAToolkit_VERSION}")
@@ -234,18 +200,7 @@ else()
   FetchContent_MakeAvailable(libtorch)
   
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
-  message(STATUS "Downloading and using libtorch 2.6.0 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
-endif()
-
-# check if USE_CXX11_ABI is set correctly
-if (DEFINED USE_CXX11_ABI)
-  parse_make_options(${TORCH_CXX_FLAGS} "TORCH_CXX_FLAGS")
-  if(DEFINED TORCH_CXX_FLAGS__GLIBCXX_USE_CXX11_ABI
-     AND NOT ${TORCH_CXX_FLAGS__GLIBCXX_USE_CXX11_ABI} EQUAL ${USE_CXX11_ABI})
-      message(FATAL_ERROR
-          "The libtorch compilation options _GLIBCXX_USE_CXX11_ABI=${TORCH_CXX_FLAGS__GLIBCXX_USE_CXX11_ABI} "
-          "found by CMake conflict with the project setting USE_CXX11_ABI=${USE_CXX11_ABI}.")
-  endif()
+  message(STATUS "Downloading and using libtorch 2.7.0 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
 
 # carry over torch flags to the rest of the project
