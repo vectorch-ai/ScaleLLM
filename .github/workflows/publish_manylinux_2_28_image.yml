@@ -1,4 +1,4 @@
-name: Publish manylinux image
+name: Publish manylinux2_28 image
 on:
   workflow_dispatch:
     inputs:
@@ -7,16 +7,21 @@ on:
         required: false
         default: 'true'
 
+  # Schedule the workflow to run at 9:00 (UTC) every month.
+  schedule:
+    # Minute[0,59] Hour[0,23] Day of month[1,31] Month[1,12] Day of week[0,6] (Sunday=0)
+    - cron: '0 9 1 * *'
+
 env:
   # Tells where to store caches.
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  publish_manylinux_image:
+  publish_manylinux_2_28_image:
     strategy:
       fail-fast: false
       matrix:
-        cuda: ["11.8", "12.6", "12.8"]
+        cuda: ["12.6", "12.8"]
     runs-on: [self-hosted, linux, build]
     steps:
       - name: Checkout repository
@@ -45,11 +50,11 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./docker
-          file: ./docker/Dockerfile.manylinux
+          file: ./docker/Dockerfile.manylinux2_28
           push: ${{ inputs.push || 'true' }}
           cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
           cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
           build-args: |
             CUDA_VERSION=${{ matrix.cuda }}
           tags: |
-            vectorchai/scalellm_manylinux:cuda${{ matrix.cuda }}
+            vectorchai/scalellm_manylinux2_28:cuda${{ matrix.cuda }}
