@@ -96,25 +96,30 @@ TEST_P(PermuteTest, Index) {
 
   auto [ref_permuted_tokens, ref_sorted_indices] = permute_ref(tokens, indices);
 
-  EXPECT_TRUE(torch::allclose(permuted_tokens, ref_permuted_tokens));
+  EXPECT_TRUE(torch::allclose(
+      permuted_tokens, ref_permuted_tokens, /*rtol=*/1e-2, /*atol=*/1e-2));
 
   auto unpermute_out = kernel::moe::unpermute(
       permuted_tokens, sorted_indices, probs, n_tokens, topk);
 
   auto ref_unpermute_out = unpermute_ref(
       ref_permuted_tokens, ref_sorted_indices, probs, n_tokens, topk);
-  EXPECT_TRUE(torch::allclose(unpermute_out, ref_unpermute_out));
-  EXPECT_TRUE(torch::allclose(tokens, unpermute_out));
+  EXPECT_TRUE(torch::allclose(
+      unpermute_out, ref_unpermute_out, /*rtol=*/1e-2, /*atol=*/1e-2));
+  EXPECT_TRUE(
+      torch::allclose(tokens, unpermute_out, /*rtol=*/1e-2, /*atol=*/1e-2));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     Moe,
     PermuteTest,
-    ::testing::Combine(::testing::Values(torch::kFloat),  // dtype
-                       ::testing::Values(1, 2, 16),       // n_tokens
-                       ::testing::Values(16, 64),         // dim
-                       ::testing::Values(4, 8, 16),       // n_experts
-                       ::testing::Values(1, 2, 4)         // topk
+    ::testing::Combine(::testing::Values(torch::kFloat,
+                                         torch::kHalf,
+                                         torch::kBFloat16),  // dtype
+                       ::testing::Values(1, 2, 16),          // n_tokens
+                       ::testing::Values(16, 64),            // dim
+                       ::testing::Values(4, 8, 16),          // n_experts
+                       ::testing::Values(1, 2, 4)            // topk
                        ));
 
 }  // namespace llm
