@@ -1,11 +1,11 @@
-ARG BASE_IMAGE=vectorchai/scalellm_manylinux:cuda12.4
+ARG BASE_IMAGE=vectorchai/scalellm_manylinux2_28:cuda12.6
 FROM ${BASE_IMAGE}
 
 ARG USER=vscode
 ARG UID=1000
 ARG GID=1000
-ARG TORCH_VERSION=2.6.0
-ARG CUDA_VERSION=12.4
+ARG TORCH_VERSION=2.7.0
+ARG CUDA_VERSION=12.6
 ARG PYTHON_VERSION=3.12
 
 # Run as non-root user
@@ -19,7 +19,7 @@ RUN yum -y update && yum -y install \
     htop \
     vim \
     jq \
-    gdb 
+    gdb
 
 # Choose python 3.12
 ENV PATH="/opt/python/cp312-cp312/bin:$PATH"

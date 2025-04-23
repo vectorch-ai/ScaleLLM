@@ -1,7 +1,7 @@
 name: Package test
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
 
   push:
     paths:
@@ -11,7 +11,7 @@ on:
       - "requirements.txt"
       - "requirements-test.txt"
       - ".github/workflows/package_test.yml"
-    branches: 
+    branches:
       - main
 
   pull_request:
@@ -58,11 +58,11 @@ jobs:
         mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
         mkdir -p $CI_CACHE_DIR/.ccache
         mkdir -p $CI_CACHE_DIR/.pip
-      
+
     - name: Build wheel
       timeout-minutes: 60
       run: |
-        docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
+        docker pull vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION}
         docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
@@ -73,7 +73,7 @@ jobs:
             -e CCACHE_DIR=/ci_cache/.ccache \
             -e PIP_CACHE_DIR=/ci_cache/.pip \
             -u $(id -u):$(id -g) \
-            vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
+            vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION} \
             bash /ScaleLLM/scripts/build_wheel.sh
 
     - name: Show whl package size

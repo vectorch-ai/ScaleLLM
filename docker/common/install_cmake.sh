@@ -9,6 +9,7 @@ command -v pip3 >/dev/null && pip3 uninstall -y cmake
 
 # Remove existing CMake installation
 rm -f /usr/local/bin/cmake
+rm -f /opt/conda/bin/cmake
 
 path="v${CMAKE_VERSION}"
 ARCH=$(uname -m)

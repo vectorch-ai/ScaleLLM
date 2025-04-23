@@ -4,9 +4,9 @@
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
-      "BASE_IMAGE": "vectorchai/scalellm_manylinux:cuda12.4",
-      "TORCH_VERSION": "2.6.0",
-      "CUDA_VERSION": "12.4",
+      "BASE_IMAGE": "vectorchai/scalellm_manylinux2_28:cuda12.6",
+      "TORCH_VERSION": "2.7.0",
+      "CUDA_VERSION": "12.6",
       "USER": "${localEnv:USER:vscode}",
       "UID": "${localEnv:UID:1000}",
       "GID": "${localEnv:GID:1000}"
