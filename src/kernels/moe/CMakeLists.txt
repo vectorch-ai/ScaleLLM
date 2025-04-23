@@ -7,7 +7,7 @@ cc_library(
   SRCS 
     topk_softmax_kernel.cu
     grouped_topk_sigmoid_kernel.cu
-    permutation_kernel.cu
+    permutation_index_kernel.cu
   DEPS
     cutlass
     glog::glog

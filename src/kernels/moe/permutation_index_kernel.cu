@@ -235,7 +235,7 @@ void launch_unpermute_kernel(
 
 }  // namespace
 
-std::tuple<torch::Tensor, torch::Tensor> permute(
+std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
     torch::Tensor tokens,  // [n_tokens, dim]
     torch::Tensor indices  // [n_tokens, topk]
 ) {
@@ -318,7 +318,7 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
   return {permuted_tokens, row_id_map};
 }
 
-torch::Tensor unpermute(
+torch::Tensor unpermute_with_index_map(
     torch::Tensor permuted_tokens,  // [n_permuted_tokens, dim]
     torch::Tensor row_id_map,       // [topk, n_tokens] => dst row
     torch::Tensor probs,            // [n_tokens, topk]

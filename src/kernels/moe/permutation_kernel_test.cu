@@ -11,20 +11,21 @@ namespace llm {
 
 namespace kernel::moe {
 // forward declare the kernel function
-std::tuple<torch::Tensor, torch::Tensor> permute(torch::Tensor tokens,
-                                                 torch::Tensor indices);
+std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
+    torch::Tensor tokens,
+    torch::Tensor indices);
 
-torch::Tensor unpermute(torch::Tensor permuted_tokens,
-                        torch::Tensor row_id_map,
-                        torch::Tensor probs,
-                        int64_t n_tokens,
-                        int64_t topk);
+torch::Tensor unpermute_with_index_map(torch::Tensor permuted_tokens,
+                                       torch::Tensor row_id_map,
+                                       torch::Tensor probs,
+                                       int64_t n_tokens,
+                                       int64_t topk);
 
 }  // namespace kernel::moe
 
 namespace {
 // reference implementation
-std::tuple<torch::Tensor, torch::Tensor> permute_ref(
+std::tuple<torch::Tensor, torch::Tensor> permute_index_ref(
     const torch::Tensor& tokens,       // [n_tokens, dim]
     const torch::Tensor& topk_indices  // [n_tokens, topk]
 ) {
@@ -43,7 +44,7 @@ std::tuple<torch::Tensor, torch::Tensor> permute_ref(
   return {permuted_tokens, sorted_incices};
 }
 
-torch::Tensor unpermute_ref(
+torch::Tensor unpermute_index_ref(
     const torch::Tensor& permuted_tokens,  // [n_permuted_tokens, dim]
     const torch::Tensor& sorted_incices,   // [n_permuted_tokens]
     const torch::Tensor& probs,            // [n_token, topk]
@@ -92,16 +93,17 @@ TEST_P(PermuteTest, Index) {
   auto probs = weights.softmax(/*dim=*/-1);
 
   auto [permuted_tokens, sorted_indices] =
-      kernel::moe::permute(tokens, indices.to(torch::kInt32));
+      kernel::moe::permute_with_index_map(tokens, indices.to(torch::kInt32));
 
-  auto [ref_permuted_tokens, ref_sorted_indices] = permute_ref(tokens, indices);
+  auto [ref_permuted_tokens, ref_sorted_indices] =
+      permute_index_ref(tokens, indices);
 
   EXPECT_TRUE(torch::allclose(permuted_tokens, ref_permuted_tokens));
 
-  auto unpermute_out = kernel::moe::unpermute(
+  auto unpermute_out = kernel::moe::unpermute_with_index_map(
       permuted_tokens, sorted_indices, probs, n_tokens, topk);
 
-  auto ref_unpermute_out = unpermute_ref(
+  auto ref_unpermute_out = unpermute_index_ref(
       ref_permuted_tokens, ref_sorted_indices, probs, n_tokens, topk);
   EXPECT_TRUE(torch::allclose(
       unpermute_out, ref_unpermute_out, /*rtol=*/1e-2, /*atol=*/1e-2));
