@@ -8,7 +8,7 @@ on:
   # Schedule the workflow to run at 08:00 (UTC) every day.
   schedule:
     # Minute[0,59] Hour[0,23] Day of month[1,31] Month[1,12] Day of week[0,6] (Sunday=0)
-    - cron: '0 8 * * *' 
+    - cron: '0 8 * * *'
 
 env:
   # Tells where to store caches.
@@ -39,11 +39,11 @@ jobs:
         mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
         mkdir -p $CI_CACHE_DIR/.ccache
         mkdir -p $CI_CACHE_DIR/.pip
-      
+
     - name: Build wheel
       timeout-minutes: 60
       run: |
-        docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
+        docker pull vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION}
         docker run --rm -t \
             -v "$CI_CACHE_DIR":/ci_cache \
             -v "$GITHUB_WORKSPACE":/ScaleLLM \
@@ -54,7 +54,7 @@ jobs:
             -e CCACHE_DIR=/ci_cache/.ccache \
             -e PIP_CACHE_DIR=/ci_cache/.pip \
             -u $(id -u):$(id -g) \
-            vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
+            vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION} \
             bash /ScaleLLM/scripts/build_wheel.sh
 
     - name: Show whl package size

@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.9", "3.10", "3.11", "3.12"]
-        cuda: ["11.8", "12.6", "12.8"]
+        cuda: ["12.6", "12.8"]
         torch: ["2.7.0"]
     runs-on: [self-hosted, linux, release]
     env:
@@ -43,11 +43,11 @@ jobs:
           mkdir -p $CI_CACHE_DIR/.vcpkg/bincache
           mkdir -p $CI_CACHE_DIR/.ccache
           mkdir -p $CI_CACHE_DIR/.pip
-      
+
       - name: Build wheel
         timeout-minutes: 60
         run: |
-          docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
+          docker pull vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION}
           docker run --rm -t \
               -v "$CI_CACHE_DIR":/ci_cache \
               -v "$GITHUB_WORKSPACE":/ScaleLLM \
@@ -60,7 +60,7 @@ jobs:
               -e CCACHE_DIR=/ci_cache/.ccache \
               -e PIP_CACHE_DIR=/ci_cache/.pip \
               -u $(id -u):$(id -g) \
-              vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
+              vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION} \
               bash /ScaleLLM/scripts/build_wheel.sh
 
       - name: show wheel size
@@ -96,7 +96,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
-  
+
   commit_whl_index:
     needs: build_wheel
     runs-on: ubuntu-latest
@@ -110,7 +110,7 @@ jobs:
 
       - name: Show wheels
         run: ls -lha dist
-      
+
       - name: Clone whl repo
         run: |
           git clone https://oauth2:${WHL_TOKEN}@github.com/vectorch-ai/whl.git
@@ -130,5 +130,3 @@ jobs:
           git add -A
           git commit -m "Update whl index for version ${{ inputs.tag }}"
           git push
-      
-

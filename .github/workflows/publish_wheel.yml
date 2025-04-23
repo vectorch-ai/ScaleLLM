@@ -45,7 +45,7 @@ jobs:
       - name: Build wheel
         timeout-minutes: 60
         run: |
-          docker pull vectorchai/scalellm_manylinux:cuda${CUDA_VERSION}
+          docker pull vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION}
           docker run --rm -t \
               -v "$CI_CACHE_DIR":/ci_cache \
               -v "$GITHUB_WORKSPACE":/ScaleLLM \
@@ -57,16 +57,16 @@ jobs:
               -e CCACHE_DIR=/ci_cache/.ccache \
               -e PIP_CACHE_DIR=/ci_cache/.pip \
               -u $(id -u):$(id -g) \
-              vectorchai/scalellm_manylinux:cuda${CUDA_VERSION} \
+              vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION} \
               bash /ScaleLLM/scripts/build_wheel.sh
 
       - name: show wheels
         run: ls -lh dist
 
-      - name: rename wheel to manylinux
+      - name: rename wheel to manylinux_2_28
         run: |
           for whl in dist/scalellm-*.whl; do
-            new_whl=${whl//"-linux_"/"-manylinux1_"}
+            new_whl=${whl//"-linux_"/"-manylinux_2_28_"}
             if [ "$whl" != "$new_whl" ]; then
               mv $whl $new_whl
             fi
@@ -103,5 +103,3 @@ jobs:
           password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
           verbose: true
-      
-
