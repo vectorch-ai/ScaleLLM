@@ -6,6 +6,25 @@
 
 #include <cub/cub.cuh>
 
+// clang-format off
+// for exmple: n_tokens = 2, n_experts = 8, topk = 2
+//  ____________________________________________________________________________________________________________________________
+// |                 |     flatten indices         |        sort flatten indices          |           row_id_map                |
+// |    Steps        |   sort by (tokens, topk)    |        by (experts, tokens)          |     sort by (topk, tokens)          |
+// |_________________|_____________________________|______________________________________|_____________________________________|
+// |                 |    [n_tokens * topk]        |     [n_tokens * topk] => f_idx       |      [topk, n_tokens] => p_idx      |
+// |     Dim         |                             |   f_idx: idx in flatten indices      |    p_idx: idx in permuted tokens    |
+// |_________________|_____________________________|______________________________________|_____________________________________|
+// |                 |                             |                                      |                                     |
+// |      top0, top1 |   f_idx: | 0 | 1 | 2 | 3 |  |   p_idx: |  0  |  1  |  2  |  3  |   |     idx: |  0  |  1  |  2  |  3  |  |
+// | t0 -> [e2, e1]  | experts: | 2 | 1 | 2 | 5 |  |   f_idx: |  1  |  0  |  2  |  3  |   |   p_idx: |  1  |  2  |  0  |  3  |  |
+// | t1 -> [e2, e5]  |  tokens: |   t0  |   t1  |  |  tokens: |  t0 |  t0 |  t1 |  t1 |   |   f_idx: |  0  |  2  |  1  |  3  |  |
+// |                 |                             | experts: |  e1 |     e2    |  e5 |   | experts: |  e2 |  e2 |  e1 |  e5 |  |
+// |                 |                             |                                      |  tokens: |  t0 |  t1 |  t0 |  t1 |  |
+// |                 |                             |                                      |    topk: |    top0   |    top1   |  |
+// |_________________|_____________________________|______________________________________|_____________________________________|
+// clang-format on
+
 namespace llm::kernel::moe {
 
 namespace {
@@ -14,7 +33,7 @@ inline T* get_ptr(torch::Tensor& t) {
   return reinterpret_cast<T*>(t.data_ptr());
 }
 
-// one thread per permuted token
+// build a row_id_map that maps [topk, n_tokens] to the index in permuted tokens
 __global__ void permute_row_id_map(
     const int* sorted_row_id,  // [n_permuted_tokens]
     int* row_id_map,           // [topk, n_tokens]
@@ -115,6 +134,7 @@ __global__ void unpermute_kernel(
   }
   __syncthreads();
 
+  // TODO: use float for accumulator
   Fragment frag_sum;
   Fragment frag;
 
