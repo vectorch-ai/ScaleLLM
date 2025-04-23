@@ -104,7 +104,7 @@ TEST_P(PermuteTest, Index) {
   auto ref_unpermute_out = unpermute_ref(
       ref_permuted_tokens, ref_sorted_indices, probs, n_tokens, topk);
   EXPECT_TRUE(torch::allclose(unpermute_out, ref_unpermute_out));
-  // EXPECT_TRUE(torch::allclose(tokens, unpermute_out));
+  EXPECT_TRUE(torch::allclose(tokens, unpermute_out));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -117,7 +117,7 @@ __global__ void unpermute_kernel(
 
   Fragment frag_sum;
   Fragment frag;
-  
+
   for (int i = tid * kFragSize; i < dim; i += blockDim.x * kFragSize) {
     frag_sum.clear();
 
@@ -169,6 +169,7 @@ void launch_permute_kernel(
   // one block per source token
   blocks = n_tokens;
   threads = std::min(dim / kFragSize, 1024);
+  // assert(topk <= 128);
   permute_kernel<T, kFragSize, /*TOPK=*/128><<<blocks, threads, 0, stream>>>(
       tokens, permuted_tokens, row_id_map, n_tokens, topk, dim);
 }
@@ -253,7 +254,7 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
 
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
-#define LAUNCH_PERMUTE_TOPK_KERNEL(DType)                       \
+#define LAUNCH_PERMUTE_KERNEL(DType)                            \
   launch_permute_kernel<DType>(get_ptr<DType>(tokens),          \
                                get_ptr<DType>(permuted_tokens), \
                                sorted_row_id_ptr,               \
@@ -265,15 +266,15 @@ std::tuple<torch::Tensor, torch::Tensor> permute(
 
   switch (type) {
     case torch::ScalarType::Float: {
-      LAUNCH_PERMUTE_TOPK_KERNEL(float);
+      LAUNCH_PERMUTE_KERNEL(float);
       break;
     }
     case torch::ScalarType::Half: {
-      LAUNCH_PERMUTE_TOPK_KERNEL(cutlass::half_t);
+      LAUNCH_PERMUTE_KERNEL(cutlass::half_t);
       break;
     }
     case torch::ScalarType::BFloat16: {
-      LAUNCH_PERMUTE_TOPK_KERNEL(cutlass::bfloat16_t);
+      LAUNCH_PERMUTE_KERNEL(cutlass::bfloat16_t);
       break;
     }
     default:
@@ -299,7 +300,7 @@ torch::Tensor unpermute(
 
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
-#define LAUNCH_UNPERMUTE_TOPK_KERNEL(DType)                       \
+#define LAUNCH_UNPERMUTE_KERNEL(DType)                            \
   launch_unpermute_kernel<DType>(get_ptr<DType>(permuted_tokens), \
                                  get_ptr<DType>(tokens),          \
                                  row_id_map.data_ptr<int>(),      \
@@ -311,15 +312,15 @@ torch::Tensor unpermute(
 
   switch (type) {
     case torch::ScalarType::Float: {
-      LAUNCH_UNPERMUTE_TOPK_KERNEL(float);
+      LAUNCH_UNPERMUTE_KERNEL(float);
       break;
     }
     case torch::ScalarType::Half: {
-      LAUNCH_UNPERMUTE_TOPK_KERNEL(cutlass::half_t);
+      LAUNCH_UNPERMUTE_KERNEL(cutlass::half_t);
       break;
     }
     case torch::ScalarType::BFloat16: {
-      LAUNCH_UNPERMUTE_TOPK_KERNEL(cutlass::bfloat16_t);
+      LAUNCH_UNPERMUTE_KERNEL(cutlass::bfloat16_t);
       break;
     }
     default:
