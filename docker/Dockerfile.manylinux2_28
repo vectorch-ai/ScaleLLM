@@ -8,6 +8,11 @@ ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
 
+# Install dependencies
+RUN yum install -y \
+    libtool \
+    && yum clean all
+
 # Show versions of gcc, g++, nvcc
 RUN gcc --version; g++ --version; nvcc --version
 
