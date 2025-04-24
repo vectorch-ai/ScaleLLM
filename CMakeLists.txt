@@ -5,6 +5,7 @@ option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
 option(USE_MANYLINUX "Build for manylinux" OFF)
 
 option(BUILD_NVBENCH "Build the nvbench binary" OFF)
+option(INSTALL_PY_MODULE "Install python module to scalellm directory" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
