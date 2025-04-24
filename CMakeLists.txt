@@ -5,6 +5,7 @@ option(USE_CCACHE "Attempt using CCache to wrap the compilation" ON)
 option(USE_MANYLINUX "Build for manylinux" OFF)
 
 option(BUILD_NVBENCH "Build the nvbench binary" OFF)
+option(INSTALL_PY_MODULE "Install python module to scalellm directory" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,8 +36,8 @@ endfunction()
 # Set default build type
 if(NOT CMAKE_BUILD_TYPE)
   message(STATUS "Build type not set - defaulting to Release")
-  set(CMAKE_BUILD_TYPE "Release" 
-      CACHE STRING "Choose the type of build from: Debug Release RelWithDebInfo MinSizeRel Coverage." 
+  set(CMAKE_BUILD_TYPE "Release"
+      CACHE STRING "Choose the type of build from: Debug Release RelWithDebInfo MinSizeRel Coverage."
       FORCE
   )
 endif()
@@ -193,12 +194,12 @@ else()
     set(LIBTORCH_SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/libtorch-src)
   endif()
 
-  FetchContent_Declare(libtorch 
-    URL ${LIBTORCH_URL} 
+  FetchContent_Declare(libtorch
+    URL ${LIBTORCH_URL}
     SOURCE_DIR ${LIBTORCH_SOURCE_DIR}
   )
   FetchContent_MakeAvailable(libtorch)
-  
+
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
   message(STATUS "Downloading and using libtorch 2.7.0 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
