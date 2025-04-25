@@ -8,27 +8,31 @@
 #include <cute/numeric/numeric_types.hpp>
 
 // clang-format off
-// for exmple: n_tokens = 2, n_experts = 8, topk = 2
+// for exmple: n_tokens = 4, n_experts = 4, topk = 2, block_size=2
 // f_idx: idx in flatten indices
 // p_idx: idx in permuted tokens
 // k_idx: topk idx
 // t_idx: token idx
 // row_id_map: [topk, n_tokens] => idx in permuted tokens
-//  ____________________________________________________________________________________________________________________________
-// |                 |     flatten indices         |        sort flatten indices          |           row_id_map                |
-// |    Steps        |   sort by (tokens, topk)    |        by (experts, tokens)          |     sort by (topk, tokens)          |
-// |_________________|_____________________________|______________________________________|_____________________________________|
-// |                 |    [n_tokens * topk]        |     [n_tokens * topk] => f_idx       |      [topk, n_tokens] => p_idx      |
-// |     Dim         |                             |   f_idx: idx in flatten indices      |    p_idx: idx in permuted tokens    |
-// |_________________|_____________________________|______________________________________|_____________________________________|
-// |                 |                             |                                      |                                     |
-// |      top0, top1 |   f_idx: | 0 | 1 | 2 | 3 |  |   p_idx: |  0  |  1  |  2  |  3  |   |     idx: |  0  |  1  |  2  |  3  |  |
-// | t0 -> [e2, e1]  | experts: | 2 | 1 | 2 | 5 |  |   f_idx: |  1  |  0  |  2  |  3  |   |   p_idx: |  1  |  2  |  0  |  3  |  |
-// | t1 -> [e2, e5]  |  tokens: |   t0  |   t1  |  |  tokens: |  t0 |  t0 |  t1 |  t1 |   |   f_idx: |  0  |  2  |  1  |  3  |  |
-// |                 |                             | experts: |  e1 |     e2    |  e5 |   | experts: |  e2 |  e2 |  e1 |  e5 |  |
-// |                 |                             |                                      |  tokens: |  t0 |  t1 |  t0 |  t1 |  |
-// |                 |                             |                                      |    topk: |    top0   |    top1   |  |
-// |_________________|_____________________________|______________________________________|_____________________________________|
+//  _______________________________________________________________________________________________________
+// |                         |                         |                         |                         |
+// |    Steps                |        routing_map      |   row_id_map -> cu_sum  |   row_id_map -> p_idx   |
+// |                         |   [n_tokens, n_experts] |  [n_experts, n_tokens]  |  [n_experts, n_tokens]  |
+// |_________________________|_________________________|_________________________|_________________________|
+// |                         |                         |                         |                         |
+// |                         |           e_idx         |           t_idx         |           t_idx         |
+// |      top0, top1         |          0 1 2 3        |          0 1 | 2 3      |          0 1 | 2 3      |
+// | t0 -> [e2, e1]          |    t0  | 0 1 1 0 |      |    e0  | x 1 | 1 x |    |    e0  | x 0 | 1 x |    |
+// | t1 -> [e1, e0]          |    t1  | 1 1 0 0 |      |    e1  | 1 2 | 1 x |    |    e1  | 2 3 | 4 x |    |
+// | t2 -> [e0, e1]          |    t2  | 1 1 0 0 |      |    e2  | 1 x | x 1 |    |    e2  | 5 x | x 6 |    |
+// | t3 -> [e2, e3]          |    t3  | 0 0 1 1 |      |    e3  | x x | x 1 |    |    e3  | x x | x 7 |    |
+// |_________________________|_________________________|_________________________|_________________________|
+// |                         |                         |        block_sum        |      block_cu_sum       |
+// |                         |                         |    b0     1  |  1       |  c_b0     0  |  1       |
+// |                         |                         |    b1     2  |  1       |  c_b1     2  |  4       |
+// |                         |                         |    b2     1  |  1       |  c_b2     5  |  6       |
+// |                         |                         |    b3     0  |  1       |  c_b3     7  |  7       |
+// |_________________________|_________________________|_________________________|_________________________|
 // clang-format on
 
 namespace llm::kernel::moe {
@@ -44,62 +48,92 @@ inline const T* const_data_ptr(torch::Tensor& t) {
   return reinterpret_cast<const T*>(t.const_data_ptr());
 }
 
-// wrapper for cub::DeviceRadixSort::SortPairs with type
-void radix_sort_pairs(void* temp_storage,
-                      size_t* temp_storage_bytes,
-                      const int* keys_in,
-                      int* keys_out,
-                      const int* values_in,
-                      int* values_out,
-                      size_t num_items) {
-  cub::DeviceRadixSort::SortPairs(temp_storage,
-                                  *temp_storage_bytes,
-                                  keys_in,
-                                  keys_out,
-                                  values_in,
-                                  values_out,
-                                  num_items);
-}
-
-// build a row_id_map that maps [topk, n_tokens] to the index in permuted tokens
-__global__ void permute_row_id_map(
-    const int* sorted_row_id,  // [n_permuted_tokens]
-    int* row_id_map,           // [topk, n_tokens]
+// (grid, block) = (n_experts, min(n_blocks, 1024))
+template <int BLOCK_SIZE>
+__global__ void block_sum_kernel(
+    const int* routing_map,  // [n_tokens, n_experts]
+    int* row_id_map,         // [n_experts, n_tokens]
+    int* block_sum,          // [n_experts, n_blocks]
     const int n_tokens,
-    const int topk) {
-  // row_id_map[topK][n_tokens]
-  const int bid = blockIdx.x;
+    const int n_experts,
+    const int n_blocks) {
+  // expert idx
+  const int e_idx = blockIdx.x;
+  // start token idx
   const int tid = threadIdx.x;
 
-  // idx in permuted tokens
-  const int p_idx = bid * blockDim.x + tid;
-  const int n_permuted_tokens = n_tokens * topk;
-
-  if (p_idx >= n_permuted_tokens) {
-    return;
+  // process each token block
+  for (int b = tid; b < n_blocks; b += blockDim.x) {
+    // block start token idx
+    const int t_base = b * BLOCK_SIZE;
+    int sum = 0;
+    // process each token in the block
+    for (int i = 0; i < BLOCK_SIZE; ++i) {
+      const int t_idx = t_base + i;
+      if (t_idx < n_tokens) {
+        // routing_map: [n_tokens, n_experts]
+        const auto val = routing_map[(t_idx * n_experts) + e_idx];
+        // row_id_map: [n_experts, n_tokens]
+        row_id_map[(e_idx * n_tokens) + t_idx] = val ? ++sum : 0;
+      } else {
+        // out of range
+        row_id_map[(e_idx * n_tokens) + t_idx] = 0;
+      }
+    }
+    // block_sum: [n_experts, n_blocks]
+    block_sum[(e_idx * n_blocks) + b] = sum;
   }
+}
 
-  // idx in flattened indices
-  const int f_idx = sorted_row_id[p_idx];
-  // token idx: each token has topk experts in flattened indices
-  const int t_idx = f_idx / topk;
-  // topk idx: idx in topk experts for the token
-  const int k_idx = f_idx % topk;
+// (grid, block) = (n_experts, min(n_blocks, 1024))
+template <int BLOCK_SIZE>
+__global__ void row_id_map_kernel(
+    const int* block_sum,  // [n_experts, n_blocks]
+    int* row_id_map,       // [n_experts, n_tokens]
+    const int n_tokens,
+    const int n_experts,
+    const int n_blocks) {
+  // expert idx
+  const int e_idx = blockIdx.x;
+  // start token idx
+  const int tid = threadIdx.x;
+  const int total_blocks = n_experts * n_blocks;
+  // process each token block
+  for (int b = tid; b < n_blocks; b += blockDim.x) {
+    const int g_b = n_blocks * e_idx + b;
+    int cu_sum = 0;
+    for (int i = 0; i < g_b; ++i) {
+      cu_sum += block_sum[i];
+    }
 
-  // row_id_map: [topk, n_tokens] => idx in permuted tokens
-  row_id_map[(k_idx * n_tokens) + t_idx] = p_idx;
+    // block start token idx
+    const int t_base = b * BLOCK_SIZE;
+    int sum = 0;
+    // process each token in the block
+    for (int i = 0; i < BLOCK_SIZE; ++i) {
+      const int t_idx = t_base + i;
+      // row_id_map: [n_experts, n_tokens]
+      const int idx = (e_idx * n_tokens) + t_idx;
+      if (t_idx < n_tokens) {
+        const auto val = row_id_map[idx];
+        row_id_map[idx] = val ? cu_sum + val - 1 : -1;
+      } else {
+        row_id_map[idx] = -1;
+      }
+    }
+  }
 }
 
 template <typename T>
 __global__ void permute_kernel(
     const T* tokens,        // [n_tokens, dim]
     T* permuted_tokens,     // [n_permuted_tokens, dim]
-    const int* row_id_map,  // [topk, n_tokens] => p_idx
+    const int* row_id_map,  // [n_experts, n_tokens] => p_idx
     const int n_tokens,
-    const int topk,
+    const int n_experts,
     const int dim) {
   // one block corresponds to one token
-  const int token_idx = blockIdx.x;
+  const int t_idx = blockIdx.x;
   const int tid = threadIdx.x;
 
   // frag for load/store
@@ -107,21 +141,20 @@ __global__ void permute_kernel(
 
   static constexpr int kFragSize = 16 / sizeof(T);
   // tokens: [n_tokens, dim]
-  const T* token_base = tokens + token_idx * dim;
+  const T* token_base = tokens + t_idx * dim;
   for (int i = tid * kFragSize; i < dim; i += blockDim.x * kFragSize) {
     // load fragment into frag_ls (float4)
     frag_ls = __ldlu(reinterpret_cast<const float4*>(token_base + i));
 
-    int idx = token_idx;
-    for (int k_idx = 0; k_idx < topk; ++k_idx) {
-      // row_id_map: [topk, n_tokens] => idx in permuted tokens
-      const int p_idx = row_id_map[idx];
-      // move to next k
-      idx += n_tokens;
-
-      // store back to permuted_tokens: [n_permuted_tokens, dim]
-      T* permuted_token_base = permuted_tokens + p_idx * dim;
-      *reinterpret_cast<float4*>(permuted_token_base + i) = frag_ls;
+    // broadcast to all experts
+    for (int e_idx = 0; e_idx < n_experts; ++e_idx) {
+      // row_id_map: [n_experts, n_tokens] => idx in permuted tokens
+      const int p_idx = row_id_map[(e_idx * n_tokens) + t_idx];
+      if (p_idx != -1) {
+        // store back to permuted_tokens: [n_permuted_tokens, dim]
+        T* permuted_token_base = permuted_tokens + p_idx * dim;
+        *reinterpret_cast<float4*>(permuted_token_base + i) = frag_ls;
+      }
     }
   }
 }
@@ -130,10 +163,10 @@ template <typename T>
 __global__ void unpermute_kernel(
     const T* permuted_tokens,  // [n_permuted_tokens, dim]
     T* tokens,                 // [n_tokens, dim]
-    const int* row_id_map,     // [topk, n_tokens] => idx in permuted tokens
-    const T* probs,            // [n_tokens, topk]
+    const int* row_id_map,  // [n_experts, n_tokens] => idx in permuted tokens
+    const T* probs,         // [n_tokens, n_experts]
     const int n_tokens,
-    const int topk,
+    const int n_experts,
     const int dim) {
   extern __shared__ int8_t s_mem[];
   // [topk] probs for the token
@@ -144,9 +177,8 @@ __global__ void unpermute_kernel(
   const int tid = threadIdx.x;
 
   // load prob into shared memory for the token
-  // let first topk thread to load probs
-  for (int i = tid; i < topk; i += blockDim.x * blockDim.y) {
-    s_probs[i] = probs[(t_idx * topk) + i];
+  for (int i = tid; i < n_experts; i += blockDim.x) {
+    s_probs[i] = probs[(t_idx * n_experts) + i];
   }
   __syncthreads();
 
@@ -158,19 +190,22 @@ __global__ void unpermute_kernel(
   for (int i = tid * kFragSize; i < dim; i += blockDim.x * kFragSize) {
     T frag_sum[kFragSize] = {T(0.0f)};
 
-    // sum over topk
-    for (int k_idx = 0; k_idx < topk; ++k_idx) {
-      const int p_idx = row_id_map[(k_idx * n_tokens) + t_idx];
-      const T* permuted_token_base = permuted_tokens + p_idx * dim;
-      // load fragment into frag_ls (float4)
-      frag_ls =
-          __ldlu(reinterpret_cast<const float4*>(permuted_token_base + i));
+    // sum over experts
+    for (int e_idx = 0; e_idx < n_experts; ++e_idx) {
+      // row_id_map: [n_experts, n_tokens] => idx in permuted tokens
+      const int p_idx = row_id_map[(e_idx * n_tokens) + t_idx];
+      if (p_idx != -1) {
+        const T* permuted_token_base = permuted_tokens + p_idx * dim;
+        // load fragment into frag_ls (float4)
+        frag_ls =
+            __ldlu(reinterpret_cast<const float4*>(permuted_token_base + i));
 
-      // apply probs & sum
-      const auto prob = s_probs[k_idx];
-      CUTE_UNROLL
-      for (int d = 0; d < kFragSize; ++d) {
-        frag_sum[d] += (frag_ls_ptr[d] * prob);
+        // apply probs & sum
+        const auto prob = s_probs[e_idx];
+        CUTE_UNROLL
+        for (int d = 0; d < kFragSize; ++d) {
+          frag_sum[d] += (frag_ls_ptr[d] * prob);
+        }
       }
     }
 
@@ -236,91 +271,68 @@ void launch_unpermute_kernel(
 }  // namespace
 
 std::tuple<torch::Tensor, torch::Tensor> permute_with_mask_map(
-    torch::Tensor tokens,  // [n_tokens, dim]
-    torch::Tensor indices  // [n_tokens, topk]
-) {
+    torch::Tensor tokens,       // [n_tokens, dim]
+    torch::Tensor routing_map,  // [n_tokens, n_experts] bool/int tensor
+    int64_t topk) {
   const auto n_tokens = tokens.size(0);
-  const auto dim = tokens.size(1);
-  const auto topk = indices.size(1);
+  const auto n_experts = routing_map.size(1);
+
+  const auto options = tokens.options();
+  const auto int32_options = options.dtype(torch::kInt32);
+
+  auto row_id_map = torch::empty({n_experts, n_tokens}, int32_options);
+
+  // step1: transpose routing_map to [n_experts, n_tokens] and calculate block
+  // sum for each expert
+  // launch_block_sum_kernel;
+
+  // step2: calculate index in permuted tokens for each token
+  // launch_row_id_kernel;
 
   const auto n_permuted_tokens = n_tokens * topk;
-  const auto options = tokens.options();
 
-  // TODO: cache workspace to avoid reallocating
-  // calculate the size of temporary storage
-  size_t temp_storage_bytes = 0;
-  radix_sort_pairs(nullptr,
-                   &temp_storage_bytes,
-                   nullptr,
-                   nullptr,
-                   nullptr,
-                   nullptr,
-                   n_permuted_tokens);
-  // allocate temporary storage
-  auto temp_storage =
-      torch::empty(temp_storage_bytes, options.dtype(torch::kInt8));
-
-  const auto int32_options = options.dtype(torch::kInt32);
-  auto sorted_indices = torch::zeros(n_permuted_tokens, int32_options);
-  auto row_id = torch::range(0, n_permuted_tokens - 1, 1, int32_options);
-  auto sorted_row_id = torch::zeros(n_permuted_tokens, int32_options);
-
-  const int* indices_ptr = indices.const_data_ptr<int>();
-  const int* row_id_ptr = row_id.const_data_ptr<int>();
-  int* sorted_indices_ptr = sorted_indices.data_ptr<int>();
-  int* sorted_row_id_ptr = sorted_row_id.data_ptr<int>();
-  void* d_temp_storage = temp_storage.data_ptr();
-
-  radix_sort_pairs(d_temp_storage,
-                   &temp_storage_bytes,
-                   indices_ptr,
-                   sorted_indices_ptr,
-                   row_id_ptr,
-                   sorted_row_id_ptr,
-                   n_permuted_tokens);
-
+  const auto dim = tokens.size(1);
   const auto type = tokens.scalar_type();
 
-  auto permuted_tokens = torch::empty({n_permuted_tokens, dim},
-                                      torch::dtype(type).device(torch::kCUDA));
-  auto row_id_map = torch::empty(
-      {n_tokens * topk}, torch::dtype(torch::kInt32).device(torch::kCUDA));
+  auto permuted_tokens = torch::empty({n_permuted_tokens, dim}, options);
+  //   auto row_id_map = torch::empty(
+  //       {n_tokens * topk}, torch::dtype(torch::kInt32).device(torch::kCUDA));
 
-  auto* stream = at::cuda::getCurrentCUDAStream().stream();
+  //   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
-#define LAUNCH_PERMUTE_KERNEL(DType)                             \
-  launch_permute_kernel<DType>(const_data_ptr<DType>(tokens),    \
-                               data_ptr<DType>(permuted_tokens), \
-                               sorted_row_id_ptr,                \
-                               row_id_map.data_ptr<int>(),       \
-                               n_tokens,                         \
-                               topk,                             \
-                               dim,                              \
-                               stream);
+  // #define LAUNCH_PERMUTE_KERNEL(DType)                             \
+//   launch_permute_kernel<DType>(const_data_ptr<DType>(tokens),    \
+//                                data_ptr<DType>(permuted_tokens), \
+//                                sorted_row_id_ptr,                \
+//                                row_id_map.data_ptr<int>(),       \
+//                                n_tokens,                         \
+//                                topk,                             \
+//                                dim,                              \
+//                                stream);
 
-  switch (type) {
-    case torch::ScalarType::Float: {
-      LAUNCH_PERMUTE_KERNEL(float);
-      break;
-    }
-    case torch::ScalarType::Half: {
-      LAUNCH_PERMUTE_KERNEL(cute::half_t);
-      break;
-    }
-    case torch::ScalarType::BFloat16: {
-      LAUNCH_PERMUTE_KERNEL(cute::bfloat16_t);
-      break;
-    }
-    default:
-      CHECK(false) << "Unsupported tensor type: " << type;
-  }
+  //   switch (type) {
+  //     case torch::ScalarType::Float: {
+  //       LAUNCH_PERMUTE_KERNEL(float);
+  //       break;
+  //     }
+  //     case torch::ScalarType::Half: {
+  //       LAUNCH_PERMUTE_KERNEL(cute::half_t);
+  //       break;
+  //     }
+  //     case torch::ScalarType::BFloat16: {
+  //       LAUNCH_PERMUTE_KERNEL(cute::bfloat16_t);
+  //       break;
+  //     }
+  //     default:
+  //       CHECK(false) << "Unsupported tensor type: " << type;
+  //   }
 
   return {permuted_tokens, row_id_map};
 }
 
 torch::Tensor unpermute_with_mask_map(
     torch::Tensor permuted_tokens,  // [n_permuted_tokens, dim]
-    torch::Tensor row_id_map,       // [topk, n_tokens] => dst row
+    torch::Tensor row_id_map,       // [n_experts, n_tokens] => dst row
     torch::Tensor probs,            // [n_tokens, topk]
     int64_t n_tokens,
     int64_t topk) {

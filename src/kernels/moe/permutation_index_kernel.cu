@@ -99,7 +99,7 @@ __global__ void permute_kernel(
     const int topk,
     const int dim) {
   // one block corresponds to one token
-  const int token_idx = blockIdx.x;
+  const int t_idx = blockIdx.x;
   const int tid = threadIdx.x;
 
   // frag for load/store
@@ -107,12 +107,12 @@ __global__ void permute_kernel(
 
   static constexpr int kFragSize = 16 / sizeof(T);
   // tokens: [n_tokens, dim]
-  const T* token_base = tokens + token_idx * dim;
+  const T* token_base = tokens + t_idx * dim;
   for (int i = tid * kFragSize; i < dim; i += blockDim.x * kFragSize) {
     // load fragment into frag_ls (float4)
     frag_ls = __ldlu(reinterpret_cast<const float4*>(token_base + i));
 
-    int idx = token_idx;
+    int idx = t_idx;
     for (int k_idx = 0; k_idx < topk; ++k_idx) {
       // row_id_map: [topk, n_tokens] => idx in permuted tokens
       const int p_idx = row_id_map[idx];
@@ -145,7 +145,7 @@ __global__ void unpermute_kernel(
 
   // load prob into shared memory for the token
   // let first topk thread to load probs
-  for (int i = tid; i < topk; i += blockDim.x * blockDim.y) {
+  for (int i = tid; i < topk; i += blockDim.x) {
     s_probs[i] = probs[(t_idx * topk) + i];
   }
   __syncthreads();
@@ -281,10 +281,8 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
 
   const auto type = tokens.scalar_type();
 
-  auto permuted_tokens = torch::empty({n_permuted_tokens, dim},
-                                      torch::dtype(type).device(torch::kCUDA));
-  auto row_id_map = torch::empty(
-      {n_tokens * topk}, torch::dtype(torch::kInt32).device(torch::kCUDA));
+  auto permuted_tokens = torch::empty({n_permuted_tokens, dim}, options);
+  auto row_id_map = torch::empty({n_tokens * topk}, int32_options);
 
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
