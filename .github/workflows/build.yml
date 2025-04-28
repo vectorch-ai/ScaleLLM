@@ -11,7 +11,7 @@ on:
       - "**/CMakeLists.txt"
       - ".github/workflows/build.yml"
       - "vcpkg.json"
-    branches: 
+    branches:
       - main
 
   pull_request:
@@ -40,17 +40,17 @@ jobs:
       matrix:
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
-    
-    runs-on: [self-hosted, linux, x64, build]
-    
+
+    runs-on: [16cpu-32gb-arc-runners]
+
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../../ci_cache/.vcpkg/bincache
+        VCPKG_DEFAULT_BINARY_CACHE: /home/runner/ci-cache/.vcpkg/bincache
         # Tells ccache where to store its cache.
-        CCACHE_DIR: ${{ github.workspace }}/../../ci_cache/.ccache
+        CCACHE_DIR: /home/runner/ci-cache/.ccache
         # Tells where to store the dependencies.
-        DEPENDENCES_ROOT: ${{ github.workspace }}/../../ci_cache/.deps
+        DEPENDENCES_ROOT: /home/runner/ci-cache/.deps
 
     steps:
     - name: Checkout
