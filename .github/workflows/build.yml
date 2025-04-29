@@ -41,16 +41,16 @@ jobs:
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
 
-    runs-on: [16cpu-32gb-arc-runners]
+    runs-on: [1gpu-16cpu-32gb-arc-runners]
 
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
-        VCPKG_DEFAULT_BINARY_CACHE: /home/runner/ci-cache/.vcpkg/bincache
-        # Tells ccache where to store its cache.
-        CCACHE_DIR: /home/runner/ci-cache/.ccache
-        # Tells where to store the dependencies.
-        DEPENDENCES_ROOT: /home/runner/ci-cache/.deps
+        # VCPKG_DEFAULT_BINARY_CACHE: /home/runner/ci-cache/.vcpkg/bincache
+        # # Tells ccache where to store its cache.
+        # CCACHE_DIR: /home/runner/ci-cache/.ccache
+        # # Tells where to store the dependencies.
+        # DEPENDENCES_ROOT: /home/runner/ci-cache/.deps
 
     steps:
     - name: Checkout
