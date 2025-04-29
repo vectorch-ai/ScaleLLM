@@ -58,11 +58,11 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Create cache directory
-      run: |
-        mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
-        mkdir -p $CCACHE_DIR
-        mkdir -p $DEPENDENCES_ROOT
+    # - name: Create cache directory
+    #   run: |
+    #     mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
+    #     mkdir -p $CCACHE_DIR
+    #     mkdir -p $DEPENDENCES_ROOT
 
     - name: CMake Build in the 'build' subdirectory
       timeout-minutes: 60
