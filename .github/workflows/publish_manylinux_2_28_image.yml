@@ -43,17 +43,14 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USER }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Create cache directory
-        run: mkdir -p $CI_CACHE_DIR/.buildx-cache
-
       - name: Build base for cuda ${{ matrix.cuda }}
         uses: docker/build-push-action@v5
         with:
           context: ./docker
           file: ./docker/Dockerfile.manylinux2_28
           push: ${{ inputs.push || 'true' }}
-          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
-          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          cache-from: type=registry,ref=vectorchai/scalellm_manylinux2_28:buildcache
+          cache-to: type=registry,ref=vectorchai/scalellm_manylinux2_28:buildcache,mode=max
           build-args: |
             CUDA_VERSION=${{ matrix.cuda }}
           tags: |
