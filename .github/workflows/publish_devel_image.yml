@@ -49,8 +49,8 @@ jobs:
           context: ./docker
           file: ./docker/Dockerfile.devel
           push: ${{ inputs.push || 'true' }}
-          cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
-          cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
+          cache-from: type=registry,ref=vectorchai/scalellm_devel:buildcache
+          cache-to: type=registry,ref=vectorchai/scalellm_devel:buildcache,mode=max
           build-args: |
             UBUNTU_VERSION=22.04
             CUDA_VERSION=${{ matrix.cuda }}
