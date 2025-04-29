@@ -41,7 +41,7 @@ jobs:
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
 
-    runs-on: [1gpu-16cpu-32gb-arc-runners]
+    runs-on: [llm-devel-runners]
 
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
@@ -67,9 +67,9 @@ jobs:
     - name: CMake Build in the 'build' subdirectory
       timeout-minutes: 60
       run: |
-        ./tools/run_in_docker.sh -ni ccache -M 25Gi
-        ./tools/run_in_docker.sh -ni cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80
-        ./tools/run_in_docker.sh -ni cmake --build build --config ${{env.BUILD_TYPE}} --target all
+        ccache -M 25Gi
+        cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80
+        cmake --build build --config ${{env.BUILD_TYPE}} --target all
 
     # - name: benchmark
     #   if: ${{ env.BUILD_TYPE == 'Release' }}
@@ -79,4 +79,4 @@ jobs:
       timeout-minutes: 10
       working-directory: ${{github.workspace}}/build
       # Execute tests defined by the CMake configuration.
-      run: ../tools/run_in_docker.sh -ni -o --gpus=all ctest --output-on-failure -C ${{env.BUILD_TYPE}}
+      run: ctest --output-on-failure -C ${{env.BUILD_TYPE}}
