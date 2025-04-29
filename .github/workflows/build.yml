@@ -46,11 +46,11 @@ jobs:
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
-        # VCPKG_DEFAULT_BINARY_CACHE: /home/runner/ci-cache/.vcpkg/bincache
-        # # Tells ccache where to store its cache.
-        # CCACHE_DIR: /home/runner/ci-cache/.ccache
-        # # Tells where to store the dependencies.
-        # DEPENDENCES_ROOT: /home/runner/ci-cache/.deps
+        VCPKG_DEFAULT_BINARY_CACHE: /home/runner/_work/.vcpkg/bincache
+        # Tells ccache where to store its cache.
+        CCACHE_DIR: /home/runner/_work/.ccache
+        # Tells where to store the dependencies.
+        DEPENDENCES_ROOT: /home/runner/_work/.deps
 
     steps:
     - name: Checkout
@@ -58,11 +58,11 @@ jobs:
       with:
         submodules: recursive
 
-    # - name: Create cache directory
-    #   run: |
-    #     mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
-    #     mkdir -p $CCACHE_DIR
-    #     mkdir -p $DEPENDENCES_ROOT
+    - name: Create cache directory
+      run: |
+        mkdir -p $VCPKG_DEFAULT_BINARY_CACHE
+        mkdir -p $CCACHE_DIR
+        mkdir -p $DEPENDENCES_ROOT
 
     - name: CMake Build in the 'build' subdirectory
       timeout-minutes: 60
