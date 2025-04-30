@@ -75,9 +75,6 @@ __global__ void block_sum_kernel(
         const auto val = routing_map[(t_idx * n_experts) + e_idx];
         // row_id_map: [n_experts, n_tokens]
         row_id_map[(e_idx * n_tokens) + t_idx] = val ? ++sum : 0;
-      } else {
-        // out of range
-        row_id_map[(e_idx * n_tokens) + t_idx] = 0;
       }
     }
     // block_sum: [n_experts, n_blocks]
@@ -91,7 +88,6 @@ __global__ void row_id_map_kernel(
     const int* block_sum,  // [n_experts, n_blocks]
     int* row_id_map,       // [n_experts, n_tokens]
     const int n_tokens,
-    const int n_experts,
     const int n_blocks) {
   // expert idx
   const int e_idx = blockIdx.x;
@@ -110,13 +106,11 @@ __global__ void row_id_map_kernel(
     // process each token in the block
     for (int i = 0; i < BLOCK_SIZE; ++i) {
       const int t_idx = t_base + i;
-      // row_id_map: [n_experts, n_tokens]
-      const int idx = (e_idx * n_tokens) + t_idx;
       if (t_idx < n_tokens) {
+        // row_id_map: [n_experts, n_tokens]
+        const int idx = (e_idx * n_tokens) + t_idx;
         const auto val = row_id_map[idx];
         row_id_map[idx] = val ? cu_sum + val - 1 : -1;
-      } else {
-        row_id_map[idx] = -1;
       }
     }
   }
@@ -235,7 +229,7 @@ void launch_permute_kernel(
   // step2: calculate index in permuted tokens for each token
   // launch_row_id_kernel;
   row_id_map_kernel<BLOCK_SIZE><<<n_experts, n_blocks, 0, stream>>>(
-      block_sum, row_id_map, n_tokens, n_experts, n_blocks);
+      block_sum, row_id_map, n_tokens, n_blocks);
 
   // use 128-bit load/store
   constexpr int kFragSize = 16 / sizeof(T);
@@ -286,7 +280,8 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_mask_map(
 
   // number of tokens per thread to process
   constexpr int BLOCK_SIZE = 128;
-  const int64_t n_blocks = std::min<int64_t>(n_tokens / BLOCK_SIZE, 1024);
+  const int64_t n_blocks =
+      std::min<int64_t>((n_tokens + BLOCK_SIZE - 1) / BLOCK_SIZE, 1024);
   const auto type = tokens.scalar_type();
 
   const auto n_permuted_tokens = n_tokens * topk;
@@ -332,10 +327,11 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_mask_map(
 torch::Tensor unpermute_with_mask_map(
     torch::Tensor permuted_tokens,  // [n_permuted_tokens, dim]
     torch::Tensor row_id_map,       // [n_experts, n_tokens] => dst row
-    torch::Tensor probs,            // [n_tokens, n_experts]
-    int64_t n_tokens) {
+    torch::Tensor probs             // [n_tokens, n_experts]
+) {
   const auto dim = permuted_tokens.size(1);
   const auto n_experts = row_id_map.size(0);
+  const auto n_tokens = row_id_map.size(1);
   const auto type = permuted_tokens.scalar_type();
 
   const auto options = permuted_tokens.options();

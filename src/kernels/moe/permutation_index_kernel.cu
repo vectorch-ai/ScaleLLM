@@ -319,10 +319,11 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
 torch::Tensor unpermute_with_index_map(
     torch::Tensor permuted_tokens,  // [n_permuted_tokens, dim]
     torch::Tensor row_id_map,       // [topk, n_tokens] => dst row
-    torch::Tensor probs,            // [n_tokens, topk]
-    int64_t n_tokens,
-    int64_t topk) {
+    torch::Tensor probs             // [n_tokens, topk]
+) {
   const auto dim = permuted_tokens.size(1);
+  const auto n_tokens = probs.size(0);
+  const auto topk = probs.size(1);
   const auto type = permuted_tokens.scalar_type();
 
   const auto options = permuted_tokens.options();
