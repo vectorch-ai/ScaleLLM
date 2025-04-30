@@ -8,6 +8,7 @@ cc_library(
     topk_softmax_kernel.cu
     grouped_topk_sigmoid_kernel.cu
     permutation_index_kernel.cu
+    permutation_mask_kernel.cu
   DEPS
     cutlass
     glog::glog
