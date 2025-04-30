@@ -325,11 +325,10 @@ torch::Tensor unpermute_with_index_map(
   const auto dim = permuted_tokens.size(1);
   const auto type = permuted_tokens.scalar_type();
 
-  // [n_tokens, dim]
-  auto tokens = torch::empty(
-      {n_tokens, dim},
-      torch::dtype(type).device(torch::kCUDA).requires_grad(false));
+  const auto options = permuted_tokens.options();
 
+  // [n_tokens, dim]
+  auto tokens = torch::empty({n_tokens, dim}, options);
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
 #define LAUNCH_UNPERMUTE_KERNEL(DType)                                   \
