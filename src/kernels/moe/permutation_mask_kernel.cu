@@ -283,16 +283,16 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_mask_map(
 
   DISPATCH_FLOATING_TYPES(type, "permute_with_mask_map", [&] {
     launch_permute_kernel<scalar_t, BLOCK_SIZE>(
-        tokens.const_data_ptr<scalar_t>(),     // [n_tokens, dim]
-        permuted_tokens.data_ptr<scalar_t>(),  // [n_permuted_tokens, dim]
-        routing_map.const_data_ptr<bool>(),    // [n_tokens, n_experts] bool
-        block_sum.data_ptr<int>(),             // [n_experts, n_blocks] int
-        row_id_map.data_ptr<int>(),            // [n_experts, n_tokens] int
-        n_tokens,                              // number of tokens
-        n_experts,                             // number of experts
-        topk,                                  // topk
-        dim,                                   // dimension
-        n_blocks,                              // number of blocks
+        tokens.const_data_ptr<scalar_t>(),
+        permuted_tokens.data_ptr<scalar_t>(),
+        routing_map.const_data_ptr<bool>(),
+        block_sum.data_ptr<int>(),
+        row_id_map.data_ptr<int>(),
+        n_tokens,
+        n_experts,
+        topk,
+        dim,
+        n_blocks,
         stream);
   });
 
@@ -316,13 +316,13 @@ torch::Tensor unpermute_with_mask_map(
 
   DISPATCH_FLOATING_TYPES(type, "unpermute_with_mask_map", [&] {
     launch_unpermute_kernel<scalar_t>(
-        permuted_tokens.const_data_ptr<scalar_t>(),  // [n_permuted_tokens, dim]
-        tokens.data_ptr<scalar_t>(),                 // [n_tokens, dim]
-        row_id_map.data_ptr<int>(),        // [n_experts, n_tokens] int
-        probs.const_data_ptr<scalar_t>(),  // [n_tokens, n_experts] float
-        n_tokens,                          // number of tokens
-        n_experts,                         // number of experts
-        dim,                               // dimension
+        permuted_tokens.const_data_ptr<scalar_t>(),
+        tokens.data_ptr<scalar_t>(),
+        row_id_map.data_ptr<int>(),
+        probs.const_data_ptr<scalar_t>(),
+        n_tokens,
+        n_experts,
+        dim,
         stream);
   });
   return tokens;

@@ -227,12 +227,12 @@ void launch_unpermute_kernel(
 }  // namespace
 
 std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
-    torch::Tensor tokens,  // [n_tokens, dim]
-    torch::Tensor indices  // [n_tokens, topk]
+    torch::Tensor tokens,   // [n_tokens, dim]
+    torch::Tensor topk_ids  // [n_tokens, topk]
 ) {
   const auto n_tokens = tokens.size(0);
   const auto dim = tokens.size(1);
-  const auto topk = indices.size(1);
+  const auto topk = topk_ids.size(1);
 
   const auto n_permuted_tokens = n_tokens * topk;
   const auto options = tokens.options();
@@ -256,18 +256,12 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
   auto row_id = torch::range(0, n_permuted_tokens - 1, 1, int32_options);
   auto sorted_row_id = torch::zeros(n_permuted_tokens, int32_options);
 
-  const int* indices_ptr = indices.const_data_ptr<int>();
-  const int* row_id_ptr = row_id.const_data_ptr<int>();
-  int* sorted_indices_ptr = sorted_indices.data_ptr<int>();
-  int* sorted_row_id_ptr = sorted_row_id.data_ptr<int>();
-  void* d_temp_storage = temp_storage.data_ptr();
-
-  radix_sort_pairs(d_temp_storage,
+  radix_sort_pairs(temp_storage.data_ptr(),
                    &temp_storage_bytes,
-                   indices_ptr,
-                   sorted_indices_ptr,
-                   row_id_ptr,
-                   sorted_row_id_ptr,
+                   topk_ids.const_data_ptr<int>(),
+                   sorted_indices.data_ptr<int>(),
+                   row_id.const_data_ptr<int>(),
+                   sorted_row_id.data_ptr<int>(),
                    n_permuted_tokens);
 
   const auto type = tokens.scalar_type();
@@ -281,7 +275,7 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
     // permute tokens
     launch_permute_kernel<scalar_t>(tokens.const_data_ptr<scalar_t>(),
                                     permuted_tokens.data_ptr<scalar_t>(),
-                                    sorted_row_id_ptr,
+                                    sorted_row_id.data_ptr<int>(),
                                     row_id_map.data_ptr<int>(),
                                     n_tokens,
                                     topk,
