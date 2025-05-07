@@ -21,9 +21,9 @@ cc_test(
   NAME
     moe_kernel_test
   SRCS
-    # topk_softmax_kernel_test.cu
-    # grouped_topk_sigmoid_kernel_test.cu
-    # permutation_kernel_test.cu
+    topk_softmax_kernel_test.cu
+    grouped_topk_sigmoid_kernel_test.cu
+    permutation_kernel_test.cu
     align_block_kernel_test.cu
   DEPS
     :moe.kernels
