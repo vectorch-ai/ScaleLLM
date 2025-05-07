@@ -8,6 +8,7 @@
 
 #include "../dispatch.h"
 #include "cute/int_tuple.hpp"
+#include "cute/layout.hpp"
 
 // Adapated from
 // https://github.com/sgl-project/sglang/blob/main/sgl-kernel/csrc/moe/moe_align_kernel.cu
@@ -45,12 +46,16 @@ __global__ void row_id_map_kernel(
     const scalar_t* __restrict__ topk_ids,    // [n_tokens, topk]
     scalar_t* __restrict__ sorted_token_ids,  // [n_permuted_tokens+]
     scalar_t* __restrict__ cu_sum,            // [n_experts+1]
-    int n_permuted_tokens) {
-  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  const int stride = blockDim.x * gridDim.x;
+    int n_flatten_tokens,
+    int shard_size) {
+  // which shard this thread would take care of
+  const auto cur_shard = blockIdx.x * blockDim.x + threadIdx.x;
+  const auto shard_start = cur_shard * shard_size;
+  const auto shard_end = min((cur_shard + 1) * shard_size, n_flatten_tokens);
 
-  for (int i = tid; i < n_permuted_tokens; i += stride) {
+  for (int i = shard_start; i < shard_end; ++i) {
     const auto e_idx = topk_ids[i];
+    // N.B. token ids for each expert is not sorted
     const auto p_idx = atomicAdd(&cu_sum[e_idx], 1);
     sorted_token_ids[p_idx] = i;
   }
@@ -65,10 +70,21 @@ __global__ void cusum_kernel(
     int32_t n_padded_experts,
     int32_t experts_per_warp,
     int32_t block_size,
-    size_t n_permuted_tokens,
+    size_t n_flatten_tokens,
     scalar_t* __restrict__ cu_sum  // [n_experts+1]
 ) {
+  using namespace cute;
   constexpr int32_t WARP_SIZE = 32;
+  // which shard and expert this thread would take care of
+  const auto n_shards = blockDim.x;
+  const auto cur_shard = threadIdx.x;
+  const auto cur_expert = threadIdx.x;
+
+  // number of tokens per shard
+  const auto shard_size = ceil_div(n_flatten_tokens, n_shards);
+  const auto shard_start = cur_shard * shard_size;
+  const auto shard_end = min((cur_shard + 1) * shard_size, n_flatten_tokens);
+
   // [n_experts+1]
   extern __shared__ int32_t token_counts[];
 
@@ -84,30 +100,20 @@ __global__ void cusum_kernel(
 
   __syncthreads();
 
-  const size_t tid = threadIdx.x;
-  const size_t stride = blockDim.x;
-
   // process the token shard
-  for (size_t i = tid; i < n_permuted_tokens; i += stride) {
-    int expert_id = topk_ids[i];
-    int warp_idx = expert_id / experts_per_warp;
-    int expert_offset = expert_id % experts_per_warp;
+  for (int i = shard_start; i < shard_end; ++i) {
+    const auto expert_id = topk_ids[i];
     // accumulate token counts for each expert
-    atomicAdd(&token_counts[warp_idx * experts_per_warp + expert_offset], 1);
+    atomicAdd(&token_counts[expert_id], 1);
   }
 
   __syncthreads();
 
   if (threadIdx.x == 0) {
     cu_sum[0] = 0;
-    for (int i = 1; i <= n_experts; ++i) {
-      int expert_count = 0;
-      int warp_idx = (i - 1) / experts_per_warp;
-      int expert_offset = (i - 1) % experts_per_warp;
-      expert_count = token_counts[warp_idx * experts_per_warp + expert_offset];
-      // why not just expert_count = shared_counts[i - 1]?
-
-      cu_sum[i] = cu_sum[i - 1] + cute::round_up(expert_count, block_size);
+    for (int e_idx = 1; e_idx <= n_experts; ++e_idx) {
+      cu_sum[e_idx] = cu_sum[e_idx - 1] +
+                      cute::round_up(token_counts[e_idx - 1], block_size);
     }
     *n_padded_permuted_tokens = cu_sum[n_experts];
   }
@@ -115,10 +121,10 @@ __global__ void cusum_kernel(
   __syncthreads();
 
   // update the expert id for each block
-  if (threadIdx.x < n_experts) {
-    for (int i = cu_sum[threadIdx.x]; i < cu_sum[threadIdx.x + 1];
+  if (cur_expert < n_experts) {
+    for (int i = cu_sum[cur_expert]; i < cu_sum[cur_expert + 1];
          i += block_size) {
-      expert_ids[i / block_size] = threadIdx.x;
+      expert_ids[i / block_size] = cur_expert;
     }
   }
 }
@@ -131,69 +137,78 @@ __global__ void align_block_kernel(
     int32_t* __restrict__ n_padded_permuted_tokens,  // [1]
     int32_t n_experts,
     int32_t block_size,
-    size_t n_permuted_tokens) {
-  const size_t tid = threadIdx.x;
-  const size_t stride = blockDim.x;
+    int32_t n_flatten_tokens) {
+  using namespace cute;
 
-  //
+  // which shard and expert this thread would take care of
+  const auto n_shards = blockDim.x;
+  const auto cur_shard = threadIdx.x;
+  const auto cur_expert = threadIdx.x;
+
+  // number of tokens per shard
+  const auto shard_size = ceil_div(n_flatten_tokens, n_shards);
+  const auto shard_start = cur_shard * shard_size;
+  const auto shard_end = min((cur_shard + 1) * shard_size, n_flatten_tokens);
+
   extern __shared__ int32_t s_mem[];
+
   // [n_experts+1]
-  int32_t* cu_sum = s_mem;
+  Tensor cu_sum = make_tensor(make_smem_ptr(reinterpret_cast<int32_t*>(s_mem)),
+                              make_layout(make_shape(n_experts + 1)));
   // [n_shards+1][n_experts]
-  int32_t* token_counts = (int32_t*)(s_mem + n_experts + 1);
+  // token_counts(0, _) = 0 is used to facilitate the prefix sum
+  Tensor token_counts = make_tensor(
+      make_smem_ptr(reinterpret_cast<int32_t*>(s_mem + n_experts + 1)),
+      make_layout(make_shape(n_shards + 1, n_experts)));
 
   // init token counts for each expert in the shard
-  for (int i = 0; i < n_experts; ++i) {
-    token_counts[(threadIdx.x + 1) * n_experts + i] = 0;
+  for (int e_idx = 0; e_idx < n_experts; ++e_idx) {
+    token_counts(cur_shard + 1, e_idx) = 0;
   }
 
   // calculate expert counts for each token block
-  for (size_t i = tid; i < n_permuted_tokens; i += stride) {
-    // ++tokens_cnts[threadIdx.x+1][topk_ids[i]];
-    ++token_counts[(threadIdx.x + 1) * n_experts + topk_ids[i]];
+  for (int i = shard_start; i < shard_end; ++i) {
+    ++token_counts(cur_shard + 1, topk_ids[i]);
   }
 
   __syncthreads();
 
-  // calculate the prefix sum of token counts for each expert within the block
-  if (threadIdx.x < n_experts) {
-    token_counts[threadIdx.x] = 0;
-    for (int i = 1; i <= blockDim.x; ++i) {
-      token_counts[i * n_experts + threadIdx.x] +=
-          token_counts[(i - 1) * n_experts + threadIdx.x];
+  // calculate the prefix sum for each expert
+  // total number of tokens per expert is stored in token_counts(n_shards, _)
+  if (cur_expert < n_experts) {
+    token_counts(0, cur_expert) = 0;
+    for (int i = 1; i <= n_shards; ++i) {
+      token_counts(i, cur_expert) += token_counts(i - 1, cur_expert);
     }
   }
 
   __syncthreads();
 
-  // caluculate token counts for each expert
   if (threadIdx.x == 0) {
+    // caluculate cumulative sum for each expert
     cu_sum[0] = 0;
-    for (int i = 1; i <= n_experts; ++i) {
-      cu_sum[i] = cu_sum[i - 1] +
-                  cute::round_up(token_counts[blockDim.x * n_experts + i - 1],
-                                 block_size);
+    for (int e_idx = 1; e_idx <= n_experts; ++e_idx) {
+      cu_sum[e_idx] =
+          cu_sum[e_idx - 1] +
+          cute::round_up(token_counts(n_shards, e_idx - 1), block_size);
     }
     *n_padded_permuted_tokens = cu_sum[n_experts];
   }
 
   __syncthreads();
 
-  // each thread fills the expert id for each token
-  if (threadIdx.x < n_experts) {
-    for (int i = cu_sum[threadIdx.x]; i < cu_sum[threadIdx.x + 1];
+  // each thread fills the expert id for each token block
+  if (cur_expert < n_experts) {
+    for (int i = cu_sum[cur_expert]; i < cu_sum[cur_expert + 1];
          i += block_size) {
-      expert_ids[i / block_size] = threadIdx.x;
+      expert_ids[i / block_size] = cur_expert;
     }
   }
 
-  // each thread process one block
-  for (size_t i = tid; i < n_permuted_tokens; i += stride) {
-    int32_t expert_id = topk_ids[i];
-    int32_t rank_post_pad =
-        token_counts[threadIdx.x * n_experts + expert_id] + cu_sum[expert_id];
-    sorted_token_ids[rank_post_pad] = i;
-    ++token_counts[threadIdx.x * n_experts + expert_id];
+  for (int i = shard_start; i < shard_end; ++i) {
+    const auto e_idx = topk_ids[i];
+    const auto idx_in_shard = token_counts(cur_shard, e_idx)++;
+    sorted_token_ids[cu_sum[e_idx] + idx_in_shard] = i;
   }
 }
 
@@ -210,19 +225,15 @@ void permute_align_block(
 ) {
   constexpr int threads = 1024;
   constexpr int32_t WARP_SIZE = 32;
-
+  const auto n_flatten_tokens = topk_ids.numel();
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
   DISPATCH_INTEGRAL_TYPES(topk_ids.scalar_type(), "align_block_kernel", [&] {
-    // bool small_batch_expert_mode =
-    //     (topk_ids.numel() < 1024) && (n_experts <= 64);
-    bool small_batch_expert_mode = false;
+    if (n_flatten_tokens <= 1024 && n_experts <= 64) {
+      const int32_t n_shards = max((int32_t)n_experts, WARP_SIZE);
+      const int32_t smem_size =
+          ((n_shards + 1) * n_experts + (n_experts + 1)) * sizeof(int32_t);
 
-    if (small_batch_expert_mode) {
-      const int32_t threads = max((int32_t)n_experts, WARP_SIZE);
-      const int32_t shared_mem_size =
-          ((threads + 1) * n_experts + (n_experts + 1)) * sizeof(int32_t);
-
-      align_block_kernel<scalar_t><<<1, threads, shared_mem_size, stream>>>(
+      align_block_kernel<scalar_t><<<1, n_shards, smem_size, stream>>>(
           topk_ids.data_ptr<scalar_t>(),
           sorted_token_ids.data_ptr<int32_t>(),
           experts_ids.data_ptr<int32_t>(),
@@ -234,15 +245,9 @@ void permute_align_block(
       // why it is faster?
       // use more sms to sort
       int experts_per_warp = WARP_SIZE;
-      int64_t padded_num_experts =
-          ((n_experts + WARP_SIZE - 1) / WARP_SIZE) * WARP_SIZE;
+      int64_t padded_num_experts = cute::round_up(n_experts, experts_per_warp);
       size_t num_warps = cute::ceil_div(padded_num_experts, experts_per_warp);
       size_t shared_mem_size = num_warps * experts_per_warp * sizeof(int32_t);
-
-      // can be removed.
-      // [n_experts+1]
-      cu_sum.zero_();
-      // threads = ((threads + WARP_SIZE - 1) / WARP_SIZE) * WARP_SIZE;
 
       cusum_kernel<scalar_t><<<1, threads, shared_mem_size, stream>>>(
           topk_ids.data_ptr<scalar_t>(),
@@ -252,22 +257,23 @@ void permute_align_block(
           padded_num_experts,
           experts_per_warp,
           block_size,
-          topk_ids.numel(),
+          n_flatten_tokens,
           cu_sum.data_ptr<int32_t>());
 
       // use up to 256 threads to sort
-      const int block_threads = std::min(256, (int)threads);
+      const int threads = 256;
       // partition permuted tokens into blocks
-      const int num_blocks =
-          (topk_ids.numel() + block_threads - 1) / block_threads;
-      const int max_blocks = 65535;
-      const int actual_blocks = std::min(num_blocks, max_blocks);
-
-      row_id_map_kernel<scalar_t><<<actual_blocks, block_threads, 0, stream>>>(
+      int n_blocks = cute::ceil_div(n_flatten_tokens, threads);
+      // up to 65535 blocks
+      n_blocks = std::min(n_blocks, 65535);
+      const auto shard_size =
+          cute::ceil_div(n_flatten_tokens, n_blocks * threads);
+      row_id_map_kernel<scalar_t><<<n_blocks, threads, 0, stream>>>(
           topk_ids.data_ptr<scalar_t>(),
           sorted_token_ids.data_ptr<scalar_t>(),
           cu_sum.data_ptr<scalar_t>(),
-          topk_ids.numel());
+          n_flatten_tokens,
+          shard_size);
     }
   });
 }
