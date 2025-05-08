@@ -1,13 +1,7 @@
-#include <ATen/ops/allclose.h>
-#include <ATen/ops/equal.h>
-#include <c10/core/ScalarType.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
-#include <cute/layout.hpp>
-
-#include "cute/int_tuple.hpp"
-#include "gtest/gtest.h"
+#include <cute/int_tuple.hpp>
 
 namespace llm {
 
@@ -58,8 +52,8 @@ bool sorted_token_idxes_equal(torch::Tensor val,
 
   size_t i = 0;
   while (i < n_blocks) {
+    // find the end of current expert
     const auto e_id = experts_ids_ptr[i];
-
     size_t s = i;
     while (i < n_blocks && experts_ids_ptr[i] == e_id) {
       ++i;

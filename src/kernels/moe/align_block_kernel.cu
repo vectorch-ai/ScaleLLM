@@ -1,14 +1,9 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/torch.h>
 
-#include <cub/cub.cuh>
-#include <cute/config.hpp>
-#include <cute/numeric/numeric_types.hpp>
 #include <cute/tensor.hpp>
 
 #include "../dispatch.h"
-#include "cute/int_tuple.hpp"
-#include "cute/layout.hpp"
 
 // Adapated from
 // https://github.com/sgl-project/sglang/blob/main/sgl-kernel/csrc/moe/moe_align_kernel.cu
@@ -52,28 +47,27 @@ __global__ void cusum_kernel(
   const int tid = threadIdx.x;
   const int stride = blockDim.x;
 
-  const auto cur_expert = threadIdx.x;
+  const auto curr_expert = threadIdx.x;
 
   // token count for each expert [n_padded_experts]
   extern __shared__ int token_counts[];
 
   // init token counts for each expert
-  if (cur_expert < n_experts) {
-    token_counts[cur_expert] = 0;
+  if (curr_expert < n_experts) {
+    token_counts[curr_expert] = 0;
   }
 
   __syncthreads();
 
   // process the token shard
   for (int i = tid; i < n_tokens; i += stride) {
-    const auto expert_id = topk_ids[i];
     // accumulate token counts for each expert
-    atomicAdd(&token_counts[expert_id], 1);
+    atomicAdd(&token_counts[topk_ids[i]], 1);
   }
 
   __syncthreads();
 
-  if (threadIdx.x == 0) {
+  if (tid == 0) {
     cu_sum[0] = 0;
     for (int e_idx = 1; e_idx <= n_experts; ++e_idx) {
       cu_sum[e_idx] = cu_sum[e_idx - 1] +
@@ -85,10 +79,10 @@ __global__ void cusum_kernel(
   __syncthreads();
 
   // update the expert id for each block
-  if (cur_expert < n_experts) {
-    for (int i = cu_sum[cur_expert]; i < cu_sum[cur_expert + 1];
+  if (curr_expert < n_experts) {
+    for (int i = cu_sum[curr_expert]; i < cu_sum[curr_expert + 1];
          i += block_size) {
-      expert_ids[i / block_size] = cur_expert;
+      expert_ids[i / block_size] = curr_expert;
     }
   }
 }
@@ -107,8 +101,8 @@ __global__ void align_block_kernel(
 
   // which shard and expert this thread would take care of
   const int n_shards = blockDim.x;
-  const int cur_shard = threadIdx.x;
-  const int cur_expert = threadIdx.x;
+  const int curr_shard = threadIdx.x;
+  const int curr_expert = threadIdx.x;
 
   const int tid = threadIdx.x;
   const int stride = blockDim.x;
@@ -126,28 +120,28 @@ __global__ void align_block_kernel(
 
   // init token counts for each expert in the shard
   for (int e_idx = 0; e_idx < n_experts; ++e_idx) {
-    token_counts(cur_shard + 1, e_idx) = 0;
+    token_counts(curr_shard + 1, e_idx) = 0;
   }
 
   // calculate expert counts for each token block
   for (int i = tid; i < n_tokens; i += stride) {
-    ++token_counts(cur_shard + 1, topk_ids[i]);
+    ++token_counts(curr_shard + 1, topk_ids[i]);
   }
 
   __syncthreads();
 
   // calculate the prefix sum for each expert
   // total number of tokens per expert is stored in token_counts(n_shards, _)
-  if (cur_expert < n_experts) {
-    token_counts(0, cur_expert) = 0;
+  if (curr_expert < n_experts) {
+    token_counts(0, curr_expert) = 0;
     for (int i = 1; i <= n_shards; ++i) {
-      token_counts(i, cur_expert) += token_counts(i - 1, cur_expert);
+      token_counts(i, curr_expert) += token_counts(i - 1, curr_expert);
     }
   }
 
   __syncthreads();
 
-  if (threadIdx.x == 0) {
+  if (tid == 0) {
     // caluculate cumulative sum for each expert
     cu_sum[0] = 0;
     for (int e_idx = 1; e_idx <= n_experts; ++e_idx) {
@@ -161,16 +155,16 @@ __global__ void align_block_kernel(
   __syncthreads();
 
   // each thread fills the expert id for each token block
-  if (cur_expert < n_experts) {
-    for (int i = cu_sum[cur_expert]; i < cu_sum[cur_expert + 1];
+  if (curr_expert < n_experts) {
+    for (int i = cu_sum[curr_expert]; i < cu_sum[curr_expert + 1];
          i += block_size) {
-      expert_ids[i / block_size] = cur_expert;
+      expert_ids[i / block_size] = curr_expert;
     }
   }
 
   for (int i = tid; i < n_tokens; i += stride) {
     const auto e_idx = topk_ids[i];
-    const auto idx = token_counts(cur_shard, e_idx)++;
+    const auto idx = token_counts(curr_shard, e_idx)++;
     sorted_token_idxes[cu_sum[e_idx] + idx] = i;
   }
 }
@@ -253,7 +247,7 @@ void sum_out(const torch::Tensor& input,  // [n_tokens, topk, dim]
   const auto dim = input.size(2);
 
   // one block per token
-  const auto threads = std::min<int>(dim, 1024));
+  const auto threads = std::min<int>(dim, 1024);
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
 #define DISPATCH_TOPK_SUM_KERNEL_CASE(TOPK)                                    \
