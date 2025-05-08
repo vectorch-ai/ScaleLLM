@@ -177,19 +177,19 @@ __global__ void align_block_kernel(
 
 // reduce along topk dimension, assuming contiguous memory
 template <typename scalar_t, int TOPK>
-__global__ void sum_kernel(
+__global__ void topk_sum_kernel(
     scalar_t* __restrict__ out,          // [n_tokens, dim]
     const scalar_t* __restrict__ input,  // [n_tokens, topk, dim]
-    const int64_t dim) {
+    int64_t dim) {
   // one block per token
   const int64_t t_idx = blockIdx.x;
   for (int64_t i = threadIdx.x; i < dim; i += blockDim.x) {
-    scalar_t x = 0.0;
+    scalar_t sum = 0.0;
     CUTE_UNROLL
     for (int k = 0; k < TOPK; ++k) {
-      x += input[(t_idx * TOPK * dim) + (k * dim) + i];
+      sum += input[(t_idx * TOPK * dim) + (k * dim) + i];
     }
-    out[(t_idx * dim) + i] = x;
+    out[(t_idx * dim) + i] = sum;
   }
 }
 
@@ -249,22 +249,20 @@ void sum_out(const torch::Tensor& input,  // [n_tokens, topk, dim]
              torch::Tensor& output)       // [n_tokens, dim]
 {
   const auto n_tokens = input.size(0);
-  const auto dim = input.size(-1);
-  const auto topk = input.size(-2);
+  const auto topk = input.size(1);
+  const auto dim = input.size(2);
 
   // one block per token
-  dim3 grid(n_tokens);
-  dim3 block(std::min<int>(dim, 1024));
-
+  const auto threads = std::min<int>(dim, 1024));
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
-#define DISPATCH_TOPK_SUM_KERNEL_CASE(TOPK)                              \
-  case TOPK: {                                                           \
-    DISPATCH_FLOATING_TYPES(input.scalar_type(), "sum_kernel", [&] {     \
-      sum_kernel<scalar_t, TOPK><<<grid, block, 0, stream>>>(            \
-          output.data_ptr<scalar_t>(), input.data_ptr<scalar_t>(), dim); \
-    });                                                                  \
-    break;                                                               \
+#define DISPATCH_TOPK_SUM_KERNEL_CASE(TOPK)                                    \
+  case TOPK: {                                                                 \
+    DISPATCH_FLOATING_TYPES(input.scalar_type(), "sum_kernel", [&] {           \
+      topk_sum_kernel<scalar_t, TOPK><<<n_tokens, threads, 0, stream>>>(       \
+          output.data_ptr<scalar_t>(), input.const_data_ptr<scalar_t>(), dim); \
+    });                                                                        \
+    break;                                                                     \
   }
 
   switch (topk) {
