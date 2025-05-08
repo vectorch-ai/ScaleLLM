@@ -13,95 +13,59 @@
 // Adapated from
 // https://github.com/sgl-project/sglang/blob/main/sgl-kernel/csrc/moe/moe_align_kernel.cu
 
-// clang-format off
-// for exmple: n_tokens = 2, n_experts = 8, topk = 2
-// f_idx: idx in flatten indices
-// p_idx: idx in permuted tokens
-// k_idx: topk idx
-// t_idx: token idx
-// row_id_map: [topk, n_tokens] => idx in permuted tokens
-//  ______________________________________________________________________________________
-// |                 |     flatten indices         |           sort indices               |
-// |    Steps        |   sort by (tokens, topk)    |        by (experts, tokens)          |
-// |_________________|_____________________________|______________________________________|
-// |                 |    [n_tokens * topk]        |     [n_tokens * topk] => f_idx       |
-// |     Dim         |                             |   f_idx: idx in flatten indices      |
-// |_________________|_____________________________|______________________________________|
-// |                 |                             |                                      |
-// |      top0, top1 |   f_idx: | 0 | 1 | 2 | 3 |  |   p_idx: |  0  |  1  |  2  |  3  |   |
-// | t0 -> [e2, e1]  | experts: | 2 | 1 | 2 | 5 |  |   f_idx: |  1  |  0  |  2  |  3  |   |
-// | t1 -> [e2, e5]  |  tokens: |   t0  |   t1  |  |  tokens: |  t0 |  t0 |  t1 |  t1 |   |
-// |                 |                             | experts: |  e1 |     e2    |  e5 |   |
-// |                 |                             |                                      |
-// |                 |                             |                                      |
-// |_________________|_____________________________|______________________________________|
-// clang-format on
-
 namespace llm::kernel::moe {
 
 namespace {
+constexpr int32_t WARP_SIZE = 32;
+
 // map p_idx to f_idx
 template <typename scalar_t>
 __global__ void row_id_map_kernel(
-    const scalar_t* __restrict__ topk_ids,    // [n_tokens, topk]
-    scalar_t* __restrict__ sorted_token_ids,  // [n_permuted_tokens+]
-    scalar_t* __restrict__ cu_sum,            // [n_experts+1]
-    int n_flatten_tokens,
-    int shard_size) {
-  // which shard this thread would take care of
-  const auto cur_shard = blockIdx.x * blockDim.x + threadIdx.x;
-  const auto shard_start = cur_shard * shard_size;
-  const auto shard_end = min((cur_shard + 1) * shard_size, n_flatten_tokens);
+    const scalar_t* __restrict__ topk_ids,      // [m, topk]
+    scalar_t* __restrict__ sorted_token_idxes,  // [n_padded_tokens+]
+    scalar_t* __restrict__ cu_sum,              // [n_experts+1]
+    int n_tokens                                // m * topk
+) {
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  const int stride = blockDim.x * gridDim.x;
 
-  for (int i = shard_start; i < shard_end; ++i) {
+  for (int i = tid; i < n_tokens; i += stride) {
     const auto e_idx = topk_ids[i];
     // N.B. token ids for each expert is not sorted
     const auto p_idx = atomicAdd(&cu_sum[e_idx], 1);
-    sorted_token_ids[p_idx] = i;
+    sorted_token_idxes[p_idx] = i;
   }
 }
 
 template <typename scalar_t>
 __global__ void cusum_kernel(
-    const scalar_t* __restrict__ topk_ids,            // [n_tokens, topk]
-    scalar_t* __restrict__ expert_ids,                // [n_blocks+]
-    scalar_t* __restrict__ n_padded_permuted_tokens,  // [1]
-    int32_t n_experts,
-    int32_t n_padded_experts,
-    int32_t experts_per_warp,
-    int32_t block_size,
-    size_t n_flatten_tokens,
+    const scalar_t* __restrict__ topk_ids,   // [n_tokens, topk]
+    scalar_t* __restrict__ expert_ids,       // [n_blocks+]
+    scalar_t* __restrict__ n_padded_tokens,  // [1]
+    int n_experts,
+    int block_size,
+    size_t n_tokens,               // n_tokens * topk
     scalar_t* __restrict__ cu_sum  // [n_experts+1]
 ) {
   using namespace cute;
-  constexpr int32_t WARP_SIZE = 32;
-  // which shard and expert this thread would take care of
-  const auto n_shards = blockDim.x;
-  const auto cur_shard = threadIdx.x;
+
+  const int tid = threadIdx.x;
+  const int stride = blockDim.x;
+
   const auto cur_expert = threadIdx.x;
 
-  // number of tokens per shard
-  const auto shard_size = ceil_div(n_flatten_tokens, n_shards);
-  const auto shard_start = cur_shard * shard_size;
-  const auto shard_end = min((cur_shard + 1) * shard_size, n_flatten_tokens);
+  // token count for each expert [n_padded_experts]
+  extern __shared__ int token_counts[];
 
-  // [n_experts+1]
-  extern __shared__ int32_t token_counts[];
-
-  const int warp_id = threadIdx.x / WARP_SIZE;
-  const int my_expert_start = warp_id * experts_per_warp;
-
-  // init token counts for each thread
-  for (int i = 0; i < experts_per_warp; ++i) {
-    if (my_expert_start + i < n_padded_experts) {
-      token_counts[warp_id * experts_per_warp + i] = 0;
-    }
+  // init token counts for each expert
+  if (cur_expert < n_experts) {
+    token_counts[cur_expert] = 0;
   }
 
   __syncthreads();
 
   // process the token shard
-  for (int i = shard_start; i < shard_end; ++i) {
+  for (int i = tid; i < n_tokens; i += stride) {
     const auto expert_id = topk_ids[i];
     // accumulate token counts for each expert
     atomicAdd(&token_counts[expert_id], 1);
@@ -115,7 +79,7 @@ __global__ void cusum_kernel(
       cu_sum[e_idx] = cu_sum[e_idx - 1] +
                       cute::round_up(token_counts[e_idx - 1], block_size);
     }
-    *n_padded_permuted_tokens = cu_sum[n_experts];
+    *n_padded_tokens = cu_sum[n_experts];
   }
 
   __syncthreads();
@@ -131,35 +95,34 @@ __global__ void cusum_kernel(
 
 template <typename scalar_t>
 __global__ void align_block_kernel(
-    const scalar_t* __restrict__ topk_ids,           // [n_tokens, topk]
-    int32_t* __restrict__ sorted_token_ids,          // [n_permuted_tokens+]
-    int32_t* __restrict__ expert_ids,                // [n_blocks+]
-    int32_t* __restrict__ n_padded_permuted_tokens,  // [1]
-    int32_t n_experts,
-    int32_t block_size,
-    int32_t n_flatten_tokens) {
+    const scalar_t* __restrict__ topk_ids,      // [m, topk]
+    scalar_t* __restrict__ sorted_token_idxes,  // [n_padded_tokens+]
+    scalar_t* __restrict__ expert_ids,          // [n_blocks+]
+    scalar_t* __restrict__ n_padded_tokens,     // [1]
+    int n_experts,
+    int block_size,
+    int n_tokens  // m * topk
+) {
   using namespace cute;
 
   // which shard and expert this thread would take care of
-  const auto n_shards = blockDim.x;
-  const auto cur_shard = threadIdx.x;
-  const auto cur_expert = threadIdx.x;
+  const int n_shards = blockDim.x;
+  const int cur_shard = threadIdx.x;
+  const int cur_expert = threadIdx.x;
 
-  // number of tokens per shard
-  const auto shard_size = ceil_div(n_flatten_tokens, n_shards);
-  const auto shard_start = cur_shard * shard_size;
-  const auto shard_end = min((cur_shard + 1) * shard_size, n_flatten_tokens);
+  const int tid = threadIdx.x;
+  const int stride = blockDim.x;
 
-  extern __shared__ int32_t s_mem[];
+  extern __shared__ int s_mem[];
 
   // [n_experts+1]
-  Tensor cu_sum = make_tensor(make_smem_ptr(reinterpret_cast<int32_t*>(s_mem)),
+  Tensor cu_sum = make_tensor(make_smem_ptr(reinterpret_cast<int*>(s_mem)),
                               make_layout(make_shape(n_experts + 1)));
   // [n_shards+1][n_experts]
   // token_counts(0, _) = 0 is used to facilitate the prefix sum
-  Tensor token_counts = make_tensor(
-      make_smem_ptr(reinterpret_cast<int32_t*>(s_mem + n_experts + 1)),
-      make_layout(make_shape(n_shards + 1, n_experts)));
+  Tensor token_counts =
+      make_tensor(make_smem_ptr(reinterpret_cast<int*>(s_mem + n_experts + 1)),
+                  make_layout(make_shape(n_shards + 1, n_experts)));
 
   // init token counts for each expert in the shard
   for (int e_idx = 0; e_idx < n_experts; ++e_idx) {
@@ -167,7 +130,7 @@ __global__ void align_block_kernel(
   }
 
   // calculate expert counts for each token block
-  for (int i = shard_start; i < shard_end; ++i) {
+  for (int i = tid; i < n_tokens; i += stride) {
     ++token_counts(cur_shard + 1, topk_ids[i]);
   }
 
@@ -192,7 +155,7 @@ __global__ void align_block_kernel(
           cu_sum[e_idx - 1] +
           cute::round_up(token_counts(n_shards, e_idx - 1), block_size);
     }
-    *n_padded_permuted_tokens = cu_sum[n_experts];
+    *n_padded_tokens = cu_sum[n_experts];
   }
 
   __syncthreads();
@@ -205,10 +168,28 @@ __global__ void align_block_kernel(
     }
   }
 
-  for (int i = shard_start; i < shard_end; ++i) {
+  for (int i = tid; i < n_tokens; i += stride) {
     const auto e_idx = topk_ids[i];
-    const auto idx_in_shard = token_counts(cur_shard, e_idx)++;
-    sorted_token_ids[cu_sum[e_idx] + idx_in_shard] = i;
+    const auto idx = token_counts(cur_shard, e_idx)++;
+    sorted_token_idxes[cu_sum[e_idx] + idx] = i;
+  }
+}
+
+// reduce along topk dimension, assuming contiguous memory
+template <typename scalar_t, int TOPK>
+__global__ void sum_kernel(
+    scalar_t* __restrict__ out,          // [n_tokens, dim]
+    const scalar_t* __restrict__ input,  // [n_tokens, topk, dim]
+    const int64_t dim) {
+  // one block per token
+  const int64_t t_idx = blockIdx.x;
+  for (int64_t i = threadIdx.x; i < dim; i += blockDim.x) {
+    scalar_t x = 0.0;
+    CUTE_UNROLL
+    for (int k = 0; k < TOPK; ++k) {
+      x += input[(t_idx * TOPK * dim) + (k * dim) + i];
+    }
+    out[(t_idx * dim) + i] = x;
   }
 }
 
@@ -218,64 +199,84 @@ void permute_align_block(
     torch::Tensor topk_ids,  // [n_tokens, topk]
     int64_t n_experts,
     int64_t block_size,
-    torch::Tensor sorted_token_ids,          // [n_padded_permuted_tokens+]
-    torch::Tensor experts_ids,               // [n_blocks+]
-    torch::Tensor n_padded_permuted_tokens,  // [1]
-    torch::Tensor cu_sum                     // [n_experts+1]
+    torch::Tensor sorted_token_idxes,  // [n_padded_permuted_tokens+]
+    torch::Tensor experts_ids,         // [n_blocks+]
+    torch::Tensor n_padded_tokens,     // [1]
+    torch::Tensor cu_sum               // [n_experts+1]
 ) {
-  constexpr int threads = 1024;
-  constexpr int32_t WARP_SIZE = 32;
   const auto n_flatten_tokens = topk_ids.numel();
-  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  auto* stream = at::cuda::getCurrentCUDAStream().stream();
   DISPATCH_INTEGRAL_TYPES(topk_ids.scalar_type(), "align_block_kernel", [&] {
     if (n_flatten_tokens <= 1024 && n_experts <= 64) {
-      const int32_t n_shards = max((int32_t)n_experts, WARP_SIZE);
-      const int32_t smem_size =
-          ((n_shards + 1) * n_experts + (n_experts + 1)) * sizeof(int32_t);
+      const int threads = std::max<int>(n_experts, WARP_SIZE);
+      const int smem_size =
+          ((threads + 1) * n_experts + (n_experts + 1)) * sizeof(int);
 
-      align_block_kernel<scalar_t><<<1, n_shards, smem_size, stream>>>(
+      align_block_kernel<scalar_t><<<1, threads, smem_size, stream>>>(
           topk_ids.data_ptr<scalar_t>(),
-          sorted_token_ids.data_ptr<int32_t>(),
-          experts_ids.data_ptr<int32_t>(),
-          n_padded_permuted_tokens.data_ptr<int32_t>(),
+          sorted_token_idxes.data_ptr<scalar_t>(),
+          experts_ids.data_ptr<scalar_t>(),
+          n_padded_tokens.data_ptr<scalar_t>(),
           n_experts,
           block_size,
-          topk_ids.numel());
+          n_flatten_tokens);
     } else {
-      // why it is faster?
-      // use more sms to sort
-      int experts_per_warp = WARP_SIZE;
-      int64_t padded_num_experts = cute::round_up(n_experts, experts_per_warp);
-      size_t num_warps = cute::ceil_div(padded_num_experts, experts_per_warp);
-      size_t shared_mem_size = num_warps * experts_per_warp * sizeof(int32_t);
+      // each thread handles one expert
+      // assert(n_experts <= 1024);
+      size_t smem_size = 1024 * sizeof(int);
+      cusum_kernel<scalar_t>
+          <<<1, 1024, smem_size, stream>>>(topk_ids.data_ptr<scalar_t>(),
+                                           experts_ids.data_ptr<scalar_t>(),
+                                           n_padded_tokens.data_ptr<scalar_t>(),
+                                           n_experts,
+                                           block_size,
+                                           n_flatten_tokens,
+                                           cu_sum.data_ptr<scalar_t>());
 
-      cusum_kernel<scalar_t><<<1, threads, shared_mem_size, stream>>>(
-          topk_ids.data_ptr<scalar_t>(),
-          experts_ids.data_ptr<int32_t>(),
-          n_padded_permuted_tokens.data_ptr<int32_t>(),
-          n_experts,
-          padded_num_experts,
-          experts_per_warp,
-          block_size,
-          n_flatten_tokens,
-          cu_sum.data_ptr<int32_t>());
-
-      // use up to 256 threads to sort
-      const int threads = 256;
-      // partition permuted tokens into blocks
+      constexpr int threads = 256;
       int n_blocks = cute::ceil_div(n_flatten_tokens, threads);
-      // up to 65535 blocks
       n_blocks = std::min(n_blocks, 65535);
-      const auto shard_size =
-          cute::ceil_div(n_flatten_tokens, n_blocks * threads);
       row_id_map_kernel<scalar_t><<<n_blocks, threads, 0, stream>>>(
           topk_ids.data_ptr<scalar_t>(),
-          sorted_token_ids.data_ptr<scalar_t>(),
+          sorted_token_idxes.data_ptr<scalar_t>(),
           cu_sum.data_ptr<scalar_t>(),
-          n_flatten_tokens,
-          shard_size);
+          n_flatten_tokens);
     }
   });
+}
+
+void sum_out(const torch::Tensor& input,  // [n_tokens, topk, dim]
+             torch::Tensor& output)       // [n_tokens, dim]
+{
+  const auto n_tokens = input.size(0);
+  const auto dim = input.size(-1);
+  const auto topk = input.size(-2);
+
+  // one block per token
+  dim3 grid(n_tokens);
+  dim3 block(std::min<int>(dim, 1024));
+
+  auto* stream = at::cuda::getCurrentCUDAStream().stream();
+
+#define DISPATCH_TOPK_SUM_KERNEL_CASE(TOPK)                              \
+  case TOPK: {                                                           \
+    DISPATCH_FLOATING_TYPES(input.scalar_type(), "sum_kernel", [&] {     \
+      sum_kernel<scalar_t, TOPK><<<grid, block, 0, stream>>>(            \
+          output.data_ptr<scalar_t>(), input.data_ptr<scalar_t>(), dim); \
+    });                                                                  \
+    break;                                                               \
+  }
+
+  switch (topk) {
+    DISPATCH_TOPK_SUM_KERNEL_CASE(2);
+    DISPATCH_TOPK_SUM_KERNEL_CASE(3);
+    DISPATCH_TOPK_SUM_KERNEL_CASE(4);
+    DISPATCH_TOPK_SUM_KERNEL_CASE(8);
+    default:
+      // use torch::sum_out for other cases
+      torch::sum_out(output, input, /*dim=*/1);
+      break;
+  }
 }
 
 }  // namespace llm::kernel::moe
