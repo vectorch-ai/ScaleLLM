@@ -7,6 +7,8 @@
 #include <cute/config.hpp>
 #include <cute/numeric/numeric_types.hpp>
 
+#include "../dispatch.h"
+
 // clang-format off
 // for exmple: n_tokens = 2, n_experts = 8, topk = 2
 // f_idx: idx in flatten indices
@@ -32,18 +34,7 @@
 // clang-format on
 
 namespace llm::kernel::moe {
-
 namespace {
-template <typename T>
-inline T* data_ptr(torch::Tensor& t) {
-  return reinterpret_cast<T*>(t.data_ptr());
-}
-
-template <typename T>
-inline const T* const_data_ptr(torch::Tensor& t) {
-  return reinterpret_cast<const T*>(t.const_data_ptr());
-}
-
 // wrapper for cub::DeviceRadixSort::SortPairs with type
 void radix_sort_pairs(void* temp_storage,
                       size_t* temp_storage_bytes,
@@ -236,12 +227,12 @@ void launch_unpermute_kernel(
 }  // namespace
 
 std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
-    torch::Tensor tokens,  // [n_tokens, dim]
-    torch::Tensor indices  // [n_tokens, topk]
+    torch::Tensor tokens,   // [n_tokens, dim]
+    torch::Tensor topk_ids  // [n_tokens, topk]
 ) {
   const auto n_tokens = tokens.size(0);
   const auto dim = tokens.size(1);
-  const auto topk = indices.size(1);
+  const auto topk = topk_ids.size(1);
 
   const auto n_permuted_tokens = n_tokens * topk;
   const auto options = tokens.options();
@@ -265,18 +256,12 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
   auto row_id = torch::range(0, n_permuted_tokens - 1, 1, int32_options);
   auto sorted_row_id = torch::zeros(n_permuted_tokens, int32_options);
 
-  const int* indices_ptr = indices.const_data_ptr<int>();
-  const int* row_id_ptr = row_id.const_data_ptr<int>();
-  int* sorted_indices_ptr = sorted_indices.data_ptr<int>();
-  int* sorted_row_id_ptr = sorted_row_id.data_ptr<int>();
-  void* d_temp_storage = temp_storage.data_ptr();
-
-  radix_sort_pairs(d_temp_storage,
+  radix_sort_pairs(temp_storage.data_ptr(),
                    &temp_storage_bytes,
-                   indices_ptr,
-                   sorted_indices_ptr,
-                   row_id_ptr,
-                   sorted_row_id_ptr,
+                   topk_ids.const_data_ptr<int>(),
+                   sorted_indices.data_ptr<int>(),
+                   row_id.const_data_ptr<int>(),
+                   sorted_row_id.data_ptr<int>(),
                    n_permuted_tokens);
 
   const auto type = tokens.scalar_type();
@@ -286,32 +271,17 @@ std::tuple<torch::Tensor, torch::Tensor> permute_with_index_map(
 
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
 
-#define LAUNCH_PERMUTE_KERNEL(DType)                             \
-  launch_permute_kernel<DType>(const_data_ptr<DType>(tokens),    \
-                               data_ptr<DType>(permuted_tokens), \
-                               sorted_row_id_ptr,                \
-                               row_id_map.data_ptr<int>(),       \
-                               n_tokens,                         \
-                               topk,                             \
-                               dim,                              \
-                               stream);
-
-  switch (type) {
-    case torch::ScalarType::Float: {
-      LAUNCH_PERMUTE_KERNEL(float);
-      break;
-    }
-    case torch::ScalarType::Half: {
-      LAUNCH_PERMUTE_KERNEL(cute::half_t);
-      break;
-    }
-    case torch::ScalarType::BFloat16: {
-      LAUNCH_PERMUTE_KERNEL(cute::bfloat16_t);
-      break;
-    }
-    default:
-      CHECK(false) << "Unsupported tensor type: " << type;
-  }
+  DISPATCH_FLOATING_TYPES(type, "permute_with_index_map", [&] {
+    // permute tokens
+    launch_permute_kernel<scalar_t>(tokens.const_data_ptr<scalar_t>(),
+                                    permuted_tokens.data_ptr<scalar_t>(),
+                                    sorted_row_id.data_ptr<int>(),
+                                    row_id_map.data_ptr<int>(),
+                                    n_tokens,
+                                    topk,
+                                    dim,
+                                    stream);
+  });
 
   return {permuted_tokens, row_id_map};
 }
@@ -331,33 +301,17 @@ torch::Tensor unpermute_with_index_map(
   // [n_tokens, dim]
   auto tokens = torch::empty({n_tokens, dim}, options);
   auto* stream = at::cuda::getCurrentCUDAStream().stream();
-
-#define LAUNCH_UNPERMUTE_KERNEL(DType)                                   \
-  launch_unpermute_kernel<DType>(const_data_ptr<DType>(permuted_tokens), \
-                                 data_ptr<DType>(tokens),                \
-                                 row_id_map.data_ptr<int>(),             \
-                                 const_data_ptr<DType>(probs),           \
-                                 n_tokens,                               \
-                                 topk,                                   \
-                                 dim,                                    \
-                                 stream);
-
-  switch (type) {
-    case torch::ScalarType::Float: {
-      LAUNCH_UNPERMUTE_KERNEL(float);
-      break;
-    }
-    case torch::ScalarType::Half: {
-      LAUNCH_UNPERMUTE_KERNEL(cute::half_t);
-      break;
-    }
-    case torch::ScalarType::BFloat16: {
-      LAUNCH_UNPERMUTE_KERNEL(cute::bfloat16_t);
-      break;
-    }
-    default:
-      CHECK(false) << "Unsupported tensor type: " << type;
-  }
+  DISPATCH_FLOATING_TYPES(type, "unpermute_with_index_map", [&] {
+    launch_unpermute_kernel<scalar_t>(
+        permuted_tokens.const_data_ptr<scalar_t>(),
+        tokens.data_ptr<scalar_t>(),
+        row_id_map.data_ptr<int>(),
+        probs.const_data_ptr<scalar_t>(),
+        n_tokens,
+        topk,
+        dim,
+        stream);
+  });
 
   return tokens;
 }
