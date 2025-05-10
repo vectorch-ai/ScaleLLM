@@ -1,16 +1,16 @@
 include(cc_library)
 
 cc_library(
-  NAME 
+  NAME
     kernels
-  HDRS 
+  HDRS
     reduce_kernel_utils.cuh
     activation_kernels.h
     layernorm_kernels.h
     pos_embedding_kernels.h
     kv_cache_kernels.h
     sampling/sampling_kernels.h
-  SRCS 
+  SRCS
     activation_kernels.cu
     layernorm_kernels.cu
     pos_embedding_kernels.cu
@@ -28,7 +28,7 @@ cc_library(
 
 add_subdirectory(attention)
 add_subdirectory(moe)
+add_subdirectory(gemm)
 add_subdirectory(quantization)
 add_subdirectory(playground)
-add_subdirectory(triton)
-
+# add_subdirectory(triton)
