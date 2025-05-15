@@ -69,7 +69,7 @@ endif()
 
 # set architecture for CUDA
 if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES native)
+  set(CMAKE_CUDA_ARCHITECTURES 80)
 endif()
 
 # Build TORCH_CUDA_ARCH_LIST
