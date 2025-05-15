@@ -9,8 +9,9 @@ import sys
 import sysconfig
 from pathlib import Path
 from typing import List
-from jinja2 import Template
 
+from jinja2 import Template
+from packaging.version import Version
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
@@ -31,6 +32,17 @@ def get_nccl_root():
         return str(Path(nccl.__file__).parent)
     except ImportError:
         return None
+
+
+def get_cuda_version():
+    import torch.utils.cpp_extension as torch_cpp_ext
+
+    if torch_cpp_ext.CUDA_HOME is None:
+        nvcc = "nvcc"
+    else:
+        nvcc = os.path.join(torch_cpp_ext.CUDA_HOME, "bin/nvcc")
+    txt = subprocess.check_output([nvcc, "--version"], text=True)
+    return Version(re.findall(r"release (\d+\.\d+),", txt)[0])
 
 
 def get_base_dir():
@@ -55,7 +67,7 @@ def get_scalellm_version():
 
     if not version:
         raise RuntimeError("Unable to find version string.")
-    
+
     version_suffix = os.getenv("SCALELLM_VERSION_SUFFIX")
     if version_suffix:
         version += version_suffix
@@ -158,8 +170,11 @@ class CMakeBuild(build_ext):
         debug = int(os.environ.get("DEBUG", 0)) if self.debug is None else self.debug
         build_type = "Debug" if debug else "Release"
 
-        # python directories
-        cuda_architectures = "80;89;90"
+        cuda_version = get_cuda_version()
+        cuda_architectures = "80;89;90a"
+        if cuda_version >= Version("12.8"):
+            # blackwell needs cuda 12.8
+            cuda_architectures += ";100a;120a"
         cmake_args = [
             "-G",
             "Ninja",  # Ninja is much faster than make
@@ -247,7 +262,6 @@ if __name__ == "__main__":
             "License :: OSI Approved :: Apache Software License",
             "Topic :: Scientific/Engineering",
             "Topic :: Scientific/Engineering :: Artificial Intelligence",
-            
         ],
         packages=["scalellm", "scalellm/serve", "scalellm/_C", "examples"],
         ext_modules=[CMakeExtension("_C", "scalellm/")],
