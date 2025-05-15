@@ -11,7 +11,7 @@ on:
       - "**/CMakeLists.txt"
       - ".github/workflows/build.yml"
       - "vcpkg.json"
-    branches: 
+    branches:
       - main
 
   pull_request:
@@ -40,9 +40,9 @@ jobs:
       matrix:
         # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
         build_type: [Release]
-    
+
     runs-on: [self-hosted, linux, x64, build]
-    
+
     env:
         BUILD_TYPE: ${{ matrix.build_type }}
         # Tells vcpkg where binary packages are stored.
@@ -68,7 +68,7 @@ jobs:
       timeout-minutes: 60
       run: |
         ./tools/run_in_docker.sh -ni ccache -M 25Gi
-        ./tools/run_in_docker.sh -ni cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=80
+        ./tools/run_in_docker.sh -ni cmake -G Ninja -S . -B build
         ./tools/run_in_docker.sh -ni cmake --build build --config ${{env.BUILD_TYPE}} --target all
 
     # - name: benchmark
