@@ -30,7 +30,7 @@ function usage() {
   echo "Examples:"
   echo "  ${progname} cmake -G Ninja -S . -B build"
   echo "  ${progname} cmake --build build --target all"
-  echo "  ${progname} -ni -d vectorchai/scalellm_devel:cuda12.1 -o '--gpus=all' ctest"
+  echo "  ${progname} -ni -d vectorchai/scalellm_devel:cuda12.8 -o '--gpus=all' ctest"
   echo ""
   exit 1
 }
@@ -38,7 +38,7 @@ function usage() {
 (( $# < 1 )) && usage
 
 # Default image
-IMAGE="vectorchai/scalellm_devel:cuda12.6"
+IMAGE="vectorchai/scalellm_devel:cuda12.8"
 RUN_OPTS=()
 
 INTERACTIVE=1
