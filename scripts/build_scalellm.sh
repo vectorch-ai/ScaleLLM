@@ -11,7 +11,7 @@ command -v ccache >/dev/null && ccache -M 25Gi
 command -v ccache >/dev/null && ccache -z
 
 # build
-cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES="80;89;90"
+cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES="80;89;90a;100a;120a"
 cmake --build build --target scalellm --config Release -j$(nproc)
 
 # show ccache statistics if ccache is installed
