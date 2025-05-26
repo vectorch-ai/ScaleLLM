@@ -23,7 +23,7 @@ jobs:
       matrix:
         cuda: ["12.6", "12.8"]
         gcc: ["12"]
-    runs-on: [self-hosted, linux, build]
+    runs-on: [self-hosted, linux]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

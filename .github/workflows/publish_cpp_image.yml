@@ -6,7 +6,7 @@ on:
         description: 'Tag to build and push'
         required: true
         type: string
-  
+
   workflow_call:
     inputs:
       tag:
@@ -19,13 +19,13 @@ env:
 
 jobs:
   publish_gateway:
-    runs-on: [self-hosted, linux, release]
+    runs-on: [self-hosted, linux]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -49,7 +49,7 @@ jobs:
             vectorchai/scalellm-gateway:latest
 
   publish_scalellm_cuda126:
-    runs-on: [self-hosted, linux, release]
+    runs-on: [self-hosted, linux]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -93,7 +93,7 @@ jobs:
             vectorchai/scalellm:latest
 
   publish_scalellm_cuda118:
-    runs-on: [self-hosted, linux, release]
+    runs-on: [self-hosted, linux]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -135,4 +135,3 @@ jobs:
           tags: |
             vectorchai/scalellm_cu118:${{ inputs.tag }}
             vectorchai/scalellm_cu118:latest
-
