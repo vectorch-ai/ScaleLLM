@@ -30,8 +30,9 @@ python -m pip install --upgrade pip
 pip install torch==$TORCH_VERSION -i "https://download.pytorch.org/whl/cu${CUDA_VERSION//./}"
 
 # install other dependencies
-pip install numpy jinja2
-pip install --upgrade setuptools wheel
+pip install numpy jinja2 wheel
+# use setuptools 76.1.0 to avoid issues with Metadata-Version
+pip install setuptools==76.1.0
 
 # set max cache size to 25GiB
 command -v ccache >/dev/null && ccache -M 25Gi
