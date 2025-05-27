@@ -13,7 +13,7 @@ ensure_env PYTHON_VERSION
 ensure_env TORCH_VERSION
 ensure_env CUDA_VERSION
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 export HOME=/tmp/home
