@@ -4,7 +4,7 @@ set -ex
 
 [ -n "$GCC_VERSION" ]
 
-install_ubuntu() { 
+install_ubuntu() {
   # Need the official toolchain repo to get alternate packages
   add-apt-repository ppa:ubuntu-toolchain-r/test
   apt-get update

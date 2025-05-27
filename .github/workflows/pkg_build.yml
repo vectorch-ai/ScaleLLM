@@ -1,4 +1,4 @@
-name: Package test
+name: Package build and test
 
 on:
   workflow_dispatch:
@@ -34,19 +34,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test-wheel:
+  build_wheel:
     strategy:
       fail-fast: false
       matrix:
         python: ["3.12"]
         cuda: ["12.8"]
         torch: ["2.7.0"]
-    runs-on: [self-hosted, linux, gpu]
+    runs-on: [self-hosted, linux]
     env:
       PYTHON_VERSION: ${{ matrix.python }}
       CUDA_VERSION: ${{ matrix.cuda }}
       TORCH_VERSION: ${{ matrix.torch }}
-
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -74,22 +73,50 @@ jobs:
             -e PIP_CACHE_DIR=/ci_cache/.pip \
             -u $(id -u):$(id -g) \
             vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION} \
-            bash /ScaleLLM/scripts/build_wheel.sh
+            bash /ScaleLLM/.ci/scripts/build_wheel.sh
 
     - name: Show whl package size
       run: du -h dist/*
 
-    - name: Install the package and run pytest
-      timeout-minutes: 10
-      run: |
-        docker pull pytorch/manylinux2_28-builder:cuda${CUDA_VERSION}
-        docker run --rm -t --gpus=all \
-            -v "$CI_CACHE_DIR":/ci_cache \
-            -v "$GITHUB_WORKSPACE":/ScaleLLM \
-            -e PYTHON_VERSION=${PYTHON_VERSION} \
-            -e CUDA_VERSION=${CUDA_VERSION} \
-            -e TORCH_VERSION=${TORCH_VERSION} \
-            -e PIP_CACHE_DIR=/ci_cache/.pip \
-            -u $(id -u):$(id -g) \
-            pytorch/manylinux2_28-builder:cuda${CUDA_VERSION} \
-            bash /ScaleLLM/scripts/run_pytest.sh
+    - uses: actions/upload-artifact@v4
+      with:
+        name: scalellm-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+        path: dist/*
+
+  test_wheel:
+    needs: build_wheel
+    strategy:
+      matrix:
+        python: ["3.12"]
+        cuda: ["12.8"]
+        torch: ["2.7.0"]
+    runs-on: [self-hosted, linux, gpu]
+    env:
+      PYTHON_VERSION: ${{ matrix.python }}
+      CUDA_VERSION: ${{ matrix.cuda }}
+      TORCH_VERSION: ${{ matrix.torch }}
+    steps:
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: scalellm-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+
+      - name: Show whl package size
+        run: du -h dist/*
+
+      - name: Install the package and run pytest
+        timeout-minutes: 10
+        run: |
+          docker pull pytorch/manylinux2_28-builder:cuda${CUDA_VERSION}
+          docker run --rm -t --gpus=all \
+              -v "$CI_CACHE_DIR":/ci_cache \
+              -v "$GITHUB_WORKSPACE":/ScaleLLM \
+              -e PYTHON_VERSION=${PYTHON_VERSION} \
+              -e CUDA_VERSION=${CUDA_VERSION} \
+              -e TORCH_VERSION=${TORCH_VERSION} \
+              -e PIP_CACHE_DIR=/ci_cache/.pip \
+              -u $(id -u):$(id -g) \
+              pytorch/manylinux2_28-builder:cuda${CUDA_VERSION} \
+              bash /ScaleLLM/.ci/scripts/run_pytest.sh

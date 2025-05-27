@@ -67,7 +67,7 @@ jobs:
             -e CCACHE_DIR=/ci_cache/.ccache \
             -u $(id -u):$(id -g) \
             vectorchai/scalellm_devel:cuda12.6 \
-            bash /ScaleLLM/scripts/build_scalellm.sh
+            bash /ScaleLLM/.ci/scripts/build_scalellm.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -85,7 +85,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./docker/Dockerfile.scalellm
+          file: .ci/docker/Dockerfile.scalellm
           push: true
           no-cache: true
           tags: |
@@ -111,7 +111,7 @@ jobs:
             -e CCACHE_DIR=/ci_cache/.ccache \
             -u $(id -u):$(id -g) \
             vectorchai/scalellm_devel:cuda11.8 \
-            bash /ScaleLLM/scripts/build_scalellm.sh
+            bash /ScaleLLM/.ci/scripts/build_scalellm.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -129,7 +129,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./docker/Dockerfile.scalellm
+          file: .ci/docker/Dockerfile.scalellm
           push: true
           no-cache: true
           tags: |

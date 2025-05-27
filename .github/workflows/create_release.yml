@@ -1,4 +1,4 @@
-name: Publish PyPI
+name: Create Release
 on:
   workflow_dispatch:
     inputs:
@@ -13,6 +13,7 @@ on:
         description: 'Tag to build and update whl index'
         required: true
         type: string
+
 env:
   # Tells where to store caches.
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
@@ -20,9 +21,10 @@ env:
 jobs:
   build_wheel:
     strategy:
+      fail-fast: false
       matrix:
         python: ["3.9", "3.10", "3.11", "3.12"]
-        cuda: ["12.6"]
+        cuda: ["11.8", "12.6", "12.8"]
         torch: ["2.7.0"]
     runs-on: [self-hosted, linux]
     env:
@@ -53,34 +55,23 @@ jobs:
               -e CUDA_VERSION=${CUDA_VERSION} \
               -e TORCH_VERSION=${TORCH_VERSION} \
               -e SCALELLM_VERSION=${SCALELLM_VERSION} \
+              -e SCALELLM_VERSION_SUFFIX="+cu${CUDA_VERSION//./}torch${TORCH_VERSION}" \
               -e VCPKG_DEFAULT_BINARY_CACHE=/ci_cache/.vcpkg/bincache \
               -e CCACHE_DIR=/ci_cache/.ccache \
               -e PIP_CACHE_DIR=/ci_cache/.pip \
               -u $(id -u):$(id -g) \
               vectorchai/scalellm_manylinux2_28:cuda${CUDA_VERSION} \
-              bash /ScaleLLM/scripts/build_wheel.sh
+              bash /ScaleLLM/.ci/scripts/build_wheel.sh
 
-      - name: show wheels
-        run: ls -lh dist
-
-      - name: rename wheel to manylinux_2_28
-        run: |
-          for whl in dist/scalellm-*.whl; do
-            new_whl=${whl//"-linux_"/"-manylinux_2_28_"}
-            if [ "$whl" != "$new_whl" ]; then
-              mv $whl $new_whl
-            fi
-          done
-
-      - name: show wheels
-        run: ls -lh dist
+      - name: show wheel size
+        run: du -h dist/*
 
       - uses: actions/upload-artifact@v4
         with:
-          name: manylinux1_wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
+          name: wheel-cuda${{ matrix.cuda }}-torch${{ matrix.torch }}-python${{ matrix.python }}
           path: dist/*
 
-  publish_wheel:
+  create_release:
     needs: build_wheel
     runs-on: ubuntu-latest
     permissions:
@@ -91,15 +82,51 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-          pattern: manylinux1_wheel-*
+          pattern: wheel-*
 
       - name: Show wheels
-        run: ls -lh dist
+        run: ls -lha dist
 
-      - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1.12
+      - name: Create release
+        uses: softprops/action-gh-release@v2
         with:
-          packages-dir: dist/
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          skip-existing: true
-          verbose: true
+          files: dist/scalellm-*.whl
+          tag_name: ${{ inputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          make_latest: true
+
+  commit_whl_index:
+    needs: build_wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: wheel-*
+
+      - name: Show wheels
+        run: ls -lha dist
+
+      - name: Clone whl repo
+        run: |
+          git clone https://oauth2:${WHL_TOKEN}@github.com/vectorch-ai/whl.git
+        env:
+          WHL_TOKEN: ${{ secrets.WHL_TOKEN }}
+
+      - name: Append new whls into whl index
+        run: |
+          cd whl
+          python ./publish_whl.py --whl_path=../dist
+
+      - name: Commit whl index change
+        run: |
+          cd whl
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update whl index for version ${{ inputs.tag }}"
+          git push

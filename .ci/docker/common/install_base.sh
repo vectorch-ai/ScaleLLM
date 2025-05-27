@@ -42,7 +42,7 @@ install_almalinux() {
     libtool \
     unzip \
     automake
-  
+
   # Cleanup
   yum clean all
 }

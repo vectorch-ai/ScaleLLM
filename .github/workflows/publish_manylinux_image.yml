@@ -44,8 +44,8 @@ jobs:
       - name: Build base for cuda ${{ matrix.cuda }}
         uses: docker/build-push-action@v5
         with:
-          context: ./docker
-          file: ./docker/Dockerfile.manylinux
+          context: .ci/docker
+          file: .ci/docker/Dockerfile.manylinux
           push: ${{ inputs.push || 'true' }}
           cache-from: type=local,src=$CI_CACHE_DIR/.buildx-cache
           cache-to: type=local,dest=$CI_CACHE_DIR/.buildx-cache
