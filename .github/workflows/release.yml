@@ -18,7 +18,7 @@ jobs:
         run: echo "tag=$(echo ${{ github.ref }} | sed -n 's/refs\/tags\///p')" >> $GITHUB_OUTPUT
 
   # publish wheel to pypi if wheel builds successfully
-  publish-wheel:
+  publish-pypi:
     needs: version-tag
     uses: ./.github/workflows/publish_pypi.yml
     with:
@@ -26,8 +26,8 @@ jobs:
     secrets: inherit
 
   # build wheel for release if tests pass
-  build-release:
-    needs: publish-wheel
+  create-release:
+    needs: publish-pypi
     uses: ./.github/workflows/create_release.yml
     with:
       tag: ${{ needs.version-tag.outputs.tag }}

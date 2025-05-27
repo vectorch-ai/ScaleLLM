@@ -17,7 +17,7 @@ env:
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  publish_devel_image:
+  build_image:
     strategy:
       fail-fast: false
       matrix:
