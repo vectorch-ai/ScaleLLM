@@ -127,6 +127,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Delete old files
+        run: rm -rf dist/*
+
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
