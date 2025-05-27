@@ -171,10 +171,16 @@ class CMakeBuild(build_ext):
         build_type = "Debug" if debug else "Release"
 
         cuda_version = get_cuda_version()
-        cuda_architectures = "80;89;90a"
+        cuda_architectures = ["80", "89"]
         if cuda_version >= Version("12.8"):
             # blackwell needs cuda 12.8
-            cuda_architectures += ";100a;120a"
+            cuda_architectures += ["90a", "100a", "120a"]
+        elif cuda_version >= Version("12.1"):
+            # hopper needs cuda 12.1
+            cuda_architectures += ["90a"]
+        else:
+            cuda_architectures += ["90"]
+
         cmake_args = [
             "-G",
             "Ninja",  # Ninja is much faster than make
@@ -183,7 +189,7 @@ class CMakeBuild(build_ext):
             "-DUSE_CCACHE=ON",  # use ccache if available
             "-DUSE_MANYLINUX:BOOL=ON",  # use manylinux settings
             f"-DPython_EXECUTABLE:FILEPATH={sys.executable}",
-            f"-DCMAKE_CUDA_ARCHITECTURES={cuda_architectures}",
+            f"-DCMAKE_CUDA_ARCHITECTURES={';'.join(cuda_architectures)}",
             f"-DCMAKE_BUILD_TYPE={build_type}",  # not used on MSVC, but no harm
         ]
 
