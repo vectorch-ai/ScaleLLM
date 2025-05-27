@@ -17,7 +17,7 @@ env:
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  publish_devel_image:
+  build_image:
     strategy:
       fail-fast: false
       matrix:
@@ -46,8 +46,8 @@ jobs:
       - name: Build devel image for cuda ${{ matrix.cuda }}
         uses: docker/build-push-action@v5
         with:
-          context: ./docker
-          file: ./docker/Dockerfile.devel
+          context: .ci/docker
+          file: .ci/docker/Dockerfile.devel
           push: ${{ inputs.push || 'true' }}
           cache-from: type=registry,ref=vectorchai/scalellm_devel:buildcache
           cache-to: type=registry,ref=vectorchai/scalellm_devel:buildcache,mode=max

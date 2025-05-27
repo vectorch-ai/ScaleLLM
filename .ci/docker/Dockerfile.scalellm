@@ -5,8 +5,8 @@ WORKDIR /app
 
 # copy artifacts
 COPY /app ./
-COPY ./scripts/download_hf_models.py download_hf_models.py
-COPY ./scripts/entrypoint.sh entrypoint.sh
+COPY .ci/scripts/download_hf_models.py download_hf_models.py
+COPY .ci/scripts/entrypoint.sh entrypoint.sh
 
 # install python3 and pip3
 RUN apt-get update -q -y && \
@@ -27,5 +27,3 @@ EXPOSE 9999
 
 # start the server
 ENTRYPOINT [ "/app/entrypoint.sh" ]
-
-

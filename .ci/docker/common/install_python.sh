@@ -35,4 +35,3 @@ ln -s ${INSTALL_FOLDER}/bin/python3 ${INSTALL_FOLDER}/bin/python
 
 rm -rf "Python-${PYTHON_VERSION}"
 popd
-

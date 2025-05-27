@@ -17,7 +17,7 @@ env:
   CI_CACHE_DIR: ${{ github.workspace }}/../../ci_cache
 
 jobs:
-  publish_manylinux_2_28_image:
+  build_image:
     strategy:
       fail-fast: false
       matrix:
@@ -46,8 +46,8 @@ jobs:
       - name: Build base for cuda ${{ matrix.cuda }}
         uses: docker/build-push-action@v5
         with:
-          context: ./docker
-          file: ./docker/Dockerfile.manylinux2_28
+          context: .ci/docker
+          file: .ci/docker/Dockerfile.manylinux2_28
           push: ${{ inputs.push || 'true' }}
           cache-from: type=registry,ref=vectorchai/scalellm_manylinux2_28:buildcache
           cache-to: type=registry,ref=vectorchai/scalellm_manylinux2_28:buildcache,mode=max
