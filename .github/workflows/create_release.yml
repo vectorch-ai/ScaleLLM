@@ -44,6 +44,9 @@ jobs:
           mkdir -p $CI_CACHE_DIR/.ccache
           mkdir -p $CI_CACHE_DIR/.pip
 
+      - name: Delete old files
+        run: rm -rf dist/*
+
       - name: Build wheel
         timeout-minutes: 60
         run: |
@@ -77,6 +80,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Delete old files
+        run: rm -rf dist/*
+
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
@@ -96,20 +102,6 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
-
-  commit_whl_index:
-    needs: build_wheel
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download wheel
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-          pattern: wheel-*
-
-      - name: Show wheels
-        run: ls -lha dist
 
       - name: Clone whl repo
         run: |

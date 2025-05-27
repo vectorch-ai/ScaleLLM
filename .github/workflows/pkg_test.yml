@@ -39,6 +39,9 @@ jobs:
         mkdir -p $CI_CACHE_DIR/.ccache
         mkdir -p $CI_CACHE_DIR/.pip
 
+    - name: Delete old files
+      run: rm -rf dist/*
+
     - name: Build wheel
       timeout-minutes: 60
       run: |
@@ -77,6 +80,9 @@ jobs:
       CUDA_VERSION: ${{ matrix.cuda }}
       TORCH_VERSION: ${{ matrix.torch }}
     steps:
+      - name: Delete old files
+        run: rm -rf dist/*
+
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
