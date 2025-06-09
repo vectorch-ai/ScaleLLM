@@ -9,8 +9,18 @@ namespace llm {
 
 namespace {
 
-torch::Tensor grouped_gemm_sm80() {
-  auto out = torch::empty({});  // Placeholder for output tensor
+torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
+                                const torch::Tensor& w,        // (e, n, k)
+                                const torch::Tensor& topk_ids  // (m, topk)
+) {
+  const auto m = a.size(0);
+  const auto k = a.size(1);
+  const auto n = w.size(1);
+  const auto n_experts = w.size(0);
+  const auto topk = topk_ids.size(1);
+
+  // (m * topk, n)
+  auto out = torch::zeros({m * topk, n}, a.options());
 
   using Traits = GEMMTraitsSM80<cute::half_t, /*DTYPE*/
                                 64,           /*DIM*/
@@ -22,7 +32,8 @@ torch::Tensor grouped_gemm_sm80() {
   GEMMParams params;
   launch_grouped_gemm_kernel_sm80<Traits>(params, nullptr);
 
-  return out;
+  // (m * topk, n) => (m, topk, n)
+  return out.view({m, topk, n});
 }
 
 // returns (m, topk, n)
@@ -97,7 +108,7 @@ TEST_P(GroupedGemmKernelTest, GEMM) {
 
   auto ref_out = grouped_gemm_ref(a, w, topk_ids);
   // LOG(ERROR) << "ref_out: " << ref_out;
-  // auto out = grouped_gemm_sm80();
+  auto out = grouped_gemm_sm80(a, w, topk_ids);
 
   // EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 }
@@ -106,7 +117,7 @@ INSTANTIATE_TEST_SUITE_P(
     GEMM,
     GroupedGemmKernelTest,
     ::testing::Combine(::testing::Values(torch::kHalf),  // dtype
-                       ::testing::Values(1),             // m
+                       ::testing::Values(64),            // m
                        ::testing::Values(64),            // n
                        ::testing::Values(64),            // k
                        ::testing::Values(8),             // n_experts

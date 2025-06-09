@@ -6,6 +6,8 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
+#include "gather_tensor.hpp"
+
 namespace llm {
 using namespace cute;
 
@@ -71,33 +73,112 @@ template <typename Traits>
 struct GEMMSharedStorageSM80 {};
 
 struct GEMMParams {
-  // input tensors:
+  using AStride = Stride<int64_t /*,_1*/>;
+  using BStride = Stride<int64_t, int64_t /*,_1*/>;
+  using CStride = Stride<int64_t /*,_1*/>;
+
   // A: (m, k)
-  // sorted_token_idxes: (m*topk+) = (n_blocks, BLK_M)
+  const void* __restrict__ a_ptr = nullptr;
+  AStride a_stride;
+
   // B: (e, n, k)
-  // expert_ids/group_ids: (n_blocks)
-  // n_tokens
-  // output tensors:
+  const void* __restrict__ b_ptr = nullptr;
+  BStride b_stride;
+
   // C: ((m, topk), n)
-  //
+  void* __restrict__ c_ptr = nullptr;
+  CStride c_stride;
+
+  // (m_blocks, BLK_M)
+  const int* __restrict__ sorted_token_idxes_ptr = nullptr;
+  // (m_blocks)
+  const int* __restrict__ expert_ids_ptr = nullptr;
+
+  int m = 0;
+  int n = 0;
+  int k = 0;
+  int topk = 0;
+  int n_tokens_padded = 0;
 };
 
 template <typename Traits, typename Params>
 __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
     __grid_constant__ const Params params) {
-  //   using namespace cute;
+  // Traits
+  constexpr int kBlockM = Traits::kBlockM;
+  constexpr int kBlockN = Traits::kBlockN;
+  constexpr int kBlockK = Traits::kBlockK;
 
-  // each block takes care of one block: (BLK_M, BLK_N)
+  using _BLK_M = Int<kBlockM>;
+  using _BLK_N = Int<kBlockN>;
+  using _BLK_K = Int<kBlockK>;
+
+  using DTYPE = typename Traits::DType;
+
+  const auto topk = params.topk;
+  // ProblemShape
+  // each thread block takes care of one block: (BLK_M, BLK_N)
+  const auto m_block_idx = blockIdx.x;
+  const auto n_block_idx = blockIdx.y;
+  // const auto expert_id = params.expert_ids_ptr[m_block_idx];
+  const auto expert_id = 0;
+
   // 1: load A to smem: (BLK_M, BLK_K, STAGES)
-  //  load sorted_token_idxes from global memory to registers, (BLK_M)
+  //  load sorted_token_idxes from gmem, (m, topk) => (BLK_M)
+  const int* sorted_token_idxes =
+      params.sorted_token_idxes_ptr + m_block_idx * kBlockM;
+  auto idx_to_t_idx = [sorted_token_idxes, topk](int idx) {
+    // Convert to token index
+    return sorted_token_idxes[idx] / topk;
+  };
+  // A: (BLK_M, K)
+  auto A = make_gather_tensor(make_gmem_ptr((const DTYPE*)params.a_ptr),
+                              make_shape(kBlockM, params.k),
+                              make_stride(get<0>(params.a_stride), _1{}),
+                              idx_to_t_idx);
+  if (thread0()) {
+    print("A: ");
+    print(A);
+    print("\n");
+  }
+
   // 2: load B to smem: (BLK_N, BLK_K, STAGES)
-  //  load group_id for current block from global memory to registers, (1)
+  //  load expert_id for current block from gmem, (1)
+  // B: (BLK_N, K)
+  // (e, n, k) => (BLK_N, k)
+  const auto b_offset = expert_id * get<0>(params.b_stride) +
+                        n_block_idx * get<1>(params.b_stride);
+  auto B = make_tensor(make_gmem_ptr((const DTYPE*)params.b_ptr + b_offset),
+                       make_shape(kBlockN, params.k),
+                       make_stride(get<1>(params.b_stride), _1{}));
+  if (thread0()) {
+    print("B: ");
+    print(B);
+    print("\n");
+  }
+
+  // Accumulator: (BLK_M, BLK_N)
   // 3: iterate over k
   // 4:     partition A to tCsA, tCrA
   // 5:     partition B to tCsB, tCrB
   //        load a, b to registers
   // 6:     compute tCrA * tCrB with gemm
-  // 7:  write tCrC to global memory using sorted_token_idxes
+
+  // C: (BLK_M, BLK_N)
+  // 7:  write tCrC to global memory using sorted_token_idxes (m, topk)
+  auto idx_to_f_idx = [sorted_token_idxes](int idx) {
+    // Convert to token index
+    return sorted_token_idxes[idx];
+  };
+  auto C = make_gather_tensor(make_gmem_ptr((const DTYPE*)params.c_ptr),
+                              make_shape(kBlockM, kBlockN),
+                              make_stride(get<0>(params.c_stride), _1{}),
+                              idx_to_f_idx);
+  if (thread0()) {
+    print("C: ");
+    print(C);
+    print("\n");
+  }
 }
 
 template <typename Traits, typename Params>
