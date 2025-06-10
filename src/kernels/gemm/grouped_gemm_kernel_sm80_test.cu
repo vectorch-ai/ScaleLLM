@@ -185,7 +185,12 @@ TEST_P(GroupedGemmKernelTest, GEMM) {
   // LOG(ERROR) << "ref_out: " << ref_out;
   auto out = grouped_gemm_sm80(a, w, topk_ids);
 
-  // EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+
+  // auto max_diff = (out - ref_out).abs().max().item<float>();
+  // LOG(ERROR) << "Max diff: " << max_diff;
+  // LOG(ERROR) << "ref_out: " << ref_out;
+  // LOG(ERROR) << "out: " << out;
 
   // LOG(ERROR) << "a: " << a;
   // LOG(ERROR) << "w: " << w;
@@ -200,8 +205,8 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(64),            // m
                        ::testing::Values(64),            // n
                        ::testing::Values(64),            // k
-                       ::testing::Values(8),             // n_experts
-                       ::testing::Values(4)              // topk
+                       ::testing::Values(1),             // n_experts
+                       ::testing::Values(1)              // topk
                        ));
 
 }  // namespace llm

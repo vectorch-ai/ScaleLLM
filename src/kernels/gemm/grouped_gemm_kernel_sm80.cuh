@@ -37,10 +37,10 @@ struct GEMMTraitsSM80 {
                          MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,
                          MMA_Atom<SM80_16x8x16_F32BF16BF16F32_TN>>;
 
-  // TiledMMA: (64x32x16)
+  // TiledMMA: (64x16x16)
   using TiledMma = TiledMMA<MMA_Atom_,
-                            Layout<Shape<_4, _2, _1>>,  // warp layout: (4x1x1)
-                            Tile<_64, _32, _16>>;  // tile layout: (64x16x16)
+                            Layout<Shape<_4, _1, _1>>,  // warp layout: (4x1x1)
+                            Tile<_64, _16, _16>>;  // tile layout: (64x16x16)
 
   // Shared memory LayoutAtom (8x64)
   using SmemLayoutAtom_8x64 =
@@ -90,10 +90,17 @@ struct GEMMTraitsSM80 {
 
   // use 128-bit vectorizing copy
   using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
-  // s2g tiled copy for C
+  // r2s tiled copy for C
   using SmemTiledCopyC =
       decltype(make_tiled_copy_C(Copy_Atom<VectorizingCopy, DType>{},
                                  TiledMma{}));
+
+  // s2g tiled copy for O
+  using GmemTiledCopyC = decltype(make_tiled_copy(
+      Copy_Atom<VectorizingCopy, DType>{},
+      GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
+      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
+      ));
 
   // constexpr values for kernel launch
   static constexpr size_t kThreadNum = size(TiledMma{});
@@ -172,6 +179,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   using SmemTiledCopyA = typename Traits::SmemTiledCopyA;
   using SmemTiledCopyB = typename Traits::SmemTiledCopyB;
   using SmemTiledCopyC = typename Traits::SmemTiledCopyC;
+  using GmemTiledCopyC = typename Traits::GmemTiledCopyC;
 
   using SharedStorage = GEMMSharedStorageSM80<Traits>;
 
@@ -189,19 +197,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   const auto tidx = threadIdx.x;
 
   const int expert_id = params.expert_ids_ptr[m_block_idx];
-
-  if (thread0()) {
-    print("m: %d, n: %d, k: %d, topk: %d, n_experts: %d\n",
-          M,
-          N,
-          K,
-          topk,
-          n_experts);
-    print("m_block_idx: %d, n_block_idx: %d, expert_id: %d\n",
-          m_block_idx,
-          n_block_idx,
-          expert_id);
-  }
 
   // ProblemShape
   const int* sorted_token_idxes = params.sorted_token_idxes_ptr;
@@ -224,24 +219,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto idx_to_f_idx = [sorted_token_idxes](int idx) {
     return sorted_token_idxes[idx];
   };
-  auto C = make_gather_tensor(make_gmem_ptr((const DTYPE*)params.c_ptr),
+  auto C = make_gather_tensor(make_gmem_ptr((DTYPE*)params.c_ptr),
                               make_shape(M, N),
                               make_stride(get<0>(params.c_stride), _1{}),
                               idx_to_f_idx);
 
-  if (thread0()) {
-    print("A: ");
-    print(A);
-    print("\n");
-    print("B: ");
-    print(B);
-    print("\n");
-    print("C: ");
-    print(C);
-    print("\n");
-  }
-
-  // (M*TOPK, K) => (BLK_M, BLK_K, k)
+  // (M, K) => (BLK_M, BLK_K, k)
   Tensor gA =
       local_tile(A, Shape<_BLK_M, _BLK_K>{}, make_coord(m_block_idx, _));
   // (N, K) => (BLK_N, BLK_K, k)
@@ -250,18 +233,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   // (M, N) => (BLK_M, BLK_N)
   Tensor gC = local_tile(
       C, Shape<_BLK_M, _BLK_N>{}, make_coord(m_block_idx, n_block_idx));
-
-  if (thread0()) {
-    print("gA: ");
-    print(gA);
-    print("\n");
-    print("gB: ");
-    print(gB);
-    print("\n");
-    print("gC: ");
-    print(gC);
-    print("\n");
-  }
 
   // Smem
   extern __shared__ char smem[];
@@ -340,22 +311,22 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   }
 
   // ###############  Epilogue  ###############
-  // write output to global memory
+  // (BLK_M, BLK_N)
+  Tensor sC = make_tensor(make_smem_ptr(ss.c_smem.data()), SmemLayoutC{});
 
-  // 1: load A to smem: (BLK_M, BLK_K, STAGES)
-  //  load sorted_token_idxes from gmem, (m*topk) => (m_blocks, BLK_M)
+  // copy tCrC from registers to smem
+  SmemTiledCopyC smem_tiled_copy_c;
+  auto smem_thr_copy_c = smem_tiled_copy_c.get_thread_slice(tidx);
+  auto tSrC = smem_thr_copy_c.retile_S(tCrC);
+  auto tSsC = smem_thr_copy_c.partition_D(sC);
+  cute::copy(smem_tiled_copy_c, tSrC, tSsC);
 
-  // 2: load B to smem: (BLK_N, BLK_K, STAGES)
-  //  load expert_id for current block from gmem, (1)
-
-  // Accumulator: (BLK_M, BLK_N)
-  // 3: iterate over k
-  // 4:     partition A to tCsA, tCrA
-  // 5:     partition B to tCsB, tCrB
-  //        load a, b to registers
-  // 6:     compute tCrA * tCrB with gemm
-
-  // 7:  write tCrC to global memory using sorted_token_idxes (m, topk)
+  // copy sC from smem to gmem
+  GmemTiledCopyC gmem_tiled_copy_c;
+  auto gmem_thr_copy_c = gmem_tiled_copy_c.get_thread_slice(tidx);
+  auto tGsC = gmem_thr_copy_c.partition_S(sC);
+  auto tGgC = gmem_thr_copy_c.partition_D(gC);
+  cute::copy(gmem_tiled_copy_c, tGsC, tGgC);
 }
 
 template <typename Traits, typename Params>
