@@ -31,46 +31,92 @@ struct GEMMTraitsSM80 {
   using _STAGES = Int<kStages>;
   using _DIM = Int<kDim>;
 
-  // TiledMMA: (64x32x16)
+  // MMA Atom: (16x8x16) for F32F16F16F32 or F32BF16BF16F32
   using MMA_Atom_ =
       std::conditional_t<std::is_same_v<DType, cute::half_t>,
                          MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,
                          MMA_Atom<SM80_16x8x16_F32BF16BF16F32_TN>>;
-  using TiledMma =
-      TiledMMA<MMA_Atom_, Layout<Shape<_4, _2, _1>>, Tile<_64, _32, _16>>;
 
-  //   // Shared memory LayoutAtom (8x64)
-  //   using SmemLayoutAtom_8x64 =
-  //       decltype(composition(Swizzle<3, 3, 3>{},
-  //                            Layout<Shape<_8, _64>, Stride<_64, _1>>{}));
-  //   using SmemLayoutAtom_8x32 =
-  //       decltype(composition(Swizzle<2, 3, 3>{},
-  //                            Layout<Shape<_8, _32>, Stride<_32, _1>>{}));
+  // TiledMMA: (64x32x16)
+  using TiledMma = TiledMMA<MMA_Atom_,
+                            Layout<Shape<_4, _2, _1>>,  // warp layout: (4x1x1)
+                            Tile<_64, _32, _16>>;  // tile layout: (64x16x16)
 
-  //   using SmemLayoutAtomK = std::conditional_t<kBlockK % 64 == 0,
-  //                                              SmemLayoutAtom_8x64,
-  //                                              SmemLayoutAtom_8x32>;
-  //   // SMEM Layout for A: (BLK_M, BLK_K, STAGES)
-  //   using SmemLayoutA =
-  //       decltype(tile_to_shape(SmemLayoutAtomK{}, Shape<_BLK_M, _BLK_K>{}));
-  //   // SMEM Layout for B: (BLK_N, BLK_K, STAGES)
-  //   using SmemLayoutB =
-  //       decltype(tile_to_shape(SmemLayoutAtomK{}, Shape<_BLK_N, _BLK_K>{}));
+  // Shared memory LayoutAtom (8x64)
+  using SmemLayoutAtom_8x64 =
+      decltype(composition(Swizzle<3, 3, 3>{},
+                           Layout<Shape<_8, _64>, Stride<_64, _1>>{}));
+  using SmemLayoutAtom_8x32 =
+      decltype(composition(Swizzle<2, 3, 3>{},
+                           Layout<Shape<_8, _32>, Stride<_32, _1>>{}));
 
-  //   // Gmem tiled copy: copy A/B from global memory to shared memory (32x64)
-  //   using GmemTiledCopy = decltype(make_tiled_copy(
-  //       Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, DType>{},
-  //       Layout<Shape<_32, _8>, Stride<_8, _1>>{},  // Thr layout: (_32, _8)
-  //       Layout<Shape<_1, _8>>{}                    // Val layout: 8 vals per
-  //       read
-  //       ));
+  using SmemLayoutAtom = std::conditional_t<kBlockK % 64 == 0,
+                                            SmemLayoutAtom_8x64,
+                                            SmemLayoutAtom_8x32>;
+  // SMEM Layout for A: (BLK_M, BLK_K, STAGES)
+  using SmemLayoutA =
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _BLK_K>{}));
+  // SMEM Layout for B: (BLK_N, BLK_K, STAGES)
+  using SmemLayoutB =
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _BLK_K>{}));
+
+  // Thread layout for gmem copy: (_16,_8)/(_32, _4)
+  using GmemCopyThrLayout =
+      std::conditional_t<BLK_K == 32,
+                         Layout<Shape<_32, _4>, Stride<_4, _1>>,
+                         Layout<Shape<_16, _8>, Stride<_8, _1>>>;
+  // g2s tiled copy: copy A/B from global memory to shared memory
+  using GmemTiledCopyAB = decltype(make_tiled_copy(
+      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, DType>{},
+      GmemCopyThrLayout{},     // Thr layout: (_16,_8)/(_32, _4)
+      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
+      ));
+
+  // s2r tiled copy for A and B
+  using SmemTiledCopyA =
+      decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
+                                 TiledMma{}));
+  using SmemTiledCopyB =
+      decltype(make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, DType>{},
+                                 TiledMma{}));
+
+  // ******* Epilogue *******
+
+  using SmemLayoutAtomC = std::conditional_t<kBlockN % 64 == 0,
+                                             SmemLayoutAtom_8x64,
+                                             SmemLayoutAtom_8x32>;
+  using SmemLayoutC =
+      decltype(tile_to_shape(SmemLayoutAtomC{}, Shape<_BLK_M, _BLK_N>{}));
+
+  // use 128-bit vectorizing copy
+  using VectorizingCopy = AutoVectorizingCopyWithAssumedAlignment<128>;
+  // s2g tiled copy for C
+  using SmemTiledCopyC =
+      decltype(make_tiled_copy_C(Copy_Atom<VectorizingCopy, DType>{},
+                                 TiledMma{}));
 
   // constexpr values for kernel launch
   static constexpr size_t kThreadNum = size(TiledMma{});
 };
 
 template <typename Traits>
-struct GEMMSharedStorageSM80 {};
+struct GEMMSharedStorageSM80 {
+  using DType = typename Traits::DType;
+  using SmemLayoutA = typename Traits::SmemLayoutA;
+  using SmemLayoutB = typename Traits::SmemLayoutB;
+  using SmemLayoutC = typename Traits::SmemLayoutC;
+
+  union {
+    struct {
+      // Shared memory for A: (BLK_M, BLK_K, STAGES)
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutA>> a_smem;
+      // Shared memory for B: (BLK_N, BLK_K, STAGES)
+      cute::array_aligned<DType, cute::cosize_v<SmemLayoutB>> b_smem;
+    };
+    // Shared memory for C: (BLK_M, BLK_N)
+    cute::array_aligned<DType, cute::cosize_v<SmemLayoutC>> c_smem;
+  };
+};
 
 struct GEMMParams {
   using AStride = Stride<int64_t /*,_1*/>;
@@ -94,11 +140,13 @@ struct GEMMParams {
   // (m_blocks)
   const int* __restrict__ expert_ids_ptr = nullptr;
 
+  const int* __restrict__ n_tokens_padded = nullptr;
+
   int m = 0;
   int n = 0;
   int k = 0;
   int topk = 0;
-  int n_tokens_padded = 0;
+  int n_experts = 0;
 };
 
 template <typename Traits, typename Params>
@@ -114,48 +162,191 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   using _BLK_K = Int<kBlockK>;
 
   using DTYPE = typename Traits::DType;
+  using TiledMma = typename Traits::TiledMma;
+
+  using SmemLayoutA = typename Traits::SmemLayoutA;
+  using SmemLayoutB = typename Traits::SmemLayoutB;
+  using SmemLayoutC = typename Traits::SmemLayoutC;
+
+  using GmemTiledCopyAB = typename Traits::GmemTiledCopyAB;
+  using SmemTiledCopyA = typename Traits::SmemTiledCopyA;
+  using SmemTiledCopyB = typename Traits::SmemTiledCopyB;
+  using SmemTiledCopyC = typename Traits::SmemTiledCopyC;
+
+  using SharedStorage = GEMMSharedStorageSM80<Traits>;
+
+  // TODO: m
+  const auto M = kBlockM * gridDim.x;
+  const auto N = params.n;
+  const auto K = params.k;
 
   const auto topk = params.topk;
-  // ProblemShape
+  const auto n_experts = params.n_experts;
+
   // each thread block takes care of one block: (BLK_M, BLK_N)
   const auto m_block_idx = blockIdx.x;
   const auto n_block_idx = blockIdx.y;
-  // const auto expert_id = params.expert_ids_ptr[m_block_idx];
-  const auto expert_id = 0;
+  const auto tidx = threadIdx.x;
 
-  // 1: load A to smem: (BLK_M, BLK_K, STAGES)
-  //  load sorted_token_idxes from gmem, (m, topk) => (BLK_M)
-  const int* sorted_token_idxes =
-      params.sorted_token_idxes_ptr + m_block_idx * kBlockM;
+  const int expert_id = params.expert_ids_ptr[m_block_idx];
+
+  if (thread0()) {
+    print("m: %d, n: %d, k: %d, topk: %d, n_experts: %d\n",
+          M,
+          N,
+          K,
+          topk,
+          n_experts);
+    print("m_block_idx: %d, n_block_idx: %d, expert_id: %d\n",
+          m_block_idx,
+          n_block_idx,
+          expert_id);
+  }
+
+  // ProblemShape
+  const int* sorted_token_idxes = params.sorted_token_idxes_ptr;
   auto idx_to_t_idx = [sorted_token_idxes, topk](int idx) {
-    // Convert to token index
     return sorted_token_idxes[idx] / topk;
   };
-  // A: (BLK_M, K)
+  // A: (M, K), k-major
   auto A = make_gather_tensor(make_gmem_ptr((const DTYPE*)params.a_ptr),
-                              make_shape(kBlockM, params.k),
+                              make_shape(M, K),
                               make_stride(get<0>(params.a_stride), _1{}),
                               idx_to_t_idx);
+
+  // B: (N, K), k-major
+  const auto b_offset = expert_id * get<0>(params.b_stride);
+  auto B = make_tensor(make_gmem_ptr((const DTYPE*)params.b_ptr + b_offset),
+                       make_shape(N, K),
+                       make_stride(get<1>(params.b_stride), _1{}));
+
+  // C: (M, N), n-major
+  auto idx_to_f_idx = [sorted_token_idxes](int idx) {
+    return sorted_token_idxes[idx];
+  };
+  auto C = make_gather_tensor(make_gmem_ptr((const DTYPE*)params.c_ptr),
+                              make_shape(M, N),
+                              make_stride(get<0>(params.c_stride), _1{}),
+                              idx_to_f_idx);
+
   if (thread0()) {
     print("A: ");
     print(A);
     print("\n");
-  }
-
-  // 2: load B to smem: (BLK_N, BLK_K, STAGES)
-  //  load expert_id for current block from gmem, (1)
-  // B: (BLK_N, K)
-  // (e, n, k) => (BLK_N, k)
-  const auto b_offset = expert_id * get<0>(params.b_stride) +
-                        n_block_idx * get<1>(params.b_stride);
-  auto B = make_tensor(make_gmem_ptr((const DTYPE*)params.b_ptr + b_offset),
-                       make_shape(kBlockN, params.k),
-                       make_stride(get<1>(params.b_stride), _1{}));
-  if (thread0()) {
     print("B: ");
     print(B);
     print("\n");
+    print("C: ");
+    print(C);
+    print("\n");
   }
+
+  // (M*TOPK, K) => (BLK_M, BLK_K, k)
+  Tensor gA =
+      local_tile(A, Shape<_BLK_M, _BLK_K>{}, make_coord(m_block_idx, _));
+  // (N, K) => (BLK_N, BLK_K, k)
+  Tensor gB =
+      local_tile(B, Shape<_BLK_N, _BLK_K>{}, make_coord(n_block_idx, _));
+  // (M, N) => (BLK_M, BLK_N)
+  Tensor gC = local_tile(
+      C, Shape<_BLK_M, _BLK_N>{}, make_coord(m_block_idx, n_block_idx));
+
+  if (thread0()) {
+    print("gA: ");
+    print(gA);
+    print("\n");
+    print("gB: ");
+    print(gB);
+    print("\n");
+    print("gC: ");
+    print(gC);
+    print("\n");
+  }
+
+  // Smem
+  extern __shared__ char smem[];
+  auto& ss = *reinterpret_cast<SharedStorage*>(smem);
+
+  // (BLK_M, BLK_K)
+  Tensor sA = make_tensor(make_smem_ptr(ss.a_smem.data()), SmemLayoutA{});
+  // (BLK_N, BLK_K)
+  Tensor sB = make_tensor(make_smem_ptr(ss.b_smem.data()), SmemLayoutB{});
+  // (BLK_M, BLK_N)
+  // Tensor sC = make_tensor(make_smem_ptr(ss.c_smem.data()), SmemLayoutC{});
+
+  // Tiled Copy
+  GmemTiledCopyAB gmem_tiled_copy_ab;
+  auto gmem_thr_copy_ab = gmem_tiled_copy_ab.get_thread_slice(tidx);
+
+  auto produce_a = [&](int ki) {
+    // (BLK_M, BLK_K, k) => (COPY, CP_M, CP_K)
+    auto tAgA = gmem_thr_copy_ab.partition_S(gA(_, _, ki));
+    // (BLK_M, BLK_K) => (COPY, CP_M, CP_K)
+    auto tAsA = gmem_thr_copy_ab.partition_D(sA);
+    copy(gmem_tiled_copy_ab, tAgA, tAsA);
+  };
+
+  auto produce_b = [&](int ki) {
+    // (BLK_N, BLK_K, k) => (COPY, CP_N, CP_K)
+    auto tBgB = gmem_thr_copy_ab.partition_S(gB(_, _, ki));
+    // (BLK_N, BLK_K) => (COPY, CP_N, CP_K)
+    auto tBsB = gmem_thr_copy_ab.partition_D(sB);
+    copy(gmem_tiled_copy_ab, tBgB, tBsB);
+  };
+
+  // GEMM: C = A@B.T
+  TiledMma tiled_mma;
+  auto thr_mma = tiled_mma.get_thread_slice(tidx);
+  // rA: (BLK_M, BLK_K)
+  auto tCrA = thr_mma.partition_fragment_A(sA);
+  // rB: (BLK_N, BLK_K)
+  auto tCrB = thr_mma.partition_fragment_B(sB);
+
+  // s2r tiled copy for A and B
+  auto smem_tiled_copy_a = SmemTiledCopyA{};
+  auto smem_thr_copy_a = smem_tiled_copy_a.get_thread_slice(tidx);
+  auto tCsA = smem_thr_copy_a.partition_S(sA);
+  auto tCrA_cpv = smem_thr_copy_a.retile_D(tCrA);
+
+  auto smem_tiled_copy_b = SmemTiledCopyB{};
+  auto smem_thr_copy_b = smem_tiled_copy_b.get_thread_slice(tidx);
+  auto tCsB = smem_thr_copy_b.partition_S(sB);
+  auto tCrB_cpv = smem_thr_copy_b.retile_D(tCrB);
+
+  // ###############  Prologue  ###############
+
+  // ###############  Mainloop  ###############
+  // Accumulator: (BLK_M, BLK_N)
+  auto tCrC = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
+  cute::clear(tCrC);  // Clear the accumulator
+
+  CUTE_NO_UNROLL
+  for (int ki = 0; ki < size<2>(gA); ++ki) {
+    // load A and B to shared memory
+    produce_a(ki);
+    produce_b(ki);
+    cp_async_fence();
+
+    // Wait for A and B to be loaded
+    cp_async_wait<0>();
+    __syncthreads();
+
+    // copy sA and sB to registers
+    cute::copy(smem_tiled_copy_a, tCsA, tCrA_cpv);
+    cute::copy(smem_tiled_copy_b, tCsB, tCrB_cpv);
+
+    // compute tCrA * tCrB with gemm
+    cute::gemm(tiled_mma, tCrA, tCrB, tCrC);
+  }
+
+  // ###############  Epilogue  ###############
+  // write output to global memory
+
+  // 1: load A to smem: (BLK_M, BLK_K, STAGES)
+  //  load sorted_token_idxes from gmem, (m*topk) => (m_blocks, BLK_M)
+
+  // 2: load B to smem: (BLK_N, BLK_K, STAGES)
+  //  load expert_id for current block from gmem, (1)
 
   // Accumulator: (BLK_M, BLK_N)
   // 3: iterate over k
@@ -164,21 +355,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   //        load a, b to registers
   // 6:     compute tCrA * tCrB with gemm
 
-  // C: (BLK_M, BLK_N)
   // 7:  write tCrC to global memory using sorted_token_idxes (m, topk)
-  auto idx_to_f_idx = [sorted_token_idxes](int idx) {
-    // Convert to token index
-    return sorted_token_idxes[idx];
-  };
-  auto C = make_gather_tensor(make_gmem_ptr((const DTYPE*)params.c_ptr),
-                              make_shape(kBlockM, kBlockN),
-                              make_stride(get<0>(params.c_stride), _1{}),
-                              idx_to_f_idx);
-  if (thread0()) {
-    print("C: ");
-    print(C);
-    print("\n");
-  }
 }
 
 template <typename Traits, typename Params>
@@ -188,6 +365,7 @@ void launch_grouped_gemm_kernel_sm80(const Params& params,
   //   const auto max_q_packed_len = params.max_q_len * params.n_heads;
 
   const auto smem_size = sizeof(GEMMSharedStorageSM80<Traits>);
+  std::cout << "SMEM size: " << smem_size << " bytes\n";
 
   auto gemm_kernel = grouped_gemm_kernel_sm80<Traits, Params>;
   cudaFuncSetAttribute(
@@ -195,7 +373,7 @@ void launch_grouped_gemm_kernel_sm80(const Params& params,
   // TODO: support persistent kernels
   // dim3 grid(cute::ceil_div(max_q_packed_len, Traits::kBlockM), batch_size,
   // 1);
-  dim3 grid(1, 1, 1);  // Placeholder for grid dimensions, adjust as needed
+  dim3 grid(1, 1);  // Placeholder for grid dimensions, adjust as needed
   dim3 block = Traits::kThreadNum;
   gemm_kernel<<<grid, block, smem_size, stream>>>(params);
 }
