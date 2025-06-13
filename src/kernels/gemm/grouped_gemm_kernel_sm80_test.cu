@@ -86,11 +86,10 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   auto out = torch::zeros({m * topk, n}, a.options());
 
   using Traits = GEMMTraitsSM80<cute::half_t, /*DTYPE*/
-                                64,           /*DIM*/
                                 64,           /*BLK_M*/
                                 64,           /*BLK_N*/
                                 64,           /*BLK_K*/
-                                2>;           /*STAGES*/
+                                2>;           /*PIPE*/
 
   // construct params
   GEMMParams params;

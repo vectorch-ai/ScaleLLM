@@ -11,13 +11,12 @@
 namespace llm {
 using namespace cute;
 
-template <typename DTYPE, int DIM, int BLK_M, int BLK_N, int BLK_K, int STAGES>
+template <typename DTYPE, int BLK_M, int BLK_N, int BLK_K, int PIPE>
 struct GEMMTraitsSM80 {
-  static constexpr int kDim = DIM;
   static constexpr int kBlockM = BLK_M;
   static constexpr int kBlockN = BLK_N;
   static constexpr int kBlockK = BLK_K;
-  static constexpr int kStages = STAGES;
+  static constexpr int kPipe = PIPE;
 
   static_assert(kBlockM % 64 == 0);
   static_assert(kBlockN % 32 == 0);
@@ -28,8 +27,7 @@ struct GEMMTraitsSM80 {
   using _BLK_M = Int<kBlockM>;
   using _BLK_N = Int<kBlockN>;
   using _BLK_K = Int<kBlockK>;
-  using _STAGES = Int<kStages>;
-  using _DIM = Int<kDim>;
+  using _PIPE = Int<kPipe>;
 
   // MMA Atom: (16x8x16) for F32F16F16F32 or F32BF16BF16F32
   using MMA_Atom_ =
@@ -53,12 +51,12 @@ struct GEMMTraitsSM80 {
   using SmemLayoutAtom = std::conditional_t<kBlockK % 64 == 0,
                                             SmemLayoutAtom_8x64,
                                             SmemLayoutAtom_8x32>;
-  // SMEM Layout for A: (BLK_M, BLK_K, STAGES)
+  // SMEM Layout for A: (BLK_M, BLK_K, PIPE)
   using SmemLayoutA =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _BLK_K>{}));
-  // SMEM Layout for B: (BLK_N, BLK_K, STAGES)
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _BLK_K, _PIPE>{}));
+  // SMEM Layout for B: (BLK_N, BLK_K, PIPE)
   using SmemLayoutB =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _BLK_K>{}));
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _BLK_K, _PIPE>{}));
 
   // Thread layout for gmem copy: (_16,_8)/(_32, _4)
   using GmemCopyThrLayout =
@@ -115,9 +113,9 @@ struct GEMMSharedStorageSM80 {
 
   union {
     struct {
-      // Shared memory for A: (BLK_M, BLK_K, STAGES)
+      // Shared memory for A: (BLK_M, BLK_K, PIPE)
       cute::array_aligned<DType, cute::cosize_v<SmemLayoutA>> a_smem;
-      // Shared memory for B: (BLK_N, BLK_K, STAGES)
+      // Shared memory for B: (BLK_N, BLK_K, PIPE)
       cute::array_aligned<DType, cute::cosize_v<SmemLayoutB>> b_smem;
     };
     // Shared memory for C: (BLK_M, BLK_N)
@@ -240,9 +238,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   extern __shared__ char smem[];
   auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
-  // (BLK_M, BLK_K)
+  // (BLK_M, BLK_K, PIPE)
   Tensor sA = make_tensor(make_smem_ptr(ss.a_smem.data()), SmemLayoutA{});
-  // (BLK_N, BLK_K)
+  // (BLK_N, BLK_K, PIPE)
   Tensor sB = make_tensor(make_smem_ptr(ss.b_smem.data()), SmemLayoutB{});
   // (BLK_M, BLK_N)
   // Tensor sC = make_tensor(make_smem_ptr(ss.c_smem.data()), SmemLayoutC{});
@@ -253,82 +251,126 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
 
   // (BLK_M, BLK_K, k) => (COPY, CP_M, CP_K, k)
   auto tAgA = gmem_thr_copy_ab.partition_S(gA);
-  // (BLK_M, BLK_K) => (COPY, CP_M, CP_K)
+  // (BLK_M, BLK_K, PIPE) => (COPY, CP_M, CP_K, PIPE)
   auto tAsA = gmem_thr_copy_ab.partition_D(sA);
 
   // (BLK_N, BLK_K, k) => (COPY, CP_N, CP_K, k)
   auto tBgB = gmem_thr_copy_ab.partition_S(gB);
-  // (BLK_N, BLK_K) => (COPY, CP_N, CP_K)
+  // (BLK_N, BLK_K, PIPE) => (COPY, CP_N, CP_K, PIPE)
   auto tBsB = gmem_thr_copy_ab.partition_D(sB);
-
-  auto produce_a = [&](int ki) {
-    copy(gmem_tiled_copy_ab, tAgA(_, _, _, ki), tAsA);
-  };
-
-  auto produce_b = [&](int ki) {
-    copy(gmem_tiled_copy_ab, tBgB(_, _, _, ki), tBsB);
-  };
 
   // GEMM: C = A@B.T
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_thread_slice(tidx);
-  // rA: (BLK_M, BLK_K)
-  auto tCrA = thr_mma.partition_fragment_A(sA);
-  // rB: (BLK_N, BLK_K)
-  auto tCrB = thr_mma.partition_fragment_B(sB);
+  // rA: (BLK_M, BLK_K) => (MMA,MMA_M,MMA_K)
+  auto tCrA = thr_mma.partition_fragment_A(sA(_, _, _0{}));
+  // rB: (BLK_N, BLK_K) => (MMA,MMA_N,MMA_K)
+  auto tCrB = thr_mma.partition_fragment_B(sB(_, _, _0{}));
 
   // s2r tiled copy for A and B
   auto smem_tiled_copy_a = SmemTiledCopyA{};
   auto smem_thr_copy_a = smem_tiled_copy_a.get_thread_slice(tidx);
+  // (BLK_M, BLK_K, PIPE) => (COPY, COPY_M, COPY_K, PIPE)
   auto tCsA = smem_thr_copy_a.partition_S(sA);
+  // (COPY, COPY_M, COPY_K)
   auto tCrA_cpv = smem_thr_copy_a.retile_D(tCrA);
 
   auto smem_tiled_copy_b = SmemTiledCopyB{};
   auto smem_thr_copy_b = smem_tiled_copy_b.get_thread_slice(tidx);
+  // (BLK_N, BLK_K, PIPE) => (COPY, COPY_N, COPY_K, PIPE)
   auto tCsB = smem_thr_copy_b.partition_S(sB);
+  // (COPY, COPY_N, COPY_K)
   auto tCrB_cpv = smem_thr_copy_b.retile_D(tCrB);
 
   // ###############  Prologue  ###############
-  produce_a(0);
-  produce_b(0);
-  cp_async_fence();
+  // remaining k-tile count
+  int k_tile_remaining = size<3>(tAgA);
+  // next tile index in gmem to read from
+  int k_tile_next = 0;
+
+  // async loads for all pipes except the last one
+  auto kPipe = size<3>(tAsA);
+  CUTE_UNROLL
+  for (int k_pipe = 0; k_pipe < kPipe - 1; ++k_pipe) {
+    copy(gmem_tiled_copy_ab, tAgA(_, _, _, k_tile_next), tAsA(_, _, _, k_pipe));
+    copy(gmem_tiled_copy_ab, tBgB(_, _, _, k_tile_next), tBsB(_, _, _, k_pipe));
+    cp_async_fence();
+
+    // advance to next k-tile
+    if (--k_tile_remaining > 0) {
+      ++k_tile_next;
+    }
+  }
 
   // ###############  Mainloop  ###############
-  // Accumulator: (BLK_M, BLK_N)
+  // (BLK_M, BLK_N) => (MMA, MMA_M, MMA_N)
   auto tCrC = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
   cute::clear(tCrC);  // Clear the accumulator
 
-  // total count of tiles in the k dimension
-  int k_tiles = size<2>(gA);
+  // pipe index in smem to read from
+  int pipe_read = 0;
+  // pipe index in smem to write to
+  int pipe_write = kPipe - 1;
 
-  CUTE_NO_UNROLL
-  for (int ki = 0; ki < k_tiles; ++ki) {
-    // Wait for A and B to be loaded into smem
-    cp_async_wait<0>();
+  // pipe to read from: (COPY, COPY_N, COPY_K)
+  Tensor tCsA_p = tCsA(_, _, _, pipe_read);
+  Tensor tCsB_p = tCsB(_, _, _, pipe_read);
+
+  // Size of the register pipeline
+  auto kBlocks = size<2>(tCrA);
+
+  // prefetch register pipeline
+  if (kBlocks > 1) {
+    // wait until our first prefetched tile is loaded in
+    cp_async_wait<kPipe - 2>();
     __syncthreads();
 
-    // prefetch sA and sB to registers
-    cute::copy(smem_tiled_copy_a, tCsA(_, _, _0{}), tCrA_cpv(_, _, _0{}));
-    cute::copy(smem_tiled_copy_b, tCsB(_, _, _0{}), tCrB_cpv(_, _, _0{}));
+    // prefetch the first rmem from the first k-tile
+    cute::copy(smem_tiled_copy_a, tCsA_p(_, _, _0{}), tCrA_cpv(_, _, _0{}));
+    cute::copy(smem_tiled_copy_b, tCsB_p(_, _, _0{}), tCrB_cpv(_, _, _0{}));
+  }
 
+  CUTE_NO_UNROLL
+  while (k_tile_remaining > -(kPipe - 1)) {
     CUTE_UNROLL
-    for (int i = 0; i < size<2>(tCrA); ++i) {
-      const auto next_i = i + 1;
-      if (next_i < size<2>(tCrA)) {
-        cute::copy(
-            smem_tiled_copy_a, tCsA(_, _, next_i), tCrA_cpv(_, _, next_i));
-        cute::copy(
-            smem_tiled_copy_b, tCsB(_, _, next_i), tCrB_cpv(_, _, next_i));
-      }
-      cute::gemm(tiled_mma, tCrA(_, _, i), tCrB(_, _, i), tCrC);
-    }
+    for (int ki = 0; ki < kBlocks; ++ki) {
+      if (ki == kBlocks - 1) {
+        // advance to next pipe to read from
+        tCsA_p = tCsA(_, _, _, pipe_read);
+        tCsB_p = tCsB(_, _, _, pipe_read);
 
-    // load next A and B to smem
-    const int next_ki = ki + 1;
-    if (next_ki < k_tiles) {
-      produce_a(next_ki);
-      produce_b(next_ki);
-      cp_async_fence();
+        // wait until our next prefetched tile is loaded in
+        cp_async_wait<kPipe - 2>();
+        __syncthreads();
+      }
+
+      // load A, B from smem to registers for next ki
+      auto ki_next = (ki + _1{}) % kBlocks;
+      copy(smem_tiled_copy_a, tCsA_p(_, _, ki_next), tCrA_cpv(_, _, ki_next));
+      copy(smem_tiled_copy_b, tCsB_p(_, _, ki_next), tCrB_cpv(_, _, ki_next));
+
+      if (ki == 0) {
+        // copy gmem to smeme for next pipe
+        copy(gmem_tiled_copy_ab,
+             tAgA(_, _, _, k_tile_next),
+             tAsA(_, _, _, pipe_write));
+        copy(gmem_tiled_copy_ab,
+             tBgB(_, _, _, k_tile_next),
+             tBsB(_, _, _, pipe_write));
+        cp_async_fence();
+
+        // advance to next k-tile
+        if (--k_tile_remaining > 0) {
+          ++k_tile_next;
+        }
+
+        // advance to next pipe
+        pipe_write = pipe_read;
+        pipe_read = (pipe_read == kPipe - 1) ? 0 : pipe_read + 1;
+      }
+
+      // thread-level gemm for ki
+      gemm(tiled_mma, tCrA(_, _, ki), tCrB(_, _, ki), tCrC);
     }
   }
 
