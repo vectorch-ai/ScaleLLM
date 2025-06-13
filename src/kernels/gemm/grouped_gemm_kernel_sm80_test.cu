@@ -110,6 +110,9 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   params.k = k;
   params.topk = topk;
 
+  params.m_blocks = expert_ids.size(0);
+  params.n_blocks = cute::ceil_div(n, 64);
+
   launch_grouped_gemm_kernel_sm80<Traits>(params, nullptr);
 
   // (m * topk, n) => (m, topk, n)
@@ -187,24 +190,19 @@ TEST_P(GroupedGemmKernelTest, GEMM) {
 
   EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
 
-  // auto max_diff = (out - ref_out).abs().max().item<float>();
+  // auto max_diff = (out - ref_out).abs().max();
   // LOG(ERROR) << "Max diff: " << max_diff;
   // LOG(ERROR) << "ref_out: " << ref_out;
   // LOG(ERROR) << "out: " << out;
-
-  // LOG(ERROR) << "a: " << a;
-  // LOG(ERROR) << "w: " << w;
-  // LOG(ERROR) << "topk_ids: " << topk_ids;
-  // LOG(ERROR) << "topk_weights: " << topk_weights;
 }
 
 INSTANTIATE_TEST_SUITE_P(
     GEMM,
     GroupedGemmKernelTest,
     ::testing::Combine(::testing::Values(torch::kHalf),  // dtype
-                       ::testing::Values(64),            // m
-                       ::testing::Values(64),            // n
-                       ::testing::Values(64),            // k
+                       ::testing::Values(64, 128),       // m
+                       ::testing::Values(64, 128),       // n
+                       ::testing::Values(64, 128),       // k
                        ::testing::Values(1),             // n_experts
                        ::testing::Values(1)              // topk
                        ));

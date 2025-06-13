@@ -142,7 +142,7 @@ struct GEMMParams {
   void* __restrict__ c_ptr = nullptr;
   CStride c_stride;
 
-  // (m_blocks, BLK_M)
+  // (m_blocks*BLK_M)
   const int* __restrict__ sorted_token_idxes_ptr = nullptr;
   // (m_blocks)
   const int* __restrict__ expert_ids_ptr = nullptr;
@@ -154,6 +154,9 @@ struct GEMMParams {
   int k = 0;
   int topk = 0;
   int n_experts = 0;
+
+  int m_blocks = 0;
+  int n_blocks = 0;
 };
 
 template <typename Traits, typename Params>
@@ -183,7 +186,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
 
   using SharedStorage = GEMMSharedStorageSM80<Traits>;
 
-  // TODO: m
   const auto M = kBlockM * gridDim.x;
   const auto N = params.n;
   const auto K = params.k;
@@ -249,20 +251,22 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   GmemTiledCopyAB gmem_tiled_copy_ab;
   auto gmem_thr_copy_ab = gmem_tiled_copy_ab.get_thread_slice(tidx);
 
+  // (BLK_M, BLK_K, k) => (COPY, CP_M, CP_K, k)
+  auto tAgA = gmem_thr_copy_ab.partition_S(gA);
+  // (BLK_M, BLK_K) => (COPY, CP_M, CP_K)
+  auto tAsA = gmem_thr_copy_ab.partition_D(sA);
+
+  // (BLK_N, BLK_K, k) => (COPY, CP_N, CP_K, k)
+  auto tBgB = gmem_thr_copy_ab.partition_S(gB);
+  // (BLK_N, BLK_K) => (COPY, CP_N, CP_K)
+  auto tBsB = gmem_thr_copy_ab.partition_D(sB);
+
   auto produce_a = [&](int ki) {
-    // (BLK_M, BLK_K, k) => (COPY, CP_M, CP_K)
-    auto tAgA = gmem_thr_copy_ab.partition_S(gA(_, _, ki));
-    // (BLK_M, BLK_K) => (COPY, CP_M, CP_K)
-    auto tAsA = gmem_thr_copy_ab.partition_D(sA);
-    copy(gmem_tiled_copy_ab, tAgA, tAsA);
+    copy(gmem_tiled_copy_ab, tAgA(_, _, _, ki), tAsA);
   };
 
   auto produce_b = [&](int ki) {
-    // (BLK_N, BLK_K, k) => (COPY, CP_N, CP_K)
-    auto tBgB = gmem_thr_copy_ab.partition_S(gB(_, _, ki));
-    // (BLK_N, BLK_K) => (COPY, CP_N, CP_K)
-    auto tBsB = gmem_thr_copy_ab.partition_D(sB);
-    copy(gmem_tiled_copy_ab, tBgB, tBsB);
+    copy(gmem_tiled_copy_ab, tBgB(_, _, _, ki), tBsB);
   };
 
   // GEMM: C = A@B.T
@@ -285,34 +289,54 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto tCrB_cpv = smem_thr_copy_b.retile_D(tCrB);
 
   // ###############  Prologue  ###############
+  produce_a(0);
+  produce_b(0);
+  cp_async_fence();
 
   // ###############  Mainloop  ###############
   // Accumulator: (BLK_M, BLK_N)
   auto tCrC = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
   cute::clear(tCrC);  // Clear the accumulator
 
-  CUTE_NO_UNROLL
-  for (int ki = 0; ki < size<2>(gA); ++ki) {
-    // load A and B to shared memory
-    produce_a(ki);
-    produce_b(ki);
-    cp_async_fence();
+  // total count of tiles in the k dimension
+  int k_tiles = size<2>(gA);
 
-    // Wait for A and B to be loaded
+  CUTE_NO_UNROLL
+  for (int ki = 0; ki < k_tiles; ++ki) {
+    // Wait for A and B to be loaded into smem
     cp_async_wait<0>();
     __syncthreads();
 
-    // copy sA and sB to registers
-    cute::copy(smem_tiled_copy_a, tCsA, tCrA_cpv);
-    cute::copy(smem_tiled_copy_b, tCsB, tCrB_cpv);
+    // prefetch sA and sB to registers
+    cute::copy(smem_tiled_copy_a, tCsA(_, _, _0{}), tCrA_cpv(_, _, _0{}));
+    cute::copy(smem_tiled_copy_b, tCsB(_, _, _0{}), tCrB_cpv(_, _, _0{}));
 
-    // compute tCrA * tCrB with gemm
-    cute::gemm(tiled_mma, tCrA, tCrB, tCrC);
+    CUTE_UNROLL
+    for (int i = 0; i < size<2>(tCrA); ++i) {
+      const auto next_i = i + 1;
+      if (next_i < size<2>(tCrA)) {
+        cute::copy(
+            smem_tiled_copy_a, tCsA(_, _, next_i), tCrA_cpv(_, _, next_i));
+        cute::copy(
+            smem_tiled_copy_b, tCsB(_, _, next_i), tCrB_cpv(_, _, next_i));
+      }
+      cute::gemm(tiled_mma, tCrA(_, _, i), tCrB(_, _, i), tCrC);
+    }
+
+    // load next A and B to smem
+    const int next_ki = ki + 1;
+    if (next_ki < k_tiles) {
+      produce_a(next_ki);
+      produce_b(next_ki);
+      cp_async_fence();
+    }
   }
 
   // ###############  Epilogue  ###############
   // (BLK_M, BLK_N)
   Tensor sC = make_tensor(make_smem_ptr(ss.c_smem.data()), SmemLayoutC{});
+
+  // TODO: fastcast tCrC to DTYPE
 
   // copy tCrC from registers to smem
   SmemTiledCopyC smem_tiled_copy_c;
@@ -320,6 +344,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto tSrC = smem_thr_copy_c.retile_S(tCrC);
   auto tSsC = smem_thr_copy_c.partition_D(sC);
   cute::copy(smem_tiled_copy_c, tSrC, tSsC);
+
+  // wait for smem copy done before gmem copy
+  __syncthreads();
 
   // copy sC from smem to gmem
   GmemTiledCopyC gmem_tiled_copy_c;
@@ -332,19 +359,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
 template <typename Traits, typename Params>
 void launch_grouped_gemm_kernel_sm80(const Params& params,
                                      cudaStream_t stream) {
-  //   const auto batch_size = params.batch_size;
-  //   const auto max_q_packed_len = params.max_q_len * params.n_heads;
-
   const auto smem_size = sizeof(GEMMSharedStorageSM80<Traits>);
-  std::cout << "SMEM size: " << smem_size << " bytes\n";
+  // std::cout << "SMEM size: " << smem_size << " bytes\n";
 
   auto gemm_kernel = grouped_gemm_kernel_sm80<Traits, Params>;
   cudaFuncSetAttribute(
       gemm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   // TODO: support persistent kernels
-  // dim3 grid(cute::ceil_div(max_q_packed_len, Traits::kBlockM), batch_size,
-  // 1);
-  dim3 grid(1, 1);  // Placeholder for grid dimensions, adjust as needed
+  dim3 grid(params.m_blocks, params.n_blocks);
   dim3 block = Traits::kThreadNum;
   gemm_kernel<<<grid, block, smem_size, stream>>>(params);
 }
