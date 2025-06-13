@@ -146,10 +146,6 @@ class AlignBlockTest
 TEST_P(AlignBlockTest, AlignBlock) {
   const auto [dtype, n_tokens, dim, n_experts, topk, block_size] = GetParam();
   const int64_t n_flatten_tokens = n_tokens * topk;
-  if (n_flatten_tokens >= 1024 || n_experts > 64) {
-    // TODO: reenable unittest after fixing tokens out of order issue
-    return;
-  }
 
   const auto options = torch::dtype(dtype).device(torch::kCUDA);
   const auto options_int32 = options.dtype(torch::kInt32);
