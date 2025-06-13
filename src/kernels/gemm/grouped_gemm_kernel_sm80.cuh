@@ -250,16 +250,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto gmem_thr_copy = gmem_tiled_copy.get_thread_slice(tidx);
 
   // (BLK_M, BLK_K, k) => (COPY, CP_M, CP_K, k)
-<<<<<<< HEAD
-  auto tAgA = gmem_thr_copy_ab.partition_S(gA);
-  // (BLK_M, BLK_K, PIPE) => (COPY, CP_M, CP_K, PIPE)
-  auto tAsA = gmem_thr_copy_ab.partition_D(sA);
-
-  // (BLK_N, BLK_K, k) => (COPY, CP_N, CP_K, k)
-  auto tBgB = gmem_thr_copy_ab.partition_S(gB);
-  // (BLK_N, BLK_K, PIPE) => (COPY, CP_N, CP_K, PIPE)
-  auto tBsB = gmem_thr_copy_ab.partition_D(sB);
-=======
   auto tAgA = gmem_thr_copy.partition_S(gA);
   // (BLK_M, BLK_K, PIPE) => (COPY, CP_M, CP_K, PIPE)
   auto tAsA = gmem_thr_copy.partition_D(sA);
@@ -268,7 +258,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto tBgB = gmem_thr_copy.partition_S(gB);
   // (BLK_N, BLK_K, PIPE) => (COPY, CP_N, CP_K, PIPE)
   auto tBsB = gmem_thr_copy.partition_D(sB);
->>>>>>> b916d0d (added pipe support)
 
   // GEMM: C = A@B.T
   TiledMma tiled_mma;
@@ -295,11 +284,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
 
   // ###############  Prologue  ###############
   // remaining k-tile count
-<<<<<<< HEAD
-  int k_tile_remaining = size<3>(tAgA);
-=======
   int k_tiles_remaining = size<3>(tAgA);
->>>>>>> b916d0d (added pipe support)
   // next tile index in gmem to read from
   int k_tile_next = 0;
 
@@ -307,21 +292,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto kPipe = size<3>(tAsA);
   CUTE_UNROLL
   for (int k_pipe = 0; k_pipe < kPipe - 1; ++k_pipe) {
-<<<<<<< HEAD
-    copy(gmem_tiled_copy_ab, tAgA(_, _, _, k_tile_next), tAsA(_, _, _, k_pipe));
-    copy(gmem_tiled_copy_ab, tBgB(_, _, _, k_tile_next), tBsB(_, _, _, k_pipe));
-    cp_async_fence();
-
-    // advance to next k-tile
-    if (--k_tile_remaining > 0) {
-=======
     copy(gmem_tiled_copy, tAgA(_, _, _, k_tile_next), tAsA(_, _, _, k_pipe));
     copy(gmem_tiled_copy, tBgB(_, _, _, k_tile_next), tBsB(_, _, _, k_pipe));
     cp_async_fence();
 
     // advance to next k-tile
     if (--k_tiles_remaining > 0) {
->>>>>>> b916d0d (added pipe support)
       ++k_tile_next;
     }
   }
@@ -355,16 +331,6 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   }
 
   CUTE_NO_UNROLL
-<<<<<<< HEAD
-  while (k_tile_remaining > -(kPipe - 1)) {
-    CUTE_UNROLL
-    for (int ki = 0; ki < kBlocks; ++ki) {
-      if (ki == kBlocks - 1) {
-        // advance to next pipe to read from
-        tCsA_p = tCsA(_, _, _, pipe_read);
-        tCsB_p = tCsB(_, _, _, pipe_read);
-
-=======
   while (k_tiles_remaining > -(kPipe - 1)) {
     CUTE_UNROLL
     for (int ki = 0; ki < kBlocks; ++ki) {
@@ -394,44 +360,16 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
         tCsA_p = tCsA(_, _, _, pipe_read);
         tCsB_p = tCsB(_, _, _, pipe_read);
 
->>>>>>> b916d0d (added pipe support)
         // wait until our next prefetched tile is loaded in
         cp_async_wait<kPipe - 2>();
         __syncthreads();
       }
 
-<<<<<<< HEAD
-      // load A, B from smem to registers for next ki
-=======
       // prefetch for next ki
->>>>>>> b916d0d (added pipe support)
       auto ki_next = (ki + _1{}) % kBlocks;
       copy(smem_tiled_copy_a, tCsA_p(_, _, ki_next), tCrA_cpv(_, _, ki_next));
       copy(smem_tiled_copy_b, tCsB_p(_, _, ki_next), tCrB_cpv(_, _, ki_next));
 
-<<<<<<< HEAD
-      if (ki == 0) {
-        // copy gmem to smeme for next pipe
-        copy(gmem_tiled_copy_ab,
-             tAgA(_, _, _, k_tile_next),
-             tAsA(_, _, _, pipe_write));
-        copy(gmem_tiled_copy_ab,
-             tBgB(_, _, _, k_tile_next),
-             tBsB(_, _, _, pipe_write));
-        cp_async_fence();
-
-        // advance to next k-tile
-        if (--k_tile_remaining > 0) {
-          ++k_tile_next;
-        }
-
-        // advance to next pipe
-        pipe_write = pipe_read;
-        pipe_read = (pipe_read == kPipe - 1) ? 0 : pipe_read + 1;
-      }
-
-=======
->>>>>>> b916d0d (added pipe support)
       // thread-level gemm for ki
       gemm(tiled_mma, tCrA(_, _, ki), tCrB(_, _, ki), tCrC);
     }
