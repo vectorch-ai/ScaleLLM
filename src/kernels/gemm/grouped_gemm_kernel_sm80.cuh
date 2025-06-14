@@ -11,6 +11,142 @@
 namespace llm {
 using namespace cute;
 
+template <size_t I, class IntTupleA, class IntTupleB>
+CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
+                                          IntTupleB const& b) {
+  return elem_less(get<I>(a), get<I>(b));
+}
+
+template <bool EVEN_K,
+          bool ZFILL_M,
+          bool ZFILL_K,
+          class CopyAtom,
+          class TV,
+          class Tiler,
+          class TensorS,
+          class TensorD,
+          class TensorCM,
+          class TensorC,
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
+                          TensorC::rank == 3)>
+CUTE_HOST_DEVICE void safe_copy(
+    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
+    const TensorS& src,           // (CPY, CPY_M, CPY_K)
+    TensorD& dst,                 // (CPY, CPY_M, CPY_K)
+    const TensorCM& predicate_m,  // (CPY_M) -> bool
+    const TensorC& identity,      // (CPY, CPY_M, CPY_K) -> (blk_m, blk_k)
+    const Coord& max_coord        // max_coord(blk_m, blk_k)
+) {
+  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
+  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
+  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_M/N
+  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_M/N
+  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(dst));       // CPY_K
+  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(identity));  // CPY_K
+
+  auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
+  if constexpr (!EVEN_K) {
+    CUTE_UNROLL
+    for (int mi = 0; mi < size<1>(src); ++mi) {
+      if (predicate_m(mi)) {
+        CUTE_UNROLL
+        for (int ki = 0; ki < size<2>(src); ++ki) {
+          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+            copy(copy_atom, src(_, mi, ki), dst(_, mi, ki));
+          } else if constexpr (ZFILL_K) {
+            clear(dst(_, mi, ki));
+          }
+        }
+      } else if constexpr (ZFILL_M) {
+        clear(dst(_, mi, _));
+      } else if constexpr (ZFILL_K) {
+        // still need to handle k oob if m is not zfilled
+        CUTE_UNROLL
+        for (int ki = 0; ki < size<2>(src); ++ki) {
+          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+            clear(dst(_, mi, ki));
+          }
+        }
+      }
+    }
+  } else {
+    CUTE_UNROLL
+    for (int mi = 0; mi < size<1>(src); ++mi) {
+      if (predicate_m(mi)) {
+        copy(copy_atom, src(_, mi, _), dst(_, mi, _));
+      } else if constexpr (ZFILL_M) {
+        clear(dst(_, mi, _));
+      }
+    }
+  }
+}
+
+template <bool EVEN_N,
+          bool EVEN_K,
+          bool ZFILL_N,
+          bool ZFILL_K,
+          class CopyAtom,
+          class TV,
+          class Tiler,
+          class TensorS,
+          class TensorD,
+          class TensorC,
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
+                          TensorC::rank == 3)>
+CUTE_HOST_DEVICE void safe_copy_b(
+    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
+    const TensorS& src,       // (CPY, CPY_M, CPY_K)
+    TensorD& dst,             // (CPY, CPY_M, CPY_K)
+    const TensorC& identity,  // (CPY, CPY_M, CPY_K) -> (blk_m, blk_k)
+    const Coord& max_coord    // max_coord(blk_n, blk_k)
+) {
+  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
+  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
+  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_M/N
+  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_M/N
+  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(dst));       // CPY_K
+  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(identity));  // CPY_K
+
+  auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
+  if constexpr (!EVEN_K) {
+    // handle k oob
+    CUTE_UNROLL
+    for (int ni = 0; ni < size<1>(src); ++ni) {
+      if (elem_less<0>(identity(_0{}, ni, _0{}), max_coord)) {
+        CUTE_UNROLL
+        for (int ki = 0; ki < size<2>(src); ++ki) {
+          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+            copy(copy_atom, src(_, ni, ki), dst(_, ni, ki));
+          } else if constexpr (ZFILL_K) {
+            clear(dst(_, ni, ki));
+          }
+        }
+      } else if constexpr (ZFILL_N) {
+        clear(dst(_, ni, _));
+      } else if constexpr (ZFILL_K) {
+        // still need to handle k oob even if m/n is not zfilled
+        CUTE_UNROLL
+        for (int ki = 0; ki < size<2>(src); ++ki) {
+          if (elem_less(get<1>(identity(_0{}, _0{}, ki)), max_coord)) {
+            clear(dst(_, ni, ki));
+          }
+        }
+      }
+    }
+  } else {
+    CUTE_UNROLL
+    for (int mi = 0; mi < size<1>(src); ++mi) {
+      if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
+        copy(copy_atom, src(_, mi, _), dst(_, mi, _));
+      } else if constexpr (ZFILL_N) {
+        clear(dst(_, mi, _));
+      }
+    }
+  }
+}
+
 template <typename DTYPE, int BLK_M, int BLK_N, int BLK_K, int PIPE>
 struct GEMMTraitsSM80 {
   static constexpr int kBlockM = BLK_M;
@@ -197,6 +333,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   const auto tidx = threadIdx.x;
 
   const int expert_id = params.expert_ids_ptr[m_block_idx];
+  const int n_tokens_padded = params.n_tokens_padded[0];
 
   // ProblemShape
   const int* sorted_token_idxes = params.sorted_token_idxes_ptr;
@@ -224,15 +361,31 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
                               make_stride(get<0>(params.c_stride), _1{}),
                               idx_to_f_idx);
 
+  auto max_coord_mk = make_coord(M, K);
+  auto max_coord_nk = make_coord(N, K);
+  auto max_coord_mn = make_coord(M, N);
+
   // (M, K) => (BLK_M, BLK_K, k)
   Tensor gA =
       local_tile(A, Shape<_BLK_M, _BLK_K>{}, make_coord(m_block_idx, _));
+  // (BLK_M, BLK_K, k) => (M, K)
+  Tensor cA = local_tile(make_identity_tensor(make_shape(M, K)),
+                         Shape<_BLK_M, _BLK_K>{},
+                         make_coord(m_block_idx, _));
   // (N, K) => (BLK_N, BLK_K, k)
   Tensor gB =
       local_tile(B, Shape<_BLK_N, _BLK_K>{}, make_coord(n_block_idx, _));
+  // (BLK_N, BLK_K, k) => (N, K)
+  Tensor cB = local_tile(make_identity_tensor(make_shape(N, K)),
+                         Shape<_BLK_N, _BLK_K>{},
+                         make_coord(n_block_idx, _));
   // (M, N) => (BLK_M, BLK_N)
   Tensor gC = local_tile(
       C, Shape<_BLK_M, _BLK_N>{}, make_coord(m_block_idx, n_block_idx));
+  // (BLK_M, BLK_N) => (M, N)
+  Tensor cC = local_tile(make_identity_tensor(make_shape(M, N)),
+                         Shape<_BLK_M, _BLK_N>{},
+                         make_coord(m_block_idx, n_block_idx));
 
   // Smem
   extern __shared__ char smem[];
@@ -251,13 +404,38 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
 
   // (BLK_M, BLK_K, k) => (COPY, CP_M, CP_K, k)
   auto tAgA = gmem_thr_copy.partition_S(gA);
+  // (COPY, COPY_M, COPY_K, k) => (M, K)
+  auto tAcA = gmem_thr_copy.partition_S(cA);
   // (BLK_M, BLK_K, PIPE) => (COPY, CP_M, CP_K, PIPE)
   auto tAsA = gmem_thr_copy.partition_D(sA);
 
+  // (COPY_M)
+  auto tApA = make_tensor<bool>(make_shape(size<1>(tAcA)));
+  CUTE_UNROLL
+  for (int i = 0; i < size(tApA); ++i) {
+    const auto f_idx = sorted_token_idxes[get<1>(tAcA(_0{}, i, _0{}, _0{}))];
+    tApA(i) = f_idx < n_tokens_padded;
+  }
+
   // (BLK_N, BLK_K, k) => (COPY, CP_N, CP_K, k)
   auto tBgB = gmem_thr_copy.partition_S(gB);
+  // (COPY, COPY_N, COPY_K, k) => (N, K)
+  auto tBcB = gmem_thr_copy.partition_S(cB);
   // (BLK_N, BLK_K, PIPE) => (COPY, CP_N, CP_K, PIPE)
   auto tBsB = gmem_thr_copy.partition_D(sB);
+
+  auto produce_ab = [&](int k_tile, int k_pipe) {
+    copy(gmem_tiled_copy, tAgA(_, _, _, k_tile), tAsA(_, _, _, k_pipe));
+    // safe_copy</*EVEN_K=*/true, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
+    //     gmem_tiled_copy,
+    //     tAgA(_, _, _, k_tile),
+    //     tAsA(_, _, _, k_pipe),
+    //     tApA,
+    //     tAcA(_, _, _, k_tile),
+    //     max_coord_mk);
+
+    copy(gmem_tiled_copy, tBgB(_, _, _, k_tile), tBsB(_, _, _, k_pipe));
+  };
 
   // GEMM: C = A@B.T
   TiledMma tiled_mma;
@@ -286,19 +464,18 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   // remaining k-tile count
   int k_tiles_remaining = size<3>(tAgA);
   // next tile index in gmem to read from
-  int k_tile_next = 0;
+  int k_tile = 0;
 
   // async loads for all pipes except the last one
   auto kPipe = size<3>(tAsA);
   CUTE_UNROLL
   for (int k_pipe = 0; k_pipe < kPipe - 1; ++k_pipe) {
-    copy(gmem_tiled_copy, tAgA(_, _, _, k_tile_next), tAsA(_, _, _, k_pipe));
-    copy(gmem_tiled_copy, tBgB(_, _, _, k_tile_next), tBsB(_, _, _, k_pipe));
+    produce_ab(k_tile, k_pipe);
     cp_async_fence();
 
     // advance to next k-tile
     if (--k_tiles_remaining > 0) {
-      ++k_tile_next;
+      ++k_tile;
     }
   }
 
@@ -337,17 +514,12 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
       // first block
       if (ki == 0) {
         // copy gmem to smem for next pipe
-        copy(gmem_tiled_copy,
-             tAgA(_, _, _, k_tile_next),
-             tAsA(_, _, _, pipe_write));
-        copy(gmem_tiled_copy,
-             tBgB(_, _, _, k_tile_next),
-             tBsB(_, _, _, pipe_write));
+        produce_ab(k_tile, pipe_write);
         cp_async_fence();
 
         // advance to next k-tile
         if (--k_tiles_remaining > 0) {
-          ++k_tile_next;
+          ++k_tile;
         }
       }
       // last block
@@ -396,6 +568,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto gmem_thr_copy_c = gmem_tiled_copy_c.get_thread_slice(tidx);
   auto tGsC = gmem_thr_copy_c.partition_S(sC);
   auto tGgC = gmem_thr_copy_c.partition_D(gC);
+  // (COPY, COPY_M, COPY_N) => (M, N)
+  auto tGcC = gmem_thr_copy_c.partition_D(cC);
+  // TODO: safe_copy
   cute::copy(gmem_tiled_copy_c, tGsC, tGgC);
 }
 
