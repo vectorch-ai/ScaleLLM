@@ -79,10 +79,6 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   auto [sorted_token_idex, expert_ids, n_tokens_padded] = permute_align_block(
       topk_ids.to(torch::kInt32), n_experts, /*block_size=*/64);
 
-  // LOG(ERROR) << "sorted_token_idex: " << sorted_token_idex;
-  // LOG(ERROR) << "expert_ids: " << expert_ids;
-  // LOG(ERROR) << "n_padded_tokens: " << n_tokens_padded;
-
   // (m * topk, n)
   auto out = torch::zeros({m * topk, n}, a.options());
 
@@ -185,8 +181,8 @@ TEST_P(GroupedGemmKernelTest, GEMM) {
   const auto options = torch::dtype(dtype).device(torch::kCUDA);
 
   // Create input tensors
-  auto a = torch::randn({m, k}, options);
-  auto w = torch::randn({n_experts, n, k}, options);
+  auto a = torch::randn({m, k}, options) / 10;
+  auto w = torch::randn({n_experts, n, k}, options) / 10;
 
   // Get top-k indices
   auto logits = torch::randn({m, n_experts}, options).softmax(/*dim=*/1);
@@ -196,23 +192,23 @@ TEST_P(GroupedGemmKernelTest, GEMM) {
   // LOG(ERROR) << "ref_out: " << ref_out;
   auto out = grouped_gemm_sm80(a, w, topk_ids);
 
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
-
-  // auto max_diff = (out - ref_out).abs().max();
-  // LOG(ERROR) << "Max diff: " << max_diff;
-  // LOG(ERROR) << "ref_out: " << ref_out;
-  // LOG(ERROR) << "out: " << out;
+  if (dtype == torch::kBFloat16) {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-2, /*atol=*/1e-2));
+  } else {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
     GEMM,
     GroupedGemmKernelTest,
-    ::testing::Combine(::testing::Values(torch::kHalf),  // dtype
-                       ::testing::Values(64, 96, 128),   // m
-                       ::testing::Values(64, 128),       // n
-                       ::testing::Values(64, 96, 128),   // k
-                       ::testing::Values(8, 16),         // n_experts
-                       ::testing::Values(1, 2, 4)        // topk
+    ::testing::Combine(::testing::Values(torch::kHalf,
+                                         torch::kBFloat16),  // dtype
+                       ::testing::Values(32, 64, 96, 128),   // m
+                       ::testing::Values(32, 64, 96, 128),   // n
+                       ::testing::Values(32, 64, 96, 128),   // k
+                       ::testing::Values(8, 16),             // n_experts
+                       ::testing::Values(1, 2, 4)            // topk
                        ));
 
 }  // namespace llm

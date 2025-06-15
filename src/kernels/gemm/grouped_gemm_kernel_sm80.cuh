@@ -307,6 +307,23 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
         max_coord_nk);
   };
 
+  auto produce_ab_no_oob = [&](int k_tile, int k_pipe) {
+    safe_copy_with_pred<EVEN_K, /*ZFILL_M=*/false, /*ZFILL_K=*/true>(
+        gmem_tiled_copy,
+        tAgA(_, _, _, k_tile),
+        tAsA(_, _, _, k_pipe),
+        tApA,
+        tAcA(_, _, _, k_tile),
+        max_coord_mk);
+
+    safe_copy<EVEN_N, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
+        gmem_tiled_copy,
+        tBgB(_, _, _, k_tile),
+        tBsB(_, _, _, k_pipe),
+        tBcB(_, _, _, k_tile),
+        max_coord_nk);
+  };
+
   // GEMM: C = A@B.T
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_thread_slice(tidx);
@@ -384,7 +401,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
       // first block
       if (ki == 0) {
         // copy gmem to smem for next pipe
-        produce_ab(k_tile, pipe_write);
+        produce_ab_no_oob(k_tile, pipe_write);
         cp_async_fence();
 
         // advance to next k-tile
@@ -442,7 +459,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto tGgC = gmem_thr_copy_c.partition_D(gC);
   // (CPY, CPY_M, CPY_N) => (M, N)
   auto tGcC = gmem_thr_copy_c.partition_D(cC);
-  safe_copy_with_pred<EVEN_K, /*ZFILL_M=*/false, /*ZFILL_K=*/false>(
+  safe_copy_with_pred<EVEN_N, /*ZFILL_M=*/false, /*ZFILL_K=*/false>(
       gmem_tiled_copy_c, tGsC, tGgC, tApA, tGcC, max_coord_mn);
 }
 
