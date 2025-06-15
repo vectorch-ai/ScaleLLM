@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "grouped_gemm_kernel_sm80.cuh"  // IWYU pragma: keep
+#include "static_dispatch.h"
 
 namespace llm {
 
@@ -85,12 +86,6 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   // (m * topk, n)
   auto out = torch::zeros({m * topk, n}, a.options());
 
-  using Traits = GEMMTraitsSM80<cute::half_t, /*DTYPE*/
-                                64,           /*BLK_M*/
-                                64,           /*BLK_N*/
-                                64,           /*BLK_K*/
-                                2>;           /*PIPE*/
-
   // construct params
   GEMMParams params;
   params.a_ptr = a.const_data_ptr();
@@ -109,10 +104,24 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   params.k = k;
   params.topk = topk;
 
-  params.m_blocks = expert_ids.size(0);
-  params.n_blocks = cute::ceil_div(n, 64);
+  constexpr int BLK_M = 64;
+  constexpr int BLK_N = 64;
+  constexpr int BLK_K = 64;
+  constexpr int PIPE = 2;
 
-  launch_grouped_gemm_kernel_sm80<Traits>(params, nullptr);
+  params.m_blocks = expert_ids.size(0);
+  params.n_blocks = cute::ceil_div(n, BLK_N);
+
+  DISPATCH_TORCH_DTYPE(a.dtype(), DTYPE, [&] {
+    DISPATCH_BOOL((n % BLK_N) == 0, EVEN_N, [&] {
+      DISPATCH_BOOL((k % BLK_K) == 0, EVEN_K, [&] {
+        // LOG(ERROR) << "EVEN_N: " << EVEN_N << ", EVEN_K: " << EVEN_K;
+        using Traits = GEMMTraitsSM80<DTYPE, BLK_M, BLK_N, BLK_K, PIPE>;
+        launch_grouped_gemm_kernel_sm80<EVEN_N, EVEN_K, Traits>(params,
+                                                                nullptr);
+      });
+    });
+  });
 
   // (m * topk, n) => (m, topk, n)
   return out.view({m, topk, n});
@@ -199,11 +208,11 @@ INSTANTIATE_TEST_SUITE_P(
     GEMM,
     GroupedGemmKernelTest,
     ::testing::Combine(::testing::Values(torch::kHalf),  // dtype
-                       ::testing::Values(64, 128),       // m
+                       ::testing::Values(64, 96, 128),   // m
                        ::testing::Values(64, 128),       // n
-                       ::testing::Values(64, 128),       // k
-                       ::testing::Values(1),             // n_experts
-                       ::testing::Values(1)              // topk
+                       ::testing::Values(64, 96, 128),   // k
+                       ::testing::Values(8, 16),         // n_experts
+                       ::testing::Values(1, 2, 4)        // topk
                        ));
 
 }  // namespace llm

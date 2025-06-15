@@ -6,146 +6,12 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
+#include "fast_cast.cuh"
 #include "gather_tensor.hpp"
+#include "safe_copy.hpp"
 
 namespace llm {
 using namespace cute;
-
-template <size_t I, class IntTupleA, class IntTupleB>
-CUTE_HOST_DEVICE constexpr auto elem_less(IntTupleA const& a,
-                                          IntTupleB const& b) {
-  return elem_less(get<I>(a), get<I>(b));
-}
-
-template <bool EVEN_K,
-          bool ZFILL_M,
-          bool ZFILL_K,
-          class CopyAtom,
-          class TV,
-          class Tiler,
-          class TensorS,
-          class TensorD,
-          class TensorCM,
-          class TensorC,
-          class Coord,
-          __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
-                          TensorC::rank == 3)>
-CUTE_HOST_DEVICE void safe_copy(
-    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
-    const TensorS& src,           // (CPY, CPY_M, CPY_K)
-    TensorD& dst,                 // (CPY, CPY_M, CPY_K)
-    const TensorCM& predicate_m,  // (CPY_M) -> bool
-    const TensorC& identity,      // (CPY, CPY_M, CPY_K) -> (blk_m, blk_k)
-    const Coord& max_coord        // max_coord(blk_m, blk_k)
-) {
-  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
-  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
-  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_M/N
-  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_M/N
-  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(dst));       // CPY_K
-  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(identity));  // CPY_K
-
-  auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
-  if constexpr (!EVEN_K) {
-    CUTE_UNROLL
-    for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (predicate_m(mi)) {
-        CUTE_UNROLL
-        for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
-            copy(copy_atom, src(_, mi, ki), dst(_, mi, ki));
-          } else if constexpr (ZFILL_K) {
-            clear(dst(_, mi, ki));
-          }
-        }
-      } else if constexpr (ZFILL_M) {
-        clear(dst(_, mi, _));
-      } else if constexpr (ZFILL_K) {
-        // still need to handle k oob if m is not zfilled
-        CUTE_UNROLL
-        for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
-            clear(dst(_, mi, ki));
-          }
-        }
-      }
-    }
-  } else {
-    CUTE_UNROLL
-    for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (predicate_m(mi)) {
-        copy(copy_atom, src(_, mi, _), dst(_, mi, _));
-      } else if constexpr (ZFILL_M) {
-        clear(dst(_, mi, _));
-      }
-    }
-  }
-}
-
-template <bool EVEN_N,
-          bool EVEN_K,
-          bool ZFILL_N,
-          bool ZFILL_K,
-          class CopyAtom,
-          class TV,
-          class Tiler,
-          class TensorS,
-          class TensorD,
-          class TensorC,
-          class Coord,
-          __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
-                          TensorC::rank == 3)>
-CUTE_HOST_DEVICE void safe_copy_b(
-    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
-    const TensorS& src,       // (CPY, CPY_M, CPY_K)
-    TensorD& dst,             // (CPY, CPY_M, CPY_K)
-    const TensorC& identity,  // (CPY, CPY_M, CPY_K) -> (blk_m, blk_k)
-    const Coord& max_coord    // max_coord(blk_n, blk_k)
-) {
-  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
-  // CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
-  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(dst));       // CPY_M/N
-  // CUTE_STATIC_ASSERT_V(size<1>(src) == size<1>(identity));  // CPY_M/N
-  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(dst));       // CPY_K
-  // CUTE_STATIC_ASSERT_V(size<2>(src) == size<2>(identity));  // CPY_K
-
-  auto copy_atom = static_cast<const CopyAtom&>(tiled_copy);
-  if constexpr (!EVEN_K) {
-    // handle k oob
-    CUTE_UNROLL
-    for (int ni = 0; ni < size<1>(src); ++ni) {
-      if (elem_less<0>(identity(_0{}, ni, _0{}), max_coord)) {
-        CUTE_UNROLL
-        for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
-            copy(copy_atom, src(_, ni, ki), dst(_, ni, ki));
-          } else if constexpr (ZFILL_K) {
-            clear(dst(_, ni, ki));
-          }
-        }
-      } else if constexpr (ZFILL_N) {
-        clear(dst(_, ni, _));
-      } else if constexpr (ZFILL_K) {
-        // still need to handle k oob even if m/n is not zfilled
-        CUTE_UNROLL
-        for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less(get<1>(identity(_0{}, _0{}, ki)), max_coord)) {
-            clear(dst(_, ni, ki));
-          }
-        }
-      }
-    }
-  } else {
-    CUTE_UNROLL
-    for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
-        copy(copy_atom, src(_, mi, _), dst(_, mi, _));
-      } else if constexpr (ZFILL_N) {
-        clear(dst(_, mi, _));
-      }
-    }
-  }
-}
 
 template <typename DTYPE, int BLK_M, int BLK_N, int BLK_K, int PIPE>
 struct GEMMTraitsSM80 {
@@ -293,7 +159,7 @@ struct GEMMParams {
   int n_blocks = 0;
 };
 
-template <typename Traits, typename Params>
+template <bool EVEN_N, bool EVEN_K, typename Traits, typename Params>
 __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
     __grid_constant__ const Params params) {
   // Traits
@@ -305,7 +171,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   using _BLK_N = Int<kBlockN>;
   using _BLK_K = Int<kBlockK>;
 
-  using DTYPE = typename Traits::DType;
+  using DType = typename Traits::DType;
   using TiledMma = typename Traits::TiledMma;
 
   using SmemLayoutA = typename Traits::SmemLayoutA;
@@ -341,14 +207,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
     return sorted_token_idxes[idx] / topk;
   };
   // A: (M, K), k-major
-  auto A = make_gather_tensor(make_gmem_ptr((const DTYPE*)params.a_ptr),
+  auto A = make_gather_tensor(make_gmem_ptr((const DType*)params.a_ptr),
                               make_shape(M, K),
                               make_stride(get<0>(params.a_stride), _1{}),
                               idx_to_t_idx);
 
   // B: (N, K), k-major
   const auto b_offset = expert_id * get<0>(params.b_stride);
-  auto B = make_tensor(make_gmem_ptr((const DTYPE*)params.b_ptr + b_offset),
+  auto B = make_tensor(make_gmem_ptr((const DType*)params.b_ptr + b_offset),
                        make_shape(N, K),
                        make_stride(get<1>(params.b_stride), _1{}));
 
@@ -356,7 +222,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto idx_to_f_idx = [sorted_token_idxes](int idx) {
     return sorted_token_idxes[idx];
   };
-  auto C = make_gather_tensor(make_gmem_ptr((DTYPE*)params.c_ptr),
+  auto C = make_gather_tensor(make_gmem_ptr((DType*)params.c_ptr),
                               make_shape(M, N),
                               make_stride(get<0>(params.c_stride), _1{}),
                               idx_to_f_idx);
@@ -402,14 +268,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   GmemTiledCopy gmem_tiled_copy;
   auto gmem_thr_copy = gmem_tiled_copy.get_thread_slice(tidx);
 
-  // (BLK_M, BLK_K, k) => (COPY, CP_M, CP_K, k)
+  // (BLK_M, BLK_K, k) => (CPY, CPY_M, CPY_K, k)
   auto tAgA = gmem_thr_copy.partition_S(gA);
-  // (COPY, COPY_M, COPY_K, k) => (M, K)
+  // (CPY, CPY_M, CPY_K, k) => (M, K)
   auto tAcA = gmem_thr_copy.partition_S(cA);
-  // (BLK_M, BLK_K, PIPE) => (COPY, CP_M, CP_K, PIPE)
+  // (BLK_M, BLK_K, PIPE) => (CPY, CPY_M, CPY_K, PIPE)
   auto tAsA = gmem_thr_copy.partition_D(sA);
 
-  // (COPY_M)
+  // (CPY_M)
   auto tApA = make_tensor<bool>(make_shape(size<1>(tAcA)));
   CUTE_UNROLL
   for (int i = 0; i < size(tApA); ++i) {
@@ -417,24 +283,28 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
     tApA(i) = f_idx < n_tokens_padded;
   }
 
-  // (BLK_N, BLK_K, k) => (COPY, CP_N, CP_K, k)
+  // (BLK_N, BLK_K, k) => (CPY, CPY_N, CPY_K, k)
   auto tBgB = gmem_thr_copy.partition_S(gB);
-  // (COPY, COPY_N, COPY_K, k) => (N, K)
+  // (CPY, CPY_N, CPY_K, k) => (N, K)
   auto tBcB = gmem_thr_copy.partition_S(cB);
-  // (BLK_N, BLK_K, PIPE) => (COPY, CP_N, CP_K, PIPE)
+  // (BLK_N, BLK_K, PIPE) => (CPY, CPY_N, CPY_K, PIPE)
   auto tBsB = gmem_thr_copy.partition_D(sB);
 
   auto produce_ab = [&](int k_tile, int k_pipe) {
-    copy(gmem_tiled_copy, tAgA(_, _, _, k_tile), tAsA(_, _, _, k_pipe));
-    // safe_copy</*EVEN_K=*/true, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
-    //     gmem_tiled_copy,
-    //     tAgA(_, _, _, k_tile),
-    //     tAsA(_, _, _, k_pipe),
-    //     tApA,
-    //     tAcA(_, _, _, k_tile),
-    //     max_coord_mk);
+    safe_copy_with_pred<EVEN_K, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
+        gmem_tiled_copy,
+        tAgA(_, _, _, k_tile),
+        tAsA(_, _, _, k_pipe),
+        tApA,
+        tAcA(_, _, _, k_tile),
+        max_coord_mk);
 
-    copy(gmem_tiled_copy, tBgB(_, _, _, k_tile), tBsB(_, _, _, k_pipe));
+    safe_copy<EVEN_N, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
+        gmem_tiled_copy,
+        tBgB(_, _, _, k_tile),
+        tBsB(_, _, _, k_pipe),
+        tBcB(_, _, _, k_tile),
+        max_coord_nk);
   };
 
   // GEMM: C = A@B.T
@@ -448,16 +318,16 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   // s2r tiled copy for A and B
   auto smem_tiled_copy_a = SmemTiledCopyA{};
   auto smem_thr_copy_a = smem_tiled_copy_a.get_thread_slice(tidx);
-  // (BLK_M, BLK_K, PIPE) => (COPY, COPY_M, COPY_K, PIPE)
+  // (BLK_M, BLK_K, PIPE) => (CPY, CPY_M, CPY_K, PIPE)
   auto tCsA = smem_thr_copy_a.partition_S(sA);
-  // (COPY, COPY_M, COPY_K)
+  // (CPY, CPY_M, CPY_K)
   auto tCrA_cpv = smem_thr_copy_a.retile_D(tCrA);
 
   auto smem_tiled_copy_b = SmemTiledCopyB{};
   auto smem_thr_copy_b = smem_tiled_copy_b.get_thread_slice(tidx);
-  // (BLK_N, BLK_K, PIPE) => (COPY, COPY_N, COPY_K, PIPE)
+  // (BLK_N, BLK_K, PIPE) => (CPY, CPY_N, CPY_K, PIPE)
   auto tCsB = smem_thr_copy_b.partition_S(sB);
-  // (COPY, COPY_N, COPY_K)
+  // (CPY, CPY_N, CPY_K)
   auto tCrB_cpv = smem_thr_copy_b.retile_D(tCrB);
 
   // ###############  Prologue  ###############
@@ -481,15 +351,15 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
 
   // ###############  Mainloop  ###############
   // (BLK_M, BLK_N) => (MMA, MMA_M, MMA_N)
-  auto tCrC = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-  cute::clear(tCrC);  // Clear the accumulator
+  auto tCrAccC = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
+  cute::clear(tCrAccC);  // Clear the accumulator
 
   // pipe index in smem to read from
   int pipe_read = 0;
   // pipe index in smem to write to
   int pipe_write = kPipe - 1;
 
-  // pipe to read from: (COPY, COPY_N, COPY_K)
+  // pipe to read from: (CPY, CPY_N, CPY_K)
   Tensor tCsA_p = tCsA(_, _, _, pipe_read);
   Tensor tCsB_p = tCsB(_, _, _, pipe_read);
 
@@ -543,7 +413,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
       copy(smem_tiled_copy_b, tCsB_p(_, _, ki_next), tCrB_cpv(_, _, ki_next));
 
       // thread-level gemm for ki
-      gemm(tiled_mma, tCrA(_, _, ki), tCrB(_, _, ki), tCrC);
+      gemm(tiled_mma, tCrA(_, _, ki), tCrB(_, _, ki), tCrAccC);
     }
   }
 
@@ -551,7 +421,9 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   // (BLK_M, BLK_N)
   Tensor sC = make_tensor(make_smem_ptr(ss.c_smem.data()), SmemLayoutC{});
 
-  // TODO: fastcast tCrC to DTYPE
+  // fastcast tCrAccC to DType
+  auto tCrC = make_tensor_like<DType>(tCrAccC);
+  fast_cast(tCrAccC, tCrC);
 
   // copy tCrC from registers to smem
   SmemTiledCopyC smem_tiled_copy_c;
@@ -568,19 +440,19 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto gmem_thr_copy_c = gmem_tiled_copy_c.get_thread_slice(tidx);
   auto tGsC = gmem_thr_copy_c.partition_S(sC);
   auto tGgC = gmem_thr_copy_c.partition_D(gC);
-  // (COPY, COPY_M, COPY_N) => (M, N)
+  // (CPY, CPY_M, CPY_N) => (M, N)
   auto tGcC = gmem_thr_copy_c.partition_D(cC);
-  // TODO: safe_copy
-  cute::copy(gmem_tiled_copy_c, tGsC, tGgC);
+  safe_copy_with_pred<EVEN_K, /*ZFILL_M=*/false, /*ZFILL_K=*/false>(
+      gmem_tiled_copy_c, tGsC, tGgC, tApA, tGcC, max_coord_mn);
 }
 
-template <typename Traits, typename Params>
+template <bool EVEN_N, bool EVEN_K, typename Traits, typename Params>
 void launch_grouped_gemm_kernel_sm80(const Params& params,
                                      cudaStream_t stream) {
   const auto smem_size = sizeof(GEMMSharedStorageSM80<Traits>);
   // std::cout << "SMEM size: " << smem_size << " bytes\n";
 
-  auto gemm_kernel = grouped_gemm_kernel_sm80<Traits, Params>;
+  auto gemm_kernel = grouped_gemm_kernel_sm80<EVEN_N, EVEN_K, Traits, Params>;
   cudaFuncSetAttribute(
       gemm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   // TODO: support persistent kernels
