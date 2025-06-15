@@ -2,9 +2,10 @@
 // https://github.com/NVIDIA/cutlass/blob/main/examples/common/gather_tensor.hpp
 #pragma once
 
-#include "cute/layout.hpp"
-#include "cute/layout_composed.hpp"
-#include "cute/tensor.hpp"
+#include <cute/layout.hpp>
+#include <cute/layout_composed.hpp>
+#include <cute/tensor.hpp>
+
 namespace llm {
 
 using namespace cute;
