@@ -289,7 +289,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto tBsB = gmem_thr_copy.partition_D(sB);
 
   auto produce_ab = [&](int k_tile, int k_pipe) {
-    safe_copy_with_pred<EVEN_K, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
+    safe_copy_m<EVEN_K, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
         gmem_tiled_copy,
         tAgA(_, _, _, k_tile),
         tAsA(_, _, _, k_pipe),
@@ -297,7 +297,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
         tAcA(_, _, _, k_tile),
         max_coord_mk);
 
-    safe_copy<EVEN_N, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
+    safe_copy_n<EVEN_N, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
         gmem_tiled_copy,
         tBgB(_, _, _, k_tile),
         tBsB(_, _, _, k_pipe),
@@ -306,7 +306,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   };
 
   auto produce_ab_no_oob = [&](int k_tile, int k_pipe) {
-    safe_copy_with_pred<EVEN_K, /*ZFILL_M=*/false, /*ZFILL_K=*/true>(
+    safe_copy_m<EVEN_K, /*ZFILL_M=*/false, /*ZFILL_K=*/true>(
         gmem_tiled_copy,
         tAgA(_, _, _, k_tile),
         tAsA(_, _, _, k_pipe),
@@ -314,7 +314,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
         tAcA(_, _, _, k_tile),
         max_coord_mk);
 
-    safe_copy<EVEN_N, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
+    safe_copy_n<EVEN_N, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
         gmem_tiled_copy,
         tBgB(_, _, _, k_tile),
         tBsB(_, _, _, k_pipe),
@@ -461,7 +461,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto tGgC = gmem_thr_copy_c.partition_D(gC);
   // (CPY, CPY_M, CPY_N) => (M, N)
   auto tGcC = gmem_thr_copy_c.partition_D(cC);
-  safe_copy_with_pred<EVEN_N, /*ZFILL_M=*/false, /*ZFILL_K=*/false>(
+  safe_copy_m<EVEN_N, /*ZFILL_M=*/false, /*ZFILL_K=*/false>(
       gmem_tiled_copy_c, tGsC, tGgC, tApA, tGcC, max_coord_mn);
 }
 
