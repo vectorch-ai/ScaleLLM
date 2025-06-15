@@ -11,7 +11,7 @@ namespace llm {
 namespace {
 
 // reference implementation
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> permute_align_block(
+std::tuple<torch::Tensor, torch::Tensor> permute_align_block(
     torch::Tensor topk_ids,  // [n_tokens, topk]
     int64_t n_experts,
     int64_t block_size) {
@@ -31,7 +31,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> permute_align_block(
 
   std::vector<int32_t> sorted_token_idxes;
   std::vector<int32_t> expert_ids;
-  int32_t n_padded_tokens = 0;
   for (int e_idx = 0; e_idx < n_experts; ++e_idx) {
     // flatten indices for each expert, sorted by token id
     const auto& idxes = expert_to_idxes[e_idx];
@@ -40,7 +39,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> permute_align_block(
     }
     const auto count = idxes.size();
     const auto n_blocks = cute::ceil_div(count, block_size);
-    n_padded_tokens += (n_blocks * block_size);
     // fill flatten indices for each block
     for (int b_idx = 0; b_idx < n_blocks; ++b_idx) {
       // expert id for each block
@@ -61,8 +59,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> permute_align_block(
   // construct tensor and return
   const auto options = topk_ids.options();
   return {torch::tensor(sorted_token_idxes, options),
-          torch::tensor(expert_ids, options),
-          torch::tensor({n_padded_tokens}, options)};
+          torch::tensor(expert_ids, options)};
 }
 
 torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
@@ -76,11 +73,11 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   const auto topk = topk_ids.size(1);
 
   // construct aligned
-  auto [sorted_token_idex, expert_ids, n_tokens_padded] = permute_align_block(
+  auto [sorted_token_idex, expert_ids] = permute_align_block(
       topk_ids.to(torch::kInt32), n_experts, /*block_size=*/64);
 
   // (m * topk, n)
-  auto out = torch::zeros({m * topk, n}, a.options());
+  auto out = torch::empty({m * topk, n}, a.options());
 
   // construct params
   GEMMParams params;
@@ -93,7 +90,6 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
 
   params.sorted_token_idxes_ptr = sorted_token_idex.const_data_ptr<int32_t>();
   params.expert_ids_ptr = expert_ids.const_data_ptr<int32_t>();
-  params.n_tokens_padded = n_tokens_padded.const_data_ptr<int32_t>();
 
   params.m = m;
   params.n = n;
@@ -111,7 +107,6 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   DISPATCH_TORCH_DTYPE(a.dtype(), DTYPE, [&] {
     DISPATCH_BOOL((n % BLK_N) == 0, EVEN_N, [&] {
       DISPATCH_BOOL((k % BLK_K) == 0, EVEN_K, [&] {
-        // LOG(ERROR) << "EVEN_N: " << EVEN_N << ", EVEN_K: " << EVEN_K;
         using Traits = GEMMTraitsSM80<DTYPE, BLK_M, BLK_N, BLK_K, PIPE>;
         launch_grouped_gemm_kernel_sm80<EVEN_N, EVEN_K, Traits>(params,
                                                                 nullptr);
@@ -136,7 +131,7 @@ torch::Tensor grouped_gemm_ref(const torch::Tensor& a,        // (m, k)
   const auto topk = topk_ids.size(1);
 
   // (m * topk, n)
-  auto out = torch::zeros({m * topk, n}, a.options());
+  auto out = torch::empty({m * topk, n}, a.options());
 
   // (m, k) => (m, topk, k) => (m * topk, k)
   auto a_expanded_flat =
@@ -189,7 +184,6 @@ TEST_P(GroupedGemmKernelTest, GEMM) {
   auto [topk_weights, topk_ids] = logits.topk(topk, /*dim=*/1);
 
   auto ref_out = grouped_gemm_ref(a, w, topk_ids);
-  // LOG(ERROR) << "ref_out: " << ref_out;
   auto out = grouped_gemm_sm80(a, w, topk_ids);
 
   if (dtype == torch::kBFloat16) {
@@ -204,10 +198,10 @@ INSTANTIATE_TEST_SUITE_P(
     GroupedGemmKernelTest,
     ::testing::Combine(::testing::Values(torch::kHalf,
                                          torch::kBFloat16),  // dtype
-                       ::testing::Values(32, 64, 96, 128),   // m
+                       ::testing::Values(1, 3, 32, 96),      // m
                        ::testing::Values(32, 64, 96, 128),   // n
                        ::testing::Values(32, 64, 96, 128),   // k
-                       ::testing::Values(8, 16),             // n_experts
+                       ::testing::Values(8, 16, 64),         // n_experts
                        ::testing::Values(1, 2, 4)            // topk
                        ));
 

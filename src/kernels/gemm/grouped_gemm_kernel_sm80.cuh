@@ -153,7 +153,6 @@ struct GEMMParams {
   int n = 0;
   int k = 0;
   int topk = 0;
-  int n_experts = 0;
 
   int m_blocks = 0;
   int n_blocks = 0;
@@ -189,9 +188,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   const auto M = kBlockM * gridDim.x;
   const auto N = params.n;
   const auto K = params.k;
-
   const auto topk = params.topk;
-  const auto n_experts = params.n_experts;
 
   // each thread block takes care of one block: (BLK_M, BLK_N)
   const auto m_block_idx = blockIdx.x;
@@ -199,7 +196,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   const auto tidx = threadIdx.x;
 
   const int expert_id = params.expert_ids_ptr[m_block_idx];
-  const int n_tokens_padded = params.n_tokens_padded[0];
+  const int n_flatten_tokens = params.m * topk;
 
   // ProblemShape
   const int* sorted_token_idxes = params.sorted_token_idxes_ptr;
@@ -275,12 +272,13 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   // (BLK_M, BLK_K, PIPE) => (CPY, CPY_M, CPY_K, PIPE)
   auto tAsA = gmem_thr_copy.partition_D(sA);
 
-  // (CPY_M)
-  auto tApA = make_tensor<bool>(make_shape(size<1>(tAcA)));
+  // (CPY_M) => (M, K)
+  auto tAcA_m = tAcA(_0{}, _, _0{}, _0{});
+  auto tApA = make_tensor<bool>(make_shape(size(tAcA_m)));
   CUTE_UNROLL
   for (int i = 0; i < size(tApA); ++i) {
-    const auto f_idx = sorted_token_idxes[get<1>(tAcA(_0{}, i, _0{}, _0{}))];
-    tApA(i) = f_idx < n_tokens_padded;
+    const auto f_idx = sorted_token_idxes[get<0>(tAcA_m(i))];
+    tApA(i) = f_idx < n_flatten_tokens;
   }
 
   // (BLK_N, BLK_K, k) => (CPY, CPY_N, CPY_K, k)
