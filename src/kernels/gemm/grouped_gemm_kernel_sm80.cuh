@@ -355,7 +355,11 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   auto kPipe = size<3>(tAsA);
   CUTE_UNROLL
   for (int k_pipe = 0; k_pipe < kPipe - 1; ++k_pipe) {
-    produce_ab(k_tile, k_pipe);
+    if (k_pipe == 0) {
+      produce_ab(k_tile, k_pipe);
+    } else {
+      produce_ab_no_oob(k_tile, k_pipe);
+    }
     cp_async_fence();
 
     // advance to next k-tile
