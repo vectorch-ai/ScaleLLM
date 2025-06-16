@@ -64,18 +64,19 @@ void mla_bench_sm80(nvbench::state& state) {
   // construct attention params
   MLAParams params;
   params.q_ptr = q.const_data_ptr();
-  params.q_stride = make_stride(q.stride(0), q.stride(1), q.stride(2));
+  params.q_stride = make_stride(q.stride(0), q.stride(1), q.stride(2), _1{});
   params.kv_ptr = kv.const_data_ptr();
-  params.kv_stride = make_stride(kv.stride(0), kv.stride(1));
+  params.kv_stride = make_stride(kv.stride(0), kv.stride(1), _1{});
 
   params.q_rope_ptr = q_rope.const_data_ptr();
   params.q_rope_stride =
-      make_stride(q_rope.stride(0), q_rope.stride(1), q_rope.stride(2));
+      make_stride(q_rope.stride(0), q_rope.stride(1), q_rope.stride(2), _1{});
   params.k_rope_ptr = k_rope.const_data_ptr();
-  params.k_rope_stride = make_stride(k_rope.stride(0), k_rope.stride(1));
+  params.k_rope_stride = make_stride(k_rope.stride(0), k_rope.stride(1), _1{});
 
   params.o_ptr = out.mutable_data_ptr();
-  params.o_stride = make_stride(out.stride(0), out.stride(1), out.stride(2));
+  params.o_stride =
+      make_stride(out.stride(0), out.stride(1), out.stride(2), _1{});
 
   params.batch_size = batch_size;
   params.max_q_len = q_len;

@@ -82,7 +82,7 @@ struct MHAParamsCommon {
 
 struct MHAParams : public MHAParamsCommon {
   // (batch, seq, head, dim): last dimension is contiguous
-  using Stride = cute::Stride<int64_t, int64_t, int64_t /*,_1*/>;
+  using Stride = cute::Stride<int64_t, int64_t, int64_t, cute::_1>;
 
   Stride q_stride;
   Stride k_stride;
@@ -97,7 +97,7 @@ struct MHAParams : public MHAParamsCommon {
 // paged KV cache + variable length sequence
 struct MHAPagedKVParams : public MHAParamsCommon {
   // (seq, head, dim): last dimension is contiguous
-  using Stride = cute::Stride<int64_t, int64_t /*,_1*/>;
+  using Stride = cute::Stride<int64_t, int64_t, cute::_1>;
 
   Stride q_stride;
   Stride k_stride;

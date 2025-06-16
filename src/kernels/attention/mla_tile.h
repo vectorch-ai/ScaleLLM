@@ -32,20 +32,20 @@ struct MLATile<MLAParams> {
     auto q =
         make_tensor(make_gmem_ptr((const Element*)params_.q_ptr + q_offset),
                     make_shape(q_packed_len, params_.head_dim),
-                    make_stride(get<2>(params_.q_stride), _1{}));
+                    select<2, 3>(params_.q_stride));
 
     // (batch, seq, head, rope_head_dim)
     const auto q_rope_offset = batch_idx_ * get<0>(params_.q_rope_stride);
     auto q_rope = make_tensor(
         make_gmem_ptr((const Element*)params_.q_rope_ptr + q_rope_offset),
         make_shape(q_packed_len, params_.rope_head_dim),
-        make_stride(get<2>(params_.q_rope_stride), _1{}));
+        select<2, 3>(params_.q_rope_stride));
 
     // (batch, seq, head, dim)
     const auto o_offset = batch_idx_ * get<0>(params_.o_stride);
     auto o = make_tensor(make_gmem_ptr((Element*)params_.o_ptr + o_offset),
                          make_shape(q_packed_len, params_.head_dim),
-                         make_stride(get<2>(params_.o_stride), _1{}));
+                         select<2, 3>(params_.o_stride));
     return make_tuple(q, q_rope, o);
   }
 
@@ -55,18 +55,18 @@ struct MLATile<MLAParams> {
   CUTE_HOST_DEVICE auto get_kv_tile() const {
     // (batch, seq, dim)
     const auto kv_offset = batch_idx_ * get<0>(params_.kv_stride);
-    // k[batch_idx, :, kv_head_idx, :]
+    // k[batch_idx, :, :]
     auto kv =
         make_tensor(make_gmem_ptr((const Element*)params_.kv_ptr + kv_offset),
                     make_shape(params_.kv_len, params_.head_dim),
-                    make_stride(get<1>(params_.kv_stride), _1{}));
+                    select<1, 2>(params_.kv_stride));
 
     // (batch, seq, rope_head_dim)
     const auto k_rope_offset = batch_idx_ * get<0>(params_.k_rope_stride);
     auto k_rope = make_tensor(
         make_gmem_ptr((const Element*)params_.k_rope_ptr + k_rope_offset),
         make_shape(params_.kv_len, params_.rope_head_dim),
-        make_stride(get<1>(params_.k_rope_stride), _1{}));
+        select<1, 2>(params_.k_rope_stride));
     return make_tuple(kv, k_rope);
   }
 };
@@ -95,20 +95,20 @@ struct MLATile<MLAPagedKVParams> {
     auto q =
         make_tensor(make_gmem_ptr((const Element*)params_.q_ptr + q_offset),
                     make_shape(q_packed_len, params_.head_dim),
-                    make_stride(get<1>(params_.q_stride), _1{}));
+                    select<1, 2>(params_.q_stride));
 
     // (seq, head, rope_head_dim)
     const auto q_rope_offset = begin * get<0>(params_.q_rope_stride);
     auto q_rope = make_tensor(
         make_gmem_ptr((const Element*)params_.q_rope_ptr + q_rope_offset),
         make_shape(q_packed_len, params_.rope_head_dim),
-        make_stride(get<1>(params_.q_rope_stride), _1{}));
+        select<1, 2>(params_.q_rope_stride));
 
     // (seq, head, dim)
     const auto o_offset = begin * get<0>(params_.o_stride);
     auto o = make_tensor(make_gmem_ptr((Element*)params_.o_ptr + o_offset),
                          make_shape(q_packed_len, params_.head_dim),
-                         make_stride(get<1>(params_.o_stride), _1{}));
+                         select<1, 2>(params_.o_stride));
     return make_tuple(q, q_rope, o);
   }
 
@@ -131,14 +131,14 @@ struct MLATile<MLAPagedKVParams> {
     // kv: (seq, dim)
     auto kv = make_gather_tensor(make_gmem_ptr((const Element*)params_.kv_ptr),
                                  make_shape(kv_len, params_.head_dim),
-                                 make_stride(get<0>(params_.kv_stride), _1{}),
+                                 params_.kv_stride,
                                  idx_to_slot);
 
     // k_rope: (seq, rope_head_dim)
     auto k_rope =
         make_gather_tensor(make_gmem_ptr((const Element*)params_.k_rope_ptr),
                            make_shape(kv_len, params_.rope_head_dim),
-                           make_stride(get<0>(params_.k_rope_stride), _1{}),
+                           params_.k_rope_stride,
                            idx_to_slot);
     return make_tuple(kv, k_rope);
   }

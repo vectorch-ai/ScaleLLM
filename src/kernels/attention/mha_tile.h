@@ -44,18 +44,14 @@ struct MHATile<MHAParams> {
     auto q = make_gather_tensor(
         make_gmem_ptr((const Element*)params_.q_ptr + q_offset),
         make_shape(packed_len, params_.head_dim),
-        make_stride(
-            make_stride(get<1>(params_.q_stride), get<2>(params_.q_stride)),
-            _1{}),
+        make_stride(select<1, 2>(params_.q_stride), get<3>(params_.q_stride)),
         packed_idx_to_coord);
 
     const auto o_offset = batch_idx_ * get<0>(params_.o_stride);
     auto o = make_gather_tensor(
         make_gmem_ptr((Element*)params_.o_ptr + o_offset),
         make_shape(packed_len, params_.head_dim),
-        make_stride(
-            make_stride(get<1>(params_.o_stride), get<2>(params_.o_stride)),
-            _1{}),
+        make_stride(select<1, 2>(params_.o_stride), get<3>(params_.o_stride)),
         packed_idx_to_coord);
     return make_tuple(q, o);
   }
@@ -72,12 +68,12 @@ struct MHATile<MHAParams> {
     auto k =
         make_tensor(make_gmem_ptr((const Element*)params_.k_ptr + k_offset),
                     make_shape(params_.kv_len, params_.head_dim),
-                    make_stride(get<1>(params_.k_stride), _1{}));
+                    select<1, 3>(params_.k_stride));
     // v[batch_idx, :, kv_head_idx, :]
     auto v =
         make_tensor(make_gmem_ptr((const Element*)params_.v_ptr + v_offset),
                     make_shape(params_.kv_len, params_.head_dim),
-                    make_stride(get<1>(params_.v_stride), _1{}));
+                    select<1, 3>(params_.v_stride));
     return make_tuple(k, v);
   }
 };
@@ -112,18 +108,14 @@ struct MHATile<MHAPagedKVParams> {
     auto q = make_gather_tensor(
         make_gmem_ptr((const Element*)params_.q_ptr + q_offset),
         make_shape(packed_len, params_.head_dim),
-        make_stride(
-            make_stride(get<0>(params_.q_stride), get<1>(params_.q_stride)),
-            _1{}),
+        make_stride(select<0, 1>(params_.q_stride), get<2>(params_.q_stride)),
         packed_idx_to_coord);
 
     const auto o_offset = begin * get<0>(params_.o_stride);
     auto o = make_gather_tensor(
         make_gmem_ptr((Element*)params_.o_ptr + o_offset),
         make_shape(packed_len, params_.head_dim),
-        make_stride(
-            make_stride(get<0>(params_.o_stride), get<1>(params_.o_stride)),
-            _1{}),
+        make_stride(select<0, 1>(params_.o_stride), get<2>(params_.o_stride)),
         packed_idx_to_coord);
     return make_tuple(q, o);
   }
@@ -148,7 +140,7 @@ struct MHATile<MHAPagedKVParams> {
     auto k = make_gather_tensor(
         make_gmem_ptr((const Element*)params_.k_ptr + k_offset),
         make_shape(kv_len, params_.head_dim),
-        make_stride(get<0>(params_.k_stride), _1{}),
+        select<0, 2>(params_.k_stride),
         idx_to_slot);
 
     // v[:, kv_head_idx, :]
@@ -156,7 +148,7 @@ struct MHATile<MHAPagedKVParams> {
     auto v = make_gather_tensor(
         make_gmem_ptr((const Element*)params_.v_ptr + v_offset),
         make_shape(kv_len, params_.head_dim),
-        make_stride(get<0>(params_.v_stride), _1{}),
+        select<0, 2>(params_.v_stride),
         idx_to_slot);
     return make_tuple(k, v);
   }
