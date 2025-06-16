@@ -60,14 +60,16 @@ torch::Tensor mha_sm80(
   MHAParams params;
   params.q_ptr = query.const_data_ptr();
   params.q_stride =
-      make_stride(query.stride(0), query.stride(1), query.stride(2));
+      make_stride(query.stride(0), query.stride(1), query.stride(2), _1{});
   params.k_ptr = key.const_data_ptr();
-  params.k_stride = make_stride(key.stride(0), key.stride(1), key.stride(2));
+  params.k_stride =
+      make_stride(key.stride(0), key.stride(1), key.stride(2), _1{});
   params.v_ptr = value.const_data_ptr();
   params.v_stride =
-      make_stride(value.stride(0), value.stride(1), value.stride(2));
+      make_stride(value.stride(0), value.stride(1), value.stride(2), _1{});
   params.o_ptr = out.mutable_data_ptr();
-  params.o_stride = make_stride(out.stride(0), out.stride(1), out.stride(2));
+  params.o_stride =
+      make_stride(out.stride(0), out.stride(1), out.stride(2), _1{});
   params.alibi_slopes_ptr = alibi_slopes.has_value()
                                 ? alibi_slopes.value().const_data_ptr<float>()
                                 : nullptr;

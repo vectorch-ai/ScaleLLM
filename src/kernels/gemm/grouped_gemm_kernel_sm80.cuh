@@ -126,9 +126,9 @@ struct GEMMSharedStorageSM80 {
 };
 
 struct GEMMParams {
-  using AStride = Stride<int64_t /*,_1*/>;
-  using BStride = Stride<int64_t, int64_t /*,_1*/>;
-  using CStride = Stride<int64_t /*,_1*/>;
+  using AStride = Stride<int64_t, _1>;
+  using BStride = Stride<int64_t, int64_t, _1>;
+  using CStride = Stride<int64_t, _1>;
 
   // A: (m, k)
   const void* __restrict__ a_ptr = nullptr;
@@ -206,14 +206,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   // A: (M, K), k-major
   auto A = make_gather_tensor(make_gmem_ptr((const DType*)params.a_ptr),
                               make_shape(M, K),
-                              make_stride(get<0>(params.a_stride), _1{}),
+                              params.a_stride,
                               idx_to_t_idx);
 
   // B: (N, K), k-major
   const auto b_offset = expert_id * get<0>(params.b_stride);
   auto B = make_tensor(make_gmem_ptr((const DType*)params.b_ptr + b_offset),
                        make_shape(N, K),
-                       make_stride(get<1>(params.b_stride), _1{}));
+                       select<1, 2>(params.b_stride));
 
   // C: (M, N), n-major
   auto idx_to_f_idx = [sorted_token_idxes](int idx) {
@@ -221,7 +221,7 @@ __global__ __launch_bounds__(Traits::kThreadNum) void grouped_gemm_kernel_sm80(
   };
   auto C = make_gather_tensor(make_gmem_ptr((DType*)params.c_ptr),
                               make_shape(M, N),
-                              make_stride(get<0>(params.c_stride), _1{}),
+                              params.c_stride,
                               idx_to_f_idx);
 
   auto max_coord_mk = make_coord(M, K);

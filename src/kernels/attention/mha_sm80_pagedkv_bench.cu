@@ -92,13 +92,14 @@ void mha_bench_sm80(nvbench::state& state) {
   // construct attention params
   MHAPagedKVParams params;
   params.q_ptr = query.const_data_ptr();
-  params.q_stride = make_stride(query.stride(0), query.stride(1));
+  params.q_stride = make_stride(query.stride(0), query.stride(1), _1{});
   params.k_ptr = key_cache.const_data_ptr();
-  params.k_stride = make_stride(key_cache.stride(0), key_cache.stride(1));
+  params.k_stride = make_stride(key_cache.stride(0), key_cache.stride(1), _1{});
   params.v_ptr = value_cache.const_data_ptr();
-  params.v_stride = make_stride(value_cache.stride(0), value_cache.stride(1));
+  params.v_stride =
+      make_stride(value_cache.stride(0), value_cache.stride(1), _1{});
   params.o_ptr = out.mutable_data_ptr();
-  params.o_stride = make_stride(out.stride(0), out.stride(1));
+  params.o_stride = make_stride(out.stride(0), out.stride(1), _1{});
   params.alibi_slopes_ptr =
       alibi ? alibi_slopes.value().const_data_ptr<float>() : nullptr;
   params.batch_size = batch_size;

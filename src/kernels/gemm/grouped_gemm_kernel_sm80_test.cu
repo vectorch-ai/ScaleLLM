@@ -82,11 +82,11 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   // construct params
   GEMMParams params;
   params.a_ptr = a.const_data_ptr();
-  params.a_stride = make_stride(a.stride(0));
+  params.a_stride = make_stride(a.stride(0), _1{});
   params.b_ptr = w.const_data_ptr();
-  params.b_stride = make_stride(w.stride(0), w.stride(1));
+  params.b_stride = make_stride(w.stride(0), w.stride(1), _1{});
   params.c_ptr = out.mutable_data_ptr();
-  params.c_stride = make_stride(out.stride(0));
+  params.c_stride = make_stride(out.stride(0), _1{});
 
   params.sorted_token_idxes_ptr = sorted_token_idex.const_data_ptr<int32_t>();
   params.expert_ids_ptr = expert_ids.const_data_ptr<int32_t>();

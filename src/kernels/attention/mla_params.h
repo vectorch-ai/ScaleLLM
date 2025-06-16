@@ -64,9 +64,9 @@ struct MLAParamsCommon {
 
 struct MLAParams : public MLAParamsCommon {
   // Q/O: (batch, seq, head, dim): last dimension is contiguous
-  using Stride = cute::Stride<int64_t, int64_t, int64_t /*,_1*/>;
+  using Stride = cute::Stride<int64_t, int64_t, int64_t, cute::_1>;
   // KV: (batch, seq, dim): last dimension is contiguous
-  using KV_Stride = cute::Stride<int64_t, int64_t /*,_1*/>;
+  using KV_Stride = cute::Stride<int64_t, int64_t, cute::_1>;
 
   Stride q_stride;
   Stride q_rope_stride;
@@ -84,9 +84,9 @@ struct MLAParams : public MLAParamsCommon {
 // paged KV cache + variable length sequence
 struct MLAPagedKVParams : public MLAParamsCommon {
   // Q/O: (seq, head, dim): last dimension is contiguous
-  using Stride = cute::Stride<int64_t, int64_t /*,_1*/>;
+  using Stride = cute::Stride<int64_t, int64_t, cute::_1>;
   // KV: (seq, dim): last dimension is contiguous
-  using KV_Stride = cute::Stride<int64_t /*,_1*/>;
+  using KV_Stride = cute::Stride<int64_t, cute::_1>;
 
   Stride q_stride;
   Stride q_rope_stride;
