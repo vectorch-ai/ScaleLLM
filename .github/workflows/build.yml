@@ -68,7 +68,7 @@ jobs:
       timeout-minutes: 60
       run: |
         ./tools/run_in_docker.sh -ni ccache -M 25Gi
-        ./tools/run_in_docker.sh -ni cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=native
+        ./tools/run_in_docker.sh -ni -o --gpus=all cmake -G Ninja -S . -B build -DCMAKE_CUDA_ARCHITECTURES=native
         ./tools/run_in_docker.sh -ni cmake --build build --config ${{env.BUILD_TYPE}} --target all
 
     # - name: benchmark
