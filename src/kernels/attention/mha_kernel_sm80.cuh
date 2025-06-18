@@ -449,6 +449,18 @@ void launch_mha_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto n_kv_heads = params.n_kv_heads;
   const auto max_q_packed_len = params.max_q_len * params.group_size;
 
+  // TODO: tune block shape MNK based on the head dim and smem size
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
+  // SM           | 7.0 | 7.2 | 7.5 | 8.0 | 8.6 | 8.7 | 8.9 | 9.0 | 10.x | 12.0|
+  // Max SMEM (KB)|     96    |  64 | 164 | 100 | 164 | 100 |     228    | 100 |
+  // valid dynamic shared memory sizes for different compute capabilities:
+  // * 7.0 | 7.2 : 0, 8, 16, 32, 64, 96
+  // * 7.5       : 0, 32, 64
+  // * 8.0 | 8.7 : 0, 8, 16, 32, 64, 100, 132, 164
+  // * 8.6 | 8.9 : 0, 8, 16, 32, 64, 100
+  // * 9.0 | 10.x: 0, 8, 16, 32, 64, 100, 132, 164, 196, 228
+  // * 12.0      : 0, 8, 16, 32, 64, 100
+
   constexpr int BLK_M = 64;
   constexpr int BLK_N = 64;
   constexpr int BLK_K = HEAD_DIM % 64 == 0 ? 64 : 32;

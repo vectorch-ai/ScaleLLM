@@ -22,18 +22,6 @@ void run_mha_kernel_sm80(Params& params, cudaStream_t stream = nullptr) {
   // normalize params that for performance optimization
   params.normalize();
 
-  // TODO: tune block shape MNK based on the head dim and smem size
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
-  // SM           | 7.0 | 7.2 | 7.5 | 8.0 | 8.6 | 8.7 | 8.9 | 9.0 | 10.x | 12.0|
-  // Max SMEM (KB)|     96    |  64 | 164 | 100 | 164 | 100 |     228    | 100 |
-  // valid dynamic shared memory sizes for different compute capabilities:
-  // * 7.0 | 7.2 : 0, 8, 16, 32, 64, 96
-  // * 7.5       : 0, 32, 64
-  // * 8.0 | 8.7 : 0, 8, 16, 32, 64, 100, 132, 164
-  // * 8.6 | 8.9 : 0, 8, 16, 32, 64, 100
-  // * 9.0 | 10.x: 0, 8, 16, 32, 64, 100, 132, 164, 196, 228
-  // * 12.0      : 0, 8, 16, 32, 64, 100
-
   // dispatch to proper kernel instantiation based on params
   DISPATCH_BOOL(params.head_dim == HEAD_DIM, EVEN_K, [&] {
     DISPATCH_BOOL(params.alibi_slopes_ptr != nullptr, ALIBI, [&] {
