@@ -14,7 +14,7 @@ namespace llm {
 using namespace cute;
 
 template <class CollectiveMainloop_, class CollectiveEpilogue_>
-class Sm80MhaKernel {
+class Sm80KernelMha {
  public:
   using CollectiveMainloop = CollectiveMainloop_;
   using CollectiveEpilogue = CollectiveEpilogue_;
