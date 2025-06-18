@@ -155,11 +155,14 @@ struct Sm80CollectiveMha {
             class Softmax,
             class ResiduelMNK>
   CUTLASS_DEVICE bool mha(const Params& params,
-                          TensorQ gQ,       // (BLK_M, HEAD_DIM)
-                          TensorK gK,       // (BLK_N, HEAD_DIM, n)
-                          TensorV gV,       // (BLK_N, HEAD_DIM, n)
-                          FrgTensor& tOrO,  // (MMA, MMA_M, MMA_N)
+                          const TensorQ& gQ,  // (BLK_M, HEAD_DIM)
+                          const TensorK& gK,  // (BLK_N, HEAD_DIM, n)
+                          const TensorV& gV,  // (BLK_N, HEAD_DIM, n)
+                          FrgTensor& tOrO,    // (MMA, MMA_M, MMA_N)
                           Softmax& softmax,
+                          int tidx,
+                          const dim3& block_coord,
+                          ResiduelMNK residue_mnk,
                           char* smem) {
     // TODO: port logics from mha_kernel_sm80.cuh
     static_assert(is_rmem<FrgTensor>::value,
@@ -168,21 +171,15 @@ struct Sm80CollectiveMha {
     static_assert(is_gmem<TensorK>::value, "K tensor must be gmem resident.");
     static_assert(is_gmem<TensorV>::value, "V tensor must be gmem resident.");
 
-    const int tidx = threadIdx.x;
-    const int m_block_idx = blockIdx.x;
-    const int batch_idx = blockIdx.y;
-    const int kv_head_idx = blockIdx.z;
+    const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord;
+    const auto [q_packed_len, kv_len, head_dim] = residue_mnk;
 
-    // preprocess input parameters
-    const int q_len = params.q_len;
-    const int kv_len = params.kv_len;
-    const int head_dim = params.head_dim;
     const float logits_soft_cap = params.logits_soft_cap;
     const float sm_scale = params.sm_scale;
     const float sm_scale_log2 = params.sm_scale_log2;
     const int sliding_window = LOCAL ? params.sliding_window : kv_len;
     const auto& group_size = params.group_size;
-    const int q_packed_len = q_len * group_size;
+    const int q_len = q_packed_len / group_size;
 
     if (m_block_idx * kBlockM >= q_packed_len) {
       // m out of bound, return
