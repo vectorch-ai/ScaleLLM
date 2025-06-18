@@ -34,7 +34,6 @@ struct Sm80CollectiveMha {
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockN = get<1>(TileShape{});
   static constexpr int kBlockK = get<2>(TileShape{});
-  static constexpr int kRowsPerMMA = 2;
 
   static_assert(kBlockK == 32 || kBlockK == 64);
   static_assert(kHeadDim % kBlockK == 0);
@@ -53,6 +52,7 @@ struct Sm80CollectiveMha {
                             Layout<Shape<_4, _1, _1>>,  // warp layout 4x1x1
                             Tile<_64, _16, _16>>;       // Tile Shape 64x16x16
 
+  static constexpr int kRowsPerMMA = 2;
   static constexpr int kMmaThreads = size(TiledMma{});
 
   // Atom layout: (8, BLK_K):(BLK_K, 1) k-major
@@ -117,11 +117,6 @@ struct Sm80CollectiveMha {
 
   // Host side arguments
   struct Arguments {
-    // input shapes
-    int q_len = 0;
-    int kv_len = 0;
-    int head_dim = 0;
-
     // mask
     int sliding_window = -1;
 
@@ -174,17 +169,17 @@ struct Sm80CollectiveMha {
     const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord;
     const auto [q_packed_len, kv_len, head_dim] = residue_mnk;
 
-    const float logits_soft_cap = params.logits_soft_cap;
-    const float sm_scale = params.sm_scale;
-    const float sm_scale_log2 = params.sm_scale_log2;
-    const int sliding_window = LOCAL ? params.sliding_window : kv_len;
-    const auto& group_size = params.group_size;
-    const int q_len = q_packed_len / group_size;
-
     if (m_block_idx * kBlockM >= q_packed_len) {
       // m out of bound, return
       return false;
     }
+
+    const int sliding_window = LOCAL ? params.sliding_window : kv_len;
+    const float logits_soft_cap = params.logits_soft_cap;
+    const float sm_scale = params.sm_scale;
+    const float sm_scale_log2 = params.sm_scale_log2;
+    const auto& group_size = params.group_size;
+    const int q_len = q_packed_len / group_size;
 
     // Construct shared memory tiles
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
