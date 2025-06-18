@@ -42,32 +42,82 @@ function install_cudnn {
   rm -rf tmp_cudnn
 }
 
+function install_nccl {
+  nccl_version=$1
+  # NCCL license: https://docs.nvidia.com/deeplearning/nccl/#licenses
+  # Follow build: https://github.com/NVIDIA/nccl/tree/master?tab=readme-ov-file#build
+  git clone -b ${nccl_version} --depth 1 https://github.com/NVIDIA/nccl.git
+  cd nccl
+  make -j src.build
+  cp -a build/include/* /usr/local/cuda/include/
+  cp -a build/lib/* /usr/local/cuda/lib64/
+  cd ..
+  rm -rf nccl
+}
+
+function install_cusparselt {
+  cusparselt_version=$1
+  # cuSPARSELt license: https://docs.nvidia.com/cuda/cusparselt/license.html
+  mkdir tmp_cusparselt && cd tmp_cusparselt
+  cusparselt_name="libcusparse_lt-linux-${arch_path}-${cusparselt_version}-archive"
+  curl --retry 3 -OLs https://developer.download.nvidia.com/compute/cusparselt/redist/libcusparse_lt/linux-${arch_path}/${cusparselt_name}.tar.xz
+
+  tar xf ${cusparselt_name}.tar.xz
+  cp -a ${cusparselt_name}/include/* /usr/local/cuda/include/
+  cp -a ${cusparselt_name}/lib/* /usr/local/cuda/lib64/
+  cd ..
+  rm -rf tmp_cusparselt
+}
+
 function install_126 {
   CUDNN_VERSION=9.10.2.21
-  echo "Installing CUDA 12.6.3 and cuDNN ${CUDNN_VERSION} and NCCL and cuSparseLt-0.7.1"
+  NCCL_VERSION=v2.27.3-1
+  CUSPARSELT_VERSION=0.7.1.0
+
+  echo "Installing CUDA 12.6.3 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
   install_cuda 12.6.3 cuda_12.6.3_560.35.05_linux
 
   install_cudnn 12 $CUDNN_VERSION
 
-  CUDA_VERSION=12.6 bash install_nccl.sh
+  install_nccl $NCCL_VERSION
 
-  CUDA_VERSION=12.6 bash install_cusparselt.sh
+  install_cusparselt $CUSPARSELT_VERSION
+
+  ldconfig
+}
+
+function install_128 {
+  CUDNN_VERSION=9.8.0.87
+  NCCL_VERSION=v2.27.3-1
+  CUSPARSELT_VERSION=0.7.1.0
+
+  echo "Installing CUDA 12.8.1 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
+  # install CUDA 12.8.1 in the same container
+  install_cuda 12.8.1 cuda_12.8.1_570.124.06_linux
+
+  install_cudnn 12 $CUDNN_VERSION
+
+  install_nccl $NCCL_VERSION
+
+  install_cusparselt $CUSPARSELT_VERSION
 
   ldconfig
 }
 
 function install_129 {
   CUDNN_VERSION=9.10.2.21
-  echo "Installing CUDA 12.9.1 and cuDNN ${CUDNN_VERSION} and NCCL and cuSparseLt-0.7.1"
+  NCCL_VERSION=v2.27.3-1
+  CUSPARSELT_VERSION=0.7.1.0
+
+  echo "Installing CUDA 12.9.1 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
   # install CUDA 12.9.1 in the same container
   install_cuda 12.9.1 cuda_12.9.1_575.57.08_linux
 
-  # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
   install_cudnn 12 $CUDNN_VERSION
 
-  CUDA_VERSION=12.9 bash install_nccl.sh
+  install_nccl $NCCL_VERSION
 
-  CUDA_VERSION=12.9 bash install_cusparselt.sh
+  install_cusparselt $CUSPARSELT_VERSION
 
   ldconfig
 }
@@ -104,22 +154,6 @@ function prune_126 {
   #####################################################################################
   export CUDA_BASE="/usr/local/cuda-12.6/"
   rm -rf $CUDA_BASE/libnvvp $CUDA_BASE/nsightee_plugins $CUDA_BASE/nsight-compute-2024.3.2 $CUDA_BASE/nsight-systems-2024.5.1/
-}
-
-function install_128 {
-  CUDNN_VERSION=9.8.0.87
-  echo "Installing CUDA 12.8.1 and cuDNN ${CUDNN_VERSION} and NCCL and cuSparseLt-0.7.1"
-  # install CUDA 12.8.1 in the same container
-  install_cuda 12.8.1 cuda_12.8.1_570.124.06_linux
-
-  # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
-  install_cudnn 12 $CUDNN_VERSION
-
-  CUDA_VERSION=12.8 bash install_nccl.sh
-
-  CUDA_VERSION=12.8 bash install_cusparselt.sh
-
-  ldconfig
 }
 
 # idiomatic parameter and option handling in sh
