@@ -13,14 +13,9 @@
 namespace llm {
 using namespace cute;
 
-template <class TileShape_,
-          class TiledMma_,
-          class Element_,
-          int HeadDim_,
-          bool EVEN_K_>
+template <class TileShape_, class Element_, int HeadDim_, bool EVEN_K_>
 struct Sm80CollectiveEpilogue {
   using TileShape = TileShape_;
-  using TiledMma = TiledMma_;
   using Element = Element_;
 
   static constexpr int kHeadDim = HeadDim_;
@@ -57,16 +52,12 @@ struct Sm80CollectiveEpilogue {
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
-  // r2s tiled copy for O
-  using SmemTiledCopyO =
-      decltype(make_tiled_copy_C(Copy_Atom<VectorizingCopy_, Element>{},
-                                 TiledMma{}));
+  // r2s copy atom for O
+  using SmemCopyAtom_ = Copy_Atom<VectorizingCopy_, Element>;
 
   struct SharedStorage : cute::aligned_struct<128> {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutO>> o_smem;
   };
-
-  static constexpr int kSharedStorageSize = sizeof(SharedStorage);
 
   // Host side kernel arguments
   struct Arguments {};
@@ -77,16 +68,22 @@ struct Sm80CollectiveEpilogue {
   // Convert host side arguments to device side params
   static Params to_underlying_arguments(Arguments const& args) { return args; }
 
-  template <class FrgTensor, class TensorO, class ResiduelMNK>
-  CUTLASS_DEVICE void store(const Params& /*params*/,
-                            const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N)
-                            TensorO& gO,               // (BLK_M, HEAD_DIM)
-                            int tidx,
-                            const dim3& block_coord,
-                            ResiduelMNK residue_mnk,
-                            char* smem) {
-    const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord;
-    const auto [q_packed_len, kv_len, head_dim] = residue_mnk;
+  template <class FrgTensor,
+            class TiledMma,
+            class TensorO,
+            class BlockCoordMNK,
+            class ProblemShapeMNK>
+  CUTLASS_DEVICE void operator()(
+      const Params& /*params*/,
+      const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N)
+      TiledMma tiled_mma,
+      TensorO& gO,  // (BLK_M, HEAD_DIM)
+      int tidx,
+      const BlockCoordMNK& block_coord_mnk,
+      const ProblemShapeMNK& problem_shape_mnk,
+      char* smem) {
+    const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord_mnk;
+    const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
 
     // Smem
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
@@ -98,7 +95,7 @@ struct Sm80CollectiveEpilogue {
     fast_cast(tOrAccO, tOrO);
 
     // 2. copy output from reg to smem
-    SmemTiledCopyO smem_tiled_copy_O;
+    auto smem_tiled_copy_O = make_tiled_copy_C(SmemCopyAtom_{}, tiled_mma);
     auto smem_thr_copy_O = smem_tiled_copy_O.get_thread_slice(tidx);
     auto tSrO = smem_thr_copy_O.retile_S(tOrO);
     auto tSsO = smem_thr_copy_O.partition_D(sO);

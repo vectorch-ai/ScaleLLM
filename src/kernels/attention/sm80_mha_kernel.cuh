@@ -13,12 +13,11 @@ namespace llm {
 
 using namespace cute;
 
-template <class CollectiveMainloop_, class CollectiveEpilogue_, class Params_>
+template <class CollectiveMainloop_, class CollectiveEpilogue_>
 class Sm80MhaKernel {
  public:
   using CollectiveMainloop = CollectiveMainloop_;
   using CollectiveEpilogue = CollectiveEpilogue_;
-  using Params = Params_;
 
   using TiledMma = typename CollectiveMainloop::TiledMma;
 
@@ -30,8 +29,8 @@ class Sm80MhaKernel {
   static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
 
   static constexpr int kSharedStorageSize =
-      std::max(CollectiveMainloop::kSharedStorageSize,
-               CollectiveEpilogue::kSharedStorageSize);
+      cute::max(sizeof(typename CollectiveMainloop::SharedStorage),
+                sizeof(typename CollectiveEpilogue::SharedStorage));
 
   static constexpr int kMmaThreads = CollectiveMainloop::kMmaThreads;
 
@@ -39,26 +38,30 @@ class Sm80MhaKernel {
   using MainloopParams = typename CollectiveMainloop::Params;
   using EpilogueParams = typename CollectiveEpilogue::Params;
 
-  CUTLASS_DEVICE
-  void operator()(const Params& params, char* smem) {
-    CollectiveMainloop mainloop;
+  template <class Params>
+  CUTLASS_DEVICE void operator()(const Params& params, char* smem) {
+    CollectiveMainloop mha;
     CollectiveEpilogue epilogue;
 
     const auto tidx = threadIdx.x;
+
+    // block coord
     const int m_block_idx = blockIdx.x;
     const int batch_idx = blockIdx.y;
     const int kv_head_idx = blockIdx.z;
+    auto block_coord_mnk = make_coord(m_block_idx, batch_idx, kv_head_idx);
 
-    // ProblemShape
     // (q_packed_len, HEAD_DIM)
     MHATile<Params> tile(params, batch_idx, kv_head_idx);
     auto [Q, O] = tile.template get_qo_tile<Element>();
     // (kv_len, HEAD_DIM)
     auto [K, V] = tile.template get_kv_tile<Element>();
 
+    // problem shape
     const int q_packed_len = size<0>(Q);
     const int kv_len = size<0>(K);
     const int head_dim = params.head_dim;
+    auto problem_shape_mnk = make_shape(q_packed_len, kv_len, head_dim);
 
     // (BLK_M, HEAD_DIM)
     Tensor gQ =
@@ -69,17 +72,14 @@ class Sm80MhaKernel {
     Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
     Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
 
+    // construct params
     MainloopParams mainloop_params{params.sliding_window,
                                    params.logits_soft_cap,
                                    params.sm_scale,
                                    params.sm_scale_log2,
                                    params.alibi_slopes_ptr,
                                    params.group_size};
-
     EpilogueParams epilogue_params;
-
-    const auto block_coord = make_tuple(m_block_idx, batch_idx, kv_head_idx);
-    const auto residue_mnk = make_tuple(q_packed_len, kv_len, head_dim);
 
     TiledMma tiled_mma;
     // accumulator: MMA,MMA_M,MMA_K)
@@ -87,23 +87,30 @@ class Sm80MhaKernel {
     clear(tOrAccO);
 
     constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tOrAccO);
-    using Softmax = OnlineSoftmax<kRowsPerThr>;
-    Softmax softmax(params.sm_scale_log2);
+    OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
 
     // mainloop
-    mainloop.mha(mainloop_params,
-                 gQ,
-                 gK,
-                 gV,
-                 tOrAccO,
-                 softmax,
-                 tidx,
-                 block_coord,
-                 residue_mnk,
-                 smem);
+    const bool valid = mha(mainloop_params,
+                           gQ,
+                           gK,
+                           gV,
+                           tOrAccO,
+                           softmax,
+                           tidx,
+                           block_coord_mnk,
+                           problem_shape_mnk,
+                           smem);
     // epilogue
-    epilogue.store(
-        epilogue_params, tOrAccO, gO, tidx, block_coord, residue_mnk, smem);
+    if (valid) {
+      epilogue(epilogue_params,
+               tOrAccO,
+               tiled_mma,
+               gO,
+               tidx,
+               block_coord_mnk,
+               problem_shape_mnk,
+               smem);
+    }
   }
 };
 

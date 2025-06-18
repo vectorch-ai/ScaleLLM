@@ -115,8 +115,6 @@ struct Sm80CollectiveMha {
     };
   };
 
-  static constexpr int kSharedStorageSize = sizeof(SharedStorage);
-
   // Host side arguments
   struct Arguments {
     // mask
@@ -150,26 +148,26 @@ struct Sm80CollectiveMha {
             class TensorV,
             class FrgTensor,
             class Softmax,
-            class ResiduelMNK>
-  CUTLASS_DEVICE bool mha(const Params& params,
-                          const TensorQ& gQ,  // (BLK_M, HEAD_DIM)
-                          const TensorK& gK,  // (BLK_N, HEAD_DIM, n)
-                          const TensorV& gV,  // (BLK_N, HEAD_DIM, n)
-                          FrgTensor& tOrO,    // (MMA, MMA_M, MMA_N)
-                          Softmax& softmax,
-                          int tidx,
-                          const dim3& block_coord,
-                          ResiduelMNK residue_mnk,
-                          char* smem) {
-    // TODO: port logics from mha_kernel_sm80.cuh
+            class BlockCoordMNK,
+            class ProblemShapeMNK>
+  CUTLASS_DEVICE bool operator()(const Params& params,
+                                 const TensorQ& gQ,  // (BLK_M, HEAD_DIM)
+                                 const TensorK& gK,  // (BLK_N, HEAD_DIM, n)
+                                 const TensorV& gV,  // (BLK_N, HEAD_DIM, n)
+                                 FrgTensor& tOrO,    // (MMA, MMA_M, MMA_N)
+                                 Softmax& softmax,
+                                 int tidx,
+                                 const BlockCoordMNK& block_coord_mnk,
+                                 const ProblemShapeMNK& problem_shape_mnk,
+                                 char* smem) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
     static_assert(is_gmem<TensorQ>::value, "Q tensor must be gmem resident.");
     static_assert(is_gmem<TensorK>::value, "K tensor must be gmem resident.");
     static_assert(is_gmem<TensorV>::value, "V tensor must be gmem resident.");
 
-    const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord;
-    const auto [q_packed_len, kv_len, head_dim] = residue_mnk;
+    const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord_mnk;
+    const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
 
     if (m_block_idx * kBlockM >= q_packed_len) {
       // m out of bound, return
