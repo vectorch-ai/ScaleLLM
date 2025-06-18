@@ -6,13 +6,6 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute/atom/mma_atom.hpp"
-#include "cute/config.hpp"
-#include "cute/container/array_aligned.hpp"
-#include "cute_extensions.cuh"
-#include "fast_cast.cuh"
-#include "layout_convertor.h"
-#include "mask.h"
 #include "mha_tile.h"
 #include "online_softmax.cuh"
 
@@ -27,20 +20,23 @@ class Sm80MhaKernel {
   using CollectiveEpilogue = CollectiveEpilogue_;
   using Params = Params_;
 
-  // Mainloop derived types
-  using TileShape_MNK = typename CollectiveMainloop::TileShape_MNK;
   using TiledMma = typename CollectiveMainloop::TiledMma;
+
   using Element = typename CollectiveMainloop::Element;
   using BLK_M = typename CollectiveMainloop::BLK_M;
   using BLK_N = typename CollectiveMainloop::BLK_N;
   using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
 
-  using MainloopParams = typename CollectiveMainloop::Params;
-
   static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
+
+  static constexpr int kSharedStorageSize =
+      std::max(CollectiveMainloop::kSharedStorageSize,
+               CollectiveEpilogue::kSharedStorageSize);
+
   static constexpr int kMmaThreads = CollectiveMainloop::kMmaThreads;
 
-  // Epilogue derived types
+  // Kernel params
+  using MainloopParams = typename CollectiveMainloop::Params;
   using EpilogueParams = typename CollectiveEpilogue::Params;
 
   CUTLASS_DEVICE

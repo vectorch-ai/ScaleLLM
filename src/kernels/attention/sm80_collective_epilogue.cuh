@@ -66,6 +66,8 @@ struct Sm80CollectiveEpilogue {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutO>> o_smem;
   };
 
+  static constexpr int kSharedStorageSize = sizeof(SharedStorage);
+
   // Host side kernel arguments
   struct Arguments {};
 

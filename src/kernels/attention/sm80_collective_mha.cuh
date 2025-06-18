@@ -115,6 +115,8 @@ struct Sm80CollectiveMha {
     };
   };
 
+  static constexpr int kSharedStorageSize = sizeof(SharedStorage);
+
   // Host side arguments
   struct Arguments {
     // mask
