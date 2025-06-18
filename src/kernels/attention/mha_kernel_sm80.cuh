@@ -13,6 +13,7 @@
 #include "layout_convertor.h"
 #include "mask.h"
 #include "mha_tile.h"
+#include "mha_traits_sm80.h"
 #include "online_softmax.cuh"
 
 namespace llm {
@@ -436,16 +437,22 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mha_kernel_sm80(
   epilogue(tOrO);
 }
 
-template <typename Traits,
-          typename Params,
+template <typename Dtype,
+          int HEAD_DIM,
           bool EVEN_K,
           bool ALIBI,
           bool SOFT_CAP,
-          bool LOCAL>
+          bool LOCAL,
+          typename Params>
 void launch_mha_kernel_sm80(const Params& params, cudaStream_t stream) {
   const auto batch_size = params.batch_size;
   const auto n_kv_heads = params.n_kv_heads;
   const auto max_q_packed_len = params.max_q_len * params.group_size;
+
+  constexpr int BLK_M = 64;
+  constexpr int BLK_N = 64;
+  constexpr int BLK_K = HEAD_DIM % 64 == 0 ? 64 : 32;
+  using Traits = MHATraitsSM80<Dtype, HEAD_DIM, BLK_M, BLK_N, BLK_K>;
 
   const auto smem_size = sizeof(MHASharedStorage<Traits>);
   auto mha_kernel =
