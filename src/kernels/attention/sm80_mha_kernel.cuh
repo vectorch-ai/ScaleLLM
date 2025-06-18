@@ -26,6 +26,8 @@ class Sm80MhaKernel {
   using BLK_N = typename CollectiveMainloop::BLK_N;
   using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
 
+  static constexpr int kBlockM = CollectiveMainloop::kBlockM;
+
   static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
 
   static constexpr int kSharedStorageSize =
@@ -63,6 +65,11 @@ class Sm80MhaKernel {
     const int head_dim = params.head_dim;
     auto problem_shape_mnk = make_shape(q_packed_len, kv_len, head_dim);
 
+    if (m_block_idx * kBlockM >= q_packed_len) {
+      // m out of bound, return
+      return;
+    }
+
     // (BLK_M, HEAD_DIM)
     Tensor gQ =
         local_tile(Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
@@ -90,27 +97,26 @@ class Sm80MhaKernel {
     OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
 
     // mainloop
-    const bool valid = mha(mainloop_params,
-                           gQ,
-                           gK,
-                           gV,
-                           tOrAccO,
-                           softmax,
-                           tidx,
-                           block_coord_mnk,
-                           problem_shape_mnk,
-                           smem);
+    mha(mainloop_params,
+        gQ,
+        gK,
+        gV,
+        tOrAccO,
+        softmax,
+        tidx,
+        block_coord_mnk,
+        problem_shape_mnk,
+        smem);
+
     // epilogue
-    if (valid) {
-      epilogue(epilogue_params,
-               tOrAccO,
-               tiled_mma,
-               gO,
-               tidx,
-               block_coord_mnk,
-               problem_shape_mnk,
-               smem);
-    }
+    epilogue(epilogue_params,
+             tOrAccO,
+             tiled_mma,
+             gO,
+             tidx,
+             block_coord_mnk,
+             problem_shape_mnk,
+             smem);
   }
 };
 

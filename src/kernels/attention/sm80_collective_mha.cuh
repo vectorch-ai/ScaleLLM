@@ -104,12 +104,12 @@ struct Sm80CollectiveMha {
 
   struct SharedStorage : cute::aligned_struct<128> {
     union {
-      cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> q_smem;
+      cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
       struct {
-        cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> k_smem;
+        cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
         union {
-          cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> v_smem;
-          cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> vt_smem;
+          cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
+          cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> smem_vt;
         };
       };
     };
@@ -150,7 +150,7 @@ struct Sm80CollectiveMha {
             class Softmax,
             class BlockCoordMNK,
             class ProblemShapeMNK>
-  CUTLASS_DEVICE bool operator()(const Params& params,
+  CUTLASS_DEVICE void operator()(const Params& params,
                                  const TensorQ& gQ,  // (BLK_M, HEAD_DIM)
                                  const TensorK& gK,  // (BLK_N, HEAD_DIM, n)
                                  const TensorV& gV,  // (BLK_N, HEAD_DIM, n)
@@ -169,11 +169,6 @@ struct Sm80CollectiveMha {
     const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord_mnk;
     const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
 
-    if (m_block_idx * kBlockM >= q_packed_len) {
-      // m out of bound, return
-      return false;
-    }
-
     const int sliding_window = LOCAL ? params.sliding_window : kv_len;
     const float logits_soft_cap = params.logits_soft_cap;
     const float sm_scale = params.sm_scale;
@@ -185,14 +180,14 @@ struct Sm80CollectiveMha {
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
     // (BLK_M, HEAD_DIM), k-major
-    Tensor sQ = make_tensor(make_smem_ptr(ss.q_smem.data()), SmemLayoutQ{});
+    Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
     // (BLK_N, HEAD_DIM), k-major
-    Tensor sK = make_tensor(make_smem_ptr(ss.k_smem.data()), SmemLayoutK{});
-    Tensor sV = make_tensor(make_smem_ptr(ss.v_smem.data()), SmemLayoutV{});
+    Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
+    Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
 
     // Tensor for V^t; used in GEMM-II.
     // (HEAD_DIM, BLK_N), k-major
-    Tensor sVt = make_tensor(make_smem_ptr(ss.vt_smem.data()), SmemLayoutVt{});
+    Tensor sVt = make_tensor(make_smem_ptr(ss.smem_vt.data()), SmemLayoutVt{});
 
     // g2s tiled copy for qkv
     GmemTiledCopyQ gmem_tiled_copy_Q;
@@ -340,7 +335,8 @@ struct Sm80CollectiveMha {
     const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
 
     if (n_block_min >= n_block_max) {
-      return true;
+      // no kv blocks to process
+      return;
     }
 
     auto apply_logits_soft_cap = [&](auto& tSrAccS) {
@@ -425,10 +421,10 @@ struct Sm80CollectiveMha {
       }
 
       if (i < n_oob_mask) {
-        mask.apply(
+        mask.template apply</*OOB_MASK=*/true>(
             tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
       } else {
-        mask.apply</*OOB_MASK=*/false>(
+        mask.template apply</*OOB_MASK=*/false>(
             tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
       }
       softmax.rescale(tSrS_mn, tOrO_mn);
@@ -445,7 +441,6 @@ struct Sm80CollectiveMha {
 
     // normalize output: o /= rowsum
     softmax.finalize(tOrO_mn);
-    return true;
   }
 };
 

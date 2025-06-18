@@ -36,14 +36,17 @@ struct Sm80CollectiveEpilogue {
   using SmemLayoutO =
       decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_M, HEAD_DIM>{}));
 
+  // use 128-bit vectorizing copy
+  using VectorizingCopy_ = AutoVectorizingCopyWithAssumedAlignment<128>;
+
+  // r2s copy atom for O
+  using SmemCopyAtom_ = Copy_Atom<VectorizingCopy_, Element>;
+
   // Thr layout for gmem copy
   using GmemCopyThrLayout_ =
       std::conditional_t<kBlockK == 32,
                          Layout<Shape<_32, _4>, Stride<_4, _1>>,
                          Layout<Shape<_16, _8>, Stride<_8, _1>>>;
-
-  // use 128-bit vectorizing copy
-  using VectorizingCopy_ = AutoVectorizingCopyWithAssumedAlignment<128>;
 
   // s2g tiled copy for O
   using GmemTiledCopyO = decltype(make_tiled_copy(
@@ -52,11 +55,8 @@ struct Sm80CollectiveEpilogue {
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
-  // r2s copy atom for O
-  using SmemCopyAtom_ = Copy_Atom<VectorizingCopy_, Element>;
-
   struct SharedStorage : cute::aligned_struct<128> {
-    cute::array_aligned<Element, cute::cosize_v<SmemLayoutO>> o_smem;
+    cute::array_aligned<Element, cute::cosize_v<SmemLayoutO>> smem_o;
   };
 
   // Host side kernel arguments
@@ -88,7 +88,7 @@ struct Sm80CollectiveEpilogue {
     // Smem
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
     // (BLK_M, HEAD_DIM)
-    Tensor sO = make_tensor(make_smem_ptr(ss.o_smem.data()), SmemLayoutO{});
+    Tensor sO = make_tensor(make_smem_ptr(ss.smem_o.data()), SmemLayoutO{});
 
     // 1. cast output from ElementAccumulator to Element
     auto tOrO = make_tensor_like<Element>(tOrAccO);
