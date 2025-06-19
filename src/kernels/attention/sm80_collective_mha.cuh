@@ -150,21 +150,24 @@ struct Sm80CollectiveMha {
             class Softmax,
             class BlockCoordMNK,
             class ProblemShapeMNK>
-  CUTLASS_DEVICE void operator()(const Params& params,
-                                 const TensorQ& gQ,  // (BLK_M, HEAD_DIM)
-                                 const TensorK& gK,  // (BLK_N, HEAD_DIM, n)
-                                 const TensorV& gV,  // (BLK_N, HEAD_DIM, n)
-                                 FrgTensor& tOrO,    // (MMA, MMA_M, MMA_N)
-                                 Softmax& softmax,
-                                 int tidx,
-                                 const BlockCoordMNK& block_coord_mnk,
-                                 const ProblemShapeMNK& problem_shape_mnk,
-                                 char* smem) {
+  CUTE_DEVICE void operator()(const Params& params,
+                              const TensorQ& gQ,  // (BLK_M, HEAD_DIM)
+                              const TensorK& gK,  // (BLK_N, HEAD_DIM, n)
+                              const TensorV& gV,  // (BLK_N, HEAD_DIM, n)
+                              FrgTensor& tOrO,    // (MMA, MMA_M, MMA_N)
+                              Softmax& softmax,
+                              int tidx,
+                              const BlockCoordMNK& block_coord_mnk,
+                              const ProblemShapeMNK& problem_shape_mnk,
+                              char* smem) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
     static_assert(is_gmem<TensorQ>::value, "Q tensor must be gmem resident.");
     static_assert(is_gmem<TensorK>::value, "K tensor must be gmem resident.");
     static_assert(is_gmem<TensorV>::value, "V tensor must be gmem resident.");
+
+    static constexpr int kBlockM = get<0>(TileShape{});
+    static constexpr int kBlockN = get<1>(TileShape{});
 
     const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord_mnk;
     const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
@@ -199,53 +202,12 @@ struct Sm80CollectiveMha {
     // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
     Tensor cQ = make_identity_tensor(Shape<BLK_M, HEAD_DIM>{});
     Tensor tQcQ = gmem_thr_copy_Q.partition_S(cQ);
-
-    auto produce_query = [&]() {
-      auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
-      auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
-      auto max_coord =
-          make_coord(q_packed_len - m_block_idx * kBlockM, head_dim);
-      safe_copy</*EVEN_M=*/false, EVEN_K, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
-          gmem_tiled_copy_Q, tQgQ, tQsQ, tQcQ, max_coord);
-    };
-
     // (BLK_N, HEAD_DIM) -> (blk_n, head_dim)
     Tensor cKV = make_identity_tensor(Shape<BLK_N, HEAD_DIM>{});
     Tensor tKVcKV = gmem_thr_copy_KV.partition_S(cKV);
 
     Tensor tKsK = gmem_thr_copy_KV.partition_D(sK);
-    auto produce_key = [&](int ni) {
-      auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
-      auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
-      // skip ZFILL_MN for key since Mask will mask out oob with -inf
-      safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
-          gmem_tiled_copy_KV, tKgK, tKsK, tKVcKV, max_coord);
-    };
-
-    // produce key without oob handling
-    auto produce_key_no_oob = [&](int ni) {
-      auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
-      auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
-      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
-          gmem_tiled_copy_KV, tKgK, tKsK, tKVcKV, max_coord);
-    };
-
     Tensor tVsV = gmem_thr_copy_KV.partition_D(sV);
-    auto produce_value = [&](int ni) {
-      auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
-      auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
-      // skipping ZFILL_MN for v may cause nan issue
-      safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
-          gmem_tiled_copy_KV, tVgV, tVsV, tKVcKV, max_coord);
-    };
-
-    // produce value without oob handling
-    auto produce_value_no_oob = [&](int ni) {
-      auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, ni));
-      auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
-      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
-          gmem_tiled_copy_KV, tVgV, tVsV, tKVcKV, max_coord);
-    };
 
     TiledMma tiled_mma;
     auto thr_mma = tiled_mma.get_slice(tidx);
@@ -321,9 +283,6 @@ struct Sm80CollectiveMha {
       }
     };
 
-    // output accumulator, (MMA,MMA_M,MMA_K)
-    // auto tOrO = partition_fragment_C(tiled_mma, Shape<_BLK_M, _HEAD_DIM>{});
-    // clear(tOrO);
     auto tOrO_mn =
         make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
 
@@ -350,7 +309,11 @@ struct Sm80CollectiveMha {
 
     // ###############  Prologue  ###############
     // produce query: [] => [q]
-    produce_query();
+    auto tQgQ = gmem_thr_copy_Q.partition_S(gQ);
+    auto tQsQ = gmem_thr_copy_Q.partition_D(sQ);
+    auto max_coord = make_coord(q_packed_len - m_block_idx * kBlockM, head_dim);
+    safe_copy</*EVEN_M=*/false, EVEN_K, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
+        gmem_tiled_copy_Q, tQgQ, tQsQ, tQcQ, max_coord);
     cp_async_fence();
 
     // wait g2s copy done for query
@@ -363,7 +326,15 @@ struct Sm80CollectiveMha {
     __syncthreads();
 
     // produce key: [q] => [q, k]
-    produce_key(n_block_max - 1);
+    {
+      const int ni = n_block_max - 1;
+      auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
+      auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
+      // skip ZFILL_MN for key since Mask will mask out oob with -inf
+      safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
+          gmem_tiled_copy_KV, tKgK, tKsK, tKVcKV, max_coord);
+    }
+
     cp_async_fence();
 
     // ###############  Mainloop  ###############
@@ -402,10 +373,18 @@ struct Sm80CollectiveMha {
       __syncthreads();
 
       // produce value, [] => [v]
+      auto tVgV = gmem_thr_copy_KV.partition_S(gV(_, _, n_block_idx));
+      auto max_coord = make_coord(kv_len - n_block_idx * kBlockN, head_dim);
       if (i == 0) {
-        produce_value(n_block_idx);
-      } else {
-        produce_value_no_oob(n_block_idx);
+        safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
+            gmem_tiled_copy_KV, tVgV, tVsV, tKVcKV, max_coord);
+
+      } else {  // without oob handling
+        safe_copy</*EVEN_N=*/true,
+                  EVEN_K,
+                  /*ZFILL_N=*/false,
+                  /*ZFILL_K=*/false>(
+            gmem_tiled_copy_KV, tVgV, tVsV, tKVcKV, max_coord);
       }
       cp_async_fence();
 
@@ -431,7 +410,15 @@ struct Sm80CollectiveMha {
 
       // produce next key: [] => [k]
       if (n_block_idx > n_block_min) {
-        produce_key_no_oob(n_block_idx - 1);
+        // without oob handling
+        const int ni = n_block_idx - 1;
+        auto tKgK = gmem_thr_copy_KV.partition_S(gK(_, _, ni));
+        auto max_coord = make_coord(kv_len - ni * kBlockN, head_dim);
+        safe_copy</*EVEN_N=*/true,
+                  EVEN_K,
+                  /*ZFILL_N=*/false,
+                  /*ZFILL_K=*/false>(
+            gmem_tiled_copy_KV, tKgK, tKsK, tKVcKV, max_coord);
       }
       cp_async_fence();
 

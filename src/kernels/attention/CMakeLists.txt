@@ -4,7 +4,7 @@ include(cc_library)
 include(cc_test)
 
 cc_library(
-  NAME 
+  NAME
     attention.template
   HDRS
     fast_math.h
@@ -15,9 +15,8 @@ cc_library(
     static_dispatch.h
     mha_params.h
     mha_tile.h
-    mha_traits_sm80.h
     mha_kernel_sm80.cuh
-    mha_dispatch_sm80.cuh
+    sm80_mha_dispatch.cuh
     mla_params.h
     mla_tile.h
     mla_traits_sm80.h
@@ -39,11 +38,11 @@ execute_process(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
   COMMAND_ERROR_IS_FATAL ANY
 )
-# globbing all generated files in sub directory "generated"
-file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/*.cu")
+# globbing all generated files in sub directory "gensrc"
+file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/gensrc/*.cu")
 
 cc_library(
-  NAME 
+  NAME
     attention.kernels
   HDRS
     attn_api.h
@@ -62,9 +61,8 @@ cc_test(
     mha_kernel_test
   SRCS
     # mha_cpu_test.cpp
-    mha_traits_test.cpp
-    mha_kernel_sm80_test.cu
-    mha_kernel_sm80_pagedkv_test.cu
+    sm80_mha_test.cu
+    sm80_mha_pagedkv_test.cu
   DEPS
     :attention.template
     absl::random_random
@@ -99,31 +97,31 @@ cc_test(
 )
 
 nvbench_binary(
-  NAME 
-    mha_sm80_bench
-  SRCS 
-    mha_sm80_bench.cu
+  NAME
+    sm80_mha_bench
+  SRCS
+    sm80_mha_bench.cu
   DEPS
-    :attention.template 
+    :attention.template
 )
 
 nvbench_binary(
-  NAME 
-    mha_sm80_pagedkv_bench
-  SRCS 
-    mha_sm80_pagedkv_bench.cu
+  NAME
+    sm80_mha_pagedkv_bench
+  SRCS
+    sm80_mha_pagedkv_bench.cu
   DEPS
     absl::random_random
     :attention.template
 )
 
 nvbench_binary(
-  NAME 
+  NAME
     mla_sm80_bench
-  SRCS 
+  SRCS
     mla_sm80_bench.cu
   DEPS
-    :attention.template 
+    :attention.template
 )
 
 add_subdirectory(tools)

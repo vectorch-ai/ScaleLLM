@@ -20,21 +20,21 @@ BOOL_MAP = {
 
 
 MHA_KERNEL_TEMPLATE = """
-#include "mha_kernel_sm80.cuh"  // IWYU pragma: export
+#include "sm80_mha_launch.cuh"  // IWYU pragma: export
 #include "mha_params.h"         // IWYU pragma: export
 
 namespace llm {{
 
 using Params = MHAPagedKVParams;
 
-template void launch_mha_kernel_sm80</*DTYPE=*/{DTYPE},
+template void sm80_launch_mha_kernel</*DTYPE=*/{DTYPE},
                                      /*HEAD_DIM=*/{HEAD_DIM},
                                      /*EVEN_K=*/{EVEN_K},
                                      /*ALIBI=*/{ALIBI},
                                      /*SOFT_CAP=*/{SOFT_CAP},
                                      /*LOCAL=*/{LOCAL},
                                      Params>(const Params& params,
-                                                        cudaStream_t stream);
+                                             cudaStream_t stream);
 }}  // namespace llm
 """
 
@@ -79,7 +79,7 @@ class MHAKernel:
         def to_str(val: bool) -> str:
             return "1" if val else "0"
 
-        return f"mha_{self.dtype}_hd{self.head_dim}_ek{to_str(self.even_k)}_al{to_str(self.alibi)}_sc{to_str(self.soft_cap)}_lc{to_str(self.local)}_sm80.cu"
+        return f"sm80_mha_{self.dtype}_hd{self.head_dim}_ek{to_str(self.even_k)}_al{to_str(self.alibi)}_sc{to_str(self.soft_cap)}_lc{to_str(self.local)}.cu"
 
 
 @dataclass
@@ -164,7 +164,7 @@ def gen_mla_kernels() -> Iterator[MLAKernel]:
 
 
 if __name__ == "__main__":
-    output_dir = Path.cwd() / "generated"
+    output_dir = Path.cwd() / "gensrc"
     shutil.rmtree(output_dir, ignore_errors=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 

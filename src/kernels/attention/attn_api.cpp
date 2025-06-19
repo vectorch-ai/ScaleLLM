@@ -3,8 +3,8 @@
 #include <ATen/cuda/CUDAContext.h>
 
 #include "cute/layout.hpp"
-#include "mha_dispatch_sm80.cuh"
 #include "mha_params.h"
+#include "sm80_mha_dispatch.cuh"
 #include "static_dispatch.h"
 
 namespace llm {
@@ -66,7 +66,7 @@ void paged_kv_varlen_mha(
   cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
   DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
     DISPATCH_TORCH_DTYPE(query.scalar_type(), DTYPE, [&] {
-      run_mha_kernel_sm80<DTYPE, HEAD_DIM>(params, stream);
+      sm80_run_mha<DTYPE, HEAD_DIM>(params, stream);
     });
   });
 }

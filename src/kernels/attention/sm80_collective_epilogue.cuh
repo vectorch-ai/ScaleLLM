@@ -73,15 +73,16 @@ struct Sm80CollectiveEpilogue {
             class TensorO,
             class BlockCoordMNK,
             class ProblemShapeMNK>
-  CUTLASS_DEVICE void operator()(
-      const Params& /*params*/,
-      const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N)
-      TiledMma tiled_mma,
-      TensorO& gO,  // (BLK_M, HEAD_DIM)
-      int tidx,
-      const BlockCoordMNK& block_coord_mnk,
-      const ProblemShapeMNK& problem_shape_mnk,
-      char* smem) {
+  CUTE_DEVICE void operator()(const Params& /*params*/,
+                              const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N)
+                              TiledMma tiled_mma,
+                              TensorO& gO,  // (BLK_M, HEAD_DIM)
+                              int tidx,
+                              const BlockCoordMNK& block_coord_mnk,
+                              const ProblemShapeMNK& problem_shape_mnk,
+                              char* smem) {
+    static constexpr int kBlockM = get<0>(TileShape{});
+
     const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord_mnk;
     const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
 

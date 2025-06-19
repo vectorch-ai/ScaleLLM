@@ -4,9 +4,9 @@
 #include <cuda/std/chrono>
 #include <nvbench/nvbench.cuh>
 
-#include "mha_dispatch_sm80.cuh"
-#include "mha_kernel_sm80.cuh"  // IWYU pragma: keep
 #include "mha_params.h"
+#include "sm80_mha_dispatch.cuh"
+#include "sm80_mha_launch.cuh"  // IWYU pragma: keep
 #include "static_dispatch.h"
 
 using namespace llm;
@@ -73,7 +73,7 @@ void mha_bench_sm80(nvbench::state& state) {
 
   state.exec([&](nvbench::launch& launch) {
     DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
-      run_mha_kernel_sm80<cute::half_t, HEAD_DIM>(params, launch.get_stream());
+      sm80_run_mha<cute::half_t, HEAD_DIM>(params, launch.get_stream());
     });
   });
 }

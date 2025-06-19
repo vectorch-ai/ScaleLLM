@@ -41,7 +41,7 @@ class Sm80KernelMha {
   using EpilogueParams = typename CollectiveEpilogue::Params;
 
   template <class Params>
-  CUTLASS_DEVICE void operator()(const Params& params, char* smem) {
+  CUTE_DEVICE void operator()(const Params& params, char* smem) {
     CollectiveMainloop mha;
     CollectiveEpilogue epilogue;
 
