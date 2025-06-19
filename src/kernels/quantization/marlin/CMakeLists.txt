@@ -12,8 +12,8 @@ execute_process(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
 )
 
-# globbing all generated files in sub directory "generated"
-file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/*.cu")
+# globbing all generated files in sub directory "gensrc"
+file(GLOB GENERATED_SRC_FILES "${CMAKE_CURRENT_BINARY_DIR}/gensrc/*.cu")
 
 cc_library(
   NAME
@@ -32,4 +32,3 @@ cc_library(
     torch
     glog::glog
 )
-

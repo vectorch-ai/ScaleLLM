@@ -1,7 +1,6 @@
 #include <cute/tensor.hpp>
 #include <fstream>
 
-#include "../mha_traits_sm80.h"
 #include "common/pretty_print.h"
 #include "print_svg.hpp"
 

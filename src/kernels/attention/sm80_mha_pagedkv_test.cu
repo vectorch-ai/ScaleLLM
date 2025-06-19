@@ -3,10 +3,10 @@
 #include <torch/torch.h>
 
 #include "cute/layout.hpp"
-#include "mha_dispatch_sm80.cuh"
-#include "mha_kernel_sm80.cuh"  // IWYU pragma: keep
 #include "mha_params.h"
 #include "mha_ref.h"
+#include "sm80_mha_dispatch.cuh"
+#include "sm80_mha_launch.cuh"  // IWYU pragma: keep
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
@@ -76,7 +76,7 @@ torch::Tensor mha_pagedkv_sm80(
   params.block_size = block_size;
 
   DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-    run_mha_kernel_sm80<cute::half_t, HEAD_DIM>(params);
+    sm80_run_mha<cute::half_t, HEAD_DIM>(params);
   });
   return out;
 }

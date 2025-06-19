@@ -104,7 +104,8 @@ class Kernel:
 
     @property
     def filename(self) -> str:
-        return f"marlin_b{self.num_bits}_t{self.threads}_m{self.m_blocks}_n{self.n_blocks}_k{self.k_blocks}_s{self.stages}_{self.has_act_order}_{self.has_zp}_g{self.group_blocks}_sm80.cu"
+        return f"sm80_marlin_b{self.num_bits}_t{self.threads}_m{self.m_blocks}_n{self.n_blocks}_k{self.k_blocks}_s{self.stages}_{self.has_act_order}_{self.has_zp}_g{self.group_blocks}.cu"
+
 
 def all_kernels():
     for num_bits in [4, 8]:
@@ -140,7 +141,7 @@ def write_kernel(kernel: Kernel, output_dir: Path) -> None:
 
 
 if __name__ == "__main__":
-    output_dir = Path.cwd() / "generated"
+    output_dir = Path.cwd() / "gensrc"
     shutil.rmtree(output_dir, ignore_errors=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     for kernel in all_kernels():

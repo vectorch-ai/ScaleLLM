@@ -4,10 +4,10 @@
 #include <cstdint>
 
 #include "cute/layout.hpp"
-#include "mha_dispatch_sm80.cuh"
-#include "mha_kernel_sm80.cuh"  // IWYU pragma: keep
 #include "mha_params.h"
 #include "mha_ref.h"
+#include "sm80_mha_dispatch.cuh"
+#include "sm80_mha_launch.cuh"  // IWYU pragma: keep
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
@@ -86,9 +86,8 @@ torch::Tensor mha_sm80(
   params.sliding_window = sliding_window;
 
   DISPATCH_TORCH_DTYPE_(query.dtype(), DTYPE, [&] {
-    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      run_mha_kernel_sm80<DTYPE, HEAD_DIM>(params);
-    });
+    DISPATCH_HEAD_DIM_(
+        head_dim, HEAD_DIM, [&] { sm80_run_mha<DTYPE, HEAD_DIM>(params); });
   });
   return out;
 }
