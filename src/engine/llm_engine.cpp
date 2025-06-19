@@ -62,10 +62,7 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
     if (device.is_cuda()) {
       // check cuda compute capability
       const auto* properties = at::cuda::getDeviceProperties(device.index());
-      const bool is_sm8x = properties->major == 8 && properties->minor >= 0;
-      const bool is_sm90 = properties->major == 9 && properties->minor == 0;
-      CHECK(is_sm90 || is_sm8x) << "Engine only supports Ampere GPUs or newer.";
-      // TODO: add Turing(sm75) support in the near future.
+      CHECK(properties->major >= 8) << "Only supports Ampere GPUs or newer.";
     }
   }
 
