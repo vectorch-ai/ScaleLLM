@@ -21,7 +21,7 @@ jobs:
       matrix:
         python: ["3.9", "3.10", "3.11", "3.12"]
         cuda: ["12.8"]
-        torch: ["2.7.0"]
+        torch: ["2.7.1"]
     runs-on: [self-hosted, linux]
     env:
       PYTHON_VERSION: ${{ matrix.python }}
@@ -73,7 +73,7 @@ jobs:
       matrix:
         python: ["3.9", "3.10", "3.11", "3.12"]
         cuda: ["12.8"]
-        torch: ["2.7.0"]
+        torch: ["2.7.1"]
     runs-on: [self-hosted, linux, gpu]
     env:
       PYTHON_VERSION: ${{ matrix.python }}

@@ -25,31 +25,31 @@ If you want to install ScaleLLM with different versions of CUDA and PyTorch, you
 
         .. tabs::
 
-            .. tab:: PyTorch 2.7.0
+            .. tab:: PyTorch 2.7.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu128/torch2.7.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu128/torch2.7.1/
 
     .. tab:: CUDA 12.6
 
         .. tabs::
 
-            .. tab:: PyTorch 2.7.0
+            .. tab:: PyTorch 2.7.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu126/torch2.7.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu126/torch2.7.1/
 
     .. tab:: CUDA 11.8
 
         .. tabs::
 
-            .. tab:: PyTorch 2.7.0
+            .. tab:: PyTorch 2.7.1
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.7.0/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.7.1/
 
 
 Build from source
@@ -65,7 +65,7 @@ If no wheel package is available for your configuration, you can build ScaleLLM 
 
 
 Inference
--------
+---------
 
 You can use ScaleLLM for offline batch inference or online distributed inference.
 
