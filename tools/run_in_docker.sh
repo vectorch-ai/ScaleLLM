@@ -38,7 +38,7 @@ function usage() {
 (( $# < 1 )) && usage
 
 # Default image
-IMAGE="vectorchai/scalellm_devel:cuda12.8"
+IMAGE="vectorchai/scalellm_devel:cuda12.9"
 RUN_OPTS=("--gpus=all")
 
 INTERACTIVE=1
