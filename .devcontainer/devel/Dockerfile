@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=vectorchai/scalellm_devel:cuda12.4
+ARG BASE_IMAGE=vectorchai/scalellm_devel:cuda12.9
 FROM ${BASE_IMAGE}
 
 ARG USER=vscode

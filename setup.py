@@ -170,16 +170,21 @@ class CMakeBuild(build_ext):
         debug = int(os.environ.get("DEBUG", 0)) if self.debug is None else self.debug
         build_type = "Debug" if debug else "Release"
 
-        cuda_version = get_cuda_version()
-        cuda_architectures = ["80", "89"]
-        if cuda_version >= Version("12.8"):
-            # blackwell needs cuda 12.8
-            cuda_architectures += ["90a", "100a", "120a"]
-        elif cuda_version >= Version("12.1"):
-            # hopper needs cuda 12.1
-            cuda_architectures += ["90a"]
+        if self.inplace:
+            # use native for develop
+            cuda_architectures = ["native"]
         else:
-            cuda_architectures += ["90"]
+            # decide cuda architectures based on cuda version
+            cuda_version = get_cuda_version()
+            cuda_architectures = ["80", "89"]
+            if cuda_version >= Version("12.8"):
+                # blackwell needs cuda 12.8
+                cuda_architectures += ["90a", "100a", "120a"]
+            elif cuda_version >= Version("12.1"):
+                # hopper needs cuda 12.1
+                cuda_architectures += ["90a"]
+            else:
+                cuda_architectures += ["90"]
 
         cmake_args = [
             "-G",
