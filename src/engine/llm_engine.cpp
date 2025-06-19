@@ -63,7 +63,6 @@ LLMEngine::LLMEngine(const Options& options) : options_(options) {
       // check cuda compute capability
       const auto* properties = at::cuda::getDeviceProperties(device.index());
       CHECK(properties->major >= 8) << "Only supports Ampere GPUs or newer.";
-      // TODO: add Turing(sm75) support in the near future.
     }
   }
 

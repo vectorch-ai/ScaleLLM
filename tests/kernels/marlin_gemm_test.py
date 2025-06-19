@@ -7,6 +7,7 @@ from quant_utils import (pack_marlin_weights, permute_marlin_scales,
 
 import scalellm._C.kernels as kernels  # type: ignore
 
+
 @pytest.mark.skip(reason="Only works for Ampere")
 @pytest.mark.parametrize("m", [16, 32])
 @pytest.mark.parametrize("n", [512])
