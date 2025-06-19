@@ -44,12 +44,11 @@ function install_cudnn {
 
 function install_nccl {
   nccl_version=$1
-  nvcc_gencode=$2
   # NCCL license: https://docs.nvidia.com/deeplearning/nccl/#licenses
   # Follow build: https://github.com/NVIDIA/nccl/tree/master?tab=readme-ov-file#build
   git clone -b ${nccl_version} --depth 1 https://github.com/NVIDIA/nccl.git
   cd nccl
-  make -j src.build NVCC_GENCODE="${nvcc_gencode}"
+  make -j src.build
   cp -a build/include/* /usr/local/cuda/include/
   cp -a build/lib/* /usr/local/cuda/lib64/
   cd ..
@@ -73,7 +72,6 @@ function install_cusparselt {
 function install_126 {
   CUDNN_VERSION=9.10.2.21
   NCCL_VERSION=v2.27.3-1
-  NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_90,code=sm_90"
   CUSPARSELT_VERSION=0.7.1.0
 
   echo "Installing CUDA 12.6.3 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
@@ -81,7 +79,7 @@ function install_126 {
 
   install_cudnn 12 $CUDNN_VERSION
 
-  install_nccl $NCCL_VERSION $NVCC_GENCODE
+  install_nccl $NCCL_VERSION
 
   install_cusparselt $CUSPARSELT_VERSION
 
@@ -91,7 +89,6 @@ function install_126 {
 function install_128 {
   CUDNN_VERSION=9.8.0.87
   NCCL_VERSION=v2.27.3-1
-  NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_120,code=sm_120 -gencode=arch=compute_120,code=compute_120"
   CUSPARSELT_VERSION=0.7.1.0
 
   echo "Installing CUDA 12.8.1 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
@@ -100,7 +97,7 @@ function install_128 {
 
   install_cudnn 12 $CUDNN_VERSION
 
-  install_nccl $NCCL_VERSION $NVCC_GENCODE
+  install_nccl $NCCL_VERSION
 
   install_cusparselt $CUSPARSELT_VERSION
 
@@ -110,7 +107,6 @@ function install_128 {
 function install_129 {
   CUDNN_VERSION=9.10.2.21
   NCCL_VERSION=v2.27.3-1
-  NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_120,code=sm_120 -gencode=arch=compute_120,code=compute_120"
   CUSPARSELT_VERSION=0.7.1.0
 
   echo "Installing CUDA 12.9.1 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
@@ -119,7 +115,7 @@ function install_129 {
 
   install_cudnn 12 $CUDNN_VERSION
 
-  install_nccl $NCCL_VERSION $NVCC_GENCODE
+  install_nccl $NCCL_VERSION
 
   install_cusparselt $CUSPARSELT_VERSION
 
