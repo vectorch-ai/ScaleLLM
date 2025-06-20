@@ -9,6 +9,7 @@
 #include "sm80_collective_epilogue.cuh"
 #include "sm80_collective_mha.cuh"
 #include "sm80_kernel_mha.cuh"
+#include "tile_scheduler.cuh"
 
 namespace llm {
 
@@ -16,10 +17,12 @@ namespace detail {
 /// Generic kernel template.
 template <typename Operator, typename Params>
 __global__ __launch_bounds__(Operator::kMmaThreads) void device_kernel(
-    __grid_constant__ const Params params) {
+    __grid_constant__ const Params params,
+    __grid_constant__ const typename Operator::TileSchedulerParams
+        scheduler_params) {
   extern __shared__ char smem[];
   Operator op;
-  op(params, smem);
+  op(params, scheduler_params, smem);
 }
 }  // namespace detail
 
@@ -61,7 +64,17 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
   using CollectiveEpilogue =
       Sm80CollectiveEpilogue<TileShape, Dtype, HEAD_DIM, EVEN_K>;
 
-  using AttnKernel = Sm80KernelMha<CollectiveMainloop, CollectiveEpilogue>;
+  // TODO: support persistent kernels
+  using TileScheduler = SingleTileScheduler;
+
+  const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
+  typename TileScheduler::Arguments scheduler_args{
+      batch_size, m_blocks, n_kv_heads};
+  auto scheduler_params =
+      TileScheduler::to_underlying_arguments(scheduler_args);
+
+  using AttnKernel =
+      Sm80KernelMha<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;
 
   auto mha_kernel = detail::device_kernel<AttnKernel, Params>;
 
@@ -71,11 +84,10 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
         mha_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   }
 
-  // TODO: support persistent kernels
-  dim3 grid(cute::ceil_div(max_q_packed_len, BLK_M), batch_size, n_kv_heads);
-  dim3 block = AttnKernel::kMmaThreads;
+  const dim3 grid = AttnKernel::get_grid_shape(scheduler_args);
+  const dim3 block = AttnKernel::get_block_shape();
 
-  mha_kernel<<<grid, block, smem_size, stream>>>(params);
+  mha_kernel<<<grid, block, smem_size, stream>>>(params, scheduler_params);
   // TODO: check launch status
 }
 

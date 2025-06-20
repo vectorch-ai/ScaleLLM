@@ -169,7 +169,7 @@ struct Sm80CollectiveMha {
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
 
-    const auto [m_block_idx, batch_idx, kv_head_idx] = block_coord_mnk;
+    const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord_mnk;
     const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
 
     const int sliding_window = LOCAL ? params.sliding_window : kv_len;

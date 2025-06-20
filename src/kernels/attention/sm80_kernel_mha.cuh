@@ -13,11 +13,14 @@ namespace llm {
 
 using namespace cute;
 
-template <class CollectiveMainloop_, class CollectiveEpilogue_>
+template <class CollectiveMainloop_,
+          class CollectiveEpilogue_,
+          class TileScheduler_>
 class Sm80KernelMha {
  public:
   using CollectiveMainloop = CollectiveMainloop_;
   using CollectiveEpilogue = CollectiveEpilogue_;
+  using TileScheduler = TileScheduler_;
 
   using TiledMma = typename CollectiveMainloop::TiledMma;
 
@@ -39,45 +42,22 @@ class Sm80KernelMha {
   // Kernel params
   using MainloopParams = typename CollectiveMainloop::Params;
   using EpilogueParams = typename CollectiveEpilogue::Params;
+  using TileSchedulerParams = typename TileScheduler::Params;
+
+  // returns grid and block shape for kernel launch
+  using TileSchedulerArgs = typename TileScheduler::Arguments;
+  static dim3 get_grid_shape(TileSchedulerArgs const& args) {
+    return TileScheduler::get_grid_shape(args);
+  }
+  static dim3 get_block_shape() { return kMmaThreads; }
 
   template <class Params>
-  CUTE_DEVICE void operator()(const Params& params, char* smem) {
+  CUTE_DEVICE void operator()(const Params& params,
+                              const TileSchedulerParams& scheduler_params,
+                              char* smem) {
     CollectiveMainloop mha;
     CollectiveEpilogue epilogue;
-
-    const auto tidx = threadIdx.x;
-
-    // block coord
-    const int m_block_idx = blockIdx.x;
-    const int batch_idx = blockIdx.y;
-    const int kv_head_idx = blockIdx.z;
-    auto block_coord_mnk = make_coord(m_block_idx, batch_idx, kv_head_idx);
-
-    // (q_packed_len, HEAD_DIM)
-    MHATile<Params> tile(params, batch_idx, kv_head_idx);
-    auto [Q, O] = tile.template get_qo_tile<Element>();
-    // (kv_len, HEAD_DIM)
-    auto [K, V] = tile.template get_kv_tile<Element>();
-
-    // problem shape
-    const int q_packed_len = size<0>(Q);
-    const int kv_len = size<0>(K);
-    const int head_dim = params.head_dim;
-    auto problem_shape_mnk = make_shape(q_packed_len, kv_len, head_dim);
-
-    if (m_block_idx * kBlockM >= q_packed_len) {
-      // m out of bound, return
-      return;
-    }
-
-    // (BLK_M, HEAD_DIM)
-    Tensor gQ =
-        local_tile(Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-    Tensor gO =
-        local_tile(O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-    // (BLK_N, HEAD_DIM, n)
-    Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
-    Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
+    TileScheduler scheduler(scheduler_params);
 
     // construct params
     MainloopParams mainloop_params{params.sliding_window,
@@ -88,35 +68,68 @@ class Sm80KernelMha {
                                    params.group_size};
     EpilogueParams epilogue_params;
 
-    TiledMma tiled_mma;
-    // accumulator: MMA,MMA_M,MMA_K)
-    auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
-    clear(tOrAccO);
+    // process each block
+    for (const auto block_coord : scheduler) {
+      // block coord: (batch_idx, m_block_idx, kv_head_idx)
+      const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
+      const auto tidx = threadIdx.x;
 
-    constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tOrAccO);
-    OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
+      // (q_packed_len, HEAD_DIM)
+      MHATile<Params> tile(params, batch_idx, kv_head_idx);
+      auto [Q, O] = tile.template get_qo_tile<Element>();
+      // (kv_len, HEAD_DIM)
+      auto [K, V] = tile.template get_kv_tile<Element>();
 
-    // mainloop
-    mha(mainloop_params,
-        gQ,
-        gK,
-        gV,
-        tOrAccO,
-        softmax,
-        tidx,
-        block_coord_mnk,
-        problem_shape_mnk,
-        smem);
+      // problem shape
+      const int q_packed_len = size<0>(Q);
+      const int kv_len = size<0>(K);
+      const int head_dim = params.head_dim;
+      auto problem_shape_mnk = make_shape(q_packed_len, kv_len, head_dim);
 
-    // epilogue
-    epilogue(epilogue_params,
-             tOrAccO,
-             tiled_mma,
-             gO,
-             tidx,
-             block_coord_mnk,
-             problem_shape_mnk,
-             smem);
+      if (m_block_idx * kBlockM >= q_packed_len) {
+        // m out of bound, skip this block
+        continue;
+      }
+
+      // (BLK_M, HEAD_DIM)
+      Tensor gQ = local_tile(
+          Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
+      Tensor gO = local_tile(
+          O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
+      // (BLK_N, HEAD_DIM, n)
+      Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
+      Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
+
+      TiledMma tiled_mma;
+      // accumulator: MMA,MMA_M,MMA_K)
+      auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
+      clear(tOrAccO);
+
+      constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tOrAccO);
+      OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
+
+      // mainloop
+      mha(mainloop_params,
+          gQ,
+          gK,
+          gV,
+          tOrAccO,
+          softmax,
+          tidx,
+          block_coord,
+          problem_shape_mnk,
+          smem);
+
+      // epilogue
+      epilogue(epilogue_params,
+               tOrAccO,
+               tiled_mma,
+               gO,
+               tidx,
+               block_coord,
+               problem_shape_mnk,
+               smem);
+    }
   }
 };
 
