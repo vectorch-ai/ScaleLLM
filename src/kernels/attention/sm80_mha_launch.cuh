@@ -9,6 +9,7 @@
 #include "sm80_collective_epilogue.cuh"
 #include "sm80_collective_mha.cuh"
 #include "sm80_kernel_mha.cuh"
+#include "tile_scheduler.cuh"
 
 namespace llm {
 
@@ -16,10 +17,12 @@ namespace detail {
 /// Generic kernel template.
 template <typename Operator, typename Params>
 __global__ __launch_bounds__(Operator::kMmaThreads) void device_kernel(
-    __grid_constant__ const Params params) {
+    __grid_constant__ const Params params,
+    __grid_constant__ const typename Operator::TileSchedulerParams
+        scheduler_params) {
   extern __shared__ char smem[];
   Operator op;
-  op(params, smem);
+  op(params, scheduler_params, smem);
 }
 }  // namespace detail
 
@@ -60,8 +63,16 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
                                                LOCAL>;
   using CollectiveEpilogue =
       Sm80CollectiveEpilogue<TileShape, Dtype, HEAD_DIM, EVEN_K>;
+  using TileScheduler = SingleTileScheduler;
 
-  using AttnKernel = Sm80KernelMha<CollectiveMainloop, CollectiveEpilogue>;
+  const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
+  typename TileScheduler::Arguments scheduler_args{
+      m_blocks, batch_size, n_kv_heads};
+  auto scheduler_params =
+      TileScheduler::to_underlying_arguments(scheduler_args);
+
+  using AttnKernel =
+      Sm80KernelMha<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;
 
   auto mha_kernel = detail::device_kernel<AttnKernel, Params>;
 
@@ -72,10 +83,10 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
   }
 
   // TODO: support persistent kernels
-  dim3 grid(cute::ceil_div(max_q_packed_len, BLK_M), batch_size, n_kv_heads);
+  dim3 grid = TileScheduler::get_grid_dim(scheduler_args);
   dim3 block = AttnKernel::kMmaThreads;
 
-  mha_kernel<<<grid, block, smem_size, stream>>>(params);
+  mha_kernel<<<grid, block, smem_size, stream>>>(params, scheduler_params);
   // TODO: check launch status
 }
 
