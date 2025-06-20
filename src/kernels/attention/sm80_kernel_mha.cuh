@@ -44,20 +44,34 @@ class Sm80KernelMha {
   using EpilogueParams = typename CollectiveEpilogue::Params;
   using TileSchedulerParams = typename TileScheduler::Params;
 
+  // returns grid and block shape for kernel launch
+  using TileSchedulerArgs = typename TileScheduler::Arguments;
+  static dim3 get_grid_shape(TileSchedulerArgs const& args) {
+    return TileScheduler::get_grid_shape(args);
+  }
+  static dim3 get_block_shape() { return kMmaThreads; }
+
   template <class Params>
   CUTE_DEVICE void operator()(const Params& params,
                               const TileSchedulerParams& scheduler_params,
                               char* smem) {
     CollectiveMainloop mha;
     CollectiveEpilogue epilogue;
-
     TileScheduler scheduler(scheduler_params);
 
-    for (auto work_tile = scheduler.get_initial_work(); work_tile.valid();
-         work_tile = scheduler.get_next_work(work_tile)) {
+    // construct params
+    MainloopParams mainloop_params{params.sliding_window,
+                                   params.logits_soft_cap,
+                                   params.sm_scale,
+                                   params.sm_scale_log2,
+                                   params.alibi_slopes_ptr,
+                                   params.group_size};
+    EpilogueParams epilogue_params;
+
+    // process each block
+    for (const auto block_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      auto block_coord_mnk = work_tile.get_block_coord();
-      auto [m_block_idx, batch_idx, kv_head_idx] = block_coord_mnk;
+      const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
       const auto tidx = threadIdx.x;
 
       // (q_packed_len, HEAD_DIM)
@@ -86,15 +100,6 @@ class Sm80KernelMha {
       Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
       Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
 
-      // construct params
-      MainloopParams mainloop_params{params.sliding_window,
-                                     params.logits_soft_cap,
-                                     params.sm_scale,
-                                     params.sm_scale_log2,
-                                     params.alibi_slopes_ptr,
-                                     params.group_size};
-      EpilogueParams epilogue_params;
-
       TiledMma tiled_mma;
       // accumulator: MMA,MMA_M,MMA_K)
       auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
@@ -111,7 +116,7 @@ class Sm80KernelMha {
           tOrAccO,
           softmax,
           tidx,
-          block_coord_mnk,
+          block_coord,
           problem_shape_mnk,
           smem);
 
@@ -121,7 +126,7 @@ class Sm80KernelMha {
                tiled_mma,
                gO,
                tidx,
-               block_coord_mnk,
+               block_coord,
                problem_shape_mnk,
                smem);
     }

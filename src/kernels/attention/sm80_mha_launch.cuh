@@ -63,6 +63,8 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
                                                LOCAL>;
   using CollectiveEpilogue =
       Sm80CollectiveEpilogue<TileShape, Dtype, HEAD_DIM, EVEN_K>;
+
+  // TODO: support persistent kernels
   using TileScheduler = SingleTileScheduler;
 
   const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
@@ -82,9 +84,8 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
         mha_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   }
 
-  // TODO: support persistent kernels
-  dim3 grid = TileScheduler::get_grid_dim(scheduler_args);
-  dim3 block = AttnKernel::kMmaThreads;
+  const dim3 grid = AttnKernel::get_grid_shape(scheduler_args);
+  const dim3 block = AttnKernel::get_block_shape();
 
   mha_kernel<<<grid, block, smem_size, stream>>>(params, scheduler_params);
   // TODO: check launch status
