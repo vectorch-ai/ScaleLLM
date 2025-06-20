@@ -69,7 +69,7 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
 
   const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
   typename TileScheduler::Arguments scheduler_args{
-      m_blocks, batch_size, n_kv_heads};
+      batch_size, m_blocks, n_kv_heads};
   auto scheduler_params =
       TileScheduler::to_underlying_arguments(scheduler_args);
 
