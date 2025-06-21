@@ -68,8 +68,8 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
 ) {
   const auto m = a.size(0);
   const auto k = a.size(1);
-  const auto n = w.size(1);
   const auto n_experts = w.size(0);
+  const auto n = w.size(1);
   const auto topk = topk_ids.size(1);
 
   // construct aligned
@@ -95,14 +95,8 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
   params.n = n;
   params.k = k;
   params.topk = topk;
-
-  // constexpr int BLK_M = 64;
-  constexpr int BLK_N = 64;
-  // constexpr int BLK_K = 64;
-  // constexpr int PIPE = 2;
-
+  params.n_experts = n_experts;
   params.m_blocks = expert_ids.size(0);
-  params.n_blocks = cute::ceil_div(n, BLK_N);
 
   DISPATCH_TORCH_DTYPE(
       a.dtype(), DTYPE, [&] { sm80_run_grouped_gemm<DTYPE>(params); });

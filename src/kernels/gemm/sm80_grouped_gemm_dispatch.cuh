@@ -38,9 +38,9 @@ struct GEMMParams {
   int n = 0;
   int k = 0;
   int topk = 0;
+  int n_experts = 0;
 
   int m_blocks = 0;
-  int n_blocks = 0;
 };
 
 // forward declaration

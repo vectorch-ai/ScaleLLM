@@ -34,6 +34,8 @@ template <int Stages,
           typename Params>
 void sm80_launch_grouped_gemm_kernel(const Params& params,
                                      cudaStream_t stream) {
+  constexpr int kBlockN = get<1>(TileShape{});
+
   using CollectiveMainloop =
       Sm80CollectiveGroupedGEMM<Stages, TileShape, Dtype, EVEN_N, EVEN_K>;
 
@@ -42,8 +44,8 @@ void sm80_launch_grouped_gemm_kernel(const Params& params,
   // TODO: support persistent kernels
   using TileScheduler = SingleTileScheduler;
 
-  typename TileScheduler::Arguments scheduler_args{params.m_blocks,
-                                                   params.n_blocks};
+  const auto n_blocks = cute::ceil_div(params.n, kBlockN);
+  typename TileScheduler::Arguments scheduler_args{params.m_blocks, n_blocks};
   auto scheduler_params =
       TileScheduler::to_underlying_arguments(scheduler_args);
 

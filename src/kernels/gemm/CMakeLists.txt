@@ -18,7 +18,7 @@ cc_test(
   NAME
     gemm_kernel_test
   SRCS
-    grouped_gemm_kernel_sm80_test.cu
+    sm80_grouped_gemm_test.cu
   DEPS
     :gemm.kernels
     absl::random_random

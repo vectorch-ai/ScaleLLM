@@ -62,6 +62,7 @@ class Sm80KernelGroupedGEMM {
     const auto N = params.n;
     const auto K = params.k;
     const auto topk = params.topk;
+    const auto n_experts = params.n_experts;
     const auto n_flatten_tokens = params.m * topk;
 
     const auto residue_mnk = make_tuple(M, N, K);
@@ -75,6 +76,23 @@ class Sm80KernelGroupedGEMM {
                                 make_shape(M, K),
                                 params.a_stride,
                                 idx_to_t_idx);
+    // (M, K) => (BLK_M, BLK_K, m, k)
+    Tensor gA_t = local_tile(A, Shape<BLK_M, BLK_K>{}, make_coord(_, _));
+    // (BLK_M, BLK_K, m, k) => (M, K)
+    Tensor cA_t = local_tile(make_identity_tensor(make_shape(M, K)),
+                             Shape<BLK_M, BLK_K>{},
+                             make_coord(_, _));
+
+    // B: (E, N, K), k-major
+    auto B = make_tensor(make_gmem_ptr((const Element*)params.b_ptr),
+                         make_shape(n_experts, N, K),
+                         params.b_stride);
+    // (E, N, K) => (_1, BLK_N, BLK_K, e, n, k)
+    Tensor gB_t = local_tile(B, Shape<_1, BLK_N, BLK_K>{}, make_coord(_, _, _));
+    // (BLK_N, BLK_K, n, k) => (N, K)
+    Tensor cB_t = local_tile(make_identity_tensor(make_shape(N, K)),
+                             Shape<BLK_N, BLK_K>{},
+                             make_coord(_, _));
 
     // C: (M, N), n-major
     auto idx_to_f_idx = [sorted_token_idxes](int idx) {
@@ -84,6 +102,12 @@ class Sm80KernelGroupedGEMM {
                                 make_shape(M, N),
                                 params.c_stride,
                                 idx_to_f_idx);
+    // (M, N) => (BLK_M, BLK_N, m, n)
+    Tensor gC_t = local_tile(C, Shape<BLK_M, BLK_N>{}, make_coord(_, _));
+    // (BLK_M, BLK_N, m, n) => (M, N)
+    Tensor cC_t = local_tile(make_identity_tensor(make_shape(M, N)),
+                             Shape<BLK_M, BLK_N>{},
+                             make_coord(_, _));
 
     // construct params
     MainloopParams mainloop_params{params.sorted_token_idxes_ptr,
@@ -96,35 +120,18 @@ class Sm80KernelGroupedGEMM {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
       const auto [m_block_idx, n_block_idx] = block_coord;
       const auto tidx = threadIdx.x;
-
       const int expert_id = params.expert_ids_ptr[m_block_idx];
-      // B: (N, K), k-major TODO: use (E, N, K) instead
-      const auto b_offset = expert_id * get<0>(params.b_stride);
-      auto B =
-          make_tensor(make_gmem_ptr((const Element*)params.b_ptr + b_offset),
-                      make_shape(N, K),
-                      select<1, 2>(params.b_stride));
-      // (M, K) => (BLK_M, BLK_K, k)
-      Tensor gA =
-          local_tile(A, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _));
-      // (BLK_M, BLK_K, k) => (M, K)
-      Tensor cA = local_tile(make_identity_tensor(make_shape(M, K)),
-                             Shape<BLK_M, BLK_K>{},
-                             make_coord(m_block_idx, _));
-      // (N, K) => (BLK_N, BLK_K, k)
-      Tensor gB =
-          local_tile(B, Shape<BLK_N, BLK_K>{}, make_coord(n_block_idx, _));
-      // (BLK_N, BLK_K, k) => (N, K)
-      Tensor cB = local_tile(make_identity_tensor(make_shape(N, K)),
-                             Shape<BLK_N, BLK_K>{},
-                             make_coord(n_block_idx, _));
-      // (M, N) => (BLK_M, BLK_N)
-      Tensor gC = local_tile(
-          C, Shape<BLK_M, BLK_N>{}, make_coord(m_block_idx, n_block_idx));
-      // (BLK_M, BLK_N) => (M, N)
-      Tensor cC = local_tile(make_identity_tensor(make_shape(M, N)),
-                             Shape<BLK_M, BLK_N>{},
-                             make_coord(m_block_idx, n_block_idx));
+
+      // (BLK_M, BLK_K, m, k) => (BLK_M, BLK_K, k)
+      auto gA = gA_t(_, _, m_block_idx, _);
+      auto cA = cA_t(_, _, m_block_idx, _);
+      // (_1, BLK_N, BLK_K, e, n, k) => (BLK_N, BLK_K, k)
+      auto gB = gB_t(_0{}, _, _, expert_id, n_block_idx, _);
+      // (BLK_N, BLK_K, n, k) => (BLK_N, BLK_K, k)
+      auto cB = cB_t(_, _, n_block_idx, _);
+      // (BLK_M, BLK_N, m, n) => (BLK_M, BLK_N)
+      auto gC = gC_t(_, _, m_block_idx, n_block_idx);
+      auto cC = cC_t(_, _, m_block_idx, n_block_idx);
 
       TiledMma tiled_mma;
       // (BLK_M, BLK_N) => (MMA, MMA_M, MMA_N)
