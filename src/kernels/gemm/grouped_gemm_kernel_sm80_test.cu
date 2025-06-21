@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "sm80_grouped_gemm_launch.cuh"  // IWYU pragma: keep
+#include "sm80_grouped_gemm_dispatch.cuh"  // IWYU pragma: keep
 #include "static_dispatch.h"
 
 namespace llm {
@@ -98,19 +98,14 @@ torch::Tensor grouped_gemm_sm80(const torch::Tensor& a,        // (m, k)
 
   // constexpr int BLK_M = 64;
   constexpr int BLK_N = 64;
-  constexpr int BLK_K = 64;
+  // constexpr int BLK_K = 64;
   // constexpr int PIPE = 2;
 
   params.m_blocks = expert_ids.size(0);
   params.n_blocks = cute::ceil_div(n, BLK_N);
 
-  DISPATCH_TORCH_DTYPE(a.dtype(), DTYPE, [&] {
-    DISPATCH_BOOL((n % BLK_N) == 0, EVEN_N, [&] {
-      DISPATCH_BOOL((k % BLK_K) == 0, EVEN_K, [&] {
-        sm80_launch_grouped_gemm_kernel<DTYPE, EVEN_N, EVEN_K>(params, nullptr);
-      });
-    });
-  });
+  DISPATCH_TORCH_DTYPE(
+      a.dtype(), DTYPE, [&] { sm80_run_grouped_gemm<DTYPE>(params); });
 
   // (m * topk, n) => (m, topk, n)
   return out.view({m, topk, n});

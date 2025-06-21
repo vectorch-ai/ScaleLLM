@@ -29,10 +29,10 @@ struct Sm80CollectiveGroupedGEMM {
   static_assert(kBlockN % 32 == 0);
   static_assert(kBlockK % 16 == 0);
 
-  using _BLK_M = Int<kBlockM>;
-  using _BLK_N = Int<kBlockN>;
-  using _BLK_K = Int<kBlockK>;
-  using _PIPE = Int<Stages>;
+  using BLK_M = Int<kBlockM>;
+  using BLK_N = Int<kBlockN>;
+  using BLK_K = Int<kBlockK>;
+  using PIPE = Int<Stages>;
 
   // MMA Atom: (16x8x16) for F32F16F16F32 or F32BF16BF16F32
   using MMA_Atom_ =
@@ -44,6 +44,8 @@ struct Sm80CollectiveGroupedGEMM {
   using TiledMma = TiledMMA<MMA_Atom_,
                             Layout<Shape<_4, _1, _1>>,  // warp layout: (4x1x1)
                             Tile<_64, _16, _16>>;  // tile layout: (64x16x16)
+
+  static constexpr int kMmaThreads = size(TiledMma{});
 
   // Shared memory LayoutAtom (8x64)
   using SmemLayoutAtom_8x64 =
@@ -58,10 +60,10 @@ struct Sm80CollectiveGroupedGEMM {
                                             SmemLayoutAtom_8x32>;
   // SMEM Layout for A: (BLK_M, BLK_K, PIPE)
   using SmemLayoutA =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_M, _BLK_K, _PIPE>{}));
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<BLK_M, BLK_K, PIPE>{}));
   // SMEM Layout for B: (BLK_N, BLK_K, PIPE)
   using SmemLayoutB =
-      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<_BLK_N, _BLK_K, _PIPE>{}));
+      decltype(tile_to_shape(SmemLayoutAtom{}, Shape<BLK_N, BLK_K, PIPE>{}));
 
   // Thread layout for gmem copy: (_16,_8)/(_32, _4)
   using GmemCopyThrLayout =
@@ -91,7 +93,10 @@ struct Sm80CollectiveGroupedGEMM {
   };
 
   // Host side arguments
-  struct Arguments {};
+  struct Arguments {
+    const int* sorted_token_idxes_ptr = nullptr;
+    int n_flatten_tokens = 0;
+  };
 
   // Device side params
   using Params = Arguments;
@@ -105,7 +110,6 @@ struct Sm80CollectiveGroupedGEMM {
   // returns false if the block has been skipped
   template <class TensorA,
             class IdentTensorA,
-            class PredTensor,
             class TensorB,
             class IdentTensorB,
             class FrgTensor,
@@ -114,7 +118,6 @@ struct Sm80CollectiveGroupedGEMM {
       const Params& params,
       const TensorA& gA,       // (BLK_M, BLK_K, k)
       const IdentTensorA& cA,  // (BLK_M, BLK_K, k) => (M, K)
-      const PredTensor& tApA,  // (CPY_M) => bool
       const TensorB& gB,       // (BLK_N, HEAD_DIM, n)
       const IdentTensorB& cB,  // (BLK_N, BLK_K, k) => (N, K)
       FrgTensor& tCrAccC,      // (MMA, MMA_M, MMA_N)
@@ -148,14 +151,17 @@ struct Sm80CollectiveGroupedGEMM {
     // (BLK_M, BLK_K, PIPE) => (CPY, CPY_M, CPY_K, PIPE)
     auto tAsA = gmem_thr_copy.partition_D(sA);
 
-    // // (CPY_M) => (M, K)
-    // auto tAcA_m = tAcA(_0{}, _, _0{}, _0{});
-    // auto tApA = make_tensor<bool>(make_shape(size(tAcA_m)));
-    // CUTE_UNROLL
-    // for (int i = 0; i < size(tApA); ++i) {
-    //   const auto f_idx = sorted_token_idxes[get<0>(tAcA_m(i))];
-    //   tApA(i) = f_idx < n_flatten_tokens;
-    // }
+    // (CPY_M) => (M, K)
+    const int* sorted_token_idxes = params.sorted_token_idxes_ptr;
+    const int n_flatten_tokens = params.n_flatten_tokens;
+    auto tAcA_m = tAcA(_0{}, _, _0{}, _0{});
+    // (CPY_M) => bool
+    auto tApA = make_tensor<bool>(make_shape(size(tAcA_m)));
+    CUTE_UNROLL
+    for (int i = 0; i < size(tApA); ++i) {
+      const auto f_idx = sorted_token_idxes[get<0>(tAcA_m(i))];
+      tApA(i) = f_idx < n_flatten_tokens;
+    }
 
     // (BLK_N, BLK_K, k) => (CPY, CPY_N, CPY_K, k)
     auto tBgB = gmem_thr_copy.partition_S(gB);

@@ -64,7 +64,10 @@ struct Sm80CollectiveEpilogue {
   };
 
   // Host side kernel arguments
-  struct Arguments {};
+  struct Arguments {
+    const int* sorted_token_idxes_ptr = nullptr;
+    int n_flatten_tokens = 0;
+  };
 
   // Device side kernel params
   using Params = Arguments;
@@ -76,17 +79,16 @@ struct Sm80CollectiveEpilogue {
             class TiledMma,
             class TensorC,
             class IdentTensorC,
-            class PredTensor,
             class ResidueMNK>
-  CUTE_DEVICE void operator()(const Params& /*params*/,
-                              const FrgTensor& tCrAccC,  // (MMA, MMA_M, MMA_N)
-                              TiledMma tiled_mma,
-                              TensorC& gC,       // (BLK_M, BLK_M)
-                              IdentTensorC& cC,  // (BLK_M, BLK_N) => (M, N)
-                              PredTensor& tGpC,  // (BLK_M) => bool
-                              int tidx,
-                              ResidueMNK residue_mnk,
-                              char* smem) {
+  CUTE_DEVICE void operator()(
+      const Params& params,
+      const FrgTensor& tCrAccC,  // (MMA, MMA_M, MMA_N)
+      TiledMma tiled_mma,
+      TensorC& gC,             // (BLK_M, BLK_M)
+      const IdentTensorC& cC,  // (BLK_M, BLK_N) => (M, N)
+      int tidx,
+      const ResidueMNK& residue_mnk,
+      char* smem) {
     static constexpr int kBlockM = get<0>(TileShape{});
 
     auto residue_mn = select<0, 1>(residue_mnk);
@@ -107,9 +109,6 @@ struct Sm80CollectiveEpilogue {
     auto tSsC = smem_thr_copy_c.partition_D(sC);
     cute::copy(smem_tiled_copy_c, tSrC, tSsC);
 
-    // wait for smem copy done before gmem copy
-    __syncthreads();
-
     // copy sC from smem to gmem
     GmemTiledCopyC gmem_tiled_copy_c;
     auto gmem_thr_copy_c = gmem_tiled_copy_c.get_thread_slice(tidx);
@@ -117,6 +116,22 @@ struct Sm80CollectiveEpilogue {
     auto tGgC = gmem_thr_copy_c.partition_D(gC);
     // (CPY, CPY_M, CPY_N) => (M, N)
     auto tGcC = gmem_thr_copy_c.partition_D(cC);
+
+    const int* sorted_token_idxes = params.sorted_token_idxes_ptr;
+    const int n_flatten_tokens = params.n_flatten_tokens;
+
+    // (CPY_M) => (M, N)
+    auto tGcC_m = tGcC(_0{}, _, _0{});
+    auto tGpC = make_tensor<bool>(make_shape(size(tGcC_m)));
+    CUTE_UNROLL
+    for (int i = 0; i < size(tGpC); ++i) {
+      const auto f_idx = sorted_token_idxes[get<0>(tGcC_m(i))];
+      tGpC(i) = f_idx < n_flatten_tokens;
+    }
+
+    // wait for smem copy done before gmem copy
+    __syncthreads();
+
     safe_copy_m<EVEN_N, /*ZFILL_M=*/false, /*ZFILL_K=*/false>(
         gmem_tiled_copy_c, tGsC, tGgC, tGpC, tGcC, residue_mn);
   }
