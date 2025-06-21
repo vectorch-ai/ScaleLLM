@@ -89,9 +89,12 @@ struct Sm80CollectiveEpilogue {
       int tidx,
       const ResidueMNK& residue_mnk,
       char* smem) {
-    static constexpr int kBlockM = get<0>(TileShape{});
+    static_assert(is_rmem<FrgTensor>::value,
+                  "Accum tensor must be rmem resident.");
+    static_assert(is_gmem<TensorC>::value, "C tensor must be gmem resident.");
 
-    auto residue_mn = select<0, 1>(residue_mnk);
+    static constexpr int kBlockM = get<0>(TileShape{});
+    const auto residue_mn = select<0, 1>(residue_mnk);
 
     // Smem
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);

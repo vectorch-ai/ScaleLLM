@@ -126,12 +126,11 @@ struct Sm80CollectiveGroupedGEMM {
       char* smem) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
-    // static_assert(is_gmem<TensorQ>::value, "Q tensor must be gmem
-    // resident."); static_assert(is_gmem<TensorK>::value, "K tensor must be
-    // gmem resident.");
+    static_assert(is_gmem<TensorA>::value, "A tensor must be gmem resident.");
+    static_assert(is_gmem<TensorB>::value, "B tensor must be gmem resident.");
 
-    auto max_coord_mk = select<0, 2>(residue_mnk);
-    auto max_coord_nk = select<1, 2>(residue_mnk);
+    const auto residue_mk = select<0, 2>(residue_mnk);
+    const auto residue_nk = select<1, 2>(residue_mnk);
 
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
@@ -177,14 +176,14 @@ struct Sm80CollectiveGroupedGEMM {
           tAsA(_, _, _, k_pipe),
           tApA,
           tAcA(_, _, _, k_tile),
-          max_coord_mk);
+          residue_mk);
 
       safe_copy_n<EVEN_N, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
           tBgB(_, _, _, k_tile),
           tBsB(_, _, _, k_pipe),
           tBcB(_, _, _, k_tile),
-          max_coord_nk);
+          residue_nk);
     };
 
     auto produce_ab_no_oob = [&](int k_tile, int k_pipe) {
@@ -194,14 +193,14 @@ struct Sm80CollectiveGroupedGEMM {
           tAsA(_, _, _, k_pipe),
           tApA,
           tAcA(_, _, _, k_tile),
-          max_coord_mk);
+          residue_mk);
 
       safe_copy_n<EVEN_N, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
           tBgB(_, _, _, k_tile),
           tBsB(_, _, _, k_pipe),
           tBcB(_, _, _, k_tile),
-          max_coord_nk);
+          residue_nk);
     };
 
     // GEMM: C = A@B.T
@@ -251,10 +250,6 @@ struct Sm80CollectiveGroupedGEMM {
     }
 
     // ###############  Mainloop  ###############
-    // (BLK_M, BLK_N) => (MMA, MMA_M, MMA_N)
-    // auto tCrAccC = partition_fragment_C(tiled_mma, Shape<_BLK_M, _BLK_N>{});
-    // cute::clear(tCrAccC);  // Clear the accumulator
-
     // pipe index in smem to read from
     int pipe_read = 0;
     // pipe index in smem to write to
@@ -317,9 +312,6 @@ struct Sm80CollectiveGroupedGEMM {
         gemm(tiled_mma, tCrA(_, _, ki), tCrB(_, _, ki), tCrAccC);
       }
     }
-    // TODO: do we need to wait for copy to finish?
-    // cp_async_wait<0>();
-    // __syncthreads();
   }
 };
 

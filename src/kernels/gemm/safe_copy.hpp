@@ -24,7 +24,7 @@ template <bool EVEN_K,
           class DstTensor,
           class PrdTensor,
           class IdenTensor,
-          class MaxCoord,
+          class ResidueMK,
           __CUTE_REQUIRES(SrcTensor::rank == 3 && DstTensor::rank == 3 &&
                           IdenTensor::rank == 3)>
 CUTE_HOST_DEVICE void safe_copy_m(
@@ -32,8 +32,8 @@ CUTE_HOST_DEVICE void safe_copy_m(
     const SrcTensor& src,        // (CPY, CPY_M, CPY_K)
     DstTensor& dst,              // (CPY, CPY_M, CPY_K)
     const PrdTensor& pred_m,     // (CPY_M) -> bool
-    const IdenTensor& identity,  // (CPY, CPY_M, CPY_K) -> (blk_m, blk_k)
-    const MaxCoord& max_coord    // max_coord(blk_m, blk_k)
+    const IdenTensor& identity,  // (CPY, CPY_M, CPY_K) -> (m, k)
+    const ResidueMK& residue_mk  // (m, k)
 ) {
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
@@ -50,7 +50,7 @@ CUTE_HOST_DEVICE void safe_copy_m(
       if (pred_m(mi)) {
         CUTE_UNROLL
         for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+          if (elem_less<1>(identity(_0{}, _0{}, ki), residue_mk)) {
             copy(copy_atom, src(_, mi, ki), dst(_, mi, ki));
           } else if constexpr (ZFILL_K) {
             clear(dst(_, mi, ki));
@@ -82,15 +82,15 @@ template <bool EVEN_N,
           class SrcTensor,
           class DstTensor,
           class IdenTensor,
-          class MaxCoord,
+          class ResidueNK,
           __CUTE_REQUIRES(SrcTensor::rank == 3 && DstTensor::rank == 3 &&
                           IdenTensor::rank == 3)>
 CUTE_HOST_DEVICE void safe_copy_n(
     const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const SrcTensor& src,        // (CPY, CPY_N, CPY_K)
     DstTensor& dst,              // (CPY, CPY_N, CPY_K)
-    const IdenTensor& identity,  // (CPY, CPY_N, CPY_K) -> (blk_n, blk_k)
-    const MaxCoord& max_coord    // max_coord(blk_n, blk_k)
+    const IdenTensor& identity,  // (CPY, CPY_N, CPY_K) -> (n, k)
+    const ResidueNK& residue_nk  // (n, k)
 ) {
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
@@ -104,10 +104,10 @@ CUTE_HOST_DEVICE void safe_copy_n(
     // handle both n and k oob
     CUTE_UNROLL
     for (int ni = 0; ni < size<1>(src); ++ni) {
-      if (elem_less<0>(identity(_0{}, ni, _0{}), max_coord)) {
+      if (elem_less<0>(identity(_0{}, ni, _0{}), residue_nk)) {
         CUTE_UNROLL
         for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+          if (elem_less<1>(identity(_0{}, _0{}, ki), residue_nk)) {
             copy(copy_atom, src(_, ni, ki), dst(_, ni, ki));
           } else if constexpr (ZFILL_K) {
             clear(dst(_, ni, ki));
@@ -121,7 +121,7 @@ CUTE_HOST_DEVICE void safe_copy_n(
     // only handle n oob
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
+      if (elem_less<0>(identity(_0{}, mi, _0{}), residue_nk)) {
         copy(copy_atom, src(_, mi, _), dst(_, mi, _));
       } else if constexpr (ZFILL_N) {
         clear(dst(_, mi, _));
@@ -131,7 +131,7 @@ CUTE_HOST_DEVICE void safe_copy_n(
     // only handle k oob
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(src); ++ki) {
-      if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+      if (elem_less<1>(identity(_0{}, _0{}, ki), residue_nk)) {
         copy(copy_atom, src(_, _, ki), dst(_, _, ki));
       } else if constexpr (ZFILL_K) {
         clear(dst(_, _, ki));
@@ -152,17 +152,17 @@ template <bool EVEN_K,
           class DstTensor,
           class PrdTensor,
           class IdenTensor,
-          class MaxCoord>
+          class ResidueMK>
 CUTE_HOST_DEVICE void safe_copy_m(
     const CopyPolicy& tiled_copy,
     const SrcTensor& src,        // (CPY, CPY_M, CPY_K)
     DstTensor&& dst,             // (CPY, CPY_M, CPY_K)
     const PrdTensor& pred_m,     // (CPY_M) -> bool
-    const IdenTensor& identity,  // (CPY, CPY_M, CPY_K) -> (blk_m, blk_k)
-    const MaxCoord& max_coord    // max_coord(blk_m, blk_k)
+    const IdenTensor& identity,  // (CPY, CPY_M, CPY_K) -> (m, k)
+    const ResidueMK& residue_mk  // (m, k)
 ) {
   return safe_copy_m<EVEN_K, ZFILL_M, ZFILL_K>(
-      tiled_copy, src, dst, pred_m, identity, max_coord);
+      tiled_copy, src, dst, pred_m, identity, residue_mk);
 }
 
 template <bool EVEN_N,
@@ -173,16 +173,16 @@ template <bool EVEN_N,
           class SrcTensor,
           class DstTensor,
           class IdenTensor,
-          class MaxCoord>
+          class ResidueNK>
 CUTE_HOST_DEVICE void safe_copy_n(
     const CopyPolicy& tiled_copy,
     const SrcTensor& src,        // (CPY, CPY_N, CPY_K)
     DstTensor&& dst,             // (CPY, CPY_N, CPY_K)
-    const IdenTensor& identity,  // (CPY, CPY_N, CPY_K) -> (blk_n, blk_k)
-    const MaxCoord& max_coord    // max_coord(blk_n, blk_k)
+    const IdenTensor& identity,  // (CPY, CPY_N, CPY_K) -> (n, k)
+    const ResidueNK& residue_nk  // (n, k)
 ) {
   return safe_copy_n<EVEN_N, EVEN_K, ZFILL_N, ZFILL_K>(
-      tiled_copy, src, dst, identity, max_coord);
+      tiled_copy, src, dst, identity, residue_nk);
 }
 
 }  // namespace llm
