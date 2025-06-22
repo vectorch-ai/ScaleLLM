@@ -143,6 +143,57 @@ CUTE_HOST_DEVICE void safe_copy(
   }
 }
 
+template <bool EVEN_MN,
+          bool EVEN_K,
+          bool ZFILL_MN,
+          bool ZFILL_K,
+          class CopyAtom,
+          class TV,
+          class Tiler,
+          class TensorS,
+          class TensorD,
+          class TensorC,
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
+                          TensorC::rank == 3)>
+CUTE_HOST_DEVICE void safe_copy(
+    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
+    const TensorS& src,       // (CPY, CPY_M/N, CPY_K)
+    TensorD&& dst,            // (CPY, CPY_M/N, CPY_K)
+    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
+    const Coord& max_coord    // max_coord(blk_m/n, blk_k)
+) {
+  safe_copy<EVEN_MN, EVEN_K, ZFILL_MN, ZFILL_K>(
+      tiled_copy, src, dst, identity, max_coord);
+}
+
+template <bool EVEN_MN,
+          bool EVEN_K,
+          bool ZFILL_MN,
+          bool ZFILL_K,
+          class CopyAtom,
+          class TV,
+          class Tiler,
+          class TensorS,
+          class TensorD,
+          class TensorC,
+          class Coord,
+          __CUTE_REQUIRES(TensorS::rank == 4 && TensorD::rank == 4 &&
+                          TensorC::rank == 3)>
+CUTE_HOST_DEVICE void safe_copy(
+    const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
+    const TensorS& src,       // (CPY, CPY_M/N, CPY_K, k)
+    TensorD& dst,             // (CPY, CPY_M/N, CPY_K, k)
+    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
+    const Coord& max_coord    // max_coord(blk_m/n, blk_k)
+) {
+  CUTE_UNROLL
+  for (int k = 0; k < size<3>(src); ++k) {
+    safe_copy<EVEN_MN, EVEN_K, ZFILL_MN, ZFILL_K>(
+        tiled_copy, src(_, _, _, k), dst(_, _, _, k), identity, max_coord);
+  }
+}
+
 template <bool EVEN_K,
           bool ZFILL_K,
           class CopyAtom,

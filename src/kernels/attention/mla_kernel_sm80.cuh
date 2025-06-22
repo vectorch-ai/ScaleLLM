@@ -446,19 +446,13 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     // 1. copy output from reg to smem (reuse sQ)
     SmemTiledCopyO smem_tiled_copy_O;
     auto smem_thr_copy_O = smem_tiled_copy_O.get_slice(tidx);
-    CUTE_UNROLL
-    for (int step = 0; step < kSteps; ++step) {
-      auto tOrO_s = tOrO(_, _, _, step);
-      auto sO_s = sO(_, _, step);
+    // cast Accumulator to Element type
+    auto tOrO_ = make_tensor_like<DType>(tOrO);
+    fast_cast(tOrO, tOrO_);
 
-      // cast Accumulator to Element type
-      auto tOrO_ = make_tensor_like<DType>(tOrO_s);
-      fast_cast(tOrO_s, tOrO_);
-
-      auto tCrO = smem_thr_copy_O.retile_S(tOrO_);
-      auto tCsO = smem_thr_copy_O.partition_D(sO_s);
-      cute::copy(smem_tiled_copy_O, tCrO, tCsO);
-    }
+    auto tSrO = smem_thr_copy_O.retile_S(tOrO_);
+    auto tSsO = smem_thr_copy_O.partition_D(sO);
+    cute::copy(smem_tiled_copy_O, tSrO, tSsO);
 
     __syncthreads();
 
@@ -472,17 +466,14 @@ __global__ __launch_bounds__(Traits::kThreadNum) void mla_kernel_sm80(
     auto max_coord_O =
         make_coord(q_packed_len - m_block_idx * kBlockM, kBlockK);
 
-    CUTE_UNROLL
-    for (int step = 0; step < kSteps; ++step) {
-      auto tCsO = gmem_thr_copy_O.partition_S(sO(_, _, step));
-      auto tCgO = gmem_thr_copy_O.partition_D(gO(_, _, step));
+    auto tGsO = gmem_thr_copy_O.partition_S(sO);
+    auto tGgO = gmem_thr_copy_O.partition_D(gO);
 
-      safe_copy</*EVEN_MN=*/false,
-                /*EVEN_K=*/true,
-                /*ZFILL_MN=*/false,
-                /*ZFILL_K=*/false>(
-          gmem_tiled_copy_O, tCsO, tCgO, tCcO, max_coord_O);
-    }
+    safe_copy</*EVEN_MN=*/false,
+              /*EVEN_K=*/true,
+              /*ZFILL_MN=*/false,
+              /*ZFILL_K=*/false>(
+        gmem_tiled_copy_O, tGsO, tGgO, tCcO, max_coord_O);
   };
 
   // output accumulator: (MMA,MMA_M,MMA_K,STEPS)
