@@ -21,11 +21,7 @@ template <int Stages,
           class TileShape_,
           class Element_,
           int HeadDim_,
-          int RopeHeadDim_,
-          bool EVEN_K,
-          bool ALIBI,
-          bool SOFT_CAP,
-          bool LOCAL>
+          int RopeHeadDim_>
 struct Sm80CollectiveMla {
   using TileShape = TileShape_;
   using Element = Element_;
@@ -83,7 +79,7 @@ struct Sm80CollectiveMla {
 
   static constexpr int kRowsPerMMA = 2;
   static constexpr int kMmaThreads =
-      max(size(TiledMma_QK{}, size(TiledMma_PV{})));
+      max(size(TiledMma_QK{}), size(TiledMma_PV{}));
 
   // Shared memory LayoutAtom for differnt block sizes
   using SmemLayoutAtom_8x64 =
@@ -227,19 +223,6 @@ struct Sm80CollectiveMla {
 
   // Host side arguments
   struct Arguments {
-    // mask
-    int sliding_window = -1;
-
-    // softcap
-    float logits_soft_cap = 0.0;
-
-    // softmax scaling
-    float sm_scale = 1.0;
-    float sm_scale_log2 = 0.0;
-
-    // alibi: (n_heads)
-    const float* __restrict__ alibi_slopes_ptr = nullptr;
-
     FastDivmod group_size;
   };
 
@@ -282,6 +265,7 @@ struct Sm80CollectiveMla {
     static_assert(is_gmem<TensorKR>::value,
                   "K_Rope tensor must be gmem resident.");
 
+    static constexpr int kRopeHeadDim = RopeHeadDim_;
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
     static constexpr int kBlockK = get<2>(TileShape{});

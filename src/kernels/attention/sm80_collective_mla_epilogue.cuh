@@ -13,13 +13,12 @@
 namespace llm {
 using namespace cute;
 
-template <class TileShape_, class Element_, int HeadDim_, bool EVEN_K_>
-struct Sm80CollectiveEpilogue {
+template <class TileShape_, class Element_, int HeadDim_>
+struct Sm80CollectiveMlaEpilogue {
   using TileShape = TileShape_;
   using Element = Element_;
 
   static constexpr int kHeadDim = HeadDim_;
-  static constexpr bool EVEN_K = EVEN_K_;
 
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockK = get<2>(TileShape{});
@@ -31,9 +30,16 @@ struct Sm80CollectiveEpilogue {
   using HEAD_DIM = Int<kHeadDim>;
   using STEPS = Int<kSteps>;
 
-  using SmemLayoutAtom_ =
+  // Shared memory LayoutAtom for differnt block sizes
+  using SmemLayoutAtom_8x64 =
       decltype(composition(Swizzle<3, 3, 3>{},
-                           Layout<Shape<_8, BLK_K>, Stride<BLK_K, _1>>{}));
+                           Layout<Shape<_8, _64>, Stride<_64, _1>>{}));
+  using SmemLayoutAtom_8x32 =
+      decltype(composition(Swizzle<2, 3, 3>{},
+                           Layout<Shape<_8, _32>, Stride<_32, _1>>{}));
+  using SmemLayoutAtom_ = std::conditional_t<kBlockK % 64 == 0,
+                                             SmemLayoutAtom_8x64,
+                                             SmemLayoutAtom_8x32>;
 
   // Q smem: (BLK_M, HEAD_DIM)
   using SmemLayoutO =
@@ -45,17 +51,11 @@ struct Sm80CollectiveEpilogue {
   // r2s copy atom for O
   using SmemCopyAtom_ = Copy_Atom<VectorizingCopy_, Element>;
 
-  // Thr layout for gmem copy
-  using GmemCopyThrLayout_ =
-      std::conditional_t<kBlockK == 32,
-                         Layout<Shape<_32, _4>, Stride<_4, _1>>,
-                         Layout<Shape<_16, _8>, Stride<_8, _1>>>;
-
   // s2g tiled copy for O
   using GmemTiledCopyO = decltype(make_tiled_copy(
       Copy_Atom<VectorizingCopy_, Element>{},
-      GmemCopyThrLayout_{},    // Thr layout: (_16,_8)/(_32, _4)
-      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
+      Layout<Shape<_32, _8>, Stride<_8, _1>>{},  // Thr layout: (_32, _8)
+      Layout<Shape<_1, _8>>{}                    // Val layout: 8 vals per read
       ));
 
   struct SharedStorage : cute::aligned_struct<128> {
@@ -76,22 +76,24 @@ struct Sm80CollectiveEpilogue {
             class TensorO,
             class BlockCoordMNK,
             class ProblemShapeMNK>
-  CUTE_DEVICE void operator()(const Params& /*params*/,
-                              const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N)
-                              TiledMma tiled_mma,
-                              TensorO& gO,  // (BLK_M, HEAD_DIM)
-                              int tidx,
-                              const BlockCoordMNK& block_coord_mnk,
-                              const ProblemShapeMNK& problem_shape_mnk,
-                              char* smem) {
+  CUTE_DEVICE void operator()(
+      const Params& /*params*/,
+      const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N, k)
+      TiledMma tiled_mma,
+      TensorO& gO,  // (BLK_M, BLK_K, k)
+      int tidx,
+      const BlockCoordMNK& block_coord_mnk,
+      const ProblemShapeMNK& problem_shape_mnk,
+      char* smem) {
     static constexpr int kBlockM = get<0>(TileShape{});
+    static constexpr int kBlockK = get<2>(TileShape{});
 
     const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord_mnk;
     const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
 
     // Smem
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
-    // (BLK_M, HEAD_DIM)
+    // (BLK_M, BLK_K, k)
     Tensor sO = make_tensor(make_smem_ptr(ss.smem_o.data()), SmemLayoutO{});
 
     // 1. cast output from ElementAccumulator to Element
@@ -105,24 +107,29 @@ struct Sm80CollectiveEpilogue {
     auto tSsO = smem_thr_copy_O.partition_D(sO);
     cute::copy(smem_tiled_copy_O, tSrO, tSsO);
 
+    // wait for smem copy done before gmem copy
+    __syncthreads();
+
     // 3. copy output from smem to gmem
     GmemTiledCopyO gmem_tiled_copy_O;
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-    // (BLK_M, HEAD_DIM) -> (blk_m, head_dim)
-    auto cO = make_identity_tensor(Shape<BLK_M, HEAD_DIM>{});
+    // (BLK_M, BLK_K) -> (blk_m, blk_k)
+    auto cO = make_identity_tensor(Shape<BLK_M, BLK_K>{});
 
-    auto tOsO = gmem_thr_copy_O.partition_S(sO);  // (CPY,CPY_M,CPY_K)
-    auto tOgO = gmem_thr_copy_O.partition_D(gO);  // (CPY,CPY_M,CPY_K)
-    // (CPY,CPY_M,CPY_K) -> (blk_m, head_dim)
+    auto tOsO = gmem_thr_copy_O.partition_S(sO);  // (CPY,CPY_M,CPY_K, k)
+    auto tOgO = gmem_thr_copy_O.partition_D(gO);  // (CPY,CPY_M,CPY_K, k)
+
+    // (CPY,CPY_M,CPY_K) -> (blk_m, blk_k)
     auto tOcO = gmem_thr_copy_O.partition_D(cO);
 
     auto max_coord_O =
         make_coord(q_packed_len - m_block_idx * kBlockM, kBlockK);
 
-    // wait for smem copy done before gmem copy
-    __syncthreads();
-    safe_copy</*EVEN_M=*/false, EVEN_K, /*ZFILL_M=*/false, /*ZFILL_K=*/false>(
+    safe_copy</*EVEN_M=*/false,
+              /*EVEN_K=*/true,
+              /*ZFILL_M=*/false,
+              /*ZFILL_K=*/false>(
         gmem_tiled_copy_O, tOsO, tOgO, tOcO, max_coord_O);
   }
 };
