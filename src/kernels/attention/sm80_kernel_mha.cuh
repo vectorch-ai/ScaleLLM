@@ -84,21 +84,29 @@ class Sm80KernelMha {
       const int q_packed_len = size<0>(Q);
       const int kv_len = size<0>(K);
       const int head_dim = params.head_dim;
-      auto problem_shape_mnk = make_shape(q_packed_len, kv_len, head_dim);
-
       if (m_block_idx * kBlockM >= q_packed_len) {
         // m out of bound, skip this block
         continue;
       }
+      const auto residue_mnk = make_tuple(q_packed_len, kv_len, head_dim);
 
       // (BLK_M, HEAD_DIM)
       Tensor gQ = local_tile(
           Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
       Tensor gO = local_tile(
           O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
+      // (BLK_M, HEAD_DIM) => (M, K)
+      Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
+                             Shape<BLK_M, HEAD_DIM>{},
+                             make_coord(m_block_idx, _0{}));
+
       // (BLK_N, HEAD_DIM, n)
       Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
       Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
+      // (BLK_N, HEAD_DIM, n) => (N, K)
+      Tensor cKV = local_tile(make_identity_tensor(K.shape()),
+                              Shape<BLK_N, HEAD_DIM>{},
+                              make_coord(_, _0{}));
 
       TiledMma tiled_mma;
       // accumulator: MMA,MMA_M,MMA_K)
@@ -111,24 +119,20 @@ class Sm80KernelMha {
       // mainloop
       mha(mainloop_params,
           gQ,
+          cQ,
           gK,
           gV,
+          cKV,
           tOrAccO,
           softmax,
           tidx,
           block_coord,
-          problem_shape_mnk,
+          residue_mnk,
           smem);
 
       // epilogue
-      epilogue(epilogue_params,
-               tOrAccO,
-               tiled_mma,
-               gO,
-               tidx,
-               block_coord,
-               problem_shape_mnk,
-               smem);
+      epilogue(
+          epilogue_params, tOrAccO, tiled_mma, gO, cQ, tidx, residue_mnk, smem);
     }
   }
 };
