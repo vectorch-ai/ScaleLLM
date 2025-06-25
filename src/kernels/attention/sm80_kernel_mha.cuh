@@ -218,6 +218,7 @@ class Sm80KernelMha {
     EpilogueParams epilogue_params;
 
     // process each block
+    const auto& group_size = params.group_size;
     for (const auto block_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
       const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
@@ -232,12 +233,15 @@ class Sm80KernelMha {
       // problem shape
       const int q_packed_len = size<0>(Q);
       const int kv_len = size<0>(K);
-      const int head_dim = params.head_dim;
-      if (m_block_idx * kBlockM >= q_packed_len) {
+      const int m_block_base = m_block_idx * kBlockM;
+      if (m_block_base >= q_packed_len) {
         // m out of bound, skip this block
         continue;
       }
-      const auto residue_mnk = make_tuple(q_packed_len, kv_len, head_dim);
+
+      const int q_idx = m_block_base / group_size;
+      const auto residue_mnk =
+          make_tuple(q_packed_len, kv_len, params.head_dim);
 
       // (BLK_M, HEAD_DIM)
       Tensor gQ = local_tile(
@@ -257,6 +261,12 @@ class Sm80KernelMha {
                               Shape<BLK_N, HEAD_DIM>{},
                               make_coord(_, _0{}));
 
+      // (BLK_M, BLK_N, n) => (M, N)
+      Tensor cMN =
+          local_tile(make_identity_tensor(make_shape(q_packed_len, kv_len)),
+                     Shape<BLK_M, BLK_N>{},
+                     make_coord(m_block_idx, _));
+
       TiledMma tiled_mma;
       // accumulator: MMA,MMA_M,MMA_K)
       auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
@@ -266,16 +276,18 @@ class Sm80KernelMha {
       OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
 
       // mainloop
+      const auto blk_coord = make_coord(q_idx, kv_head_idx);
       mha(mainloop_params,
           gQ,
           cQ,
           gK,
           gV,
           cKV,
+          cMN,
           tOrAccO,
           softmax,
           tidx,
-          block_coord,
+          blk_coord,
           residue_mnk,
           smem);
 
