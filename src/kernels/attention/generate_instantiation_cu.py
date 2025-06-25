@@ -39,17 +39,18 @@ template void sm80_launch_mha_kernel</*DTYPE=*/{DTYPE},
 """
 
 MLA_KERNEL_TEMPLATE = """
-#include "mla_kernel_sm80.cuh"  // IWYU pragma: export
+#include "sm80_mla_launch.cuh"  // IWYU pragma: export
 #include "mla_params.h"         // IWYU pragma: export
-#include "mla_traits_sm80.h"    // IWYU pragma: export
 
 namespace llm {{
 
-using Traits = MLATraitsSM80<{DTYPE}, {HEAD_DIM}, {ROPE_HEAD_DIM}, {BLK_M}, {BLK_N}, {BLK_K}, {STAGES}>;
 using Params = MLAPagedKVParams;
 
-template void launch_mla_kernel_sm80<Traits, Params>(const Params& params,
-                                                     cudaStream_t stream);
+template void sm80_launch_mla_kernel</*DTYPE=*/{DTYPE},
+                                     /*HEAD_DIM=*/{HEAD_DIM},
+                                     /*ROPE_HEAD_DIM=*/{ROPE_HEAD_DIM},
+                                     Params>(const Params& params,
+                                             cudaStream_t stream);
 }}  // namespace llm
 """
 
@@ -87,28 +88,18 @@ class MLAKernel:
     dtype: str
     head_dim: int
     rope_head_dim: int
-    blk_m: int
-    blk_n: int
-    blk_k: int
-    stages: int
 
     @property
     def template(self) -> str:
-        assert self.head_dim % self.blk_k == 0
-
         return MLA_KERNEL_TEMPLATE.format(
             DTYPE=DTYPE_MAP[self.dtype],
             HEAD_DIM=self.head_dim,
             ROPE_HEAD_DIM=self.rope_head_dim,
-            BLK_M=self.blk_m,
-            BLK_N=self.blk_n,
-            BLK_K=self.blk_k,
-            STAGES=self.stages,
         )
 
     @property
     def filename(self) -> str:
-        return f"mla_{self.dtype}_hd{self.head_dim}_rhd{self.rope_head_dim}_m{self.blk_m}_n{self.blk_n}_k{self.blk_k}_s{self.stages}_sm80.cu"
+        return f"sm80_mla_{self.dtype}_hd{self.head_dim}_rhd{self.rope_head_dim}.cu"
 
 
 def gen_mha_kernels() -> Iterator[MHAKernel]:
@@ -141,25 +132,15 @@ def gen_mha_kernels() -> Iterator[MHAKernel]:
 def gen_mla_kernels() -> Iterator[MLAKernel]:
     # TODO: choose BLK_M, BLK_N, BLK_K, STAGES based on compute capability
     # mla kernel instantiations
-    for dtype, head_dim, rope_head_dim, (
-        blk_m,
-        blk_n,
-        blk_k,
-        stages,
-    ) in itertools.product(
+    for dtype, head_dim, rope_head_dim in itertools.product(
         ["fp16", "bf16"],  # dtype
         [512],  # head_dim
         [64],  # rope_head_dim
-        [(64, 16, 128, 1)],  # blk_m, blk_n, blk_k, stages
     ):
         yield MLAKernel(
             dtype=dtype,
             head_dim=head_dim,
             rope_head_dim=rope_head_dim,
-            blk_m=blk_m,
-            blk_n=blk_n,
-            blk_k=blk_k,
-            stages=stages,
         )
 
 
