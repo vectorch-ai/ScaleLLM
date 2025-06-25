@@ -208,7 +208,6 @@ class Sm80KernelMla {
 
     // process each block
     const auto& group_size = params.group_size;
-
     for (const auto block_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
       const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
@@ -224,17 +223,16 @@ class Sm80KernelMla {
 
       // problem shape
       const int q_packed_len = size<0>(Q);
-      const int q_len = q_packed_len / group_size;
       const int kv_len = size<0>(KV);
+      const int m_block_base = m_block_idx * kBlockM;
 
-      if (m_block_idx * kBlockM >= size<0>(Q)) {
+      if (m_block_base >= q_packed_len) {
         // m out of bound, return
         return;
       }
-
-      const auto head_dim = params.head_dim;
-      auto problem_shape_mnk = make_shape(q_packed_len, kv_len, head_dim);
-      const auto residue_mnk = make_tuple(q_packed_len, kv_len, head_dim);
+      const int q_idx = m_block_base / group_size;
+      const auto residue_mnk =
+          make_tuple(q_packed_len, kv_len, params.head_dim);
       const auto rope_residue_mnk =
           make_tuple(q_packed_len, kv_len, ROPE_HEAD_DIM{});
 
@@ -269,6 +267,12 @@ class Sm80KernelMla {
                                   Shape<BLK_N, ROPE_HEAD_DIM>{},
                                   make_coord(_, _0{}));
 
+      // (BLK_M, BLK_N, n) => (M, N)
+      Tensor cMN =
+          local_tile(make_identity_tensor(make_shape(q_packed_len, kv_len)),
+                     Shape<BLK_M, BLK_N>{},
+                     make_coord(m_block_idx, _));
+
       TiledMma_PV tiled_mma_pv;
       // accumulator: MMA,MMA_M,MMA_K, k)
       auto tOrAccO =
@@ -279,6 +283,7 @@ class Sm80KernelMla {
       OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
 
       // mainloop
+      const auto blk_coord = make_coord(q_idx, _0{});
       mha(mainloop_params,
           gQ,
           cQ,
@@ -288,10 +293,11 @@ class Sm80KernelMla {
           cQ_rope,
           gK_rope,
           cK_rope,
+          cMN,
           tOrAccO,
           softmax,
           tidx,
-          block_coord,
+          blk_coord,
           residue_mnk,
           rope_residue_mnk,
           smem);

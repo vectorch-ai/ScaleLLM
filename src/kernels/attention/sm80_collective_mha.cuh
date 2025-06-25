@@ -148,9 +148,10 @@ struct Sm80CollectiveMha {
             class TensorK,
             class TensorV,
             class TensorCKV,
+            class TensorCMN,
             class FrgTensor,
             class Softmax,
-            class BlockCoordMNK,
+            class BlockCoord,
             class ResidueMNK>
   CUTE_DEVICE void operator()(
       const Params& params,
@@ -159,10 +160,11 @@ struct Sm80CollectiveMha {
       const TensorK& gK,     // (BLK_N, HEAD_DIM, n)
       const TensorV& gV,     // (BLK_N, HEAD_DIM, n)
       const TensorCKV& cKV,  // (BLK_N, HEAD_DIM, n) => (N, K)
+      const TensorCMN& cMN,  // (BLK_M, BLK_N, n) => (M, N)
       FrgTensor& tOrO,       // (MMA, MMA_M, MMA_N)
       Softmax& softmax,
       int tidx,
-      const BlockCoordMNK& block_coord_mnk,
+      const BlockCoord& blk_coord,
       const ResidueMNK& residue_mnk,  // (M, N, K)
       char* smem) {
     static_assert(is_rmem<FrgTensor>::value,
@@ -174,7 +176,8 @@ struct Sm80CollectiveMha {
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
 
-    const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord_mnk;
+    const int q_idx = get<0>(blk_coord);
+    const int kv_head_idx = get<1>(blk_coord);
     const int q_packed_len = get<0>(residue_mnk);
     const int kv_len = get<1>(residue_mnk);
 
@@ -342,7 +345,7 @@ struct Sm80CollectiveMha {
     auto tOrO_mn =
         make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
 
-    const int diagonal = (m_block_idx * kBlockM) / group_size + kv_len - q_len;
+    const int diagonal = q_idx + kv_len - q_len;
     // process kv in range: [kv_idx_min, kv_idx_max)
     const int kv_idx_min = std::max(0, diagonal - sliding_window);
     const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
@@ -387,30 +390,32 @@ struct Sm80CollectiveMha {
 
     // attention score accumulator, (MMA,MMA_M,MMA_N)
     auto tSrS = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_N>{});
+    // ((2, MMA_M), (2, MMA_N))
     auto tSrS_mn =
         make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
 
     // identity tensor for score accumulator
-    auto tScS =
-        thr_mma.partition_C(make_identity_tensor(Shape<BLK_M, BLK_N>{}));
-    auto tScS_mn =
-        make_tensor(tScS.data(), LayoutConvertor::to_mn(tScS.layout()));
+    // (MMA, MMA_M, MMA_N, n)
+    auto tScMN = thr_mma.partition_C(cMN);
+    // ((2, MMA_M), (2, MMA_N), n) => (M, N)
+    auto tScMN_mn =
+        make_tensor(tScMN.data(), LayoutConvertor::to_mns(tScMN.layout()));
 
     constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
     using Mask = Mask<kRowsPerThr, ALIBI, LOCAL>;
     Mask mask(q_len, kv_len, group_size, sliding_window);
     if constexpr (ALIBI) {
-      mask.init_alibi(tScS_mn,
-                      m_block_idx * kBlockM,
-                      kv_head_idx,
-                      sm_scale,
-                      params.alibi_slopes_ptr);
+      const auto tScS_mn = tScMN_mn(_, _, _0{});
+      mask.init_alibi(tScS_mn, kv_head_idx, sm_scale, params.alibi_slopes_ptr);
     }
 
     CUTE_NO_UNROLL
     for (int i = 0; i < n_blocks; ++i) {
-      const int n_block_idx = n_block_max - 1 - i;
+      const int ni = n_block_max - 1 - i;
       clear(tSrS);
+
+      // ((2, MMA_M), (2, MMA_N)) => (M, N)
+      const auto tScS_mn = tScMN_mn(_, _, ni);
 
       // wait key, queue: [q, k] => []
       cp_async_wait<0>();
@@ -418,9 +423,9 @@ struct Sm80CollectiveMha {
 
       // produce value, [] => [v]
       if (i == 0) {
-        produce_value(n_block_idx);
+        produce_value(ni);
       } else {
-        produce_value_no_oob(n_block_idx);
+        produce_value_no_oob(ni);
       }
       cp_async_fence();
 
@@ -436,17 +441,15 @@ struct Sm80CollectiveMha {
       }
 
       if (i < n_oob_mask) {
-        mask.template apply</*OOB_MASK=*/true>(
-            tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
+        mask.template apply</*OOB_MASK=*/true>(tSrS_mn, tScS_mn);
       } else {
-        mask.template apply</*OOB_MASK=*/false>(
-            tSrS_mn, tScS_mn, m_block_idx * kBlockM, n_block_idx * kBlockN);
+        mask.template apply</*OOB_MASK=*/false>(tSrS_mn, tScS_mn);
       }
       softmax.rescale(tSrS_mn, tOrO_mn);
 
       // produce next key: [] => [k]
-      if (n_block_idx > n_block_min) {
-        produce_key_no_oob(n_block_idx - 1);
+      if (ni > n_block_min) {
+        produce_key_no_oob(ni - 1);
       }
       cp_async_fence();
 

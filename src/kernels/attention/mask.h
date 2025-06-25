@@ -32,16 +32,15 @@ struct Mask {
 
   // cS_mn: ((2, MMA_M), (2, MMA_N))
   template <typename IdentityS>
-  CUTE_HOST_DEVICE void init_alibi(IdentityS& cS_mn,
-                                   int m_base_idx,
-                                   int kv_head_idx,
-                                   float sm_scale,
-                                   const float* alibi_slops_ptr) {
+  CUTE_HOST_DEVICE void init_alibi(
+      IdentityS& cS_mn,  // ((2, MMA_M), (2, MMA_N)) => (M, N)
+      int kv_head_idx,
+      float sm_scale,
+      const float* alibi_slops_ptr) {
     // copy alibi slopes to registers
     CUTE_UNROLL
     for (int i = 0; i < size<0>(cS_mn); ++i) {
-      const auto [m, n] = cS_mn(i, _0{});
-      const int q_packed_idx = m_base_idx + m;
+      const int q_packed_idx = get<0>(cS_mn(i, _0{}));
       const int offset = q_packed_idx % group_size_;
       const int head_idx = kv_head_idx * group_size_ + offset;
       alibi_slopes_(i) = alibi_slops_ptr[head_idx] / sm_scale;
@@ -49,19 +48,19 @@ struct Mask {
   }
 
   // rS_mn/cS_mn: ((2, MMA_M), (2, MMA_N))
-  template <bool OOB_MASK = true, typename FragmentS, typename IdentityS>
-  CUTE_HOST_DEVICE void apply(FragmentS& rS_mn,
-                              IdentityS& cS_mn,
-                              int m_base_idx,
-                              int n_base_idx) const {
+  template <bool OOB_MASK, typename FragmentS, typename IdentityS>
+  CUTE_HOST_DEVICE void apply(
+      FragmentS& rS_mn,  // ((2, MMA_M), (2, MMA_N))
+      IdentityS& cS_mn   // ((2, MMA_M), (2, MMA_N)) => (M, N)
+  ) const {
     CUTE_UNROLL
     for (int i = 0; i < size<0>(rS_mn); ++i) {
       const auto alibi_slope = ALIBI ? alibi_slopes_(i) : 0.0f;
       CUTE_UNROLL
       for (int j = 0; j < size<1>(rS_mn); ++j) {
-        auto [m, n] = cS_mn(i, j);
-        const int q_packed_idx = m_base_idx + m;
-        const int kv_idx = n_base_idx + n;
+        const auto [m, n] = cS_mn(i, j);
+        const int q_packed_idx = m;
+        const int kv_idx = n;
 
         const int q_idx = q_packed_idx / group_size_ + diagonal_offset_;
 

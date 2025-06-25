@@ -244,9 +244,10 @@ struct Sm80CollectiveMla {
             class TensorCQR,
             class TensorKR,
             class TensorCKR,
+            class TensorCMN,
             class FrgTensor,
             class Softmax,
-            class BlockCoordMNK,
+            class BlockCoord,
             class ResidueMNK,
             class RopeResidueMNK>
   CUTE_DEVICE void operator()(
@@ -259,10 +260,11 @@ struct Sm80CollectiveMla {
       const TensorCQR& cQ_rope,  // (BLK_M, ROPE_HEAD_DIM) =>(M, K)
       const TensorKR& gK_rope,   // (BLK_N, HEAD_DIM, n)
       const TensorCKR& cK_rope,  // (BLK_N, HEAD_DIM, n) => (N, K)
+      const TensorCMN& cMN,      // (BLK_M, BLK_N, n) => (M, N)
       FrgTensor& tOrO,           // (BLK_N, ROPE_HEAD_DIM, n)
       Softmax& softmax,
       int tidx,
-      const BlockCoordMNK& block_coord_mnk,
+      const BlockCoord& blk_coord,
       const ResidueMNK& residue_mnk,
       const RopeResidueMNK& rope_residue_mnk,
       char* smem) {
@@ -279,12 +281,11 @@ struct Sm80CollectiveMla {
     static constexpr int kBlockN = get<1>(TileShape{});
     static constexpr int kBlockK = get<2>(TileShape{});
 
-    const int m_block_idx = get<1>(block_coord_mnk);
+    const int q_idx = get<0>(blk_coord);
     const int q_packed_len = get<0>(residue_mnk);
     const int kv_len = get<1>(residue_mnk);
 
     const auto& group_size = params.group_size;
-
     const int q_len = q_packed_len / group_size;
 
     // Construct shared memory tiles
@@ -595,7 +596,7 @@ struct Sm80CollectiveMla {
 
     const int n_block_min = 0;
     // process kv in range: [0, kv_idx_max)
-    const int diagonal = (m_block_idx * kBlockM) / group_size + kv_len - q_len;
+    const int diagonal = q_idx + kv_len - q_len;
     const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
     const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
 
@@ -651,12 +652,15 @@ struct Sm80CollectiveMla {
     // ###############  Mainloop  ###############
     // attention score accumulator, (MMA,MMA_M,MMA_N)
     auto tSrS = partition_fragment_C(tiled_mma_qk, Shape<BLK_M, BLK_N>{});
-    auto tScS =
-        thr_mma_qk.partition_C(make_identity_tensor(Shape<BLK_M, BLK_N>{}));
+    // ((2, MMA_M), (2, MMA_N))
     auto tSrS_mn =
         make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
-    auto tScS_mn =
-        make_tensor(tScS.data(), LayoutConvertor::to_mn(tScS.layout()));
+
+    // (MMA, MMA_M, MMA_N, n) => (M, N)
+    auto tScMN = thr_mma_qk.partition_C(cMN);
+    // ((2, MMA_M), (2, MMA_N), n) => (M, N)
+    auto tScMN_mn =
+        make_tensor(tScMN.data(), LayoutConvertor::to_mns(tScMN.layout()));
 
     constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
     using Mask = Mask<kRowsPerThr, /*ALIBI=*/false, /*LOCAL=*/false>;
@@ -669,6 +673,9 @@ struct Sm80CollectiveMla {
     for (int i = 0; i < n_blocks; ++i) {
       const int ni = n_block_max - 1 - i;
       clear(tSrS);
+
+      // ((2, MMA_M), (2, MMA_N)) => (M, N)
+      const auto tScS_mn = tScMN_mn(_, _, ni);
 
       cp_async_wait<kWait>();
       __syncthreads();
@@ -689,10 +696,9 @@ struct Sm80CollectiveMla {
 
       // apply mask
       if (i < n_oob_mask) {
-        mask.apply(tSrS_mn, tScS_mn, m_block_idx * kBlockM, ni * kBlockN);
+        mask.apply</*OOB_MASK=*/true>(tSrS_mn, tScS_mn);
       } else {
-        mask.apply</*OOB_MASK=*/false>(
-            tSrS_mn, tScS_mn, m_block_idx * kBlockM, ni * kBlockN);
+        mask.apply</*OOB_MASK=*/false>(tSrS_mn, tScS_mn);
       }
 
       softmax.rescale(tSrS_mn, tOrO_mn, reduce_rowmax);
