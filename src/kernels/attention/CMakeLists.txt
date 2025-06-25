@@ -11,16 +11,13 @@ cc_library(
     layout_convertor.h
     fast_cast.cuh
     online_softmax.cuh
+    safe_copy.h
     mask.h
     static_dispatch.h
     mha_params.h
     mha_tile.h
-    mha_kernel_sm80.cuh
-    sm80_mha_dispatch.cuh
     mla_params.h
     mla_tile.h
-    mla_traits_sm80.h
-    mla_kernel_sm80.cuh
     attn_combine_kernel.cuh
   DEPS
     cutlass
@@ -74,9 +71,8 @@ cc_test(
   NAME
     mla_kernel_test
   SRCS
-    # mla_traits_test.cpp
-    # mla_kernel_sm80_test.cu
-    mla_kernel_sm80_pagedkv_test.cu
+    sm80_mla_test.cu
+    sm80_mla_pagedkv_test.cu
   DEPS
     :attention.template
     absl::random_random
@@ -117,7 +113,7 @@ nvbench_binary(
 
 nvbench_binary(
   NAME
-    mla_sm80_bench
+    sm80_mla_bench
   SRCS
     mla_sm80_bench.cu
   DEPS

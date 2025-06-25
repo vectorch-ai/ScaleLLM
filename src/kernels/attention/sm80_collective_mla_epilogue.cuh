@@ -7,8 +7,8 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute_extensions.cuh"
 #include "fast_cast.cuh"
+#include "safe_copy.h"
 
 namespace llm {
 using namespace cute;
@@ -74,22 +74,19 @@ struct Sm80CollectiveMlaEpilogue {
   template <class FrgTensor,
             class TiledMma,
             class TensorO,
-            class BlockCoordMNK,
-            class ProblemShapeMNK>
+            class TensorCO,
+            class ResidueMNK>
   CUTE_DEVICE void operator()(
       const Params& /*params*/,
       const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N, k)
       TiledMma tiled_mma,
-      TensorO& gO,  // (BLK_M, BLK_K, k)
+      TensorO& gO,         // (BLK_M, BLK_K, k)
+      const TensorCO& cO,  // (BLK_M, BLK_K, k) => (m, k)
       int tidx,
-      const BlockCoordMNK& block_coord_mnk,
-      const ProblemShapeMNK& problem_shape_mnk,
+      const ResidueMNK& residue_mnk,
       char* smem) {
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockK = get<2>(TileShape{});
-
-    const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord_mnk;
-    const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
 
     // Smem
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
@@ -114,23 +111,17 @@ struct Sm80CollectiveMlaEpilogue {
     GmemTiledCopyO gmem_tiled_copy_O;
     auto gmem_thr_copy_O = gmem_tiled_copy_O.get_thread_slice(tidx);
 
-    // (BLK_M, BLK_K) -> (blk_m, blk_k)
-    auto cO = make_identity_tensor(Shape<BLK_M, BLK_K>{});
-
     auto tOsO = gmem_thr_copy_O.partition_S(sO);  // (CPY,CPY_M,CPY_K, k)
     auto tOgO = gmem_thr_copy_O.partition_D(gO);  // (CPY,CPY_M,CPY_K, k)
 
-    // (CPY,CPY_M,CPY_K) -> (blk_m, blk_k)
+    // (CPY,CPY_M,CPY_K, k) -> (m, k)
     auto tOcO = gmem_thr_copy_O.partition_D(cO);
-
-    auto max_coord_O =
-        make_coord(q_packed_len - m_block_idx * kBlockM, kBlockK);
-
+    auto residue_mk = select<0, 2>(residue_mnk);
     safe_copy</*EVEN_M=*/false,
               /*EVEN_K=*/true,
               /*ZFILL_M=*/false,
               /*ZFILL_K=*/false>(
-        gmem_tiled_copy_O, tOsO, tOgO, tOcO, max_coord_O);
+        gmem_tiled_copy_O, tOsO, tOgO, tOcO, residue_mk);
   }
 };
 }  // namespace llm

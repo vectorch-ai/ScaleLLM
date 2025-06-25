@@ -94,21 +94,40 @@ class Sm80KernelMla {
 
       const auto head_dim = params.head_dim;
       auto problem_shape_mnk = make_shape(q_packed_len, kv_len, head_dim);
+      const auto residue_mnk = make_tuple(q_packed_len, kv_len, head_dim);
+      const auto rope_residue_mnk =
+          make_tuple(q_packed_len, kv_len, ROPE_HEAD_DIM{});
 
       // (BLK_M, BLK_K, k)
       Tensor gQ =
           local_tile(Q, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _));
       Tensor gO =
           local_tile(O, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _));
+      // (BLK_M, BLK_K, k) => (M, K)
+      Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
+                             Shape<BLK_M, BLK_K>{},
+                             make_coord(m_block_idx, _));
       // (BLK_N, BLK_K, n, k)
       Tensor gKV = local_tile(KV, Shape<BLK_N, BLK_K>{}, make_coord(_, _));
+      // (BLK_N, BLK_K, n, k) => (N, K)
+      Tensor cKV = local_tile(make_identity_tensor(KV.shape()),
+                              Shape<BLK_N, BLK_K>{},
+                              make_coord(_, _));
 
       // (BLK_M, ROPE_HEAD_DIM)
       Tensor gQ_rope = local_tile(
           Q_ROPE, Shape<BLK_M, ROPE_HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
+      // (BLK_M, ROPE_HEAD_DIM) => (M, K)
+      Tensor cQ_rope = local_tile(make_identity_tensor(Q_ROPE.shape()),
+                                  Shape<BLK_M, ROPE_HEAD_DIM>{},
+                                  make_coord(m_block_idx, _0{}));
       // (BLK_N, ROPE_HEAD_DIM, n)
       Tensor gK_rope = local_tile(
           K_ROPE, Shape<BLK_N, ROPE_HEAD_DIM>{}, make_coord(_, _0{}));
+      // (BLK_N, ROPE_HEAD_DIM, n) => (N, K)
+      Tensor cK_rope = local_tile(make_identity_tensor(K_ROPE.shape()),
+                                  Shape<BLK_N, ROPE_HEAD_DIM>{},
+                                  make_coord(_, _0{}));
 
       TiledMma_PV tiled_mma_pv;
       // accumulator: MMA,MMA_M,MMA_K, k)
@@ -122,14 +141,19 @@ class Sm80KernelMla {
       // mainloop
       mha(mainloop_params,
           gQ,
+          cQ,
           gKV,
+          cKV,
           gQ_rope,
+          cQ_rope,
           gK_rope,
+          cK_rope,
           tOrAccO,
           softmax,
           tidx,
           block_coord,
-          problem_shape_mnk,
+          residue_mnk,
+          rope_residue_mnk,
           smem);
 
       // epilogue
@@ -137,9 +161,9 @@ class Sm80KernelMla {
                tOrAccO,
                tiled_mma_pv,
                gO,
+               cQ,
                tidx,
-               block_coord,
-               problem_shape_mnk,
+               residue_mnk,
                smem);
     }
   }

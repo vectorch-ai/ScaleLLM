@@ -10,44 +10,6 @@
 namespace llm {
 using namespace cute;
 
-// #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
-//   [&] {                                                    \
-//     if (HEAD_DIM_V == 128) {                               \
-//       constexpr static int HEAD_DIM_NAME = 128;            \
-//       constexpr static int BLK_M = 64;                     \
-//       constexpr static int BLK_N = 64;                     \
-//       constexpr static int BLK_K = 128;                    \
-//       constexpr static int STAGES = 2;                     \
-//       return __VA_ARGS__();                                \
-//     } else if (HEAD_DIM_V == 256) {                        \
-//       constexpr static int HEAD_DIM_NAME = 256;            \
-//       constexpr static int BLK_M = 64;                     \
-//       constexpr static int BLK_N = 32;                     \
-//       constexpr static int BLK_K = 128;                    \
-//       constexpr static int STAGES = 2;                     \
-//       return __VA_ARGS__();                                \
-//     } else if (HEAD_DIM_V == 512) {                        \
-//       constexpr static int HEAD_DIM_NAME = 512;            \
-//       constexpr static int BLK_M = 64;                     \
-//       constexpr static int BLK_N = 16;                     \
-//       constexpr static int BLK_K = 128;                    \
-//       constexpr static int STAGES = 1;                     \
-//       return __VA_ARGS__();                                \
-//     } else {                                               \
-//       assert(false);                                       \
-//     }                                                      \
-//   }()
-
-// #define DISPATCH_ROPE_HEAD_DIM_(ROPE_HEAD_DIM_V, ROPE_HEAD_DIM_NAME, ...) \
-//   [&] {                                                                   \
-//     if (ROPE_HEAD_DIM_V == 64) {                                          \
-//       constexpr static int ROPE_HEAD_DIM_NAME = 64;                       \
-//       return __VA_ARGS__();                                               \
-//     } else {                                                              \
-//       assert(false);                                                      \
-//     }                                                                     \
-//   }()
-
 #define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, TYPE_NAME, ...) \
   [&] {                                                    \
     if (TORCH_DTYPE == torch::kHalf) {                     \

@@ -73,15 +73,15 @@ template <bool EVEN_MN,
           class TensorS,
           class TensorD,
           class TensorC,
-          class Coord,
+          class Residue,
           __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
                           TensorC::rank == 3)>
 CUTE_HOST_DEVICE void safe_copy(
     const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const TensorS& src,       // (CPY, CPY_M/N, CPY_K)
     TensorD& dst,             // (CPY, CPY_M/N, CPY_K)
-    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
-    const Coord& max_coord    // max_coord(blk_m/n, blk_k)
+    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (m/n, k)
+    const Residue& residue    // (m/n, k)
 ) {
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
@@ -96,10 +96,10 @@ CUTE_HOST_DEVICE void safe_copy(
     // handle both m/n and k oob
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
+      if (elem_less<0>(identity(_0{}, mi, _0{}), residue)) {
         CUTE_UNROLL
         for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+          if (elem_less<1>(identity(_0{}, _0{}, ki), residue)) {
             copy(copy_atom, src(_, mi, ki), dst(_, mi, ki));
           } else if constexpr (ZFILL_K) {
             zfill(copy_atom, src(_, mi, ki), dst(_, mi, ki));
@@ -111,7 +111,7 @@ CUTE_HOST_DEVICE void safe_copy(
         // still need to handle k oob even if m/n is not zfilled
         CUTE_UNROLL
         for (int ki = 0; ki < size<2>(src); ++ki) {
-          if (!elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+          if (!elem_less<1>(identity(_0{}, _0{}, ki), residue)) {
             zfill(copy_atom, src(_, mi, ki), dst(_, mi, ki));
           }
         }
@@ -121,7 +121,7 @@ CUTE_HOST_DEVICE void safe_copy(
     // only handle m/n oob
     CUTE_UNROLL
     for (int mi = 0; mi < size<1>(src); ++mi) {
-      if (elem_less<0>(identity(_0{}, mi, _0{}), max_coord)) {
+      if (elem_less<0>(identity(_0{}, mi, _0{}), residue)) {
         copy(copy_atom, src(_, mi, _), dst(_, mi, _));
       } else if constexpr (ZFILL_MN) {
         zfill(copy_atom, src(_, mi, _), dst(_, mi, _));
@@ -131,7 +131,7 @@ CUTE_HOST_DEVICE void safe_copy(
     // only handle k oob
     CUTE_UNROLL
     for (int ki = 0; ki < size<2>(src); ++ki) {
-      if (elem_less<1>(identity(_0{}, _0{}, ki), max_coord)) {
+      if (elem_less<1>(identity(_0{}, _0{}, ki), residue)) {
         copy(copy_atom, src(_, _, ki), dst(_, _, ki));
       } else if constexpr (ZFILL_K) {
         zfill(copy_atom, src(_, _, ki), dst(_, _, ki));
@@ -153,18 +153,18 @@ template <bool EVEN_MN,
           class TensorS,
           class TensorD,
           class TensorC,
-          class Coord,
+          class Residue,
           __CUTE_REQUIRES(TensorS::rank == 3 && TensorD::rank == 3 &&
                           TensorC::rank == 3)>
 CUTE_HOST_DEVICE void safe_copy(
     const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const TensorS& src,       // (CPY, CPY_M/N, CPY_K)
     TensorD&& dst,            // (CPY, CPY_M/N, CPY_K)
-    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
-    const Coord& max_coord    // max_coord(blk_m/n, blk_k)
+    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (m/n, k)
+    const Residue& residue    // (m/n, k)
 ) {
   safe_copy<EVEN_MN, EVEN_K, ZFILL_MN, ZFILL_K>(
-      tiled_copy, src, dst, identity, max_coord);
+      tiled_copy, src, dst, identity, residue);
 }
 
 template <bool EVEN_MN,
@@ -177,20 +177,23 @@ template <bool EVEN_MN,
           class TensorS,
           class TensorD,
           class TensorC,
-          class Coord,
+          class Residue,
           __CUTE_REQUIRES(TensorS::rank == 4 && TensorD::rank == 4 &&
-                          TensorC::rank == 3)>
+                          TensorC::rank == 4)>
 CUTE_HOST_DEVICE void safe_copy(
     const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const TensorS& src,       // (CPY, CPY_M/N, CPY_K, k)
     TensorD& dst,             // (CPY, CPY_M/N, CPY_K, k)
-    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (blk_m/n, blk_k)
-    const Coord& max_coord    // max_coord(blk_m/n, blk_k)
+    const TensorC& identity,  // (CPY, CPY_M/N, CPY_K) -> (m/n, k)
+    const Residue& residue    // (m/n, k)
 ) {
   CUTE_UNROLL
   for (int k = 0; k < size<3>(src); ++k) {
-    safe_copy<EVEN_MN, EVEN_K, ZFILL_MN, ZFILL_K>(
-        tiled_copy, src(_, _, _, k), dst(_, _, _, k), identity, max_coord);
+    safe_copy<EVEN_MN, EVEN_K, ZFILL_MN, ZFILL_K>(tiled_copy,
+                                                  src(_, _, _, k),
+                                                  dst(_, _, _, k),
+                                                  identity(_, _, _, k),
+                                                  residue);
   }
 }
 
@@ -202,15 +205,15 @@ template <bool EVEN_K,
           class TensorS,
           class TensorD,
           class TensorC,
-          class Coord,
+          class Residue,
           __CUTE_REQUIRES(TensorS::rank == 2 && TensorD::rank == 2 &&
                           TensorC::rank == 2)>
 CUTE_HOST_DEVICE void safe_copy(
     const TiledCopy<CopyAtom, TV, Tiler>& tiled_copy,
     const TensorS& src,       // (CPY, CPY_K)
     TensorD& dst,             // (CPY, CPY_K)
-    const TensorC& identity,  // (CPY, CPY_K) -> (blk_k)
-    const Coord& max_coord    // max_coord(blk_k)
+    const TensorC& identity,  // (CPY, CPY_K) -> (k)
+    const Residue& residue    // (k)
 ) {
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(dst));       // CPY == CPY
   CUTE_STATIC_ASSERT_V(size<0>(src) == size<0>(identity));  // CPY == CPY
@@ -223,7 +226,7 @@ CUTE_HOST_DEVICE void safe_copy(
     // handle k oob
     CUTE_UNROLL
     for (int ki = 0; ki < size<1>(src); ++ki) {
-      if (elem_less<0>(identity(_0{}, ki), max_coord)) {
+      if (elem_less<0>(identity(_0{}, ki), residue)) {
         copy(copy_atom, src(_, ki), dst(_, ki));
       } else if constexpr (ZFILL_K) {
         zfill(copy_atom, src(_, ki), dst(_, ki));

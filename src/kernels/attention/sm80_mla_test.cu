@@ -3,54 +3,12 @@
 
 #include <cstdint>
 #include <cute/layout.hpp>
-#include <iostream>
 
-#include "cute/numeric/numeric_types.hpp"
-#include "mla_kernel_sm80.cuh"
 #include "mla_params.h"
 #include "mla_ref.h"
-#include "mla_traits_sm80.h"
+#include "sm80_mla_dispatch.cuh"
 
 namespace llm {
-
-#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
-  [&] {                                                    \
-    if (HEAD_DIM_V == 128) {                               \
-      constexpr static int HEAD_DIM_NAME = 128;            \
-      constexpr static int BLK_M = 64;                     \
-      constexpr static int BLK_N = 64;                     \
-      constexpr static int BLK_K = 128;                    \
-      constexpr static int STAGES = 2;                     \
-      return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V == 256) {                        \
-      constexpr static int HEAD_DIM_NAME = 256;            \
-      constexpr static int BLK_M = 64;                     \
-      constexpr static int BLK_N = 32;                     \
-      constexpr static int BLK_K = 128;                    \
-      constexpr static int STAGES = 2;                     \
-      return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V == 512) {                        \
-      constexpr static int HEAD_DIM_NAME = 512;            \
-      constexpr static int BLK_M = 64;                     \
-      constexpr static int BLK_N = 16;                     \
-      constexpr static int BLK_K = 128;                    \
-      constexpr static int STAGES = 1;                     \
-      return __VA_ARGS__();                                \
-    } else {                                               \
-      assert(false);                                       \
-    }                                                      \
-  }()
-
-#define DISPATCH_ROPE_HEAD_DIM_(ROPE_HEAD_DIM_V, ROPE_HEAD_DIM_NAME, ...) \
-  [&] {                                                                   \
-    if (ROPE_HEAD_DIM_V == 64) {                                          \
-      constexpr static int ROPE_HEAD_DIM_NAME = 64;                       \
-      return __VA_ARGS__();                                               \
-    } else {                                                              \
-      assert(false);                                                      \
-    }                                                                     \
-  }()
-
 #define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, TYPE_NAME, ...) \
   [&] {                                                    \
     if (TORCH_DTYPE == torch::kHalf) {                     \
@@ -107,21 +65,7 @@ torch::Tensor mla_sm80(
   params.sm_scale = sm_scale;
   params.normalize();
 
-  DISPATCH_TORCH_DTYPE_(q.dtype(), DTYPE, [&] {
-    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      DISPATCH_ROPE_HEAD_DIM_(rope_head_dim, ROPE_HEAD_DIM, [&] {
-        using Traits = MLATraitsSM80<DTYPE,
-                                     HEAD_DIM,
-                                     ROPE_HEAD_DIM,
-                                     BLK_M,
-                                     BLK_N,
-                                     BLK_K,
-                                     STAGES>;
-
-        launch_mla_kernel_sm80<Traits>(params, nullptr);
-      });
-    });
-  });
+  DISPATCH_TORCH_DTYPE_(q.dtype(), DTYPE, [&] { sm80_run_mla<DTYPE>(params); });
   return out;
 }
 

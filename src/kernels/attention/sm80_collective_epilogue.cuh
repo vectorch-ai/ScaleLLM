@@ -7,8 +7,8 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute_extensions.cuh"
 #include "fast_cast.cuh"
+#include "safe_copy.h"
 
 namespace llm {
 using namespace cute;

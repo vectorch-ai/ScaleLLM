@@ -8,10 +8,10 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 #include "layout_convertor.h"
 #include "mask.h"
+#include "safe_copy.h"
 
 namespace llm {
 
@@ -106,11 +106,11 @@ struct Sm80CollectiveMla {
                                              SmemLayoutAtom_8x32>;
 
   // SMEM layout for Q/K/V/P
-  // Q smem: (BLK_M, BLK_K, STEPS)
+  // Q smem: (BLK_M, BLK_K, k)
   using SmemLayoutQ =
       decltype(tile_to_shape(SmemLayoutAtomK{}, Shape<BLK_M, BLK_K, STEPS>{}));
 
-  // KV smem: (BLK_N, BLK_K, STEPS, STAGES)
+  // KV smem: (BLK_N, BLK_K, k, STAGES)
   using SmemLayoutKV =
       decltype(tile_to_shape(SmemLayoutAtomK{},
                              Shape<BLK_N, BLK_K, STEPS, STAGES>{}));
@@ -119,7 +119,7 @@ struct Sm80CollectiveMla {
   using SmemLayoutP =
       decltype(tile_to_shape(SmemLayoutAtomN{}, Shape<BLK_M, BLK_N>{}));
 
-  // V^T smem: (BLK_K, BLK_N, STEPS, STAGES)
+  // V^T smem: (BLK_K, BLK_N, k, STAGES)
   using SmemLayoutVt = decltype(select<1, 0, 2, 3>(SmemLayoutKV{}));
 
   // QRope smem: (BLK_M, ROPE_HEAD_DIM)
@@ -237,24 +237,34 @@ struct Sm80CollectiveMla {
 
   // returns false if the block has been skipped
   template <class TensorQ,
+            class TensorCQ,
             class TensorKV,
+            class TensorCKV,
             class TensorQR,
+            class TensorCQR,
             class TensorKR,
+            class TensorCKR,
             class FrgTensor,
             class Softmax,
             class BlockCoordMNK,
-            class ProblemShapeMNK>
+            class ResidueMNK,
+            class RopeResidueMNK>
   CUTE_DEVICE void operator()(
       const Params& params,
-      const TensorQ& gQ,        // (BLK_M, BLK_K, k)
-      const TensorKV& gKV,      // (BLK_N, BLK_K, n, k)
-      const TensorQR& gQ_rope,  // (BLK_M, ROPE_HEAD_DIM)
-      const TensorKR& gK_rope,  // (BLK_N, HEAD_DIM, n)
-      FrgTensor& tOrO,          // (BLK_N, ROPE_HEAD_DIM, n)
+      const TensorQ& gQ,         // (BLK_M, BLK_K, k)
+      const TensorCQ& cQ,        // (BLK_M, BLK_K, k) => (M, K)
+      const TensorKV& gKV,       // (BLK_N, BLK_K, n, k)
+      const TensorCKV& cKV,      // (BLK_N, BLK_K, n, k) => (N, K)
+      const TensorQR& gQ_rope,   // (BLK_M, ROPE_HEAD_DIM)
+      const TensorCQR& cQ_rope,  // (BLK_M, ROPE_HEAD_DIM) =>(M, K)
+      const TensorKR& gK_rope,   // (BLK_N, HEAD_DIM, n)
+      const TensorCKR& cK_rope,  // (BLK_N, HEAD_DIM, n) => (N, K)
+      FrgTensor& tOrO,           // (BLK_N, ROPE_HEAD_DIM, n)
       Softmax& softmax,
       int tidx,
       const BlockCoordMNK& block_coord_mnk,
-      const ProblemShapeMNK& problem_shape_mnk,
+      const ResidueMNK& residue_mnk,
+      const RopeResidueMNK& rope_residue_mnk,
       char* smem) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
@@ -265,13 +275,13 @@ struct Sm80CollectiveMla {
     static_assert(is_gmem<TensorKR>::value,
                   "K_Rope tensor must be gmem resident.");
 
-    static constexpr int kRopeHeadDim = RopeHeadDim_;
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
     static constexpr int kBlockK = get<2>(TileShape{});
 
-    const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord_mnk;
-    const auto [q_packed_len, kv_len, head_dim] = problem_shape_mnk;
+    const int m_block_idx = get<1>(block_coord_mnk);
+    const int q_packed_len = get<0>(residue_mnk);
+    const int kv_len = get<1>(residue_mnk);
 
     const auto& group_size = params.group_size;
 
@@ -338,113 +348,115 @@ struct Sm80CollectiveMla {
     auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_slice(tidx);
 
     // coordinate tensor for oob handling
-    // (BLK_M, BLK_K) -> (blk_m, blk_k)
-    Tensor cQ = make_identity_tensor(Shape<BLK_M, BLK_K>{});
-    Tensor tCcQ = gmem_thr_copy_Q.partition_S(cQ(_, _));
-    auto max_coord_Q =
-        make_coord(q_packed_len - m_block_idx * kBlockM, kBlockK);
+    // (CPY, CPY_M, CPY_K, k) => (M, K)
+    Tensor tGcQ = gmem_thr_copy_Q.partition_S(cQ);
+    // (CPY, CPY_M, CPY_K, k)
+    Tensor tGgQ = gmem_thr_copy_Q.partition_S(gQ);
+    Tensor tGsQ = gmem_thr_copy_Q.partition_D(sQ);
+    const auto residue_mk = select<0, 2>(residue_mnk);
 
-    auto produce_q = [&](int step) {
-      // gQ/sQ: (BLK_M, BLK_K, STEPS)
-      auto tCgQ = gmem_thr_copy_Q.partition_S(gQ(_, _, step));
-      auto tCsQ = gmem_thr_copy_Q.partition_D(sQ(_, _, step));
+    auto produce_q = [&](int ki) {
       safe_copy</*EVEN_MN=*/false,
                 /*EVEN_K=*/true,
                 /*ZFILL_MN=*/true,
-                /*ZFILL_K=*/true>(
-          gmem_tiled_copy_Q, tCgQ, tCsQ, tCcQ, max_coord_Q);
+                /*ZFILL_K=*/true>(gmem_tiled_copy_Q,
+                                  tGgQ(_, _, _, ki),
+                                  tGsQ(_, _, _, ki),
+                                  tGcQ(_, _, _, ki),
+                                  residue_mk);
     };
 
     // g2s tiled copy for q_rope
     GmemTiledCopyQRope gmem_tiled_copy_Q_rope;
     auto gmem_thr_copy_Q_rope = gmem_tiled_copy_Q_rope.get_slice(tidx);
 
-    // (BLK_M, ROPE_HEAD_DIM) -> (blk_m, rope_head_dim)
-    Tensor cQ_rope = make_identity_tensor(Shape<BLK_M, ROPE_HEAD_DIM>{});
-    Tensor tCcQ_rope = gmem_thr_copy_Q_rope.partition_S(cQ_rope);
+    // (CPY, CPY_M, CPY_K) => (blk_m, rope_head_dim)
+    Tensor tGcQ_rope = gmem_thr_copy_Q_rope.partition_S(cQ_rope);
+    Tensor tGgQ_rope = gmem_thr_copy_Q_rope.partition_S(gQ_rope);
+    Tensor tGsQ_rope = gmem_thr_copy_Q_rope.partition_D(sQ_rope);
+    const auto rope_residue_mk = select<0, 2>(rope_residue_mnk);
 
     auto produce_q_rope = [&]() {
-      auto tCgQ_rope = gmem_thr_copy_Q_rope.partition_S(gQ_rope);
-      auto tCsQ_rope = gmem_thr_copy_Q_rope.partition_D(sQ_rope);
-      auto max_coord =
-          make_coord(q_packed_len - m_block_idx * kBlockM, kRopeHeadDim);
       safe_copy</*EVEN_MN=*/false,
                 /*EVEN_K=*/true,
                 /*ZFILL_MN=*/true,
-                /*ZFILL_K=*/true>(
-          gmem_tiled_copy_Q_rope, tCgQ_rope, tCsQ_rope, tCcQ_rope, max_coord);
+                /*ZFILL_K=*/true>(gmem_tiled_copy_Q_rope,
+                                  tGgQ_rope,
+                                  tGsQ_rope,
+                                  tGcQ_rope,
+                                  rope_residue_mk);
     };
 
     // g2s tiled copy for kv
     GmemTiledCopyKV gmem_tiled_copy_KV;
     auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_slice(tidx);
 
-    // (BLK_N, BLK_K, STEPS) -> (blk_n, head_dim)
-    Tensor cKV = make_identity_tensor(Shape<BLK_N, BLK_K>{});
-    Tensor tCcKV = gmem_thr_copy_KV.partition_S(cKV);
+    // (CPY, CPY_M, CPY_K, n, k) => (N, K)
+    Tensor tGcKV = gmem_thr_copy_KV.partition_S(cKV);
+    // (CPY, CPY_M, CPY_K, n, k)
+    auto tGgKV = gmem_thr_copy_KV.partition_S(gKV);
+    // (CPY, CPY_M, CPY_K, k, STAGES)
+    auto tGsKV = gmem_thr_copy_KV.partition_D(sKV);
+    const auto residue_nk = select<1, 2>(residue_mnk);
 
-    auto produce_kv = [&](int ni, int step, int stage) {
-      // gKV: (BLK_N, BLK_K, n, STEPS)
-      // sKV: (BLK_N, BLK_K, STEPS, STAGES)
-      auto tCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, step));
-      auto tCsKV = gmem_thr_copy_KV.partition_D(sKV(_, _, step, stage));
-      auto max_coord = make_coord(kv_len - ni * kBlockN, kBlockK);
+    auto produce_kv = [&](int ni, int ki, int stage) {
       safe_copy</*EVEN_MN=*/false,
                 /*EVEN_K=*/true,
                 /*ZFILL_MN=*/true,
-                /*ZFILL_K=*/false>(
-          gmem_tiled_copy_KV, tCgKV, tCsKV, tCcKV, max_coord);
+                /*ZFILL_K=*/false>(gmem_tiled_copy_KV,
+                                   tGgKV(_, _, _, ni, ki),
+                                   tGsKV(_, _, _, ki, stage),
+                                   tGcKV(_, _, _, ni, ki),
+                                   residue_nk);
     };
 
-    auto produce_kv_no_oob = [&](int ni, int step, int stage) {
-      // gKV: (BLK_N, BLK_K, n, STEPS)
-      // sKV: (BLK_N, BLK_K, STEPS, STAGES)
-      auto tCgKV = gmem_thr_copy_KV.partition_S(gKV(_, _, ni, step));
-      auto tCsKV = gmem_thr_copy_KV.partition_D(sKV(_, _, step, stage));
-      cute::copy(gmem_tiled_copy_KV, tCgKV, tCsKV);
+    auto produce_kv_no_oob = [&](int ni, int ki, int stage) {
+      cute::copy(gmem_tiled_copy_KV,
+                 tGgKV(_, _, _, ni, ki),
+                 tGsKV(_, _, _, ki, stage));
     };
 
     // g2s tiled copy for k_rope
     GmemTiledCopyKRope gmem_tiled_copy_K_rope;
     auto gmem_thr_copy_K_rope = gmem_tiled_copy_K_rope.get_slice(tidx);
 
-    // (BLK_N, ROPE_HEAD_DIM) -> (blk_n, rope_head_dim)
-    Tensor cK_rope = make_identity_tensor(Shape<BLK_N, ROPE_HEAD_DIM>{});
-    Tensor tKcK_rope = gmem_thr_copy_K_rope.partition_S(cK_rope);
+    // (CPY, CPY_M, CPY_K, n) => (N, K)
+    Tensor tGcK_rope = gmem_thr_copy_K_rope.partition_S(cK_rope);
+    // (CPY, CPY_M, CPY_K, n)
+    Tensor tGgK_rope = gmem_thr_copy_K_rope.partition_S(gK_rope);
+    // (CPY, CPY_M, CPY_K, STAGES)
+    Tensor tGsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope);
+    const auto rope_residue_nk = select<1, 2>(rope_residue_mnk);
 
     auto produce_k_rope = [&](int ni, int stage) {
-      // gK_rope: (BLK_N, ROPE_HEAD_DIM, n)
-      // sK_rope: (BLK_N, ROPE_HEAD_DIM, STAGES)
-      auto tKgK_rope = gmem_thr_copy_K_rope.partition_S(gK_rope(_, _, ni));
-      auto tKsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope(_, _, stage));
-      auto max_coord = make_coord(kv_len - ni * kBlockN, kRopeHeadDim);
       safe_copy</*EVEN_MN=*/false,
                 /*EVEN_K=*/true,
                 /*ZFILL_MN=*/true,
-                /*ZFILL_K=*/false>(
-          gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope, tKcK_rope, max_coord);
+                /*ZFILL_K=*/false>(gmem_tiled_copy_K_rope,
+                                   tGgK_rope(_, _, _, ni),
+                                   tGsK_rope(_, _, _, stage),
+                                   tGcK_rope(_, _, _, ni),
+                                   rope_residue_nk);
     };
 
     auto produce_k_rope_no_oob = [&](int ni, int stage) {
-      // gK_rope: (BLK_N, ROPE_HEAD_DIM, n)
-      // sK_rope: (BLK_N, ROPE_HEAD_DIM, STAGES)
-      auto tKgK_rope = gmem_thr_copy_K_rope.partition_S(gK_rope(_, _, ni));
-      auto tKsK_rope = gmem_thr_copy_K_rope.partition_D(sK_rope(_, _, stage));
-      cute::copy(gmem_tiled_copy_K_rope, tKgK_rope, tKsK_rope);
+      cute::copy(gmem_tiled_copy_K_rope,
+                 tGgK_rope(_, _, _, ni),
+                 tGsK_rope(_, _, _, stage));
     };
 
     // GEMM-I: S = Q@K.T
     TiledMma_QK tiled_mma_qk;
     auto thr_mma_qk = tiled_mma_qk.get_slice(tidx);
-    // sQ: (BLK_M, BLK_K, STEPS)
+    // sQ: (BLK_M, BLK_K, k)
     auto tSrQ = thr_mma_qk.partition_fragment_A(sQ(_, _, _0{}));
-    // sKV: (BLK_N, BLK_K, STEPS, STAGES)
+    // sKV: (BLK_N, BLK_K, k, STAGES)
     auto tSrK = thr_mma_qk.partition_fragment_B(sKV(_, _, _0{}, _0{}));
 
     // s2r tiled copy for q/q_rope
     SmemTiledCopyQ smem_tiled_copy_Q;
     auto smem_thr_copy_Q = smem_tiled_copy_Q.get_slice(tidx);
-    // (CPY, CPY_M, CPY_K, STEPS)
+    // (CPY, CPY_M, CPY_K, k)
     auto tCsQ = smem_thr_copy_Q.partition_S(sQ);
     // (CPY, CPY_M, CPY_K)
     auto tCrQ = smem_thr_copy_Q.retile_D(tSrQ);
@@ -452,7 +464,7 @@ struct Sm80CollectiveMla {
     // s2r tiled copy for k/k_rope
     SmemTiledCopyK smem_tiled_copy_K;
     auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(tidx);
-    // (CPY, CPY_N, CPY_K, STEPS, STAGES)
+    // (CPY, CPY_N, CPY_K, k, STAGES)
     auto tCsK = smem_thr_copy_K.partition_S(sKV);
     // (CPY, CPY_N, CPY_K)
     auto tCrK = smem_thr_copy_K.retile_D(tSrK);
@@ -460,9 +472,9 @@ struct Sm80CollectiveMla {
     // S = Q@K.T
     // tSrS: (MMA,MMA_M,MMA_N)
     auto compute_qk = [&](auto& tSrS, int step, int stage) {
-      // tCsQ: (CPY, CPY_M, CPY_K, STEPS)
+      // tCsQ: (CPY, CPY_M, CPY_K, k)
       auto tCsQ_s = tCsQ(_, _, _, step);
-      // TCsK: (CPY, CPY_N, CPY_K, STEPS, STAGES)
+      // TCsK: (CPY, CPY_N, CPY_K, k, STAGES)
       auto tCsK_s = tCsK(_, _, _, step, stage);
       // prefetch kv
       cute::copy(smem_tiled_copy_Q, tCsQ_s(_, _, _0{}), tCrQ(_, _, _0{}));
@@ -521,7 +533,7 @@ struct Sm80CollectiveMla {
     auto thr_mma_pv = tiled_mma_pv.get_slice(tidx);
     // sP: (BLK_M, BLK_N)
     auto tOrP = thr_mma_pv.partition_fragment_A(sP);
-    // sVt: (BLK_K, BLK_N, STEPS, STAGES)
+    // sVt: (BLK_K, BLK_N, k, STAGES)
     auto tOrVt = thr_mma_pv.partition_fragment_B(sVt(_, _, _0{}, _0{}));
 
     // s2r tiled copy for p
@@ -535,13 +547,13 @@ struct Sm80CollectiveMla {
     // s2r tiled copy for vt
     SmemTiledCopyVt smem_tiled_copy_Vt;
     auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_slice(tidx);
-    // (CPY, CPY_N, CPY_K, STEPS, STAGES)
+    // (CPY, CPY_N, CPY_K, k, STAGES)
     auto tCsVt = smem_thr_copy_Vt.partition_S(sVt);
     // (CPY, CPY_N, CPY_K)
     auto tCrVt = smem_thr_copy_Vt.retile_D(tOrVt);
 
     // O = P*V = softmax(S)*V
-    // tOrO: (MMA,MMA_M,MMA_K,STEPS)
+    // tOrO: (MMA,MMA_M,MMA_K,k)
     auto compute_pv = [&](auto& tOrO, int step, int stage) {
       auto tOrO_s = tOrO(_, _, _, step);
       auto tCsVt_s = tCsVt(_, _, _, step, stage);
@@ -574,7 +586,7 @@ struct Sm80CollectiveMla {
       cute::copy(smem_tiled_copy_S, tCrS, tCsS);
     };
 
-    // output accumulator: (MMA,MMA_M,MMA_K,STEPS)
+    // output accumulator: (MMA,MMA_M,MMA_K,k)
     // auto tOrO =
     //     partition_fragment_C(tiled_mma_pv, Shape<BLK_M, BLK_K, STEPS>{});
     // clear(tOrO);
@@ -601,8 +613,8 @@ struct Sm80CollectiveMla {
     // produce q_rope/q
     produce_q_rope();
     CUTE_UNROLL
-    for (int step = 0; step < kSteps; ++step) {
-      produce_q(step);
+    for (int ki = 0; ki < kSteps; ++ki) {
+      produce_q(ki);
     }
     // produce k_rope/kv
     CUTE_UNROLL
@@ -612,7 +624,7 @@ struct Sm80CollectiveMla {
       if (stage != 0) {
         cp_async_fence();
         CUTE_UNROLL
-        for (int step = 0; step < kSteps; ++step) {
+        for (int ki = 0; ki < kSteps; ++ki) {
           cp_async_fence();
         }
       }
@@ -622,15 +634,15 @@ struct Sm80CollectiveMla {
                    : produce_k_rope_no_oob(ni, stage);
         cp_async_fence();
         CUTE_UNROLL
-        for (int step = 0; step < kSteps; ++step) {
-          stage == 0 ? produce_kv(ni, step, stage)
-                     : produce_kv_no_oob(ni, step, stage);
+        for (int ki = 0; ki < kSteps; ++ki) {
+          stage == 0 ? produce_kv(ni, ki, stage)
+                     : produce_kv_no_oob(ni, ki, stage);
           cp_async_fence();
         }
       } else {
         cp_async_fence();
         CUTE_UNROLL
-        for (int step = 0; step < kSteps; ++step) {
+        for (int ki = 0; ki < kSteps; ++ki) {
           cp_async_fence();
         }
       }
@@ -667,11 +679,11 @@ struct Sm80CollectiveMla {
 
       // 2> S += Q@K.T
       CUTE_UNROLL
-      for (int step = 0; step < kSteps; ++step) {
+      for (int ki = 0; ki < kSteps; ++ki) {
         cp_async_wait<kWait>();
         __syncthreads();
 
-        compute_qk(tSrS, step, stage);
+        compute_qk(tSrS, ki, stage);
         cp_async_fence();
       }
 
@@ -696,17 +708,17 @@ struct Sm80CollectiveMla {
         cp_async_fence();
 
         CUTE_UNROLL
-        for (int step = 0; step < kSteps; ++step) {
-          compute_pv(tOrO, step, stage);
+        for (int ki = 0; ki < kSteps; ++ki) {
+          compute_pv(tOrO, ki, stage);
           __syncthreads();
-          produce_kv_no_oob(next_ni, step, stage);
+          produce_kv_no_oob(next_ni, ki, stage);
           cp_async_fence();
         }
       } else {
         cp_async_fence();
         CUTE_UNROLL
-        for (int step = 0; step < kSteps; ++step) {
-          compute_pv(tOrO, step, stage);
+        for (int ki = 0; ki < kSteps; ++ki) {
+          compute_pv(tOrO, ki, stage);
           cp_async_fence();
         }
       }

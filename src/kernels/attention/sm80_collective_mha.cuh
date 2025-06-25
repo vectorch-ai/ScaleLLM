@@ -8,10 +8,10 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute_extensions.cuh"
 #include "fast_cast.cuh"
 #include "layout_convertor.h"
 #include "mask.h"
+#include "safe_copy.h"
 
 namespace llm {
 

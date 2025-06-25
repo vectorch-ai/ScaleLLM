@@ -24,13 +24,10 @@ __global__ __launch_bounds__(Operator::kMmaThreads) void device_kernel(
   Operator op;
   op(params, scheduler_params, smem);
 }
-}  // namespace detail
 
-template <typename Dtype, int HEAD_DIM, int ROPE_HEAD_DIM, typename Params>
-void sm80_launch_mla_kernel(const Params& params, cudaStream_t stream) {
-  const auto batch_size = params.batch_size;
-  const auto max_q_packed_len = params.max_q_len * params.group_size;
-
+template <int ARC, int HEAD_DIM, int ROPE_HEAD_DIM>
+CUTE_HOST_DEVICE constexpr auto tile_shape_selector() {
+  using namespace cute;
   // TODO: tune block shape MNK based on the head dim and smem size
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
   // SM           | 7.0 | 7.2 | 7.5 | 8.0 | 8.6 | 8.7 | 8.9 | 9.0 | 10.x | 12.0|
@@ -42,12 +39,42 @@ void sm80_launch_mla_kernel(const Params& params, cudaStream_t stream) {
   // * 8.6 | 8.9 : 0, 8, 16, 32, 64, 100
   // * 9.0 | 10.x: 0, 8, 16, 32, 64, 100, 132, 164, 196, 228
   // * 12.0      : 0, 8, 16, 32, 64, 100
-  constexpr int BLK_M = 64;
-  constexpr int BLK_N = 16;
-  constexpr int BLK_K = 128;
-  constexpr int stages = 1;
+  //   constexpr int stages = 1;
+  if constexpr (HEAD_DIM <= 128) {
+    return Shape<_64, _64, _128>{};
+  } else if constexpr (HEAD_DIM <= 256) {
+    return Shape<_64, _32, _128>{};
+  } else if constexpr (HEAD_DIM <= 512) {
+    return Shape<_64, _16, _128>{};
+  } else {
+    return Shape<_64, _16, _128>{};
+  }
+}
 
-  using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<BLK_K>>;
+template <int ARC, int HEAD_DIM, int ROPE_HEAD_DIM>
+CUTE_HOST_DEVICE constexpr auto stages_selector() {
+  using namespace cute;
+  if constexpr (HEAD_DIM <= 128) {
+    return 2;
+  } else if constexpr (HEAD_DIM <= 256) {
+    return 2;
+  } else if constexpr (HEAD_DIM <= 512) {
+    return 1;
+  } else {
+    return 1;
+  }
+}
+
+}  // namespace detail
+
+template <typename Dtype, int HEAD_DIM, int ROPE_HEAD_DIM, typename Params>
+void sm80_launch_mla_kernel(const Params& params, cudaStream_t stream) {
+  const auto batch_size = params.batch_size;
+  const auto max_q_packed_len = params.max_q_len * params.group_size;
+
+  constexpr int stages = detail::stages_selector<80, HEAD_DIM, ROPE_HEAD_DIM>();
+  using TileShape =
+      decltype(detail::tile_shape_selector<80, HEAD_DIM, ROPE_HEAD_DIM>());
   using CollectiveMainloop =
       Sm80CollectiveMla<stages, TileShape, Dtype, HEAD_DIM, ROPE_HEAD_DIM>;
   using CollectiveEpilogue =
@@ -55,6 +82,8 @@ void sm80_launch_mla_kernel(const Params& params, cudaStream_t stream) {
 
   // TODO: support persistent kernels
   using TileScheduler = SingleTileScheduler;
+
+  constexpr int BLK_M = get<0>(TileShape{});
 
   const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
   typename TileScheduler::Arguments scheduler_args{
