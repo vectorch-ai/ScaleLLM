@@ -388,18 +388,17 @@ struct Sm80CollectiveMha {
     constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
     const int n_blocks = n_block_max - n_block_min;
 
-    // attention score accumulator, (MMA,MMA_M,MMA_N)
+    // attention score accumulator, (MMA, MMA_M, MMA_N)
     auto tSrS = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_N>{});
     // ((2, MMA_M), (2, MMA_N))
     auto tSrS_mn =
         make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
 
-    // identity tensor for score accumulator
     // (MMA, MMA_M, MMA_N, n)
     auto tScMN = thr_mma.partition_C(cMN);
     // ((2, MMA_M), (2, MMA_N), n) => (M, N)
     auto tScMN_mn =
-        make_tensor(tScMN.data(), LayoutConvertor::to_mns(tScMN.layout()));
+        make_tensor(tScMN.data(), LayoutConvertor::to_mn(tScMN.layout()));
 
     constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
     using Mask = Mask<kRowsPerThr, ALIBI, LOCAL>;

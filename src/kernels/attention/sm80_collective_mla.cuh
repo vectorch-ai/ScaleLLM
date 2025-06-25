@@ -587,12 +587,9 @@ struct Sm80CollectiveMla {
       cute::copy(smem_tiled_copy_S, tCrS, tCsS);
     };
 
-    // output accumulator: (MMA,MMA_M,MMA_K,k)
-    // auto tOrO =
-    //     partition_fragment_C(tiled_mma_pv, Shape<BLK_M, BLK_K, STEPS>{});
-    // clear(tOrO);
+    // (MMA,MMA_M,MMA_K,k) => ((2, MMA_M), (2, MMA_K), k)
     auto tOrO_mn =
-        make_tensor(tOrO.data(), LayoutConvertor::to_mns(tOrO.layout()));
+        make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
 
     const int n_block_min = 0;
     // process kv in range: [0, kv_idx_max)
@@ -650,7 +647,7 @@ struct Sm80CollectiveMla {
     }
 
     // ###############  Mainloop  ###############
-    // attention score accumulator, (MMA,MMA_M,MMA_N)
+    // attention score accumulator, (MMA, MMA_M, MMA_N)
     auto tSrS = partition_fragment_C(tiled_mma_qk, Shape<BLK_M, BLK_N>{});
     // ((2, MMA_M), (2, MMA_N))
     auto tSrS_mn =
@@ -660,7 +657,7 @@ struct Sm80CollectiveMla {
     auto tScMN = thr_mma_qk.partition_C(cMN);
     // ((2, MMA_M), (2, MMA_N), n) => (M, N)
     auto tScMN_mn =
-        make_tensor(tScMN.data(), LayoutConvertor::to_mns(tScMN.layout()));
+        make_tensor(tScMN.data(), LayoutConvertor::to_mn(tScMN.layout()));
 
     constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
     using Mask = Mask<kRowsPerThr, /*ALIBI=*/false, /*LOCAL=*/false>;
