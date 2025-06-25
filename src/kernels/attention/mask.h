@@ -12,7 +12,6 @@ struct Mask {
   // Fragment type for alibi slopes
   using FragmentT = decltype(make_tensor<float>(Int<ROWS_PER_THR>{}));
 
-  const int q_len_;
   const int kv_len_;
   const FastDivmod& group_size_;
   const int sliding_window_;
@@ -24,8 +23,7 @@ struct Mask {
                         int kv_len,
                         const FastDivmod& group_size,
                         int sliding_window)
-      : q_len_(q_len),
-        kv_len_(kv_len),
+      : kv_len_(kv_len),
         group_size_(group_size),
         sliding_window_(sliding_window),
         diagonal_offset_(kv_len - q_len) {}
@@ -42,7 +40,7 @@ struct Mask {
     for (int i = 0; i < size<0>(cS_mn); ++i) {
       const int q_packed_idx = get<0>(cS_mn(i, _0{}));
       const int offset = q_packed_idx % group_size_;
-      const int head_idx = kv_head_idx * group_size_ + offset;
+      const int head_idx = (kv_head_idx * group_size_) + offset;
       alibi_slopes_(i) = alibi_slops_ptr[head_idx] / sm_scale;
     }
   }
@@ -61,8 +59,7 @@ struct Mask {
         const auto [m, n] = cS_mn(i, j);
         const int q_packed_idx = m;
         const int kv_idx = n;
-
-        const int q_idx = q_packed_idx / group_size_ + diagonal_offset_;
+        const int q_idx = (q_packed_idx / group_size_) + diagonal_offset_;
 
         const bool out_of_boundary = [&]() {
           if constexpr (OOB_MASK && LOCAL) {
