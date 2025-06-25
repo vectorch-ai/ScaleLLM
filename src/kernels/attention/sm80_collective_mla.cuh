@@ -671,9 +671,6 @@ struct Sm80CollectiveMla {
       const int ni = n_block_max - 1 - i;
       clear(tSrS);
 
-      // ((2, MMA_M), (2, MMA_N)) => (M, N)
-      const auto tScS_mn = tScMN_mn(_, _, ni);
-
       cp_async_wait<kWait>();
       __syncthreads();
 
@@ -692,6 +689,8 @@ struct Sm80CollectiveMla {
       }
 
       // apply mask
+      // ((2, MMA_M), (2, MMA_N)) => (M, N)
+      const auto tScS_mn = tScMN_mn(_, _, ni);
       if (i < n_oob_mask) {
         mask.apply</*OOB_MASK=*/true>(tSrS_mn, tScS_mn);
       } else {
