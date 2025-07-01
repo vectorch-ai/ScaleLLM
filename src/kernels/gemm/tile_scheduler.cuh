@@ -3,10 +3,10 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <cute/config.hpp>
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute/config.hpp"
 #include "fast_math.h"
 
 namespace llm {
