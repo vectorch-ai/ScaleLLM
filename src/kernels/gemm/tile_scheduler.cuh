@@ -7,6 +7,7 @@
 #include <cute/tensor.hpp>
 
 #include "cute/config.hpp"
+#include "fast_math.h"
 
 namespace llm {
 
@@ -65,11 +66,11 @@ class StaticPersistentTileScheduler {
  public:
   // Host side kernel arguments
   struct Arguments {
-    int cluster_shape_m = 0;
-    int cluster_shape_n = 0;
+    FastDivmod cluster_shape_m = 0;
+    FastDivmod cluster_shape_n = 0;
     int grid_shape_m = 0;
     int grid_shape_n = 0;
-    int swizzle = 0;
+    FastDivmod swizzle = 0;
     RasterOrder raster_order = RasterOrder::AlongM;
   };
 
@@ -142,14 +143,15 @@ class StaticPersistentTileScheduler {
     const int cluster_offset = linear_idx % cluster_size;
 
     // cluster_offset => (cluster_shape_m, cluster_shape_n):(1, cluster_shape_m)
-    const int cluster_offset_m = cluster_offset % params.cluster_shape_m;
-    const int cluster_offset_n = cluster_offset / params.cluster_shape_m;
+    int cluster_offset_m, cluster_offset_n;
+    params.cluster_shape_m.divmod(
+        cluster_offset, cluster_offset_n, cluster_offset_m);
 
     int major_idx, minor_idx, panel_idx;
     if (params.swizzle > 1) {
       // apply swizzle, (cluster_idx) => (swizzle, panels): (1, swizzle)
-      const int swizzle_idx = cluster_idx / params.swizzle;
-      const int swizzle_offset = cluster_idx % params.swizzle;
+      int swizzle_idx, swizzle_offset;
+      params.swizzle.divmod(cluster_idx, swizzle_idx, swizzle_offset);
 
       major_idx = swizzle_idx % major_clusters;
       panel_idx = swizzle_idx / major_clusters;
