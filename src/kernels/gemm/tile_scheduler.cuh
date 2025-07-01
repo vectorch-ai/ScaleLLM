@@ -125,6 +125,33 @@ class StaticPersistentTileScheduler {
     return {problem_tiles, 0, params_};
   }
 
+  // For example: ClusterShape: (2, 1), GridShape(4, 4) and Swizzle=2. Along M
+  //
+  //                             Reduce Cluster           Reduce Swizzle
+  //    <---- N ---->
+  //  ^ +--+--+--+--+  ^
+  //  | |00|04|08|12|  |          <---- N ---->              <- N ->
+  //  C +--+--+--+--+  |          <- S ->
+  //  | |01|05|09|13|  |          +--+--+--+--+  ^           +--+--+  ^
+  //  v +--+--+--+--+  M   --->   |00|02|04|06|  |    --->   |00|02|  |
+  //    |02|06|10|14|  |          +--+--+--+--+  M           +--+--+  M
+  //    +--+--+--+--+  |          |01|03|05|07|  |           |01|03|  |
+  //    |03|07|11|15|  |          +--+--+--+--+  v           +--+--+  v
+  //    +--+--+--+--+  v
+  //                                                           |
+  //                                                           v
+  //                            ^ +--+--+--+--+
+  //                            | |00|02|12|14|            <---- N ---->
+  //                            C +--+--+--+--+            <- S ->
+  //                            | |01|03|13|15|            +--+--+--+--+  ^
+  //                            v +--+--+--+--+     <---   |00|01|04|05|  |
+  //                              |04|06|08|10|            +--+--+--+--+  M
+  //                              +--+--+--+--+            |02|03|06|07|  |
+  //                              |05|07|09|11|            +--+--+--+--+  v
+  //                              +--+--+--+--+
+  //
+  //                              Expand  Cluster          Expand Swizzle
+
   // compute tile coord from linear idx
   CUTE_HOST_DEVICE static cute::tuple<int, int> swizzle_and_rasterize(
       int linear_idx,
@@ -137,25 +164,26 @@ class StaticPersistentTileScheduler {
             ? params.grid_shape_m / params.cluster_shape_m
             : params.grid_shape_n / params.cluster_shape_n;
 
-    // Shape: ((cluster_shape_m, cluster_shape_n), clusters):((1,
-    // cluster_shape_m), cluster_size)
+    // Convert linear CTA idx/coord into cluster coord.
+    // Layout: (cluster_size, clusters):(1, cluster_size)
     const int cluster_idx = linear_idx / cluster_size;
     const int cluster_offset = linear_idx % cluster_size;
 
-    // cluster_offset => (cluster_shape_m, cluster_shape_n):(1, cluster_shape_m)
+    // Convert linear idx within cluster into cta coord
+    // Layout: (cluster_shape_m, cluster_shape_n):(1, cluster_shape_m)
     int cluster_offset_m, cluster_offset_n;
     params.cluster_shape_m.divmod(
         cluster_offset, cluster_offset_n, cluster_offset_m);
 
     int major_idx, minor_idx, panel_idx;
     if (params.swizzle > 1) {
-      // apply swizzle, (cluster_idx) => (swizzle, panels): (1, swizzle)
+      // Convert cluster linear idx into swizzled coord
+      // Layout: (swizzle, panels): (1, swizzle)
       int swizzle_idx, swizzle_offset;
       params.swizzle.divmod(cluster_idx, swizzle_idx, swizzle_offset);
 
       major_idx = swizzle_idx % major_clusters;
       panel_idx = swizzle_idx / major_clusters;
-      // add swizzle base
       minor_idx = panel_idx * params.swizzle + swizzle_offset;
     } else {
       // no swizzle, panel size = 1
@@ -170,14 +198,14 @@ class StaticPersistentTileScheduler {
     }
 
     if (params.raster_order == RasterOrder::AlongM) {
-      // add cluster base
+      // Map the swizzled cluster tile back to a CTA tile
       major_idx = major_idx * params.cluster_shape_m + cluster_offset_m;
       minor_idx = minor_idx * params.cluster_shape_n + cluster_offset_n;
       return {major_idx, minor_idx};
     }
 
     // raster_order == AlongN
-    // add cluster base
+    // Map the swizzled cluster tile back to a CTA tile
     minor_idx = minor_idx * params.cluster_shape_m + cluster_offset_m;
     major_idx = major_idx * params.cluster_shape_n + cluster_offset_n;
     return {minor_idx, major_idx};
