@@ -34,5 +34,5 @@ cc_test(
   DEPS
     :attention
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
 )

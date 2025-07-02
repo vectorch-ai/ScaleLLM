@@ -28,6 +28,19 @@ cc_library(
     glog::glog
 )
 
+cc_library(
+  TESTONLY
+  NAME
+    gtest_main
+  SRCS
+    gtest_main.cpp
+  DEPS
+    GTest::gtest
+    CUDA::toolkit
+  LINKOPTS
+    cudart
+)
+
 cc_test(
   NAME 
     common_test
@@ -39,7 +52,7 @@ cc_test(
     common
     absl::synchronization
     absl::time
-    GTest::gtest_main
+    :gtest_main
     torch
 )
 

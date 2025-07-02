@@ -29,5 +29,5 @@ cc_library(
 #   DEPS
 #     :scheduler
 #     absl::strings
-#     GTest::gtest_main
+#     :gtest_main
 # )

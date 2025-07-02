@@ -23,7 +23,7 @@ cc_test(
     kernel_test.cpp
   DEPS 
     triton_example.kernel
-    GTest::gtest_main
+    :gtest_main
     torch
     glog::glog
 )

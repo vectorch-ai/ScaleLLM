@@ -76,7 +76,7 @@ cc_test(
     :layers
     :state_dict
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
 )
 
 add_subdirectory(attention)

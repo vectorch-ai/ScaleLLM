@@ -36,5 +36,5 @@ cc_test(
   DEPS
     :memory
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
 )

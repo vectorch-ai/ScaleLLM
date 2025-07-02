@@ -32,7 +32,7 @@ cc_test(
     tiktoken_tokenizer_test.cpp
   DEPS
     :tokenizer
-    GTest::gtest_main
+    :gtest_main
   DATA 
     data/tokenizer.model
     data/test.tiktoken

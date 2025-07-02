@@ -63,7 +63,7 @@ cc_test(
   DEPS
     :attention.template
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
     torch
 )
 
@@ -76,7 +76,7 @@ cc_test(
   DEPS
     :attention.template
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
     torch
 )
 
@@ -88,7 +88,7 @@ cc_test(
   DEPS
     :attention.template
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
     torch
 )
 

@@ -28,5 +28,5 @@ cc_test(
   DEPS
     :token_dispatcher
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
 )

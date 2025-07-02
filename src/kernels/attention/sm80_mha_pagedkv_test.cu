@@ -229,7 +229,7 @@ TEST_P(MHAKernelPagedKVTest, PageKV) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MHA,
+    SM80,
     MHAKernelPagedKVTest,
     ::testing::Combine(
         ::testing::Values(1, 2, 4),                          // batch_size

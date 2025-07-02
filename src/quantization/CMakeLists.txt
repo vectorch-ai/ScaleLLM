@@ -41,7 +41,7 @@ cc_test(
   DEPS
     :quantization
     :state_dict
-    GTest::gtest_main
+    :gtest_main
   DATA 
     data/gptq_small.safetensors
     data/gptq.safetensors

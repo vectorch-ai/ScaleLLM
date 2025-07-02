@@ -33,5 +33,5 @@ cc_test(
     sequence_test.cpp
   DEPS
     :request
-    GTest::gtest_main
+    :gtest_main
 )
