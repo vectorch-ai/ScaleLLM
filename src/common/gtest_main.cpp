@@ -31,8 +31,8 @@ std::string gen_gtest_filter() {
   int cudaDeviceId;
   err = cudaGetDevice(&cudaDeviceId);
   if (cudaSuccess != err) {
-    std::cerr << "*** Warn: Could not detect active GPU device ID"
-              << " [" << cudaGetErrorString(err) << "]" << std::endl;
+    std::cerr << "*** Warn: Could not detect active GPU device ID" << " ["
+              << cudaGetErrorString(err) << "]" << std::endl;
   } else {
     cudaDeviceProp device_properties;
     err = cudaGetDeviceProperties(&device_properties, cudaDeviceId);
