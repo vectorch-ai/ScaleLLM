@@ -47,7 +47,7 @@ TEST_P(TopkSoftmaxTest, TopkSoftmax) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Moe,
+    SM80,
     TopkSoftmaxTest,
     ::testing::Combine(
         ::testing::Values(torch::kFloat),               // dtype

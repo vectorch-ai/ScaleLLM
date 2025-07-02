@@ -213,7 +213,7 @@ TEST_P(MLAKernelPagedKVTest, PageKV) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MLA,
+    SM80,
     MLAKernelPagedKVTest,
     ::testing::Combine(::testing::Values(torch::kHalf,
                                          torch::kBFloat16),  // q_dtype

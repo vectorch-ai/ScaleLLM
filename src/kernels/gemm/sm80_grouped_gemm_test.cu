@@ -181,7 +181,7 @@ TEST_P(GroupedGemmKernelTest, GEMM) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    GEMM,
+    SM80,
     GroupedGemmKernelTest,
     ::testing::Combine(::testing::Values(torch::kHalf,
                                          torch::kBFloat16),  // dtype

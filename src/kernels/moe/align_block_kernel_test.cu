@@ -185,7 +185,7 @@ TEST_P(AlignBlockTest, AlignBlock) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Moe,
+    SM80,
     AlignBlockTest,
     ::testing::Combine(::testing::Values(torch::kFloat),  // dtype
                        ::testing::Values(2,

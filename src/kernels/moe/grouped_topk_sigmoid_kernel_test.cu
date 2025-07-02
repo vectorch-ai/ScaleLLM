@@ -127,7 +127,7 @@ TEST_P(GroupedTopkSigmoidTest, TopkSoftmax) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Moe,
+    SM80,
     GroupedTopkSigmoidTest,
     ::testing::Combine(::testing::Values(torch::kFloat),  // dtype
                        ::testing::Values(10),             // n_tokens

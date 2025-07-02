@@ -57,7 +57,7 @@ TEST_P(TileSchedulerTest, StaticPersistent) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    TileScheduler,
+    SM80,
     TileSchedulerTest,
     ::testing::Combine(::testing::Values(1, 2),     // cluster_m
                        ::testing::Values(1, 2),     // cluster_n

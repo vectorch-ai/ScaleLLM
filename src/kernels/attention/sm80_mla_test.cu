@@ -126,7 +126,7 @@ TEST_P(MLAKernelTest, MLA) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MLA,
+    SM80,
     MLAKernelTest,
     ::testing::Combine(::testing::Values(torch::kHalf,
                                          torch::kBFloat16),  // q_dtype

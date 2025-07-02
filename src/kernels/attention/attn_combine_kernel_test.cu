@@ -190,7 +190,7 @@ TEST_P(AttnCombineKernelTest, Combine) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Combine,
+    SM80,
     AttnCombineKernelTest,
     ::testing::Combine(::testing::Values(torch::kHalf,
                                          torch::kBFloat16),  // q_dtype

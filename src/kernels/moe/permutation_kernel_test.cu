@@ -206,7 +206,7 @@ TEST_P(PermuteTest, Mask) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Moe,
+    SM80,
     PermuteTest,
     ::testing::Combine(::testing::Values(torch::kFloat,
                                          torch::kHalf,

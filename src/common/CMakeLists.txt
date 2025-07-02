@@ -36,6 +36,9 @@ cc_library(
     gtest_main.cpp
   DEPS
     GTest::gtest
+    CUDA::toolkit
+  LINKOPTS
+    cudart
 )
 
 cc_test(
