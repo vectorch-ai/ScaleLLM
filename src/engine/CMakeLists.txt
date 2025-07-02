@@ -42,5 +42,5 @@ cc_test(
   DEPS
     :engine
     absl::time
-    GTest::gtest_main
+    :gtest_main
 )

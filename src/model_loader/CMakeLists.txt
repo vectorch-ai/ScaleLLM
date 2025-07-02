@@ -22,7 +22,7 @@ cc_test(
     state_dict_test.cpp
   DEPS
     :state_dict
-    GTest::gtest_main
+    :gtest_main
   DATA 
     data/test.pth 
     data/test.safetensors

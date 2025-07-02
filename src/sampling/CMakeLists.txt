@@ -26,5 +26,5 @@ cc_test(
     logits_processor_test.cpp
   DEPS
     :sampler
-    GTest::gtest_main
+    :gtest_main
 )

@@ -23,6 +23,6 @@ cc_test(
   DEPS
     :gemm.kernels
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
     torch
 )

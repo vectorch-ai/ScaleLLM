@@ -27,5 +27,5 @@ cc_test(
   DEPS
     :speculative
     absl::strings
-    GTest::gtest_main
+    :gtest_main
 )

@@ -33,6 +33,6 @@ cc_test(
     process_group_test.cpp
   DEPS
     :process_group
-    GTest::gtest_main
+    :gtest_main
 )
 

@@ -28,5 +28,5 @@ cc_test(
   DEPS
     :moe.kernels
     absl::random_random
-    GTest::gtest_main
+    :gtest_main
 )
