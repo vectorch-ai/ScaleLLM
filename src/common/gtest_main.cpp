@@ -20,6 +20,8 @@ std::string gen_gtest_filter() {
     int max_compute_capability;
   };
   static const std::vector<Filter> filters = {
+      {"SM70*", 70, 75},
+      {"SM75*", 75, kMaxComputeCapability},
       {"SM80*", 80, kMaxComputeCapability},
       {"SM89*", 89, 89},
       {"SM90*", 90, 90},
