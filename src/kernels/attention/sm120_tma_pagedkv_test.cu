@@ -5,8 +5,8 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute/atom/mma_traits_sm90_gmma.hpp"
 #include "cute/swizzle_layout.hpp"
+#include "gather_tma_tensor.hpp"
 
 namespace llm {
 using namespace cute;
@@ -52,7 +52,14 @@ __global__ void tma_test_device_cute(T const* g_in,
 
   // TMA requires special handling of strides to deal with coord codomain
   // mapping Represent the full tensors -- get these from TMA
-  Tensor mA = tma.get_tma_tensor(shape(gmem_layout));
+  // Tensor mA = tma.get_tma_tensor(shape(gmem_layout));
+
+  auto coord_transform = [](auto coord) {
+    constexpr int I = 0;
+    return replace<I>(coord, get<I>(coord));
+  };
+
+  Tensor mA = make_gather_tma_tensor(tma, shape(gmem_layout), coord_transform);
   Tensor mB = make_tensor(make_gmem_ptr<T>(g_out), gmem_layout);
 
   constexpr int R = rank_v<CTA_Tiler>;
@@ -145,6 +152,11 @@ __global__ void tma_test_device_cute(T const* g_in,
         sizeof(make_tensor_like(tensor<0>(tAsA)));
 
     if (threadIdx.x == 0) {
+      print("\n ########### %d ########### \n", stage);
+      print("sA: ");
+      print(sA);
+      print("\n");
+
       /// Initialize shared memory barrier
       tma_load_mbar[0] = 0;
       cute::initialize_barrier(tma_load_mbar[0], 1 /*numThreads*/);
@@ -168,13 +180,6 @@ __global__ void tma_test_device_cute(T const* g_in,
     // Subbyte elements could cause race conditions, so be even more
     // conservative
     if (thread0()) {
-      print("\n ########### %d ########### \n", stage);
-      print("sA: \n");
-      print_tensor(sA);
-      print("\nsA_no_swizzle: \n");
-      print_tensor(sA_no_siwzzle);
-      print("\n");
-
       copy(sA, tBgB(_, stage));
     }
 
@@ -193,7 +198,6 @@ auto test_tma_load(CopyOp const& copy_op,
                    SMEM_Layout const& smem_layout,
                    CTA_Tile const& cta_tile) {
   using namespace cute;
-  print("test_tma_load ------------------------------ \n");
   print("gmem_layout: ");
   print(gmem_layout);
   print("\n");
@@ -212,11 +216,6 @@ auto test_tma_load(CopyOp const& copy_op,
     h_in[i] = T(i);
   }
   Tensor hA_in = make_tensor(recast_ptr<T>(h_in.data()), gmem_layout);
-
-  print("\n ###################### \n");
-  print("hA_in: \n");
-  print_tensor(hA_in);
-  print("\n");
 
   // Allocate and initialize device test data
   thrust::device_vector<T> d_in = h_in;
@@ -318,10 +317,17 @@ auto test_tma_load_swizzle_tile_mn() {
 
 template <class T, template <typename> typename SWIZZLE_ATOM>
 auto test_tma_load_swizzle_tile_k() {
-  auto smem_layout = tile_to_shape(SWIZZLE_ATOM<T>{}, Shape<_128, _128>{});
+  print("smem_layout_atom: ");
+  print(SWIZZLE_ATOM<T>{});
+  print("\n");
+  auto smem_layout = tile_to_shape(SWIZZLE_ATOM<T>{}, Shape<_32, _32>{});
+  auto smem_layout_no_swizzle = get_nonswizzle_portion(smem_layout);
+  print_layout(smem_layout);
+  // print_layout(smem_layout_no_swizzle);
   Layout gmem_layout = make_layout(
       make_shape(int(size<0>(smem_layout)), int(size<1>(smem_layout))),
       GenRowMajor{});
+  print_layout(gmem_layout);
   return test_tma_load<T>(gmem_layout, smem_layout);
 }
 
@@ -349,7 +355,7 @@ TEST(SM120_Tma, Load_Tiny) {
 
   // 2D col-major
   // {
-  //   Layout smem_layout = Layout<Shape<_16, _2>, Stride<_1, _16>>{};
+  //   Layout smem_layout = Layout<Shape<_128, _128>, Stride<_1, _128>>{};
   //   Layout gmem_layout = smem_layout;
   //   test_tma_load<int8_t>(gmem_layout, smem_layout);
   // }
@@ -364,10 +370,36 @@ TEST(SM120_Tma, Load_Swizzle_Atoms) {
 
 TEST(SM120_Tma, Tma_Load_Swizzle_Tiles) {
   // Other T-types use too much smem
-  test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_INTER_Atom>();
-  test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW32_Atom>();
-  test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW64_Atom>();
-  test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW128_Atom>();
+  // test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_INTER_Atom>();
+  // test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW32_Atom>();
+  // test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW64_Atom>();
+  // test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW128_Atom>();
+}
+
+// Tensor by-mode
+TEST(SM120_Tma, Tma_Load_Tensor) {
+  // 3-mode TMA
+  // {
+  //   Layout gmem_layout = make_layout(make_shape(64, 64, 2));
+  //   auto cta_tile = Shape<_32, _32>{};  // GMEM Tiling:
+  //                                       //   Take 64-elem from m
+  //                                       //   Take 32-elem from k
+  //   auto smem_layout = make_layout(Shape<_32, _32>{});
+  //   test_tma_load<uint16_t>(gmem_layout, smem_layout, cta_tile);
+  // }
+
+  // 4-mode TMA
+  {
+    Layout gmem_layout = make_layout(
+        make_shape(make_shape(2, 4), make_shape(16, 32)), GenRowMajor{});
+    // GMEM Tiling:
+    //   Take 16-elem from m0, 8-elem from m1,
+    //   Take 2-elem from k0, 2-elem from k1
+    auto cta_tile = Shape<Shape<_2, _2>, Shape<_8, _16>>{};
+    auto smem_layout =
+        make_layout(Shape<Shape<_2, _2>, Shape<_8, _16>>{}, GenRowMajor{});
+    test_tma_load<uint16_t>(gmem_layout, smem_layout, cta_tile);
+  }
 }
 
 }  // namespace llm
