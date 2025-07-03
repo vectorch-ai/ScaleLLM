@@ -120,4 +120,15 @@ nvbench_binary(
     :attention.template
 )
 
+cc_test(
+  NAME
+    tma_test
+  SRCS
+    sm120_tma_pagedkv_test.cu
+  DEPS
+    :gtest_main
+    :cutlass
+    torch
+)
+
 add_subdirectory(tools)

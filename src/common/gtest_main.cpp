@@ -8,7 +8,7 @@ namespace {
 // https://github.com/NVIDIA/cutlass/blob/main/test/unit/common/filter_architecture.cpp#L78
 
 // generate gtest filter string based on device compute capability
-std::string gen_gtest_filter() {
+std::string gen_gtest_filter(const std::string& cmd_filter) {
   static const int kMaxComputeCapability = 10000;
   // Text filters for each kernel based on supported compute capability
   struct Filter {
@@ -60,16 +60,19 @@ std::string gen_gtest_filter() {
     // add separator if not the first filter
     ss << (i++ ? ":" : "") << filter.filter;
   }
-  return ss.str();
+  if (cmd_filter.empty()) {
+    // If no cmd filter, return the negative filters
+    return ss.str();
+  }
+  // If cmd filter is present, append the negative filters
+  // to the existing filter
+  return cmd_filter + ":" + ss.str();
 }
 }  // namespace
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  // honor --gtest_filter from commandline
-  if (::testing::GTEST_FLAG(filter).empty() ||
-      ::testing::GTEST_FLAG(filter) == "*") {
-    ::testing::GTEST_FLAG(filter) = gen_gtest_filter();
-  }
+  const auto cmd_filter = ::testing::GTEST_FLAG(filter);
+  ::testing::GTEST_FLAG(filter) = gen_gtest_filter(cmd_filter);
   return RUN_ALL_TESTS();
 }
