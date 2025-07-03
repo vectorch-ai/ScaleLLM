@@ -1,6 +1,6 @@
 [submodule "third_party/cutlass"]
 	path = third_party/cutlass
-	url = https://github.com/NVIDIA/cutlass.git
+	url = https://github.com/vectorch-ai/cutlass.git
 [submodule "third_party/nvbench"]
 	path = third_party/nvbench
 	url = https://github.com/NVIDIA/nvbench.git
