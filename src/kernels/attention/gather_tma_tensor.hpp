@@ -32,14 +32,10 @@ struct GatherArithmeticTupleIterator {
   CUTE_HOST_DEVICE constexpr auto operator*() const { return coord(); }
 
   template <class Coord>
-  CUTE_HOST_DEVICE constexpr auto operator[](const Coord& c) const {
-    return *(*this + c);
-  }
-
-  template <class Coord>
   CUTE_HOST_DEVICE constexpr auto operator+(const Coord& c) const {
-    return GatherArithmeticTupleIterator<remove_cvref_t<decltype(coord_ + c)>,
-                                         Transform>(coord_ + c, transform_);
+    auto coord = coord_ + c;
+    return GatherArithmeticTupleIterator<remove_cvref_t<decltype(coord)>,
+                                         Transform>(coord, transform_);
   }
 };
 
