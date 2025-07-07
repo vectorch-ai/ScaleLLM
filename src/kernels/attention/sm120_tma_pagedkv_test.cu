@@ -22,10 +22,8 @@ template <class T,
           class CTA_Tiler,
           class GmemLayout,
           class SmemLayout>
-__global__ void tma_test_device_cute(T const* g_in,
-                                     T* g_out,
+__global__ void tma_test_device_cute(T* g_out,
                                      int const* block_ids,
-                                     int n_blocks,  // no needed
                                      int block_size,
                                      CUTE_GRID_CONSTANT TiledCopy const tma,
                                      CTA_Tiler cta_tiler,
@@ -62,7 +60,7 @@ __global__ void tma_test_device_cute(T const* g_in,
     const int idx = get<I>(coord);
     const int blk_idx = idx / block_size;
     const int blk_offset = idx % block_size;
-    const int g_idx = block_ids[blk_idx] + blk_offset;
+    const int g_idx = (block_ids[blk_idx] * block_size) + blk_offset;
     // print("mapping: %d => %d\n", idx, g_idx);
     // return replace<I>(coord, g_idx);
     return replace<I>(coord, g_idx);
@@ -88,36 +86,6 @@ __global__ void tma_test_device_cute(T const* g_in,
   // (TMA,TMA_M,TMA_N)
   Tensor tAsA_x = cta_tma.partition_D(sA);
 
-#if 1
-  if (thread0()) {
-    print(tma);
-    print("TILE  :  ");
-    print(cta_tiler);
-    print("\n");
-    print("  mA  :  ");
-    print(mA);
-    print("\n");
-    print("  mB  :  ");
-    print(mB);
-    print("\n");
-    print("  gA  :  ");
-    print(gA);
-    print("\n");
-    print("  gB  :  ");
-    print(gB);
-    print("\n");
-    print("  sA  :  ");
-    print(sA);
-    print("\n");
-    print("tAgA_x:  ");
-    print(tAgA_x);
-    print("\n");
-    print("tAsA_x:  ");
-    print(tAsA_x);
-    print("\n");
-  }
-#endif
-
   //
   // Perform the TMA_LOAD
   //
@@ -133,26 +101,6 @@ __global__ void tma_test_device_cute(T const* g_in,
   // (CTA_TILE, REST)
   Tensor tBgB = group_modes<0, R>(group_modes<R, rank(gB)>(gB));
 
-#if 1
-  if (thread0()) {
-    print("tAgA  :  ");
-    print(tAgA);
-    print("\n");
-    print("tAsA  :  ");
-    print(tAsA);
-    print("\n");
-    print("tBgB  :  ");
-    print(tBgB);
-    print("\n");
-  }
-#endif
-
-  // Test L2 prefetch
-  if (threadIdx.x == 0) {
-    // when to use prefetch ???
-    prefetch(tma, tAgA);
-  }
-
   // Loop over the TMA stages, using smem as our buffer
   // (TMA,REST)
   for (int stage = 0; stage < size<1>(tAgA); ++stage) {
@@ -162,10 +110,10 @@ __global__ void tma_test_device_cute(T const* g_in,
         sizeof(make_tensor_like(tensor<0>(tAsA)));
 
     if (threadIdx.x == 0) {
-      print("\n ########### %d ########### \n", stage);
-      print("sA: ");
-      print(sA);
-      print("\n");
+      // print("\n ########### %d ########### \n", stage);
+      // print("sA: ");
+      // print(sA);
+      // print("\n");
 
       /// Initialize shared memory barrier
       tma_load_mbar[0] = 0;
@@ -196,57 +144,48 @@ template <class T,
           class TmaType = T,
           class CopyOp,
           class GMEM_Layout,
+          class G_GMEM_Layout,
           class SMEM_Layout,
           class CTA_Tile>
-auto test_tma_load(CopyOp const& copy_op,
-                   GMEM_Layout const& gmem_layout,
-                   GMEM_Layout const& gather_gmem_layout,
-                   SMEM_Layout const& smem_layout,
-                   CTA_Tile const& cta_tile,
-                   const std::vector<int32_t>& block_ids,
-                   int32_t block_size) {
-  using namespace cute;
-  print("gmem_layout: ");
-  print(gmem_layout);
-  print("\n");
-  print("gather_gmem_layout: ");
-  print(gather_gmem_layout);
-  print("\n");
-  print("smem_layout: ");
-  print(smem_layout);
-  print("\n");
-  print("cta_tile: ");
-  print(cta_tile);
-  print("\n");
+auto test_tma_block_load(CopyOp const& copy_op,
+                         GMEM_Layout const& gmem_layout,
+                         G_GMEM_Layout const& gather_gmem_layout,
+                         SMEM_Layout const& smem_layout,
+                         CTA_Tile const& cta_tile,
+                         int32_t block_size) {
+  assert(block_size % 8 == 0);
+  const int m_gather = size<0>(gather_gmem_layout);
+  assert(m_gather % block_size == 0);
 
-  // Allocate and initialize host test data
-  size_t N =
-      ceil_div(cosize(gmem_layout) * sizeof_bits<T>::value, 8) / sizeof(T);
-  thrust::host_vector<T> h_in(N);
-  for (size_t i = 0; i < h_in.size(); ++i) {
-    h_in[i] = T(i);
-  }
-  Tensor hA_in = make_tensor(recast_ptr<T>(h_in.data()), gmem_layout);
-  print_tensor(hA_in);
-
-  const int32_t n_blocks = block_ids.size();
+  const int32_t n_blocks = m_gather / block_size;
   const int32_t n_slots = n_blocks * block_size;
-  // assert(n_slots <= size<0>(gmem_layout));
-
+  // generate blocks
+  std::vector<int32_t> block_ids;
   std::vector<int32_t> slot_ids;
+  block_ids.reserve(n_blocks);
   slot_ids.reserve(n_slots);
-  for (size_t i = 0; i < block_ids.size(); ++i) {
-    const int32_t slot_base = block_ids[i];
+  for (int i = 0; i < n_blocks; ++i) {
+    const int blk_id = i ^ 1;
+    block_ids.push_back(blk_id);
+    const int32_t slot_base = blk_id * block_size;
     for (int32_t j = 0; j < block_size; ++j) {
       slot_ids.push_back(slot_base + j);
     }
   }
 
+  // Allocate and initialize host test data
+  size_t N = ceil_div(cosize(gmem_layout) * sizeof_bits<T>::value, 8);
+  thrust::host_vector<uint8_t> h_in(N);
+  for (size_t i = 0; i < h_in.size(); ++i) {
+    h_in[i] = uint8_t(i % 13);
+  }
+  Tensor hA_in =
+      make_tensor(make_gmem_ptr<T>(raw_pointer_cast(h_in.data())), gmem_layout);
+
   // Allocate and initialize device test data
-  size_t GN = ceil_div(cosize(gather_gmem_layout) * sizeof_bits<T>::value, 8) /
-              sizeof(T);
-  thrust::device_vector<T> d_in = h_in;
-  thrust::device_vector<T> d_out(GN, T(-1));  // overflow uint
+  size_t GN = ceil_div(cosize(gather_gmem_layout) * sizeof_bits<T>::value, 8);
+  thrust::device_vector<uint8_t> d_in = h_in;
+  thrust::device_vector<uint8_t> d_out(GN, uint8_t(-1));  // overflow uint
   thrust::device_vector<int32_t> d_block_ids = block_ids;
 
   // Create TMA for this device Tensor
@@ -254,19 +193,12 @@ auto test_tma_load(CopyOp const& copy_op,
       make_tensor(make_gmem_ptr<T>(raw_pointer_cast(d_in.data())), gmem_layout);
   auto tma =
       make_tma_copy<TmaType>(copy_op, gA, smem_layout, cta_tile, Int<1>{});
-  // print(tma);
-
-  // auto gather_shape = make_shape(n_slots, size<1>(gmem_layout));
-  // auto gather_gmem_layout = make_layout(gather_shape, stride(gmem_layout));
-  // print("gather_gmem_layout: "); print(gather_gmem_layout); print("\n");
 
   // Launch
   int smem_size = int(sizeof(SharedStorage<T, decltype(smem_layout)>));
   tma_test_device_cute<<<1, 128, smem_size>>>(
-      reinterpret_cast<T const*>(raw_pointer_cast(d_in.data())),
       reinterpret_cast<T*>(raw_pointer_cast(d_out.data())),
       reinterpret_cast<int32_t const*>(raw_pointer_cast(d_block_ids.data())),
-      n_blocks,
       block_size,
       tma,
       cta_tile,
@@ -274,25 +206,24 @@ auto test_tma_load(CopyOp const& copy_op,
       smem_layout);
 
   // Copy results back to host
-  thrust::host_vector<T> h_out = d_out;
-  Tensor hA_out = make_tensor(recast_ptr<T>(h_out.data()), gather_gmem_layout);
+  thrust::host_vector<uint8_t> h_out = d_out;
+  Tensor hA_out = make_tensor(make_gmem_ptr<T>(raw_pointer_cast(h_out.data())),
+                              gather_gmem_layout);
 
-  thrust::host_vector<T> h_out_ref(GN, T(-1));
-  Tensor hA_out_ref =
-      make_tensor(recast_ptr<T>(h_out_ref.data()), gather_gmem_layout);
+  thrust::host_vector<uint8_t> h_out_ref(GN, uint8_t(-1));
+  Tensor hA_out_ref = make_tensor(
+      make_gmem_ptr<T>(raw_pointer_cast(h_out_ref.data())), gather_gmem_layout);
   for (int i = 0; i < slot_ids.size(); ++i) {
     cute::copy(hA_in(slot_ids[i], _), hA_out_ref(i, _));
   }
 
-  print_tensor(hA_out_ref);
-  print_tensor(hA_out);
-
   // Validate the results. Print only the first 3 errors.
-  for (int i = 0; i < int(size(hA_out)); ++i) {
+  int count = 3;
+  for (int i = 0; i < int(size(hA_out)) && count > 0; ++i) {
     EXPECT_EQ(hA_out_ref(i), hA_out(i));
-    // if (hA_out_ref(i) != hA_out(i)) {
-    //   print("%d: %d %d\n", i, hA_out_ref(i), hA_out(i));
-    // }
+    if (hA_out_ref(i) != hA_out(i)) {
+      --count;
+    }
   }
 
   return tma;
@@ -301,131 +232,73 @@ auto test_tma_load(CopyOp const& copy_op,
 template <class T,
           class TmaType = T,
           class GMEM_Layout,
+          class G_GMEM_Layout,
           class SMEM_Layout,
           class CTA_Tile>
-auto test_tma_load(GMEM_Layout const& gmem_layout,
-                   GMEM_Layout const& gather_gmem_layout,
-                   SMEM_Layout const& smem_layout,
-                   CTA_Tile const& cta_tile,
-                   const std::vector<int32_t>& block_ids,
-                   int32_t block_size) {
-  return test_tma_load<T, TmaType>(SM90_TMA_LOAD{},
-                                   gmem_layout,
-                                   gather_gmem_layout,
-                                   smem_layout,
-                                   cta_tile,
-                                   block_ids,
-                                   block_size);
+auto test_tma_block_load(GMEM_Layout const& gmem_layout,
+                         G_GMEM_Layout const& gather_gmem_layout,
+                         SMEM_Layout const& smem_layout,
+                         CTA_Tile const& cta_tile,
+                         int32_t block_size) {
+  return test_tma_block_load<T, TmaType>(SM90_TMA_LOAD{},
+                                         gmem_layout,
+                                         gather_gmem_layout,
+                                         smem_layout,
+                                         cta_tile,
+                                         block_size);
 }
 
-template <class T, class TmaType = T, class GMEM_Layout, class SMEM_Layout>
-auto test_tma_load(GMEM_Layout const& gmem_layout,
-                   GMEM_Layout const& gather_gmem_layout,
-                   SMEM_Layout const& smem_layout,
-                   const std::vector<int32_t>& block_ids,
-                   int32_t block_size) {
-  return test_tma_load<T, TmaType>(gmem_layout,
-                                   gather_gmem_layout,
-                                   smem_layout,
-                                   product_each(shape(smem_layout)),
-                                   block_ids,
-                                   block_size);
+template <class T,
+          class TmaType = T,
+          class GMEM_Layout,
+          class G_GMEM_Layout,
+          class SMEM_Layout>
+auto test_tma_block_load(GMEM_Layout const& gmem_layout,
+                         G_GMEM_Layout const& gather_gmem_layout,
+                         SMEM_Layout const& smem_layout,
+                         int32_t block_size) {
+  return test_tma_block_load<T, TmaType>(gmem_layout,
+                                         gather_gmem_layout,
+                                         smem_layout,
+                                         product_each(shape(smem_layout)),
+                                         block_size);
 }
 
 template <class T, template <typename> typename SWIZZLE_ATOM>
-auto test_tma_load_swizzle_tile_k() {
-  // print("smem_layout_atom: ");
-  // print(SWIZZLE_ATOM<T>{});
-  // print("\n");
-  auto gmem_layout = make_layout(make_shape(128, 16), GenRowMajor{});
+auto test_tma_block_load_swizzle_tile_k(int32_t block_size) {
+  auto gmem_layout = make_layout(make_shape(256, 256), GenRowMajor{});
 
-  auto gather_gmem_layout = make_layout(make_shape(16, 16), GenRowMajor{});
-
-  // Sw<0,4,3> o ((_8,_2),(_8,_2)):((_8,_128),(_1,_64))
+  auto gather_shape = Shape<_64, _256>{};
+  auto gather_gmem_layout = make_layout(gather_shape, GenRowMajor{});
   auto smem_layout =
-      tile_to_shape(SWIZZLE_ATOM<T>{}, Shape<_16, _16>{}, Step<_1, _0>{});
-  // auto smem_layout_no_swizzle = get_nonswizzle_portion(smem_layout);
-  // print(smem_layout);
-  // print_layout(smem_layout_no_swizzle);
-  // Layout gmem_layout = make_layout(
-  //     make_shape(int(size<0>(smem_layout)), int(size<1>(smem_layout))),
-  //     GenRowMajor{});
-  const std::vector<int32_t> block_ids = {8, 0};
-  const int32_t block_size = 8;
-  // print_layout(gmem_layout);
-  return test_tma_load<T>(
-      gmem_layout, gather_gmem_layout, smem_layout, block_ids, block_size);
+      tile_to_shape(SWIZZLE_ATOM<T>{}, gather_shape, Step<_1, _0>{});
+
+  // TODO: fix the test failures related to tma box size
+  // assert (size<1>(SWIZZLE_ATOM<T>{}) != size<1>(smem_layout));
+  return test_tma_block_load<T>(
+      gmem_layout, gather_gmem_layout, smem_layout, block_size);
 }
 
-// TEST(SM120_Tma, Load_Tiny) {
-//   // two requirements:
-//   // 1: a contiguous direction (stride 1)
-//   // 2: other strides as multiples of 16 bytes
+auto test_tma_block_load(int32_t block_size) {
+  test_tma_block_load_swizzle_tile_k<half_t, GMMA::Layout_K_INTER_Atom>(
+      block_size);
+  test_tma_block_load_swizzle_tile_k<half_t, GMMA::Layout_K_SW32_Atom>(
+      block_size);
+  test_tma_block_load_swizzle_tile_k<half_t, GMMA::Layout_K_SW64_Atom>(
+      block_size);
+  test_tma_block_load_swizzle_tile_k<half_t, GMMA::Layout_K_SW128_Atom>(
+      block_size);
 
-//   // 1D
-//   {
-//     // Layout smem_layout = Layout<_16, _1>{};
-//     // Layout gmem_layout = smem_layout;
-//     // test_tma_load<int8_t>(gmem_layout, smem_layout);
-//     // test_tma_load<half_t>(gmem_layout, smem_layout);
-//     // test_tma_load<float>(gmem_layout, smem_layout);
-//     // test_tma_load<double>(gmem_layout, smem_layout);
-//   }
-
-//   // 2D row-major
-//   {
-//     // Layout gmem_layout = Layout<Shape<_4, _32>, Stride<_32, _1>>{};
-//     // Layout smem_layout = Layout<Shape<_2, _16>, Stride<_16, _1>>{};
-//     // test_tma_load<int8_t>(gmem_layout, smem_layout);
-//   }
-
-//   // 2D col-major
-//   {
-//     // Layout smem_layout = Layout<Shape<_128, _128>, Stride<_1, _128>>{};
-//     // Layout gmem_layout = smem_layout;
-//     // test_tma_load<int8_t>(gmem_layout, smem_layout);
-//   }
-// }
-
-// TEST(SM120_Tma, Load_Swizzle_Atoms) {
-//   test_tma_load_swizzle_atom_k<uint16_t, GMMA::Layout_K_INTER_Atom>();
-//   test_tma_load_swizzle_atom_k<uint16_t, GMMA::Layout_K_SW32_Atom>();
-//   test_tma_load_swizzle_atom_k<uint16_t, GMMA::Layout_K_SW64_Atom>();
-//   test_tma_load_swizzle_atom_k<uint16_t, GMMA::Layout_K_SW128_Atom>();
-// }
-
-TEST(SM120_Tma, Tma_Load_Swizzle_Tiles) {
-  // Other T-types use too much smem
-  test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_INTER_Atom>();
-  // test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW32_Atom>();
-  // test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW64_Atom>();
-  // test_tma_load_swizzle_tile_k<uint16_t, GMMA::Layout_K_SW128_Atom>();
+  test_tma_block_load_swizzle_tile_k<uint8_t, GMMA::Layout_K_INTER_Atom>(
+      block_size);
+  test_tma_block_load_swizzle_tile_k<uint8_t, GMMA::Layout_K_SW32_Atom>(
+      block_size);
+  test_tma_block_load_swizzle_tile_k<uint8_t, GMMA::Layout_K_SW64_Atom>(
+      block_size);
+  test_tma_block_load_swizzle_tile_k<uint8_t, GMMA::Layout_K_SW128_Atom>(
+      block_size);
 }
 
-// Tensor by-mode
-// TEST(SM120_Tma, Tma_Load_Tensor) {
-// 3-mode TMA
-// {
-//   Layout gmem_layout = make_layout(make_shape(64, 64, 2));
-//   auto cta_tile = Shape<_32, _32>{};  // GMEM Tiling:
-//                                       //   Take 64-elem from m
-//                                       //   Take 32-elem from k
-//   auto smem_layout = make_layout(Shape<_32, _32>{});
-//   test_tma_load<uint16_t>(gmem_layout, smem_layout, cta_tile);
-// }
-
-// // 4-mode TMA
-// {
-//   Layout gmem_layout = make_layout(
-//       make_shape(make_shape(2, 4), make_shape(16, 32)), GenRowMajor{});
-//   // GMEM Tiling:
-//   //   Take 16-elem from m0, 8-elem from m1,
-//   //   Take 2-elem from k0, 2-elem from k1
-//   auto cta_tile = Shape<Shape<_2, _2>, Shape<_8, _16>>{};
-//   auto smem_layout =
-//       make_layout(Shape<Shape<_2, _2>, Shape<_8, _16>>{}, GenRowMajor{});
-//   test_tma_load<uint16_t>(gmem_layout, smem_layout, cta_tile);
-// }
-// }
+TEST(SM120_Tma, Test_Tma_Block_Load) { test_tma_block_load(/*block_size=*/8); }
 
 }  // namespace llm
