@@ -6,6 +6,7 @@
 #include <cute/tensor.hpp>
 
 #include "cute/swizzle_layout.hpp"
+#include "gather_tma_copy.h"
 #include "gather_tma_tensor.hpp"
 
 namespace llm {
@@ -110,11 +111,6 @@ __global__ void tma_test_device_cute(T* g_out,
         sizeof(make_tensor_like(tensor<0>(tAsA)));
 
     if (threadIdx.x == 0) {
-      // print("\n ########### %d ########### \n", stage);
-      // print("sA: ");
-      // print(sA);
-      // print("\n");
-
       /// Initialize shared memory barrier
       tma_load_mbar[0] = 0;
       cute::initialize_barrier(tma_load_mbar[0], 1 /*numThreads*/);
@@ -191,8 +187,8 @@ auto test_tma_block_load(CopyOp const& copy_op,
   // Create TMA for this device Tensor
   Tensor gA =
       make_tensor(make_gmem_ptr<T>(raw_pointer_cast(d_in.data())), gmem_layout);
-  auto tma =
-      make_tma_copy<TmaType>(copy_op, gA, smem_layout, cta_tile, Int<1>{});
+  auto tma = make_gather_tma_copy<TmaType>(
+      copy_op, gA, smem_layout, cta_tile, Int<1>{});
 
   // Launch
   int smem_size = int(sizeof(SharedStorage<T, decltype(smem_layout)>));
@@ -266,15 +262,12 @@ auto test_tma_block_load(GMEM_Layout const& gmem_layout,
 
 template <class T, template <typename> typename SWIZZLE_ATOM>
 auto test_tma_block_load_swizzle_tile_k(int32_t block_size) {
-  auto gmem_layout = make_layout(make_shape(256, 256), GenRowMajor{});
+  auto gmem_layout = make_layout(make_shape(256, 128), GenRowMajor{});
 
-  auto gather_shape = Shape<_64, _256>{};
+  auto gather_shape = Shape<_128, _128>{};
   auto gather_gmem_layout = make_layout(gather_shape, GenRowMajor{});
   auto smem_layout =
       tile_to_shape(SWIZZLE_ATOM<T>{}, gather_shape, Step<_1, _0>{});
-
-  // TODO: fix the test failures related to tma box size
-  // assert (size<1>(SWIZZLE_ATOM<T>{}) != size<1>(smem_layout));
   return test_tma_block_load<T>(
       gmem_layout, gather_gmem_layout, smem_layout, block_size);
 }
@@ -299,6 +292,9 @@ auto test_tma_block_load(int32_t block_size) {
       block_size);
 }
 
-TEST(SM120_Tma, Test_Tma_Block_Load) { test_tma_block_load(/*block_size=*/8); }
+TEST(SM120_Tma, Test_Tma_Block_Load) {
+  test_tma_block_load(/*block_size=*/8);
+  test_tma_block_load(/*block_size=*/16);
+}
 
 }  // namespace llm

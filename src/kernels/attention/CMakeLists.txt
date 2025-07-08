@@ -124,7 +124,7 @@ cc_test(
   NAME
     tma_test
   SRCS
-    sm120_tma_pagedkv_test.cu
+    sm120_tma_block_load_test.cu
   DEPS
     :gtest_main
     :cutlass
