@@ -223,8 +223,12 @@ list(APPEND CUDA_NVCC_FLAGS
       -O3
       --use_fast_math
       -Xfatbin
-      -compress-all
-      -compress-mode=size)
+      -compress-all)
+
+# Enable aggresive compress for fatbin for CUDA 12.8 or later.
+if(${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL "12.8")
+  list(APPEND CUDA_NVCC_FLAGS -compress-mode=size)
+endif()
 message(STATUS "CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
 
 # enable testing in this directory so we can do a top-level `make test`.
