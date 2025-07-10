@@ -201,7 +201,7 @@ else()
   FetchContent_MakeAvailable(libtorch)
 
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
-  message(STATUS "Downloading and using libtorch 2.7.1 for cuda ${CUDA_VERSION} at ${libtorch_SOURCE_DIR}")
+  message(STATUS "Downloading and using libtorch 2.7.1 for cuda ${CUDAToolkit_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
 
 # carry over torch flags to the rest of the project
@@ -226,7 +226,7 @@ list(APPEND CUDA_NVCC_FLAGS
       -compress-all)
 
 # Enable aggresive fatbin compress for CUDA 12.8 or later.
-if(${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL "12.8")
+if(${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL 12.8)
   list(APPEND CUDA_NVCC_FLAGS -compress-mode=size)
 endif()
 message(STATUS "CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
