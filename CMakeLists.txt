@@ -225,7 +225,7 @@ list(APPEND CUDA_NVCC_FLAGS
       -Xfatbin
       -compress-all)
 
-# Enable aggresive compress for fatbin for CUDA 12.8 or later.
+# Enable aggresive fatbin compress for CUDA 12.8 or later.
 if(${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL "12.8")
   list(APPEND CUDA_NVCC_FLAGS -compress-mode=size)
 endif()
