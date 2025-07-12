@@ -13,16 +13,25 @@ cc_library(
     cutlass
 )
 
+cc_test(
+  NAME
+    tile_scheduler_test
+  SRCS
+    tile_scheduler_test.cu
+  DEPS
+    :gtest_main
+    absl::random_random
+    cutlass
+)
 
 cc_test(
   NAME
     gemm_kernel_test
   SRCS
-    tile_scheduler_test.cu
     sm80_grouped_gemm_test.cu
   DEPS
     :gemm.kernels
-    absl::random_random
     :gtest_main
+    absl::random_random
     torch
 )

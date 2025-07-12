@@ -226,7 +226,7 @@ list(APPEND CUDA_NVCC_FLAGS
       -compress-all)
 
 # Enable aggresive fatbin compress for CUDA 12.8 or later.
-if(${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL 12.8)
+if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
   list(APPEND CUDA_NVCC_FLAGS -compress-mode=size)
 endif()
 message(STATUS "CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
@@ -237,7 +237,6 @@ include(CTest)
 include(GoogleTest)
 
 # include current path
-list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR})
 list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
