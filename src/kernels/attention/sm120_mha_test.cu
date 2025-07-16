@@ -6,8 +6,7 @@
 #include "cute/layout.hpp"
 #include "mha_params.h"
 #include "mha_ref.h"
-#include "sm120_mha_dispatch.cuh"
-#include "sm120_mha_launch.cuh"  // IWYU pragma: keep
+#include "sm120_mha_launch.cuh"
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
@@ -79,9 +78,19 @@ torch::Tensor sm120_mha(
   params.logits_soft_cap = logits_soft_cap;
   params.sliding_window = sliding_window;
 
+  // normalize params that for performance optimization
+  params.normalize();
+
   DISPATCH_TORCH_DTYPE_(query.dtype(), DTYPE, [&] {
-    DISPATCH_HEAD_DIM_(
-        head_dim, HEAD_DIM, [&] { sm120_run_mha<DTYPE, HEAD_DIM>(params); });
+    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+      sm120_launch_mha_kernel<DTYPE,
+                              HEAD_DIM,
+                              /*EVEN_K*/ true,
+                              /*ALIBI*/ false,
+                              /*SOFT_CAP*/ false,
+                              /*LOCAL*/ false,
+                              MHAParams>(params, nullptr);
+    });
   });
   return out;
 }

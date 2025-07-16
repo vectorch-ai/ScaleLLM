@@ -2,15 +2,14 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cutlass/arch/barrier.h>
 
 #include <cute/config.hpp>
 #include <cute/container/array_aligned.hpp>
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "fast_cast.cuh"
-#include "layout_convertor.h"
-#include "mask.h"
+#include "fast_math.h"
 #include "safe_copy.h"
 
 namespace llm {
@@ -21,10 +20,8 @@ template <class TileShape_,
           class Element_,
           int HeadDim_,
           bool EVEN_K,
-          bool ALIBI,
-          bool SOFT_CAP,
           bool LOCAL>
-struct Sm120CollectiveMha {
+struct Sm120CollectiveLoadCpAsyncWs {
   // TODO: multiple stages
   using TileShape = TileShape_;
   using Element = Element_;
@@ -43,18 +40,6 @@ struct Sm120CollectiveMha {
   using BLK_K = Int<kBlockK>;
   using HEAD_DIM = Int<kHeadDim>;
 
-  // TiledMMA (64x16x16) for gemm-I and gemm-II
-  using MMA_Atom_ =
-      std::conditional_t<std::is_same_v<Element, cute::half_t>,
-                         MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,
-                         MMA_Atom<SM80_16x8x16_F32BF16BF16F32_TN>>;
-  using TiledMma = TiledMMA<MMA_Atom_,
-                            Layout<Shape<_4, _1, _1>>,  // warp layout 4x1x1
-                            Tile<_64, _16, _16>>;       // Tile Shape 64x16x16
-
-  static constexpr int kRowsPerMMA = 2;
-  static constexpr int kMmaThreads = size(TiledMma{});
-
   // Atom layout: (8, BLK_K):(BLK_K, 1) k-major
   using SmemLayoutAtom_ =
       decltype(composition(Swizzle<3, 3, 3>{},
@@ -71,7 +56,7 @@ struct Sm120CollectiveMha {
       decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_N, HEAD_DIM>{}));
 
   // V^T smem: (HEAD_DIM, BLK_N)
-  using SmemLayoutVt = decltype(select<1, 0>(SmemLayoutV{}));
+  // using SmemLayoutVt = decltype(select<1, 0>(SmemLayoutV{}));
 
   // Thr layout for gmem copy
   using GmemCopyThrLayout_ =
@@ -89,44 +74,26 @@ struct Sm120CollectiveMha {
   // g2s tiled copy for kv
   using GmemTiledCopyKV = GmemTiledCopyQ;
 
-  // s2r tiled copy for gemm-I
-  using SmemTiledCopyQ =
-      decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, Element>{},
-                                 TiledMma{}));
-  using SmemTiledCopyK =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, Element>{},
-                                 TiledMma{}));
-
-  // s2r tiled copy for gemm-II
-  using SmemTiledCopyVt =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, Element>{},
-                                 TiledMma{}));
-
   struct SharedStorage : cute::aligned_struct<128> {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
-    struct {
-      cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
-      union {
-        cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
-        cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> smem_vt;
-      };
-    };
+    cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
+    cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
+    // union {
+    //   cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
+    //   struct {
+    //     cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
+    //     union {
+    //       cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
+    //       cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> smem_vt;
+    //     };
+    //   };
+    // };
   };
 
   // Host side arguments
   struct Arguments {
     // mask
     int sliding_window = -1;
-
-    // softcap
-    float logits_soft_cap = 0.0;
-
-    // softmax scaling
-    float sm_scale = 1.0;
-    float sm_scale_log2 = 0.0;
-
-    // alibi: (n_heads)
-    const float* __restrict__ alibi_slopes_ptr = nullptr;
 
     FastDivmod group_size;
   };
@@ -138,6 +105,191 @@ struct Sm120CollectiveMha {
   static Params to_underlying_arguments(Arguments const& args) {
     // no convertion needed.
     return args;
+  }
+
+  // load Q/K/V from gmem to smem using cp_async
+  template <class TensorQ,
+            class TensorCQ,
+            class TensorK,
+            class TensorV,
+            class TensorCKV,
+            class BlockCoord,
+            class ResidueMNK,
+            class PipelineQ,
+            class PipelineKV>
+  CUTE_DEVICE void load(const Params& params,
+                        const TensorQ& gQ,     // (BLK_M, HEAD_DIM)
+                        const TensorCQ& cQ,    // (BLK_M, HEAD_DIM) => (M, K)
+                        const TensorK& gK,     // (BLK_N, HEAD_DIM, n)
+                        const TensorV& gV,     // (BLK_N, HEAD_DIM, n)
+                        const TensorCKV& cKV,  // (BLK_N, HEAD_DIM, n) => (N, K)
+                        int tidx,
+                        const BlockCoord& blk_coord,
+                        const ResidueMNK& residue_mnk,  // (M, N, K)
+                        PipelineQ& q_pipeline,
+                        typename PipelineQ::PipelineState& q_state,
+                        PipelineKV& kv_pipeline,
+                        typename PipelineKV::PipelineState& kv_state,
+                        char* smem) {
+    static_assert(is_gmem<TensorQ>::value, "Q tensor must be gmem resident.");
+    static_assert(is_gmem<TensorK>::value, "K tensor must be gmem resident.");
+    static_assert(is_gmem<TensorV>::value, "V tensor must be gmem resident.");
+
+    static constexpr int kBlockM = get<0>(TileShape{});
+    static constexpr int kBlockN = get<1>(TileShape{});
+
+    // const auto[q_idx, kv_head_idx] = blk_coord;
+    // const auto[q_packed_len, kv_len] = residue_mnk;
+    const int q_idx = get<0>(blk_coord);
+    const int kv_head_idx = get<1>(blk_coord);
+    const int q_packed_len = get<0>(residue_mnk);
+    const int kv_len = get<1>(residue_mnk);
+
+    const int sliding_window = LOCAL ? params.sliding_window : kv_len;
+    const auto& group_size = params.group_size;
+    const int q_len = q_packed_len / group_size;
+
+    // TODO: move this to caller in order to share with mma
+    const int diagonal = q_idx + kv_len - q_len;
+    // process kv in range: [kv_idx_min, kv_idx_max)
+    const int kv_idx_min = std::max(0, diagonal - sliding_window);
+    const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
+    const int n_block_min = LOCAL ? kv_idx_min / kBlockN : 0;
+    const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
+
+    if (n_block_min >= n_block_max) {
+      // no kv blocks to process
+      return;
+    }
+
+    // Construct shared memory tiles
+    auto& ss = *reinterpret_cast<SharedStorage*>(smem);
+
+    // (BLK_M, HEAD_DIM), k-major
+    Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
+    // (BLK_N, HEAD_DIM), k-major
+    Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
+    Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
+
+    // g2s tiled copy for qkv
+    GmemTiledCopyQ gmem_tiled_copy_Q;
+    GmemTiledCopyKV gmem_tiled_copy_KV;
+    auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_thread_slice(tidx);
+    auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_thread_slice(tidx);
+
+    // (CPY, CPY_N, CPY_K, n) => (N, K)
+    Tensor tGcKV = gmem_thr_copy_KV.partition_S(cKV);
+    // (CPY, CPY_N, CPY_K, n)
+    Tensor tGgK = gmem_thr_copy_KV.partition_S(gK);
+    Tensor tGgV = gmem_thr_copy_KV.partition_S(gV);
+
+    // (CPY, CPY_N, CPY_K)
+    Tensor tGsK = gmem_thr_copy_KV.partition_D(sK);
+    Tensor tGsV = gmem_thr_copy_KV.partition_D(sV);
+
+    const auto residue_mk = select<0, 2>(residue_mnk);
+    const auto residue_nk = select<1, 2>(residue_mnk);
+
+    auto produce_query = [&]() {
+      auto tGcQ = gmem_thr_copy_Q.partition_S(cQ);
+      auto tGgQ = gmem_thr_copy_Q.partition_S(gQ);
+      auto tGsQ = gmem_thr_copy_Q.partition_D(sQ);
+      safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/true, /*ZFILL_K=*/true>(
+          gmem_tiled_copy_Q, tGgQ, tGsQ, tGcQ, residue_mk);
+    };
+
+    auto produce_key = [&](int ni) {
+      // skip ZFILL_MN for key since Mask will mask out oob with -inf
+      safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
+          gmem_tiled_copy_KV,
+          tGgK(_, _, _, ni),
+          tGsK,
+          tGcKV(_, _, _, ni),
+          residue_nk);
+    };
+
+    // produce key without oob handling
+    auto produce_key_no_oob = [&](int ni) {
+      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
+          gmem_tiled_copy_KV,
+          tGgK(_, _, _, ni),
+          tGsK,
+          tGcKV(_, _, _, ni),
+          residue_nk);
+    };
+
+    auto produce_value = [&](int ni) {
+      // skipping ZFILL_MN for v may cause nan issue
+      safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
+          gmem_tiled_copy_KV,
+          tGgV(_, _, _, ni),
+          tGsV,
+          tGcKV(_, _, _, ni),
+          residue_nk);
+    };
+
+    // produce value without oob handling
+    auto produce_value_no_oob = [&](int ni) {
+      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
+          gmem_tiled_copy_KV,
+          tGgV(_, _, _, ni),
+          tGsV,
+          tGcKV(_, _, _, ni),
+          residue_nk);
+    };
+
+    // Q1, K(n-1), V(n-1), ..., K2, V2, K1, V1
+
+    // ###############  Prologue  ###############
+    // produce query: [] => [q]
+    q_pipeline.produce_acquire(q_state);
+    produce_query();
+    // cp_async_fence();
+    // cp_async_wait<0>();
+    // __syncthreads();
+    q_pipeline.producer_commit(q_state, cutlass::arch::cpasync_barrier_arrive);
+    ++q_state;
+
+    // produce key: [q] => [q, k]
+    kv_pipeline.produce_acquire(kv_state);
+    produce_key(n_block_max - 1);
+    // cp_async_fence();
+    kv_pipeline.producer_commit(kv_state,
+                                cutlass::arch::cpasync_barrier_arrive);
+    ++kv_state;
+
+    // ###############  Mainloop  ###############
+    const int n_blocks = n_block_max - n_block_min;
+    CUTE_NO_UNROLL
+    for (int i = 0; i < n_blocks; ++i) {
+      const int ni = n_block_max - 1 - i;
+
+      // produce value, [] => [v]
+      kv_pipeline.produce_acquire(kv_state);
+      if (i == 0) {
+        produce_value(ni);
+      } else {
+        produce_value_no_oob(ni);
+      }
+      // cp_async_fence();
+      // cp_async_wait<0>();
+      // __syncthreads();
+      kv_pipeline.producer_commit(kv_state,
+                                  cutlass::arch::cpasync_barrier_arrive);
+      ++kv_state;
+
+      // produce next key: [] => [k]
+      kv_pipeline.produce_acquire(kv_state);
+      if (ni > n_block_min) {
+        produce_key_no_oob(ni - 1);
+      }
+      // cp_async_fence();
+      // cp_async_wait<0>();
+      // __syncthreads();
+      kv_pipeline.producer_commit(kv_state,
+                                  cutlass::arch::cpasync_barrier_arrive);
+      ++kv_state;
+    }
   }
 
   // returns false if the block has been skipped
@@ -375,6 +527,8 @@ struct Sm120CollectiveMha {
 
     // copy query from smem to rmem
     cute::copy(smem_tiled_copy_Q, tSsQ, tSrQ_copy_view);
+    // wait s2r copy done for query
+    __syncthreads();
 
     // produce key: [q] => [q, k]
     produce_key(n_block_max - 1);

@@ -24,7 +24,7 @@ template <class TileShape_,
           bool ALIBI,
           bool SOFT_CAP,
           bool LOCAL>
-struct Sm120CollectiveMha {
+struct Sm120CollectiveMhaWs {
   // TODO: multiple stages
   using TileShape = TileShape_;
   using Element = Element_;
@@ -72,22 +72,6 @@ struct Sm120CollectiveMha {
 
   // V^T smem: (HEAD_DIM, BLK_N)
   using SmemLayoutVt = decltype(select<1, 0>(SmemLayoutV{}));
-
-  // Thr layout for gmem copy
-  using GmemCopyThrLayout_ =
-      std::conditional_t<kBlockK == 32,
-                         Layout<Shape<_32, _4>, Stride<_4, _1>>,
-                         Layout<Shape<_16, _8>, Stride<_8, _1>>>;
-
-  // g2s tiled copy for q
-  using GmemTiledCopyQ = decltype(make_tiled_copy(
-      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
-      GmemCopyThrLayout_{},    // Thr layout: (_16,_8)/(_32, _4)
-      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
-      ));
-
-  // g2s tiled copy for kv
-  using GmemTiledCopyKV = GmemTiledCopyQ;
 
   // s2r tiled copy for gemm-I
   using SmemTiledCopyQ =
@@ -141,35 +125,27 @@ struct Sm120CollectiveMha {
   }
 
   // returns false if the block has been skipped
-  template <class TensorQ,
-            class TensorCQ,
-            class TensorK,
-            class TensorV,
-            class TensorCKV,
-            class TensorCMN,
+  template <class TensorCMN,
             class FrgTensor,
             class Softmax,
             class BlockCoord,
-            class ResidueMNK>
-  CUTE_DEVICE void operator()(
-      const Params& params,
-      const TensorQ& gQ,     // (BLK_M, HEAD_DIM)
-      const TensorCQ& cQ,    // (BLK_M, HEAD_DIM) => (M, K)
-      const TensorK& gK,     // (BLK_N, HEAD_DIM, n)
-      const TensorV& gV,     // (BLK_N, HEAD_DIM, n)
-      const TensorCKV& cKV,  // (BLK_N, HEAD_DIM, n) => (N, K)
-      const TensorCMN& cMN,  // (BLK_M, BLK_N, n) => (M, N)
-      FrgTensor& tOrO,       // (MMA, MMA_M, MMA_N)
-      Softmax& softmax,
-      int tidx,
-      const BlockCoord& blk_coord,
-      const ResidueMNK& residue_mnk,  // (M, N, K)
-      char* smem) {
+            class ResidueMNK,
+            class PipelineQ,
+            class PipelineKV>
+  CUTE_DEVICE void fmha(const Params& params,
+                        const TensorCMN& cMN,  // (BLK_M, BLK_N, n) => (M, N)
+                        FrgTensor& tOrO,       // (MMA, MMA_M, MMA_N)
+                        Softmax& softmax,
+                        int tidx,
+                        const BlockCoord& blk_coord,
+                        const ResidueMNK& residue_mnk,  // (M, N, K)
+                        PipelineQ& q_pipeline,
+                        typename PipelineQ::PipelineState& q_state,
+                        PipelineKV& kv_pipeline,
+                        typename PipelineKV::PipelineState& kv_state,
+                        char* smem) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
-    static_assert(is_gmem<TensorQ>::value, "Q tensor must be gmem resident.");
-    static_assert(is_gmem<TensorK>::value, "K tensor must be gmem resident.");
-    static_assert(is_gmem<TensorV>::value, "V tensor must be gmem resident.");
 
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
@@ -186,6 +162,18 @@ struct Sm120CollectiveMha {
     const auto& group_size = params.group_size;
     const int q_len = q_packed_len / group_size;
 
+    const int diagonal = q_idx + kv_len - q_len;
+    // process kv in range: [kv_idx_min, kv_idx_max)
+    const int kv_idx_min = std::max(0, diagonal - sliding_window);
+    const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
+    const int n_block_min = LOCAL ? kv_idx_min / kBlockN : 0;
+    const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
+
+    if (n_block_min >= n_block_max) {
+      // no kv blocks to process
+      return;
+    }
+
     // Construct shared memory tiles
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
@@ -193,78 +181,11 @@ struct Sm120CollectiveMha {
     Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
     // (BLK_N, HEAD_DIM), k-major
     Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
-    Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
+    // Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
 
     // Tensor for V^t; used in GEMM-II.
     // (HEAD_DIM, BLK_N), k-major
     Tensor sVt = make_tensor(make_smem_ptr(ss.smem_vt.data()), SmemLayoutVt{});
-
-    // g2s tiled copy for qkv
-    GmemTiledCopyQ gmem_tiled_copy_Q;
-    GmemTiledCopyKV gmem_tiled_copy_KV;
-    auto gmem_thr_copy_Q = gmem_tiled_copy_Q.get_thread_slice(tidx);
-    auto gmem_thr_copy_KV = gmem_tiled_copy_KV.get_thread_slice(tidx);
-
-    // (CPY, CPY_N, CPY_K, n) => (N, K)
-    Tensor tGcKV = gmem_thr_copy_KV.partition_S(cKV);
-    // (CPY, CPY_N, CPY_K, n)
-    Tensor tGgK = gmem_thr_copy_KV.partition_S(gK);
-    Tensor tGgV = gmem_thr_copy_KV.partition_S(gV);
-
-    // (CPY, CPY_N, CPY_K)
-    Tensor tGsK = gmem_thr_copy_KV.partition_D(sK);
-    Tensor tGsV = gmem_thr_copy_KV.partition_D(sV);
-
-    const auto residue_mk = select<0, 2>(residue_mnk);
-    const auto residue_nk = select<1, 2>(residue_mnk);
-
-    auto produce_query = [&]() {
-      auto tGcQ = gmem_thr_copy_Q.partition_S(cQ);
-      auto tGgQ = gmem_thr_copy_Q.partition_S(gQ);
-      auto tGsQ = gmem_thr_copy_Q.partition_D(sQ);
-      safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/true, /*ZFILL_K=*/true>(
-          gmem_tiled_copy_Q, tGgQ, tGsQ, tGcQ, residue_mk);
-    };
-
-    auto produce_key = [&](int ni) {
-      // skip ZFILL_MN for key since Mask will mask out oob with -inf
-      safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
-          gmem_tiled_copy_KV,
-          tGgK(_, _, _, ni),
-          tGsK,
-          tGcKV(_, _, _, ni),
-          residue_nk);
-    };
-
-    // produce key without oob handling
-    auto produce_key_no_oob = [&](int ni) {
-      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
-          gmem_tiled_copy_KV,
-          tGgK(_, _, _, ni),
-          tGsK,
-          tGcKV(_, _, _, ni),
-          residue_nk);
-    };
-
-    auto produce_value = [&](int ni) {
-      // skipping ZFILL_MN for v may cause nan issue
-      safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
-          gmem_tiled_copy_KV,
-          tGgV(_, _, _, ni),
-          tGsV,
-          tGcKV(_, _, _, ni),
-          residue_nk);
-    };
-
-    // produce value without oob handling
-    auto produce_value_no_oob = [&](int ni) {
-      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
-          gmem_tiled_copy_KV,
-          tGgV(_, _, _, ni),
-          tGsV,
-          tGcKV(_, _, _, ni),
-          residue_nk);
-    };
 
     TiledMma tiled_mma;
     auto thr_mma = tiled_mma.get_slice(tidx);
@@ -343,18 +264,6 @@ struct Sm120CollectiveMha {
     auto tOrO_mn =
         make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
 
-    const int diagonal = q_idx + kv_len - q_len;
-    // process kv in range: [kv_idx_min, kv_idx_max)
-    const int kv_idx_min = std::max(0, diagonal - sliding_window);
-    const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
-    const int n_block_min = LOCAL ? kv_idx_min / kBlockN : 0;
-    const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
-
-    if (n_block_min >= n_block_max) {
-      // no kv blocks to process
-      return;
-    }
-
     auto apply_logits_soft_cap = [&](auto& tSrAccS) {
       if constexpr (SOFT_CAP) {
         CUTE_UNROLL
@@ -365,20 +274,14 @@ struct Sm120CollectiveMha {
     };
 
     // ###############  Prologue  ###############
-    // produce query: [] => [q]
-    produce_query();
-    cp_async_fence();
-
-    // wait g2s copy done for query
-    cp_async_wait<0>();
-    __syncthreads();
-
+    // wait for query g2s copy done
+    q_pipeline.consume_acquire(q_state);
     // copy query from smem to rmem
     cute::copy(smem_tiled_copy_Q, tSsQ, tSrQ_copy_view);
 
-    // produce key: [q] => [q, k]
-    produce_key(n_block_max - 1);
-    cp_async_fence();
+    // release query smem
+    q_pipeline.consumer_release(q_state);
+    ++q_state;
 
     // ###############  Mainloop  ###############
     constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
@@ -409,24 +312,15 @@ struct Sm120CollectiveMha {
       const int ni = n_block_max - 1 - i;
       clear(tSrS);
 
-      // wait key, queue: [q, k] => []
-      cp_async_wait<0>();
-      __syncthreads();
-
-      // produce value, [] => [v]
-      if (i == 0) {
-        produce_value(ni);
-      } else {
-        produce_value_no_oob(ni);
-      }
-      cp_async_fence();
+      // wait key g2s copy done
+      kv_pipeline.consume_acquire(kv_state);
 
       // 1> S = Q@K.T
       compute_qk(tSrS);
 
-      // wait value, [v] => []
-      cp_async_wait<0>();
-      __syncthreads();
+      // release key smem
+      kv_pipeline.consumer_release(kv_state);
+      ++kv_state;
 
       if constexpr (SOFT_CAP) {
         apply_logits_soft_cap(tSrS);
@@ -442,14 +336,15 @@ struct Sm120CollectiveMha {
       }
       softmax.rescale(tSrS_mn, tOrO_mn);
 
-      // produce next key: [] => [k]
-      if (ni > n_block_min) {
-        produce_key_no_oob(ni - 1);
-      }
-      cp_async_fence();
+      // wait value g2s copy done
+      kv_pipeline.consume_acquire(kv_state);
 
       // 2> O = softmax(S)*V
       compute_sv(tSrS, tOrO);
+
+      // release value smem
+      kv_pipeline.consumer_release(kv_state);
+      ++kv_state;
     }
 
     // normalize output: o /= rowsum
