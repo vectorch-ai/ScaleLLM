@@ -10,7 +10,6 @@
 
 #include "fast_cast.cuh"
 #include "layout_convertor.h"
-#include "mask.h"
 #include "safe_copy.h"
 
 namespace llm {
@@ -34,6 +33,9 @@ struct Sm120CollectiveMhaWs {
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockN = get<1>(TileShape{});
   static constexpr int kBlockK = get<2>(TileShape{});
+
+  static constexpr bool kAlibi = ALIBI;
+  static constexpr bool kLocal = LOCAL;
 
   static_assert(kBlockK == 32 || kBlockK == 64);
   static_assert(kHeadDim % kBlockK == 0);
@@ -99,20 +101,8 @@ struct Sm120CollectiveMhaWs {
 
   // Host side arguments
   struct Arguments {
-    // mask
-    int sliding_window = -1;
-
     // softcap
     float logits_soft_cap = 0.0;
-
-    // softmax scaling
-    float sm_scale = 1.0;
-    float sm_scale_log2 = 0.0;
-
-    // alibi: (n_heads)
-    const float* __restrict__ alibi_slopes_ptr = nullptr;
-
-    FastDivmod group_size;
   };
 
   // Device side params
@@ -128,51 +118,30 @@ struct Sm120CollectiveMhaWs {
   template <class TensorCMN,
             class FrgTensor,
             class Softmax,
-            class BlockCoord,
-            class ResidueMNK,
+            class Mask,
             class PipelineQ,
             class PipelineKV>
-  CUTE_DEVICE void fmha(const Params& params,
-                        const TensorCMN& cMN,  // (BLK_M, BLK_N, n) => (M, N)
-                        FrgTensor& tOrO,       // (MMA, MMA_M, MMA_N)
-                        Softmax& softmax,
-                        int tidx,
-                        const BlockCoord& blk_coord,
-                        const ResidueMNK& residue_mnk,  // (M, N, K)
-                        PipelineQ& q_pipeline,
-                        typename PipelineQ::PipelineState& q_state,
-                        PipelineKV& kv_pipeline,
-                        typename PipelineKV::PipelineState& kv_state,
-                        char* smem) {
+  CUTE_DEVICE void operator()(
+      const Params& params,
+      const TensorCMN& tScMN_mn,  // ((2, MMA_M), (2, MMA_N), n) => (M, N)
+      FrgTensor& tOrO,            // (MMA, MMA_M, MMA_N)
+      Softmax& softmax,
+      Mask& mask,
+      int tidx,
+      PipelineQ& q_pipeline,
+      typename PipelineQ::PipelineState& q_state,
+      PipelineKV& kv_pipeline,
+      typename PipelineKV::PipelineState& kv_state,
+      int n_block_min,
+      int n_block_max,
+      char* smem) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
 
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
 
-    const int q_idx = get<0>(blk_coord);
-    const int kv_head_idx = get<1>(blk_coord);
-    const int q_packed_len = get<0>(residue_mnk);
-    const int kv_len = get<1>(residue_mnk);
-
-    const int sliding_window = LOCAL ? params.sliding_window : kv_len;
-    const float logits_soft_cap = params.logits_soft_cap;
-    const float sm_scale = params.sm_scale;
-    const float sm_scale_log2 = params.sm_scale_log2;
-    const auto& group_size = params.group_size;
-    const int q_len = q_packed_len / group_size;
-
-    const int diagonal = q_idx + kv_len - q_len;
-    // process kv in range: [kv_idx_min, kv_idx_max)
-    const int kv_idx_min = std::max(0, diagonal - sliding_window);
-    const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
-    const int n_block_min = LOCAL ? kv_idx_min / kBlockN : 0;
-    const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
-
-    if (n_block_min >= n_block_max) {
-      // no kv blocks to process
-      return;
-    }
+    // assert(n_block_min < n_block_max);
 
     // Construct shared memory tiles
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
@@ -268,7 +237,7 @@ struct Sm120CollectiveMhaWs {
       if constexpr (SOFT_CAP) {
         CUTE_UNROLL
         for (int i = 0; i < size(tSrAccS); ++i) {
-          tSrAccS(i) = tanh(tSrAccS(i) * logits_soft_cap);
+          tSrAccS(i) = tanh(tSrAccS(i) * params.logits_soft_cap);
         }
       }
     };
@@ -292,20 +261,6 @@ struct Sm120CollectiveMhaWs {
     // ((2, MMA_M), (2, MMA_N))
     auto tSrS_mn =
         make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
-
-    // (MMA, MMA_M, MMA_N, n)
-    auto tScMN = thr_mma.partition_C(cMN);
-    // ((2, MMA_M), (2, MMA_N), n) => (M, N)
-    auto tScMN_mn =
-        make_tensor(tScMN.data(), LayoutConvertor::to_mn(tScMN.layout()));
-
-    constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
-    using Mask = Mask<kRowsPerThr, ALIBI, LOCAL>;
-    Mask mask(q_len, kv_len, group_size, sliding_window);
-    if constexpr (ALIBI) {
-      const auto tScS_mn = tScMN_mn(_, _, _0{});
-      mask.init_alibi(tScS_mn, kv_head_idx, sm_scale, params.alibi_slopes_ptr);
-    }
 
     CUTE_NO_UNROLL
     for (int i = 0; i < n_blocks; ++i) {

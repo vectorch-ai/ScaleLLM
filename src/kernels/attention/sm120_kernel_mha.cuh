@@ -7,6 +7,8 @@
 #include <cute/tensor.hpp>
 
 #include "gather_tensor.hpp"
+#include "layout_convertor.h"
+#include "mask.h"
 #include "mha_params.h"
 #include "online_softmax.cuh"
 
@@ -178,10 +180,6 @@ class Sm120KernelMha {
   using BLK_N = typename CollectiveMainloop::BLK_N;
   using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
 
-  static constexpr int kBlockM = CollectiveMainloop::kBlockM;
-
-  static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
-
   static constexpr int kSharedStorageSize =
       cute::max(sizeof(typename CollectiveMainloop::SharedStorage),
                 sizeof(typename CollectiveEpilogue::SharedStorage));
@@ -204,17 +202,19 @@ class Sm120KernelMha {
   CUTE_DEVICE void operator()(const Params& params,
                               const TileSchedulerParams& scheduler_params,
                               char* smem) {
+    static constexpr int kBlockM = CollectiveMainloop::kBlockM;
+    static constexpr int kBlockN = CollectiveMainloop::kBlockN;
+    static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
+
+    static constexpr bool kAlibi = CollectiveMainloop::kAlibi;
+    static constexpr bool kLocal = CollectiveMainloop::kLocal;
+
     CollectiveMainloop mha;
     CollectiveEpilogue epilogue;
     TileScheduler scheduler(scheduler_params);
 
     // construct params
-    MainloopParams mainloop_params{params.sliding_window,
-                                   params.logits_soft_cap,
-                                   params.sm_scale,
-                                   params.sm_scale_log2,
-                                   params.alibi_slopes_ptr,
-                                   params.group_size};
+    MainloopParams mainloop_params{params.logits_soft_cap};
     EpilogueParams epilogue_params;
 
     // process each block
@@ -243,6 +243,15 @@ class Sm120KernelMha {
       const auto residue_mnk =
           make_tuple(q_packed_len, kv_len, params.head_dim);
 
+      const int sliding_window = kLocal ? params.sliding_window : kv_len;
+      const int q_len = q_packed_len / group_size;
+
+      const int diagonal = q_idx + kv_len - q_len;
+      const int kv_idx_min = std::max(0, diagonal - sliding_window);
+      const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
+      const int n_block_min = kLocal ? kv_idx_min / kBlockN : 0;
+      const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
+
       // (BLK_M, HEAD_DIM)
       Tensor gQ = local_tile(
           Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
@@ -268,28 +277,46 @@ class Sm120KernelMha {
                      make_coord(m_block_idx, _));
 
       TiledMma tiled_mma;
-      // accumulator: MMA,MMA_M,MMA_K)
+      // accumulator: (MMA,MMA_M,MMA_K)
       auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
       clear(tOrAccO);
 
-      constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tOrAccO);
-      OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
+      auto thr_mma = tiled_mma.get_slice(tidx);
+      // (MMA, MMA_M, MMA_N, n) => (M, N)
+      auto tScMN = thr_mma.partition_C(cMN);
+      // ((2, MMA_M), (2, MMA_N), n) => (M, N)
+      auto tScMN_mn =
+          make_tensor(tScMN.data(), LayoutConvertor::to_mn(tScMN.layout()));
 
-      // mainloop
-      const auto blk_coord = make_coord(q_idx, kv_head_idx);
-      mha(mainloop_params,
-          gQ,
-          cQ,
-          gK,
-          gV,
-          cKV,
-          cMN,
-          tOrAccO,
-          softmax,
-          tidx,
-          blk_coord,
-          residue_mnk,
-          smem);
+      constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tOrAccO);
+      // Create softmax and mask
+      OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
+      Mask<kRowsPerThr, kAlibi, kLocal> mask(
+          q_len, kv_len, group_size, sliding_window);
+      if constexpr (kAlibi) {
+        const auto tScS_mn = tScMN_mn(_, _, _0{});
+        mask.init_alibi(
+            tScS_mn, kv_head_idx, params.sm_scale, params.alibi_slopes_ptr);
+      }
+
+      // mainloop: process kv in range: [n_block_min, n_block_max)
+      if (n_block_min < n_block_max) {
+        mha(mainloop_params,
+            gQ,
+            cQ,
+            gK,
+            gV,
+            cKV,
+            tScMN_mn,
+            tOrAccO,
+            softmax,
+            mask,
+            tidx,
+            residue_mnk,
+            n_block_min,
+            n_block_max,
+            smem);
+      }
 
       // epilogue
       epilogue(
