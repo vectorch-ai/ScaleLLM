@@ -39,8 +39,8 @@ template void sm80_launch_mha_kernel</*DTYPE=*/{DTYPE},
 """
 
 SM120_MHA_KERNEL_TEMPLATE = """
-#include "sm120_mha_launch.cuh"  // IWYU pragma: export
-#include "mha_params.h"          // IWYU pragma: export
+#include "sm120_fmha_launch.cuh"  // IWYU pragma: export
+#include "mha_params.h"           // IWYU pragma: export
 
 namespace llm {{
 
@@ -126,7 +126,7 @@ class SM120MHAKernel:
         def to_str(val: bool) -> str:
             return "1" if val else "0"
 
-        return f"sm120_mha_{self.dtype}_hd{self.head_dim}_ek{to_str(self.even_k)}_al{to_str(self.alibi)}_sc{to_str(self.soft_cap)}_lc{to_str(self.local)}.cu"
+        return f"sm120_fmha_{self.dtype}_hd{self.head_dim}_ek{to_str(self.even_k)}_al{to_str(self.alibi)}_sc{to_str(self.soft_cap)}_lc{to_str(self.local)}.cu"
 
 
 @dataclass
@@ -174,7 +174,7 @@ def gen_sm80_mha_kernels() -> Iterator[SM80MHAKernel]:
             local=local,
         )
 
-def gen_sm120_mha_kernels() -> Iterator[SM120MHAKernel]:
+def gen_sm120_fmha_kernels() -> Iterator[SM120MHAKernel]:
     # mha kernel instantiations
     for (
         dtype,
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     for kernel in gen_sm80_mha_kernels():
         (output_dir / kernel.filename).write_text(kernel.template)
 
-    for kernel in gen_sm120_mha_kernels():
+    for kernel in gen_sm120_fmha_kernels():
         (output_dir / kernel.filename).write_text(kernel.template)
 
     for kernel in gen_mla_kernels():

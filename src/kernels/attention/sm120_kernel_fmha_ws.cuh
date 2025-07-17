@@ -184,7 +184,7 @@ struct Sm120WarpSpecializedScheduler {
 
   // TODO: Tune the number of registers for each role
   // valid value expected to be multiple of 8
-  // 100*128 + 248 * 128 = 44800 < 65536 (64 KB per SM)
+  // 96*128 + 248 * 128 = 44032 < 65536 (64 KB per SM)
   static constexpr int kNumRegLoad = 96;
   static constexpr int kNumRegFMHA = 248;
   static constexpr int kNumRegEmpty = 24;
@@ -198,9 +198,9 @@ struct Sm120WarpSpecializedScheduler {
       case 1:
         return WarpRole::FMHA;
       default:
-        return WarpRole::Empty;  // should not happen
+        return WarpRole::Empty;
     }
-    // return WarpRole::Empty; // should not happen
+    return WarpRole::Empty;  // unreachable
   }
 };
 
@@ -221,8 +221,6 @@ template <class CollectiveMainloop,
           class WarpScheduler = detail::Sm120WarpSpecializedScheduler>
 class Sm120KernelFmhaWs {
  public:
-  using ClusterShape = typename CollectiveMainloop::ClusterShape;
-
   using TiledMma = typename CollectiveMainloop::TiledMma;
 
   using Element = typename CollectiveMainloop::Element;
@@ -271,6 +269,8 @@ class Sm120KernelFmhaWs {
     static constexpr int kBlockN = CollectiveMainloop::kBlockN;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
 
+    const auto tidx = threadIdx.x % (4 * cutlass::NumThreadsPerWarp);
+
     typename PipelineQ::PipelineState q_state =
         cutlass::make_producer_start_state<PipelineQ>();
 
@@ -285,7 +285,6 @@ class Sm120KernelFmhaWs {
     for (const auto block_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
       const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
-      const auto tidx = threadIdx.x;
 
       // (q_packed_len, HEAD_DIM)
       detail::MHATile<Params> tile(params, batch_idx, kv_head_idx);
@@ -348,8 +347,12 @@ class Sm120KernelFmhaWs {
                       n_block_max,
                       ss.mainloop);
       }
-    }
-  }
+    }  // end of scheduler loop
+
+    // prevent early exit of producer blocks in cluster
+    q_pipeline.producer_tail(q_state);
+    kv_pipeline.producer_tail(kv_state);
+  }  // end of load_loop
 
   template <class Params>
   CUTE_DEVICE void fmha_loop(const Params& params,
@@ -363,6 +366,9 @@ class Sm120KernelFmhaWs {
 
     static constexpr bool kAlibi = CollectiveMainloop::kAlibi;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
+
+    // use relative thread index for mma partition
+    const auto tidx = threadIdx.x % (4 * cutlass::NumThreadsPerWarp);
 
     typename PipelineQ::PipelineState q_state;
     typename PipelineKV::PipelineState kv_state;
@@ -379,7 +385,6 @@ class Sm120KernelFmhaWs {
     for (const auto block_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
       const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
-      const auto tidx = threadIdx.x;
 
       // (q_packed_len, HEAD_DIM)
       detail::MHATile<Params> tile(params, batch_idx, kv_head_idx);
@@ -472,13 +477,18 @@ class Sm120KernelFmhaWs {
                tidx,
                residue_mnk,
                ss.epilogue);
-    }
-  }
+    }  // end of scheduler loop
+  }  // end of fmha_loop
 
   template <class Params>
   CUTE_DEVICE void operator()(const Params& params,
                               const TileSchedulerParams& scheduler_params,
                               char* smem) {
+    static constexpr int kNumThreadsLoad =
+        WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
+    static constexpr int kNumThreadsFMHA =
+        WarpScheduler::kNumWarpsFMHA * cutlass::NumThreadsPerWarp;
+
     using WarpRole = typename WarpScheduler::WarpRole;
 
     const int warp_idx = cutlass::canonical_warp_idx_sync();
@@ -486,37 +496,29 @@ class Sm120KernelFmhaWs {
     const uint32_t lane_predicate = cute::elect_one_sync();
 
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
-    // define pipelines
+
+    // define pipelines for loading Q, K, V
     typename PipelineQ::Params q_pipeline_params;
     if (role == WarpRole::Load) {
       q_pipeline_params.role = PipelineQ::ThreadCategory::Producer;
-    }
-    if (role == WarpRole::FMHA) {
+    } else if (role == WarpRole::FMHA) {
       q_pipeline_params.role = PipelineQ::ThreadCategory::Consumer;
     }
-    q_pipeline_params.role =
-        CollectiveMainloop::PipelineQ::ThreadCategory::Producer;
-    q_pipeline_params.producer_arv_count =
-        WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
-    PipelineQ q_pipeline(ss.pipelines.load_q,
-                         q_pipeline_params,
-                         /*init_barriers=*/cute::true_type{});
+    q_pipeline_params.producer_arv_count = kNumThreadsLoad;
+    q_pipeline_params.consumer_arv_count = kNumThreadsFMHA;
+    PipelineQ q_pipeline(ss.pipelines.load_q, q_pipeline_params);
 
-    typename CollectiveMainloop::PipelineKV::Params kv_pipeline_params;
+    typename PipelineKV::Params kv_pipeline_params;
     if (role == WarpRole::Load) {
       kv_pipeline_params.role = PipelineKV::ThreadCategory::Producer;
-    }
-    if (role == WarpRole::FMHA) {
+    } else if (role == WarpRole::FMHA) {
       kv_pipeline_params.role = PipelineKV::ThreadCategory::Consumer;
     }
-    kv_pipeline_params.producer_arv_count =
-        WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
-    typename CollectiveMainloop::PipelineKV kv_pipeline(
-        ss.pipelines.load_kv,
-        kv_pipeline_params,
-        /*init_barriers=*/cute::true_type{});
+    kv_pipeline_params.producer_arv_count = kNumThreadsLoad;
+    kv_pipeline_params.consumer_arv_count = kNumThreadsFMHA;
+    PipelineKV kv_pipeline(ss.pipelines.load_kv, kv_pipeline_params);
 
-    // ensure the pipeline init is visible to all thread blocks in the cluster
+    // ensure the pipeline init is visible to all blocks in the cluster
     __syncthreads();
 
     if (role == WarpRole::Load) {
@@ -529,7 +531,7 @@ class Sm120KernelFmhaWs {
       fmha_loop(params, scheduler_params, q_pipeline, kv_pipeline, ss);
     } else if (role == WarpRole::Empty) {
       // Empty warp, do nothing except donating registers
-      detail::warpgroup_reg_set<WarpScheduler::kNumRegEmpty>();
+      // detail::warpgroup_reg_set<WarpScheduler::kNumRegEmpty>();
     }
   }
 };

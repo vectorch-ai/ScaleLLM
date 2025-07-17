@@ -68,9 +68,9 @@ cc_test(
 
 cc_test(
   NAME
-    sm120_mha_kernel_test
+    sm120_fmha_kernel_test
   SRCS
-    sm120_mha_test.cu
+    sm120_fmha_test.cu
   DEPS
     :attention.template
     absl::random_random

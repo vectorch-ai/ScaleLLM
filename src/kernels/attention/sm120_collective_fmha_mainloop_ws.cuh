@@ -26,8 +26,6 @@ template <class TileShape_,
           bool SOFT_CAP,
           bool LOCAL>
 struct Sm120CollectiveFMhaWs {
-  using ClusterShape = Shape<_1, _1, _1>;
-
   // TODO: multiple stages
   using TileShape = TileShape_;
   using Element = Element_;
