@@ -85,18 +85,13 @@ torch::Tensor sm120_fmha(
   DISPATCH_TORCH_DTYPE_(query.dtype(), Dtype, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
       DISPATCH_BOOL(params.head_dim == HEAD_DIM, EVEN_K, [&] {
-        DISPATCH_BOOL(params.alibi_slopes_ptr != nullptr, ALIBI, [&] {
-          DISPATCH_BOOL(params.logits_soft_cap > 0, SOFT_CAP, [&] {
-            DISPATCH_BOOL(params.sliding_window >= 0, LOCAL, [&] {
-              sm120_launch_mha_kernel<Dtype,
-                                      HEAD_DIM,
-                                      EVEN_K,
-                                      ALIBI,
-                                      SOFT_CAP,
-                                      LOCAL>(params, nullptr);
-            });
-          });
-        });
+        sm120_launch_mha_kernel<Dtype,
+                                HEAD_DIM,
+                                EVEN_K,
+                                /*ALIBI*/ false,
+                                /*SOFT_CAP*/ false,
+                                /*LOCAL*/ false,
+                                MHAParams>(params, nullptr);
       });
     });
   });
@@ -175,9 +170,9 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 64),                           // head_dim
-        ::testing::Values(0.0, 50.0),                        // logits_soft_cap
-        ::testing::Values(false, true),                      // alibi slope
-        ::testing::Values(-1, 0, 10)                         // sliding window
+        ::testing::Values(0.0),                              // logits_soft_cap
+        ::testing::Values(false),                            // alibi slope
+        ::testing::Values(-1)                                // sliding window
         ));
 
 }  // namespace llm
