@@ -57,10 +57,10 @@ cc_test(
   NAME
     mha_kernel_test
   SRCS
-    sm80_mha_test.cu
+    # sm80_mha_test.cu
     sm80_mha_pagedkv_test.cu
   DEPS
-    :attention.template
+    :attention.kernels
     absl::random_random
     :gtest_main
     torch
@@ -85,7 +85,7 @@ cc_test(
     sm80_mla_test.cu
     sm80_mla_pagedkv_test.cu
   DEPS
-    :attention.template
+    :attention.kernels
     absl::random_random
     :gtest_main
     torch

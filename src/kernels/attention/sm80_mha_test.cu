@@ -2,39 +2,16 @@
 #include <torch/torch.h>
 
 #include <cstdint>
+#include <cute/layout.hpp>
 
-#include "cute/layout.hpp"
 #include "mha_params.h"
 #include "mha_ref.h"
 #include "sm80_mha_dispatch.cuh"
 #include "sm80_mha_launch.cuh"  // IWYU pragma: keep
+#include "static_dispatch.h"
 
 namespace llm {
-#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
-  [&] {                                                    \
-    if (HEAD_DIM_V <= 64) {                                \
-      constexpr static int HEAD_DIM_NAME = 64;             \
-      return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V <= 256) {                        \
-      constexpr static int HEAD_DIM_NAME = 256;            \
-      return __VA_ARGS__();                                \
-    } else {                                               \
-      assert(false);                                       \
-    }                                                      \
-  }()
-
-#define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, TYPE_NAME, ...) \
-  [&] {                                                    \
-    if (TORCH_DTYPE == torch::kHalf) {                     \
-      using TYPE_NAME = cute::half_t;                      \
-      return __VA_ARGS__();                                \
-    } else if (TORCH_DTYPE == torch::kBFloat16) {          \
-      using TYPE_NAME = cute::bfloat16_t;                  \
-      return __VA_ARGS__();                                \
-    } else {                                               \
-      assert(false);                                       \
-    }                                                      \
-  }()
+using namespace cute;
 
 namespace {
 torch::Tensor mha_sm80(
@@ -85,8 +62,8 @@ torch::Tensor mha_sm80(
   params.logits_soft_cap = logits_soft_cap;
   params.sliding_window = sliding_window;
 
-  DISPATCH_TORCH_DTYPE_(query.dtype(), DTYPE, [&] {
-    DISPATCH_HEAD_DIM_(
+  DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
+    DISPATCH_HEAD_DIM(
         head_dim, HEAD_DIM, [&] { sm80_run_mha<DTYPE, HEAD_DIM>(params); });
   });
   return out;
@@ -137,7 +114,7 @@ TEST_P(MHAKernelTest, MHA) {
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
-    alibi_slopes = torch::rand(
+    alibi_slopes = torch::randn(
         {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
