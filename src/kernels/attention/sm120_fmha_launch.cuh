@@ -7,8 +7,8 @@
 #include <cute/tensor.hpp>
 
 #include "sm120_collective_epilogue.cuh"
-#include "sm120_collective_mha.cuh"
-#include "sm120_kernel_mha.cuh"
+#include "sm120_collective_fmha_mainloop_ws.cuh"
+#include "sm120_kernel_fmha_ws.cuh"
 #include "tile_scheduler.cuh"
 
 namespace llm {
@@ -16,7 +16,7 @@ namespace llm {
 namespace detail {
 /// Generic kernel template.
 template <typename Operator, typename Params>
-__global__ __launch_bounds__(Operator::kMmaThreads) void device_kernel(
+__global__ __launch_bounds__(Operator::kThreadsPerBlock) void device_kernel(
     __grid_constant__ const Params params,
     __grid_constant__ const typename Operator::TileSchedulerParams
         scheduler_params) {
@@ -54,13 +54,13 @@ void sm120_launch_mha_kernel(const Params& params, cudaStream_t stream) {
   constexpr int BLK_K = HEAD_DIM % 64 == 0 ? 64 : 32;
 
   using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<BLK_K>>;
-  using CollectiveMainloop = Sm120CollectiveMha<TileShape,
-                                                Dtype,
-                                                HEAD_DIM,
-                                                EVEN_K,
-                                                ALIBI,
-                                                SOFT_CAP,
-                                                LOCAL>;
+  using CollectiveMainloop = Sm120CollectiveFMhaWs<TileShape,
+                                                   Dtype,
+                                                   HEAD_DIM,
+                                                   EVEN_K,
+                                                   ALIBI,
+                                                   SOFT_CAP,
+                                                   LOCAL>;
   using CollectiveEpilogue =
       Sm120CollectiveEpilogue<TileShape, Dtype, HEAD_DIM, EVEN_K>;
 
@@ -74,7 +74,7 @@ void sm120_launch_mha_kernel(const Params& params, cudaStream_t stream) {
       TileScheduler::to_underlying_arguments(scheduler_args);
 
   using AttnKernel =
-      Sm120KernelMha<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;
+      Sm120KernelFmhaWs<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;
 
   auto mha_kernel = detail::device_kernel<AttnKernel, Params>;
 

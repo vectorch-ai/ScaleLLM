@@ -2,11 +2,11 @@
 #include <torch/torch.h>
 
 #include <cstdint>
+#include <cute/layout.hpp>
 
-#include "cute/layout.hpp"
 #include "mha_params.h"
 #include "mha_ref.h"
-#include "sm120_mha_launch.cuh"
+#include "sm120_fmha_launch.cuh"
 
 namespace llm {
 #define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
@@ -30,7 +30,7 @@ namespace llm {
   }()
 
 namespace {
-torch::Tensor sm120_mha(
+torch::Tensor sm120_fmha(
     torch::Tensor query,  // [batch_size, q_len, n_heads, head_dim]
     torch::Tensor key,    // [batch_size, kv_len, n_kv_heads, head_dim]
     torch::Tensor value,  // [batch_size, kv_len, n_kv_heads, head_dim]
@@ -146,7 +146,7 @@ TEST_P(MHAKernelTest, FMHA) {
 
   auto ref_out = mha_batch_ref(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
-  auto out = sm120_mha(
+  auto out = sm120_fmha(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window, q_len);
 
   if (dtype == torch::kBFloat16) {

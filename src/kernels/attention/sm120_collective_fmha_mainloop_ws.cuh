@@ -7,10 +7,12 @@
 #include <cute/container/array_aligned.hpp>
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
+#include <cutlass/pipeline/pipeline.hpp>
 
 #include "fast_cast.cuh"
 #include "layout_convertor.h"
 #include "safe_copy.h"
+#include "sm120_collective_load_cpasync_ws.cuh"
 
 namespace llm {
 
@@ -23,7 +25,7 @@ template <class TileShape_,
           bool ALIBI,
           bool SOFT_CAP,
           bool LOCAL>
-struct Sm120CollectiveMhaWs {
+struct Sm120CollectiveFMhaWs {
   // TODO: multiple stages
   using TileShape = TileShape_;
   using Element = Element_;
@@ -88,16 +90,31 @@ struct Sm120CollectiveMhaWs {
       decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, Element>{},
                                  TiledMma{}));
 
-  struct SharedStorage : cute::aligned_struct<128> {
+  struct TensorStorage {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
-    struct {
-      cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
-      union {
-        cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
-        cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> smem_vt;
-      };
+    cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
+    union {
+      cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
+      cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> smem_vt;
     };
   };
+
+  // TODO: tune the number of stages based on smem size
+  static constexpr int StageCountQ = 1;
+  static constexpr int StageCountKV = 2;
+
+  using PipelineQ = cutlass::PipelineAsync<StageCountQ>;
+  using PipelineKV = cutlass::PipelineAsync<StageCountKV>;
+
+  using CpAsyncLoad = Sm120CollectiveLoadCpAsyncWs<TileShape,
+                                                   Element,
+                                                   TensorStorage,
+                                                   SmemLayoutQ,
+                                                   SmemLayoutK,
+                                                   SmemLayoutV,
+                                                   PipelineQ,
+                                                   PipelineKV,
+                                                   EVEN_K>;
 
   // Host side arguments
   struct Arguments {
@@ -114,14 +131,52 @@ struct Sm120CollectiveMhaWs {
     return args;
   }
 
-  // returns false if the block has been skipped
+  // load Q/K/V from gmem to smem
+  template <class TensorQ,
+            class TensorCQ,
+            class TensorK,
+            class TensorV,
+            class TensorCKV,
+            class ResidueMNK>
+  CUTE_DEVICE void load(const TensorQ& gQ,     // (BLK_M, HEAD_DIM)
+                        const TensorCQ& cQ,    // (BLK_M, HEAD_DIM) => (M, K)
+                        const TensorK& gK,     // (BLK_N, HEAD_DIM, n)
+                        const TensorV& gV,     // (BLK_N, HEAD_DIM, n)
+                        const TensorCKV& cKV,  // (BLK_N, HEAD_DIM, n) => (N, K)
+                        int tidx,
+                        const ResidueMNK& residue_mnk,  // (M, N, K)
+                        PipelineQ& q_pipeline,
+                        typename PipelineQ::PipelineState& q_state,
+                        PipelineKV& kv_pipeline,
+                        typename PipelineKV::PipelineState& kv_state,
+                        int n_block_min,
+                        int n_block_max,
+                        TensorStorage& ss) {
+    // forward to the load implementation
+    CpAsyncLoad load;
+    load(gQ,
+         cQ,
+         gK,
+         gV,
+         cKV,
+         tidx,
+         residue_mnk,
+         q_pipeline,
+         q_state,
+         kv_pipeline,
+         kv_state,
+         n_block_min,
+         n_block_max,
+         ss);
+  }
+
   template <class TensorCMN,
             class FrgTensor,
             class Softmax,
             class Mask,
             class PipelineQ,
             class PipelineKV>
-  CUTE_DEVICE void operator()(
+  CUTE_DEVICE void fmha(
       const Params& params,
       const TensorCMN& tScMN_mn,  // ((2, MMA_M), (2, MMA_N), n) => (M, N)
       FrgTensor& tOrO,            // (MMA, MMA_M, MMA_N)
@@ -134,7 +189,7 @@ struct Sm120CollectiveMhaWs {
       typename PipelineKV::PipelineState& kv_state,
       int n_block_min,
       int n_block_max,
-      char* smem) {
+      TensorStorage& ss) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
 
@@ -143,15 +198,11 @@ struct Sm120CollectiveMhaWs {
 
     // assert(n_block_min < n_block_max);
 
-    // Construct shared memory tiles
-    auto& ss = *reinterpret_cast<SharedStorage*>(smem);
-
+    // Construct smem tensors
     // (BLK_M, HEAD_DIM), k-major
     Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
     // (BLK_N, HEAD_DIM), k-major
     Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
-    // Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
-
     // Tensor for V^t; used in GEMM-II.
     // (HEAD_DIM, BLK_N), k-major
     Tensor sVt = make_tensor(make_smem_ptr(ss.smem_vt.data()), SmemLayoutVt{});
@@ -242,9 +293,8 @@ struct Sm120CollectiveMhaWs {
       }
     };
 
-    // ###############  Prologue  ###############
     // wait for query g2s copy done
-    q_pipeline.consume_acquire(q_state);
+    q_pipeline.consumer_wait(q_state);
     // copy query from smem to rmem
     cute::copy(smem_tiled_copy_Q, tSsQ, tSrQ_copy_view);
 
@@ -268,7 +318,7 @@ struct Sm120CollectiveMhaWs {
       clear(tSrS);
 
       // wait key g2s copy done
-      kv_pipeline.consume_acquire(kv_state);
+      kv_pipeline.consumer_wait(kv_state);
 
       // 1> S = Q@K.T
       compute_qk(tSrS);
@@ -292,7 +342,7 @@ struct Sm120CollectiveMhaWs {
       softmax.rescale(tSrS_mn, tOrO_mn);
 
       // wait value g2s copy done
-      kv_pipeline.consume_acquire(kv_state);
+      kv_pipeline.consumer_wait(kv_state);
 
       // 2> O = softmax(S)*V
       compute_sv(tSrS, tOrO);
