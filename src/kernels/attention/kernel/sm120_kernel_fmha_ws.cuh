@@ -269,7 +269,8 @@ class Sm120KernelFmhaWs {
     static constexpr int kBlockN = CollectiveMainloop::kBlockN;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
 
-    const auto tidx = threadIdx.x % (4 * cutlass::NumThreadsPerWarp);
+    // thread idx within warp group (4 warps = 128 threads)
+    const auto tidx = threadIdx.x % cutlass::NumThreadsPerWarpGroup;
 
     typename PipelineQ::PipelineState q_state =
         cutlass::make_producer_start_state<PipelineQ>();
@@ -367,8 +368,8 @@ class Sm120KernelFmhaWs {
     static constexpr bool kAlibi = CollectiveMainloop::kAlibi;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
 
-    // use relative thread index for mma partition
-    const auto tidx = threadIdx.x % (4 * cutlass::NumThreadsPerWarp);
+    // thread idx within warp group (4 warps = 128 threads)
+    const auto tidx = threadIdx.x % cutlass::NumThreadsPerWarpGroup;
 
     typename PipelineQ::PipelineState q_state;
     typename PipelineKV::PipelineState kv_state;
