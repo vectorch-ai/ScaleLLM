@@ -24,12 +24,10 @@ struct GatherArithmeticTupleIterator {
       const Transform& transform)
       : coord_(coord), transform_(transform) {}
 
-  CUTE_HOST_DEVICE constexpr auto coord() const {
+  CUTE_HOST_DEVICE constexpr auto operator*() const {
     // apply the transform to the coordinate
     return transform_(coord_);
   }
-
-  CUTE_HOST_DEVICE constexpr auto operator*() const { return coord(); }
 
   template <class Coord>
   CUTE_HOST_DEVICE constexpr auto operator+(const Coord& c) const {
@@ -67,7 +65,7 @@ template <class ArithTuple, class Transform>
 CUTE_HOST_DEVICE void print(
     const GatherArithmeticTupleIterator<ArithTuple, Transform>& iter) {
   printf("GatherArithTuple");
-  print(iter.coord());
+  print(*iter);
 }
 
 #if !defined(__CUDACC_RTC__)
@@ -75,7 +73,7 @@ template <class ArithTuple, class Transform>
 CUTE_HOST std::ostream& operator<<(
     std::ostream& os,
     const GatherArithmeticTupleIterator<ArithTuple, Transform>& iter) {
-  return os << "GatherArithTuple" << iter.coord();
+  return os << "GatherArithTuple" << *iter;
 }
 #endif
 
