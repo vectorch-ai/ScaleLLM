@@ -4,11 +4,13 @@ include(cc_test)
 cc_library(
   NAME
     gemm.kernels
+  INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}
   HDRS
-    sm80_collective_grouped_gemm.cuh
-    sm80_collective_epilogue.cuh
-    sm80_grouped_gemm_launch.cuh
-    tile_scheduler.cuh
+    collective/sm80_collective_grouped_gemm.cuh
+    collective/sm80_collective_epilogue.cuh
+    device/sm80_grouped_gemm_launch.cuh
+    common/tile_scheduler.cuh
   DEPS
     cutlass
 )
@@ -16,8 +18,10 @@ cc_library(
 cc_test(
   NAME
     tile_scheduler_test
+  INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}
   SRCS
-    tile_scheduler_test.cu
+    tests/tile_scheduler_test.cu
   DEPS
     :gtest_main
     absl::random_random
@@ -27,8 +31,10 @@ cc_test(
 cc_test(
   NAME
     gemm_kernel_test
+  INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}
   SRCS
-    sm80_grouped_gemm_test.cu
+    tests/sm80_grouped_gemm_test.cu
   DEPS
     :gemm.kernels
     :gtest_main

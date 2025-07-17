@@ -2,10 +2,11 @@
 
 #include <ATen/cuda/CUDAContext.h>
 
-#include "cute/layout.hpp"
+#include <cute/layout.hpp>
+
+#include "common/static_dispatch.h"
+#include "device/sm80_mha_dispatch.cuh"
 #include "mha_params.h"
-#include "sm80_mha_dispatch.cuh"
-#include "static_dispatch.h"
 
 namespace llm {
 using namespace cute;

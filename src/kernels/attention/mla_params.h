@@ -4,7 +4,7 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "fast_math.h"
+#include "common/fast_math.h"
 namespace llm {
 
 // common params for attention kernels
