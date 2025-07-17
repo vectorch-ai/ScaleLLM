@@ -23,7 +23,7 @@ template <class TileShape_,
           bool ALIBI,
           bool SOFT_CAP,
           bool LOCAL>
-struct Sm80CollectiveMha {
+struct Sm120CollectiveMha {
   // TODO: multiple stages
   using TileShape = TileShape_;
   using Element = Element_;
@@ -105,14 +105,12 @@ struct Sm80CollectiveMha {
                                  TiledMma{}));
 
   struct SharedStorage : cute::aligned_struct<128> {
-    union {
-      cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
-      struct {
-        cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
-        union {
-          cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
-          cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> smem_vt;
-        };
+    cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
+    struct {
+      cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
+      union {
+        cute::array_aligned<Element, cute::cosize_v<SmemLayoutV>> smem_v;
+        cute::array_aligned<Element, cute::cosize_v<SmemLayoutVt>> smem_vt;
       };
     };
   };
@@ -347,8 +345,6 @@ struct Sm80CollectiveMha {
 
     // copy query from smem to rmem
     cute::copy(smem_tiled_copy_Q, tSsQ, tSrQ_copy_view);
-    // wait s2r copy done for query before producing key
-    __syncthreads();
 
     // produce key: [q] => [q, k]
     produce_key(n_block_max - 1);

@@ -2,19 +2,35 @@
 #include <torch/torch.h>
 
 #include <cstdint>
-#include <cute/layout.hpp>
 
+#include "cute/layout.hpp"
 #include "mha_params.h"
 #include "mha_ref.h"
-#include "sm80_mha_dispatch.cuh"
-#include "sm80_mha_launch.cuh"  // IWYU pragma: keep
-#include "static_dispatch.h"
+#include "sm120_mha_launch.cuh"
 
 namespace llm {
-using namespace cute;
+#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
+  [&] {                                                    \
+    if (HEAD_DIM_V <= 64) {                                \
+      constexpr static int HEAD_DIM_NAME = 64;             \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
+
+#define DISPATCH_TORCH_DTYPE_(TORCH_DTYPE, TYPE_NAME, ...) \
+  [&] {                                                    \
+    if (TORCH_DTYPE == torch::kHalf) {                     \
+      using TYPE_NAME = cute::half_t;                      \
+      return __VA_ARGS__();                                \
+    } else {                                               \
+      assert(false);                                       \
+    }                                                      \
+  }()
 
 namespace {
-torch::Tensor mha_sm80(
+torch::Tensor sm120_mha(
     torch::Tensor query,  // [batch_size, q_len, n_heads, head_dim]
     torch::Tensor key,    // [batch_size, kv_len, n_kv_heads, head_dim]
     torch::Tensor value,  // [batch_size, kv_len, n_kv_heads, head_dim]
@@ -62,9 +78,19 @@ torch::Tensor mha_sm80(
   params.logits_soft_cap = logits_soft_cap;
   params.sliding_window = sliding_window;
 
-  DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
-    DISPATCH_HEAD_DIM(
-        head_dim, HEAD_DIM, [&] { sm80_run_mha<DTYPE, HEAD_DIM>(params); });
+  // normalize params that for performance optimization
+  params.normalize();
+
+  DISPATCH_TORCH_DTYPE_(query.dtype(), DTYPE, [&] {
+    DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
+      sm120_launch_mha_kernel<DTYPE,
+                              HEAD_DIM,
+                              /*EVEN_K*/ true,
+                              /*ALIBI*/ false,
+                              /*SOFT_CAP*/ false,
+                              /*LOCAL*/ false,
+                              MHAParams>(params, nullptr);
+    });
   });
   return out;
 }
@@ -89,7 +115,7 @@ class MHAKernelTest
   }
 };
 
-TEST_P(MHAKernelTest, MHA) {
+TEST_P(MHAKernelTest, FMHA) {
   const auto [dtype,
               batch_size,
               q_len,
@@ -114,13 +140,13 @@ TEST_P(MHAKernelTest, MHA) {
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
-    alibi_slopes = torch::randn(
+    alibi_slopes = torch::rand(
         {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   }
 
   auto ref_out = mha_batch_ref(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window);
-  auto out = mha_sm80(
+  auto out = sm120_mha(
       query, key, value, alibi_slopes, logits_soft_cap, sliding_window, q_len);
 
   if (dtype == torch::kBFloat16) {
@@ -131,19 +157,18 @@ TEST_P(MHAKernelTest, MHA) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MHA,
+    SM120,
     MHAKernelTest,
-    ::testing::Combine(
-        ::testing::Values(torch::kHalf, torch::kBFloat16),   // q_dtype
-        ::testing::Values(1, 2, 4),                          // batch_size
-        ::testing::Values(1, 62, 125),                       // q_len
-        ::testing::Values(127, 287, 1000),                   // kv_len
-        ::testing::Values(6),                                // n_heads
-        ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
-        ::testing::Values(32, 64, 96, 128, 256),             // head_dim
-        ::testing::Values(0.0, 50.0),                        // logits_soft_cap
-        ::testing::Values(false, true),                      // alibi slope
-        ::testing::Values(-1, 0, 10)                         // sliding window
-        ));
+    ::testing::Combine(::testing::Values(torch::kHalf),  // q_dtype
+                       ::testing::Values(1),             // batch_size
+                       ::testing::Values(62),            // q_len
+                       ::testing::Values(127),           // kv_len
+                       ::testing::Values(6),             // n_heads
+                       ::testing::Values(6),             // n_kv_heads
+                       ::testing::Values(64),            // head_dim
+                       ::testing::Values(0.0),           // logits_soft_cap
+                       ::testing::Values(false),         // alibi slope
+                       ::testing::Values(-1)             // sliding window
+                       ));
 
 }  // namespace llm

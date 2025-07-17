@@ -167,7 +167,7 @@ struct MHATile<MHAPagedKVParams> {
 template <class CollectiveMainloop_,
           class CollectiveEpilogue_,
           class TileScheduler_>
-class Sm80KernelMha {
+class Sm120KernelMha {
  public:
   using CollectiveMainloop = CollectiveMainloop_;
   using CollectiveEpilogue = CollectiveEpilogue_;

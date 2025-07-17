@@ -2,25 +2,15 @@
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
-#include "cute/layout.hpp"
+#include <cute/layout.hpp>
+
 #include "mha_params.h"
 #include "mha_ref.h"
 #include "sm80_mha_dispatch.cuh"
-#include "sm80_mha_launch.cuh"  // IWYU pragma: keep
+#include "static_dispatch.h"
 
 namespace llm {
-#define DISPATCH_HEAD_DIM_(HEAD_DIM_V, HEAD_DIM_NAME, ...) \
-  [&] {                                                    \
-    if (HEAD_DIM_V <= 64) {                                \
-      constexpr static int HEAD_DIM_NAME = 64;             \
-      return __VA_ARGS__();                                \
-    } else if (HEAD_DIM_V <= 256) {                        \
-      constexpr static int HEAD_DIM_NAME = 256;            \
-      return __VA_ARGS__();                                \
-    } else {                                               \
-      assert(false);                                       \
-    }                                                      \
-  }()
+using namespace cute;
 
 namespace {
 torch::Tensor mha_pagedkv_sm80(
@@ -75,8 +65,11 @@ torch::Tensor mha_pagedkv_sm80(
   params.block_cu_lens = block_cu_lens.const_data_ptr<int32_t>();
   params.block_size = block_size;
 
-  DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-    sm80_run_mha<cute::half_t, HEAD_DIM>(params);
+  DISPATCH_TORCH_DTYPE(query.dtype(), DTYPE, [&] {
+    DISPATCH_HEAD_DIM(head_dim, HEAD_DIM, [&] {
+      // run the attention kernel
+      sm80_run_mha<DTYPE, HEAD_DIM>(params, nullptr);
+    });
   });
   return out;
 }
@@ -84,7 +77,8 @@ torch::Tensor mha_pagedkv_sm80(
 }  // namespace
 
 class MHAKernelPagedKVTest
-    : public ::testing::TestWithParam<std::tuple<int64_t /*batch_size*/,
+    : public ::testing::TestWithParam<std::tuple<torch::ScalarType /*q_dtype*/,
+                                                 int64_t /*batch_size*/,
                                                  int64_t /*block_size*/,
                                                  int64_t /*q_len*/,
                                                  int64_t /*kv_len*/,
@@ -102,7 +96,8 @@ class MHAKernelPagedKVTest
 };
 
 TEST_P(MHAKernelPagedKVTest, PageKV) {
-  const auto [batch_size,
+  const auto [dtype,
+              batch_size,
               block_size,
               max_q_len,
               max_kv_len,
@@ -113,7 +108,7 @@ TEST_P(MHAKernelPagedKVTest, PageKV) {
               alibi,
               sliding_window] = GetParam();
 
-  const auto options = torch::dtype(torch::kHalf).device(torch::kCUDA);
+  const auto options = torch::dtype(dtype).device(torch::kCUDA);
 
   std::vector<int32_t> block_table_vec;
   std::vector<int32_t> block_cu_lens_vec = {0};
@@ -167,12 +162,12 @@ TEST_P(MHAKernelPagedKVTest, PageKV) {
 
   // construct non-contiguous query, key and value
   // generate query, key and value
-  torch::Tensor query = torch::rand({n_q_tokens, n_heads, head_dim}, options);
+  torch::Tensor query = torch::randn({n_q_tokens, n_heads, head_dim}, options);
   const auto n_slots = total_blocks * block_size;
   torch::Tensor key_cache =
-      torch::rand({n_slots, n_kv_heads, head_dim}, options);
+      torch::randn({n_slots, n_kv_heads, head_dim}, options);
   torch::Tensor value_cache =
-      torch::rand({n_slots, n_kv_heads, head_dim}, options);
+      torch::randn({n_slots, n_kv_heads, head_dim}, options);
 
   torch::Tensor q_cu_lens = torch::tensor(
       q_cu_lens_vec, torch::dtype(torch::kInt32).device(torch::kCUDA));
@@ -186,8 +181,10 @@ TEST_P(MHAKernelPagedKVTest, PageKV) {
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
-    alibi_slopes = torch::rand(
-        {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+    alibi_slopes =
+        torch::randn({n_heads},
+                     torch::dtype(torch::kFloat32).device(torch::kCUDA)) /
+        max_kv_len;
   }
 
   // get combined key and value
@@ -225,13 +222,18 @@ TEST_P(MHAKernelPagedKVTest, PageKV) {
                               sliding_window,
                               max_q_len);
 
-  EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  if (dtype == torch::kBFloat16) {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-2, /*atol=*/1e-2));
+  } else {
+    EXPECT_TRUE(torch::allclose(out, ref_out, /*rtol=*/1e-3, /*atol=*/1e-3));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
     SM80,
     MHAKernelPagedKVTest,
     ::testing::Combine(
+        ::testing::Values(torch::kHalf, torch::kBFloat16),   // q_dtype
         ::testing::Values(1, 2, 4),                          // batch_size
         ::testing::Values(1, 8),                             // block_size
         ::testing::Values(1, 125),                           // max_q_len
