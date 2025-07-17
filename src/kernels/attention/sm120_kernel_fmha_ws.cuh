@@ -183,8 +183,9 @@ struct Sm120WarpSpecializedScheduler {
       kNumWarpsLoad + kNumWarpsFMHA + kNumWarpsEmpty;
 
   // TODO: Tune the number of registers for each role
+  // valid value expected to be multiple of 8
   // 100*128 + 248 * 128 = 44800 < 65536 (64 KB per SM)
-  static constexpr int kNumRegLoad = 100;
+  static constexpr int kNumRegLoad = 96;
   static constexpr int kNumRegFMHA = 248;
   static constexpr int kNumRegEmpty = 24;
 
@@ -268,9 +269,6 @@ class Sm120KernelFmhaWs {
                              SharedStorage& ss) {
     static constexpr int kBlockM = CollectiveMainloop::kBlockM;
     static constexpr int kBlockN = CollectiveMainloop::kBlockN;
-    static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
-
-    static constexpr bool kAlibi = CollectiveMainloop::kAlibi;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
 
     typename PipelineQ::PipelineState q_state =
@@ -321,7 +319,7 @@ class Sm120KernelFmhaWs {
       Tensor gQ = local_tile(
           Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
       // (BLK_M, HEAD_DIM) => (M, K)
-      Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
+      Tensor cQ = local_tile(make_identity_tensor(shape(Q)),
                              Shape<BLK_M, HEAD_DIM>{},
                              make_coord(m_block_idx, _0{}));
 
@@ -329,7 +327,7 @@ class Sm120KernelFmhaWs {
       Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
       Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
       // (BLK_N, HEAD_DIM, n) => (N, K)
-      Tensor cKV = local_tile(make_identity_tensor(K.shape()),
+      Tensor cKV = local_tile(make_identity_tensor(shape(K)),
                               Shape<BLK_N, HEAD_DIM>{},
                               make_coord(_, _0{}));
 
@@ -415,7 +413,7 @@ class Sm120KernelFmhaWs {
       Tensor gO = local_tile(
           O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
       // (BLK_M, HEAD_DIM) => (M, K)
-      Tensor cO = local_tile(make_identity_tensor(O.shape()),
+      Tensor cO = local_tile(make_identity_tensor(shape(O)),
                              Shape<BLK_M, HEAD_DIM>{},
                              make_coord(m_block_idx, _0{}));
 
@@ -484,7 +482,7 @@ class Sm120KernelFmhaWs {
     using WarpRole = typename WarpScheduler::WarpRole;
 
     const int warp_idx = cutlass::canonical_warp_idx_sync();
-    const auto role = WarpScheduler::warp_idx_to_WarpRole(warp_idx);
+    const auto role = WarpScheduler::warp_idx_to_role(warp_idx);
     const uint32_t lane_predicate = cute::elect_one_sync();
 
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
@@ -502,40 +500,33 @@ class Sm120KernelFmhaWs {
         WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
     PipelineQ q_pipeline(ss.pipelines.load_q,
                          q_pipeline_params,
-                         ClusterShape{},
-                         cute::true_type{},
-                         /*mask calc*/ cute::false_type{});
+                         /*init_barriers=*/cute::true_type{});
 
     typename CollectiveMainloop::PipelineKV::Params kv_pipeline_params;
     if (role == WarpRole::Load) {
-      kv_pipeline_params.role = PipelineQ::ThreadCategory::Producer;
+      kv_pipeline_params.role = PipelineKV::ThreadCategory::Producer;
     }
     if (role == WarpRole::FMHA) {
-      kv_pipeline_params.role = PipelineQ::ThreadCategory::Consumer;
+      kv_pipeline_params.role = PipelineKV::ThreadCategory::Consumer;
     }
     kv_pipeline_params.producer_arv_count =
         WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
     typename CollectiveMainloop::PipelineKV kv_pipeline(
         ss.pipelines.load_kv,
         kv_pipeline_params,
-        ClusterShape{},
-        /*barrier init*/ cute::true_type{},
-        /*mask calc*/ cute::false_type{});
+        /*init_barriers=*/cute::true_type{});
 
     // ensure the pipeline init is visible to all thread blocks in the cluster
     __syncthreads();
 
-    q_pipeline.init_masks(ClusterShape{});
-    kv_pipeline.init_masks(ClusterShape{});
-
     if (role == WarpRole::Load) {
       detail::warpgroup_reg_set<WarpScheduler::kNumRegLoad>();
       // load Q, K, V from gmem to smem
-      load_loop(params, scheduler_params, ss, q_pipeline, kv_pipeline);
+      load_loop(params, scheduler_params, q_pipeline, kv_pipeline, ss);
     } else if (role == WarpRole::FMHA) {
       detail::warpgroup_reg_set<WarpScheduler::kNumRegFMHA>();
       // FMHA mainloop
-      fmha_loop(params, scheduler_params, ss, q_pipeline, kv_pipeline);
+      fmha_loop(params, scheduler_params, q_pipeline, kv_pipeline, ss);
     } else if (role == WarpRole::Empty) {
       // Empty warp, do nothing except donating registers
       detail::warpgroup_reg_set<WarpScheduler::kNumRegEmpty>();

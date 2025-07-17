@@ -25,7 +25,7 @@ template <class TileShape_,
           bool ALIBI,
           bool SOFT_CAP,
           bool LOCAL>
-struct Sm120CollectiveMhaWs {
+struct Sm120CollectiveFMhaWs {
   using ClusterShape = Shape<_1, _1, _1>;
 
   // TODO: multiple stages
@@ -296,7 +296,7 @@ struct Sm120CollectiveMhaWs {
     };
 
     // wait for query g2s copy done
-    q_pipeline.consume_acquire(q_state);
+    q_pipeline.consumer_wait(q_state);
     // copy query from smem to rmem
     cute::copy(smem_tiled_copy_Q, tSsQ, tSrQ_copy_view);
 
@@ -320,7 +320,7 @@ struct Sm120CollectiveMhaWs {
       clear(tSrS);
 
       // wait key g2s copy done
-      kv_pipeline.consume_acquire(kv_state);
+      kv_pipeline.consumer_wait(kv_state);
 
       // 1> S = Q@K.T
       compute_qk(tSrS);
@@ -344,7 +344,7 @@ struct Sm120CollectiveMhaWs {
       softmax.rescale(tSrS_mn, tOrO_mn);
 
       // wait value g2s copy done
-      kv_pipeline.consume_acquire(kv_state);
+      kv_pipeline.consumer_wait(kv_state);
 
       // 2> O = softmax(S)*V
       compute_sv(tSrS, tOrO);

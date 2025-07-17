@@ -90,7 +90,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
     const auto residue_nk = select<1, 2>(residue_mnk);
 
     auto produce_query = [&](auto& state) {
-      q_pipeline.produce_acquire(state);
+      q_pipeline.producer_acquire(state);
 
       auto tGcQ = gmem_thr_copy.partition_S(cQ);
       auto tGgQ = gmem_thr_copy.partition_S(gQ);
@@ -103,7 +103,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
     };
 
     auto produce_key = [&](int ni, auto& state) {
-      kv_pipeline.produce_acquire(state);
+      kv_pipeline.producer_acquire(state);
       // skip ZFILL_MN for key since Mask will mask out oob with -inf
       safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
@@ -117,7 +117,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
 
     // produce key without oob handling
     auto produce_key_no_oob = [&](int ni, auto& state) {
-      kv_pipeline.produce_acquire(state);
+      kv_pipeline.producer_acquire(state);
       safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
           gmem_tiled_copy,
           tGgK(_, _, _, ni),
@@ -129,7 +129,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
     };
 
     auto produce_value = [&](int ni, auto& state) {
-      kv_pipeline.produce_acquire(state);
+      kv_pipeline.producer_acquire(state);
       // skipping ZFILL_MN for v may cause nan issue
       safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
@@ -143,7 +143,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
 
     // produce value without oob handling
     auto produce_value_no_oob = [&](int ni, auto& state) {
-      kv_pipeline.produce_acquire(state);
+      kv_pipeline.producer_acquire(state);
       safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
           gmem_tiled_copy,
           tGgV(_, _, _, ni),
