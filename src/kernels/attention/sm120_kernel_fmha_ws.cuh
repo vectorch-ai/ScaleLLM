@@ -2,9 +2,11 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cutlass/arch/reg_reconfig.h>
 
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
+#include <cutlass/pipeline/pipeline.hpp>
 
 #include "gather_tensor.hpp"
 #include "layout_convertor.h"
@@ -162,16 +164,63 @@ struct MHATile<MHAPagedKVParams> {
     return make_tuple(k, v);
   }
 };
+
+struct Sm120WarpSpecializedScheduler {
+  enum class WarpRole : uint8_t {
+    Load,  // load Q/K/V from gmem to smem
+    FMHA,  // collective FMHA mainloop
+    Empty  // no work, used to donate regs
+  };
+
+  // one warpgroup for loading Q, K/V from gmem to smem
+  static constexpr int kNumWarpsLoad = 4;
+  // one warpgroup for FMHA mainloop
+  static constexpr int kNumWarpsFMHA = 4;
+  // 0 warps for empty workgroup to donate registers
+  static constexpr int kNumWarpsEmpty = 0;
+  // total number of warps in the kernel
+  static constexpr int kNumWarps =
+      kNumWarpsLoad + kNumWarpsFMHA + kNumWarpsEmpty;
+
+  // TODO: Tune the number of registers for each role
+  // 100*128 + 248 * 128 = 44800 < 65536 (64 KB per SM)
+  static constexpr int kNumRegLoad = 100;
+  static constexpr int kNumRegFMHA = 248;
+  static constexpr int kNumRegEmpty = 24;
+
+  static constexpr WarpRole warp_idx_to_role(int warp_idx) {
+    const auto wg_idx = warp_idx / 4;  // 4 warps per workgroup
+    // warp 0 is for loading Q, warp 1 is for loading K/V
+    switch (wg_idx) {
+      case 0:
+        return WarpRole::Load;
+      case 1:
+        return WarpRole::FMHA;
+      default:
+        return WarpRole::Empty;  // should not happen
+    }
+    // return WarpRole::Empty; // should not happen
+  }
+};
+
+template <uint32_t RegCount>
+CUTE_DEVICE void warpgroup_reg_set() {
+  if constexpr (RegCount < 128) {
+    cutlass::arch::warpgroup_reg_dealloc<RegCount>();
+  } else {
+    cutlass::arch::warpgroup_reg_alloc<RegCount>();
+  }
+}
+
 }  // namespace detail
 
-template <class CollectiveMainloop_,
-          class CollectiveEpilogue_,
-          class TileScheduler_>
-class Sm120KernelMha {
+template <class CollectiveMainloop,
+          class CollectiveEpilogue,
+          class TileScheduler,
+          class WarpScheduler = detail::Sm120WarpSpecializedScheduler>
+class Sm120KernelFmhaWs {
  public:
-  using CollectiveMainloop = CollectiveMainloop_;
-  using CollectiveEpilogue = CollectiveEpilogue_;
-  using TileScheduler = TileScheduler_;
+  using ClusterShape = typename CollectiveMainloop::ClusterShape;
 
   using TiledMma = typename CollectiveMainloop::TiledMma;
 
@@ -184,7 +233,22 @@ class Sm120KernelMha {
       cute::max(sizeof(typename CollectiveMainloop::SharedStorage),
                 sizeof(typename CollectiveEpilogue::SharedStorage));
 
-  static constexpr int kThreadsPerBlock = CollectiveMainloop::kMmaThreads;
+  // static constexpr int kMmaThreads = CollectiveMainloop::kMmaThreads;
+  static const int kThreadsPerBlock =
+      WarpScheduler::kNumWarps * cutlass::NumThreadsPerWarp;
+
+  using PipelineQ = typename CollectiveMainloop::PipelineQ;
+  using PipelineKV = typename CollectiveMainloop::PipelineKV;
+
+  struct SharedStorage {
+    typename CollectiveMainloop::TensorStorage mainloop;
+    typename CollectiveEpilogue::TensorStorage epilogue;
+
+    struct PipelineStorage {
+      alignas(16) typename PipelineQ::SharedStorage load_q;
+      alignas(16) typename PipelineKV::SharedStorage load_kv;
+    } pipelines;
+  };
 
   // Kernel params
   using MainloopParams = typename CollectiveMainloop::Params;
@@ -199,9 +263,11 @@ class Sm120KernelMha {
   static dim3 get_block_shape() { return kThreadsPerBlock; }
 
   template <class Params>
-  CUTE_DEVICE void operator()(const Params& params,
-                              const TileSchedulerParams& scheduler_params,
-                              char* smem) {
+  CUTE_DEVICE void load_loop(const Params& params,
+                             const TileSchedulerParams& scheduler_params,
+                             PipelineQ& q_pipeline,
+                             PipelineKV& kv_pipeline,
+                             SharedStorage& ss) {
     static constexpr int kBlockM = CollectiveMainloop::kBlockM;
     static constexpr int kBlockN = CollectiveMainloop::kBlockN;
     static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
@@ -209,13 +275,14 @@ class Sm120KernelMha {
     static constexpr bool kAlibi = CollectiveMainloop::kAlibi;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
 
-    CollectiveMainloop mha;
-    CollectiveEpilogue epilogue;
-    TileScheduler scheduler(scheduler_params);
+    typename PipelineQ::PipelineState q_state =
+        cutlass::make_producer_start_state<PipelineQ>();
 
-    // construct params
-    MainloopParams mainloop_params{params.logits_soft_cap};
-    EpilogueParams epilogue_params;
+    typename PipelineKV::PipelineState kv_state =
+        cutlass::make_producer_start_state<PipelineKV>();
+
+    CollectiveMainloop mainloop;
+    TileScheduler scheduler(scheduler_params);
 
     // process each block
     const auto& group_size = params.group_size;
@@ -255,8 +322,6 @@ class Sm120KernelMha {
       // (BLK_M, HEAD_DIM)
       Tensor gQ = local_tile(
           Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-      Tensor gO = local_tile(
-          O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
       // (BLK_M, HEAD_DIM) => (M, K)
       Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
                              Shape<BLK_M, HEAD_DIM>{},
@@ -269,6 +334,92 @@ class Sm120KernelMha {
       Tensor cKV = local_tile(make_identity_tensor(K.shape()),
                               Shape<BLK_N, HEAD_DIM>{},
                               make_coord(_, _0{}));
+
+      // mainloop: process kv in range: [n_block_min, n_block_max)
+      if (n_block_min < n_block_max) {
+        mainloop.load(gQ,
+                      cQ,
+                      gK,
+                      gV,
+                      cKV,
+                      tidx,
+                      residue_mnk,
+                      q_pipeline,
+                      q_state,
+                      kv_pipeline,
+                      kv_state,
+                      n_block_min,
+                      n_block_max,
+                      ss.mainloop);
+      }
+    }
+  }
+
+  template <class Params>
+  CUTE_DEVICE void fmha_loop(const Params& params,
+                             const TileSchedulerParams& scheduler_params,
+                             PipelineQ& q_pipeline,
+                             PipelineKV& kv_pipeline,
+                             SharedStorage& ss) {
+    static constexpr int kBlockM = CollectiveMainloop::kBlockM;
+    static constexpr int kBlockN = CollectiveMainloop::kBlockN;
+    static constexpr int kRowsPerMMA = CollectiveMainloop::kRowsPerMMA;
+
+    static constexpr bool kAlibi = CollectiveMainloop::kAlibi;
+    static constexpr bool kLocal = CollectiveMainloop::kLocal;
+
+    typename PipelineQ::PipelineState q_state;
+    typename PipelineKV::PipelineState kv_state;
+
+    CollectiveMainloop mainloop;
+    CollectiveEpilogue epilogue;
+    // construct params
+    MainloopParams mainloop_params{params.logits_soft_cap};
+    EpilogueParams epilogue_params;
+
+    TileScheduler scheduler(scheduler_params);
+    // process each block
+    const auto& group_size = params.group_size;
+    for (const auto block_coord : scheduler) {
+      // block coord: (batch_idx, m_block_idx, kv_head_idx)
+      const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
+      const auto tidx = threadIdx.x;
+
+      // (q_packed_len, HEAD_DIM)
+      detail::MHATile<Params> tile(params, batch_idx, kv_head_idx);
+      auto [Q, O] = tile.template get_qo_tile<Element>();
+      // (kv_len, HEAD_DIM)
+      auto [K, V] = tile.template get_kv_tile<Element>();
+
+      // problem shape
+      const int q_packed_len = size<0>(Q);
+      const int kv_len = size<0>(K);
+      const int m_block_base = m_block_idx * kBlockM;
+      if (m_block_base >= q_packed_len) {
+        // m out of bound, skip this block
+        continue;
+      }
+
+      const int q_idx = m_block_base / group_size;
+      const auto residue_mnk =
+          make_tuple(q_packed_len, kv_len, params.head_dim);
+
+      const int sliding_window = kLocal ? params.sliding_window : kv_len;
+      const int q_len = q_packed_len / group_size;
+
+      const int diagonal = q_idx + kv_len - q_len;
+      const int kv_idx_min = std::max(0, diagonal - sliding_window);
+      const int kv_idx_max = std::min(kv_len, diagonal + kBlockM);
+      const int n_block_min = kLocal ? kv_idx_min / kBlockN : 0;
+      const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
+
+      // (BLK_M, HEAD_DIM)
+      Tensor gO = local_tile(
+          O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
+      // (BLK_M, HEAD_DIM) => (M, K)
+      Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
+                             Shape<BLK_M, HEAD_DIM>{},
+                             make_coord(m_block_idx, _0{}));
 
       // (BLK_M, BLK_N, n) => (M, N)
       Tensor cMN =
@@ -301,26 +452,93 @@ class Sm120KernelMha {
 
       // mainloop: process kv in range: [n_block_min, n_block_max)
       if (n_block_min < n_block_max) {
-        mha(mainloop_params,
-            gQ,
-            cQ,
-            gK,
-            gV,
-            cKV,
-            tScMN_mn,
-            tOrAccO,
-            softmax,
-            mask,
-            tidx,
-            residue_mnk,
-            n_block_min,
-            n_block_max,
-            smem);
+        mainloop.fmha(mainloop_params,
+                      tScMN_mn,
+                      tOrAccO,
+                      softmax,
+                      mask,
+                      tidx,
+                      q_pipeline,
+                      q_state,
+                      kv_pipeline,
+                      kv_state,
+                      n_block_min,
+                      n_block_max,
+                      ss.mainloop);
       }
 
       // epilogue
-      epilogue(
-          epilogue_params, tOrAccO, tiled_mma, gO, cQ, tidx, residue_mnk, smem);
+      epilogue(epilogue_params,
+               tOrAccO,
+               tiled_mma,
+               gO,
+               cQ,
+               tidx,
+               residue_mnk,
+               ss.epilogue);
+    }
+  }
+
+  template <class Params>
+  CUTE_DEVICE void operator()(const Params& params,
+                              const TileSchedulerParams& scheduler_params,
+                              char* smem) {
+    using WarpRole = typename WarpScheduler::WarpRole;
+
+    const int warp_idx = cutlass::canonical_warp_idx_sync();
+    const auto role = WarpScheduler::warp_idx_to_WarpRole(warp_idx);
+    const uint32_t lane_predicate = cute::elect_one_sync();
+
+    SharedStorage& ss = *reinterpret_cast<SharedStorage*>(smem);
+    // define pipelines
+    typename PipelineQ::Params q_pipeline_params;
+    if (role == WarpRole::Load) {
+      q_pipeline_params.role = PipelineQ::ThreadCategory::Producer;
+    }
+    if (role == WarpRole::FMHA) {
+      q_pipeline_params.role = PipelineQ::ThreadCategory::Consumer;
+    }
+    q_pipeline_params.role =
+        CollectiveMainloop::PipelineQ::ThreadCategory::Producer;
+    q_pipeline_params.producer_arv_count =
+        WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
+    PipelineQ q_pipeline(ss.pipelines.load_q,
+                         q_pipeline_params,
+                         ClusterShape{},
+                         cute::true_type{},
+                         /*mask calc*/ cute::false_type{});
+
+    typename CollectiveMainloop::PipelineKV::Params kv_pipeline_params;
+    if (role == WarpRole::Load) {
+      kv_pipeline_params.role = PipelineQ::ThreadCategory::Producer;
+    }
+    if (role == WarpRole::FMHA) {
+      kv_pipeline_params.role = PipelineQ::ThreadCategory::Consumer;
+    }
+    kv_pipeline_params.producer_arv_count =
+        WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
+    typename CollectiveMainloop::PipelineKV kv_pipeline(
+        ss.pipelines.load_kv,
+        kv_pipeline_params,
+        ClusterShape{},
+        /*barrier init*/ cute::true_type{},
+        /*mask calc*/ cute::false_type{});
+
+    __syncthreads();
+    q_pipeline.init_masks(ClusterShape{});
+    kv_pipeline.init_masks(ClusterShape{});
+
+    if (role == WarpRole::Load) {
+      detail::warpgroup_reg_set<WarpScheduler::kNumRegLoad>();
+      // load Q, K, V from gmem to smem
+      load_loop(params, scheduler_params, ss, q_pipeline, kv_pipeline);
+    } else if (role == WarpRole::FMHA) {
+      detail::warpgroup_reg_set<WarpScheduler::kNumRegFMHA>();
+      // FMHA mainloop
+      fmha_loop(params, scheduler_params, ss, q_pipeline, kv_pipeline);
+    } else if (role == WarpRole::Empty) {
+      // Empty warp, do nothing except donating registers
+      detail::warpgroup_reg_set<WarpScheduler::kNumRegEmpty>();
     }
   }
 };

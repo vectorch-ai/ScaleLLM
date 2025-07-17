@@ -55,7 +55,7 @@ struct Sm120CollectiveEpilogue {
       Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
       ));
 
-  struct SharedStorage : cute::aligned_struct<128> {
+  struct TensorStorage {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutO>> smem_o;
   };
 
@@ -81,11 +81,9 @@ struct Sm120CollectiveEpilogue {
       const TensorCO& cO,  // (BLK_M, HEAD_DIM) => (M, K)
       int tidx,
       const ResidueMNK& residue_mnk,
-      char* smem) {
+      TensorStorage& ss) {
     static constexpr int kBlockM = get<0>(TileShape{});
 
-    // Smem
-    auto& ss = *reinterpret_cast<SharedStorage*>(smem);
     // (BLK_M, HEAD_DIM)
     Tensor sO = make_tensor(make_smem_ptr(ss.smem_o.data()), SmemLayoutO{});
 

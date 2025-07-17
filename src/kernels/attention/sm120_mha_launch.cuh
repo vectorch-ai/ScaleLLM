@@ -16,7 +16,7 @@ namespace llm {
 namespace detail {
 /// Generic kernel template.
 template <typename Operator, typename Params>
-__global__ __launch_bounds__(Operator::kMmaThreads) void device_kernel(
+__global__ __launch_bounds__(Operator::kThreadsPerBlock) void device_kernel(
     __grid_constant__ const Params params,
     __grid_constant__ const typename Operator::TileSchedulerParams
         scheduler_params) {
