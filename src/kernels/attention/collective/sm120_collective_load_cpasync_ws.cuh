@@ -58,7 +58,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
     // Construct smem tensors
     // (BLK_M, HEAD_DIM), k-major
     Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
-    // (BLK_N, HEAD_DIM), k-major
+    // (BLK_N, HEAD_DIM, KVStages), k-major
     Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
     Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
 
@@ -74,7 +74,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
         GmemCopyThrLayout_{},    // Thr layout: (_16,_8)/(_32, _4)
         Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
     );
-    auto gmem_thr_copy = gmem_tiled_copy.get_thread_slice(tidx);
+    auto gmem_thr_copy = gmem_tiled_copy.get_slice(tidx);
 
     // (CPY, CPY_N, CPY_K, n) => (N, K)
     Tensor tGcKV = gmem_thr_copy.partition_S(cKV);
@@ -82,7 +82,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
     Tensor tGgK = gmem_thr_copy.partition_S(gK);
     Tensor tGgV = gmem_thr_copy.partition_S(gV);
 
-    // (CPY, CPY_N, CPY_K)
+    // (CPY, CPY_N, CPY_K, KVStages)
     Tensor tGsK = gmem_thr_copy.partition_D(sK);
     Tensor tGsV = gmem_thr_copy.partition_D(sV);
 
@@ -108,7 +108,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
       safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
           tGgK(_, _, _, ni),
-          tGsK,
+          tGsK(_, _, _, state.index()),
           tGcKV(_, _, _, ni),
           residue_nk);
       kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
@@ -121,7 +121,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
       safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
           gmem_tiled_copy,
           tGgK(_, _, _, ni),
-          tGsK,
+          tGsK(_, _, _, state.index()),
           tGcKV(_, _, _, ni),
           residue_nk);
       kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
@@ -134,7 +134,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
       safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
           tGgV(_, _, _, ni),
-          tGsV,
+          tGsV(_, _, _, state.index()),
           tGcKV(_, _, _, ni),
           residue_nk);
       kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
@@ -147,7 +147,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
       safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
           gmem_tiled_copy,
           tGgV(_, _, _, ni),
-          tGsV,
+          tGsV(_, _, _, state.index()),
           tGcKV(_, _, _, ni),
           residue_nk);
       kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
@@ -155,7 +155,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
     };
 
     // async copy gmem to smem in following order:
-    //    Q1, Kn-1, Vn-1, ..., K2, V2, K1, V1
+    //    Q0, Kn-1, Vn-1, ..., K1, V1, K0, V0
 
     // produce Q1
     produce_query(q_state);
