@@ -181,8 +181,8 @@ class Sm120KernelMha {
   using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
 
   static constexpr int kSharedStorageSize =
-      cute::max(sizeof(typename CollectiveMainloop::SharedStorage),
-                sizeof(typename CollectiveEpilogue::SharedStorage));
+      cute::max(sizeof(typename CollectiveMainloop::TensorStorage),
+                sizeof(typename CollectiveEpilogue::TensorStorage));
 
   static constexpr int kThreadsPerBlock = CollectiveMainloop::kMmaThreads;
 
@@ -319,8 +319,10 @@ class Sm120KernelMha {
       }
 
       // epilogue
+      auto& ss =
+          *reinterpret_cast<typename CollectiveEpilogue::TensorStorage*>(smem);
       epilogue(
-          epilogue_params, tOrAccO, tiled_mma, gO, cQ, tidx, residue_mnk, smem);
+          epilogue_params, tOrAccO, tiled_mma, gO, cQ, tidx, residue_mnk, ss);
     }
   }
 };

@@ -104,7 +104,7 @@ struct Sm120CollectiveMha {
       decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, Element>{},
                                  TiledMma{}));
 
-  struct SharedStorage : cute::aligned_struct<128> {
+  struct TensorStorage : cute::aligned_struct<128> {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
     struct {
       cute::array_aligned<Element, cute::cosize_v<SmemLayoutK>> smem_k;
@@ -169,7 +169,7 @@ struct Sm120CollectiveMha {
     // assert(n_block_min < n_block_max);
 
     // Construct shared memory tiles
-    auto& ss = *reinterpret_cast<SharedStorage*>(smem);
+    auto& ss = *reinterpret_cast<TensorStorage*>(smem);
 
     // (BLK_M, HEAD_DIM), k-major
     Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});

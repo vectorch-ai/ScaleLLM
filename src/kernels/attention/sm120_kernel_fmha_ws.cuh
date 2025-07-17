@@ -229,10 +229,6 @@ class Sm120KernelFmhaWs {
   using BLK_N = typename CollectiveMainloop::BLK_N;
   using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
 
-  static constexpr int kSharedStorageSize =
-      cute::max(sizeof(typename CollectiveMainloop::SharedStorage),
-                sizeof(typename CollectiveEpilogue::SharedStorage));
-
   // static constexpr int kMmaThreads = CollectiveMainloop::kMmaThreads;
   static const int kThreadsPerBlock =
       WarpScheduler::kNumWarps * cutlass::NumThreadsPerWarp;
@@ -249,6 +245,8 @@ class Sm120KernelFmhaWs {
       alignas(16) typename PipelineKV::SharedStorage load_kv;
     } pipelines;
   };
+
+  static constexpr int kSharedStorageSize = sizeof(SharedStorage);
 
   // Kernel params
   using MainloopParams = typename CollectiveMainloop::Params;
@@ -417,7 +415,7 @@ class Sm120KernelFmhaWs {
       Tensor gO = local_tile(
           O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
       // (BLK_M, HEAD_DIM) => (M, K)
-      Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
+      Tensor cO = local_tile(make_identity_tensor(O.shape()),
                              Shape<BLK_M, HEAD_DIM>{},
                              make_coord(m_block_idx, _0{}));
 
@@ -472,7 +470,7 @@ class Sm120KernelFmhaWs {
                tOrAccO,
                tiled_mma,
                gO,
-               cQ,
+               cO,
                tidx,
                residue_mnk,
                ss.epilogue);
@@ -489,7 +487,7 @@ class Sm120KernelFmhaWs {
     const auto role = WarpScheduler::warp_idx_to_WarpRole(warp_idx);
     const uint32_t lane_predicate = cute::elect_one_sync();
 
-    SharedStorage& ss = *reinterpret_cast<SharedStorage*>(smem);
+    auto& ss = *reinterpret_cast<SharedStorage*>(smem);
     // define pipelines
     typename PipelineQ::Params q_pipeline_params;
     if (role == WarpRole::Load) {
@@ -524,7 +522,9 @@ class Sm120KernelFmhaWs {
         /*barrier init*/ cute::true_type{},
         /*mask calc*/ cute::false_type{});
 
+    // ensure the pipeline init is visible to all thread blocks in the cluster
     __syncthreads();
+
     q_pipeline.init_masks(ClusterShape{});
     kv_pipeline.init_masks(ClusterShape{});
 
