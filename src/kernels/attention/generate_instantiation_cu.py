@@ -20,8 +20,8 @@ BOOL_MAP = {
 
 
 SM80_MHA_KERNEL_TEMPLATE = """
-#include "sm80_mha_launch.cuh"  // IWYU pragma: export
-#include "mha_params.h"         // IWYU pragma: export
+#include "device/sm80_mha_launch.cuh"   // IWYU pragma: export
+#include "mha_params.h"                 // IWYU pragma: export
 
 namespace llm {{
 
@@ -39,8 +39,8 @@ template void sm80_launch_mha_kernel</*DTYPE=*/{DTYPE},
 """
 
 SM120_MHA_KERNEL_TEMPLATE = """
-#include "sm120_fmha_launch.cuh"  // IWYU pragma: export
-#include "mha_params.h"           // IWYU pragma: export
+#include "device/sm120_fmha_launch.cuh" // IWYU pragma: export
+#include "mha_params.h"                 // IWYU pragma: export
 
 namespace llm {{
 
@@ -58,8 +58,8 @@ template void sm120_launch_mha_kernel</*DTYPE=*/{DTYPE},
 """
 
 MLA_KERNEL_TEMPLATE = """
-#include "sm80_mla_launch.cuh"  // IWYU pragma: export
-#include "mla_params.h"         // IWYU pragma: export
+#include "device/sm80_mla_launch.cuh"   // IWYU pragma: export
+#include "mla_params.h"                 // IWYU pragma: export
 
 namespace llm {{
 
