@@ -83,19 +83,6 @@ struct Sm120CollectiveFMhaWs {
   // V^T smem: (HEAD_DIM, BLK_N, KVStages)
   using SmemLayoutVt = decltype(select<1, 0, 2>(SmemLayoutV{}));
 
-  // s2r tiled copy for gemm-I
-  using SmemTiledCopyQ =
-      decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, Element>{},
-                                 TiledMma{}));
-  using SmemTiledCopyK =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, Element>{},
-                                 TiledMma{}));
-
-  // s2r tiled copy for gemm-II
-  using SmemTiledCopyVt =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, Element>{},
-                                 TiledMma{}));
-
   struct TensorStorage {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
     union {
@@ -219,14 +206,16 @@ struct Sm120CollectiveFMhaWs {
 
     // s2r tiled copy for qkv
     // copy query to rmem
-    SmemTiledCopyQ smem_tiled_copy_Q;
+    auto smem_tiled_copy_Q =
+        make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, Element>{}, tiled_mma);
     auto smem_thr_copy_Q = smem_tiled_copy_Q.get_slice(tidx);
     // (CPY,CPY_M,CPY_K)
     auto tSsQ = smem_thr_copy_Q.partition_S(sQ);
     // (CPY,CPY_M,CPY_K)
     auto tSrQ_copy_view = smem_thr_copy_Q.retile_D(tSrQ);
 
-    SmemTiledCopyK smem_tiled_copy_K;
+    auto smem_tiled_copy_K =
+        make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, Element>{}, tiled_mma);
     auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(tidx);
     // (CPY,CPY_N,CPY_K, KVStages)
     auto tSsK = smem_thr_copy_K.partition_S(sK);
@@ -258,7 +247,8 @@ struct Sm120CollectiveFMhaWs {
     // (MMA,MMA_K,MMA_N)
     auto tOrVt = thr_mma.partition_fragment_B(sVt(_, _, _0{}));
 
-    SmemTiledCopyVt smem_tiled_copy_Vt;
+    auto smem_tiled_copy_Vt =
+        make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, Element>{}, tiled_mma);
     auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_slice(tidx);
     // (CPY,CPY_K,CPY_N, KVStages)
     auto tOsVt = smem_thr_copy_Vt.partition_S(sVt);
@@ -294,9 +284,6 @@ struct Sm120CollectiveFMhaWs {
       }
     };
 
-    auto tOrO_mn =
-        make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
-
     auto apply_logits_soft_cap = [&](auto& tSrAccS) {
       if constexpr (SOFT_CAP) {
         CUTE_UNROLL
@@ -316,18 +303,19 @@ struct Sm120CollectiveFMhaWs {
     ++q_state;
 
     // ###############  Mainloop  ###############
-    constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
-    const int n_blocks = n_block_max - n_block_min;
-
     // attention score accumulator, (MMA, MMA_M, MMA_N)
     auto tSrS = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_N>{});
     // ((2, MMA_M), (2, MMA_N))
     auto tSrS_mn =
         make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
 
+    auto tOrO_mn =
+        make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
+
+    const int n_oob_mask_min =
+        n_block_max - (cute::ceil_div(kBlockM, kBlockN) + 1);
     CUTE_NO_UNROLL
-    for (int i = 0; i < n_blocks; ++i) {
-      const int ni = n_block_max - 1 - i;
+    for (int ni = n_block_max - 1; ni >= n_block_min; --ni) {
       clear(tSrS);
 
       // wait key g2s copy done
@@ -347,7 +335,7 @@ struct Sm120CollectiveFMhaWs {
       // apply mask
       // ((2, MMA_M), (2, MMA_N)) => (M, N)
       const auto tScS_mn = tScMN_mn(_, _, ni);
-      if (i < n_oob_mask) {
+      if (ni >= n_oob_mask_min) {
         mask.template apply</*OOB_MASK=*/true>(tSrS_mn, tScS_mn);
       } else {
         mask.template apply</*OOB_MASK=*/false>(tSrS_mn, tScS_mn);
