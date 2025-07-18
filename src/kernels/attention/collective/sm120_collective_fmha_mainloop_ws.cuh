@@ -11,8 +11,11 @@
 
 #include "common/fast_cast.cuh"
 #include "common/layout_convertor.h"
+#include "common/mask.h"
+#include "common/online_softmax.cuh"
 #include "common/safe_copy.h"
 #include "sm120_collective_load_cpasync_ws.cuh"
+#include "sm120_collective_load_tma_ws.cuh"
 
 namespace llm {
 
@@ -24,9 +27,10 @@ template <class TileShape_,
           bool EVEN_K,
           bool ALIBI,
           bool SOFT_CAP,
-          bool LOCAL>
+          bool LOCAL,
+          bool KV_USE_TMA = false  // whether to use TMA for K/V loading
+          >
 struct Sm120CollectiveFMhaWs {
-  // TODO: multiple stages
   using TileShape = TileShape_;
   using Element = Element_;
   using ElementAccum = float;
@@ -93,7 +97,9 @@ struct Sm120CollectiveFMhaWs {
   };
 
   using PipelineQ = cutlass::PipelineAsync<StageCountQ>;
-  using PipelineKV = cutlass::PipelineAsync<StageCountKV>;
+  using PipelineKV = std::conditional_t<KV_USE_TMA,
+                                        cutlass::PipelineTmaAsync<StageCountKV>,
+                                        cutlass::PipelineAsync<StageCountKV>>;
 
   using CpAsyncLoad = Sm120CollectiveLoadCpAsyncWs<TileShape,
                                                    Element,
@@ -105,10 +111,33 @@ struct Sm120CollectiveFMhaWs {
                                                    PipelineKV,
                                                    EVEN_K>;
 
+  using TmaLoad = Sm120CollectiveLoadTmaWs<TileShape,
+                                           Element,
+                                           TensorStorage,
+                                           SmemLayoutQ,
+                                           SmemLayoutK,
+                                           SmemLayoutV,
+                                           PipelineQ,
+                                           PipelineKV,
+                                           EVEN_K>;
+
+  using KVLoad = std::conditional_t<KV_USE_TMA, TmaLoad, CpAsyncLoad>;
+
   // Host side arguments
   struct Arguments {
+    // sliding window attention
+    int sliding_window;
     // softcap
-    float logits_soft_cap = 0.0;
+    float logits_soft_cap;
+    // softmax scale
+    float sm_scale;
+    // softmax scale in log2
+    float sm_scale_log2;
+    // group size
+    const FastDivmod& group_size;
+
+    // alibi slopes pointer
+    const float* alibi_slopes_ptr;
   };
 
   // Device side params
@@ -121,71 +150,50 @@ struct Sm120CollectiveFMhaWs {
   }
 
   // load Q/K/V from gmem to smem
-  template <class TensorQ,
-            class TensorCQ,
-            class TensorK,
-            class TensorV,
-            class TensorCKV,
-            class ResidueMNK>
-  CUTE_DEVICE void load(const TensorQ& gQ,     // (BLK_M, HEAD_DIM)
-                        const TensorCQ& cQ,    // (BLK_M, HEAD_DIM) => (M, K)
-                        const TensorK& gK,     // (BLK_N, HEAD_DIM, n)
-                        const TensorV& gV,     // (BLK_N, HEAD_DIM, n)
-                        const TensorCKV& cKV,  // (BLK_N, HEAD_DIM, n) => (N, K)
+  template <class Block>
+  CUTE_DEVICE void load(const Block& block,
                         int tidx,
-                        const ResidueMNK& residue_mnk,  // (M, N, K)
                         PipelineQ& q_pipeline,
                         typename PipelineQ::PipelineState& q_state,
                         PipelineKV& kv_pipeline,
                         typename PipelineKV::PipelineState& kv_state,
-                        int n_block_min,
-                        int n_block_max,
                         TensorStorage& ss) {
     // forward to the load implementation
-    CpAsyncLoad load;
-    load(gQ,
-         cQ,
-         gK,
-         gV,
-         cKV,
-         tidx,
-         residue_mnk,
-         q_pipeline,
-         q_state,
-         kv_pipeline,
-         kv_state,
-         n_block_min,
-         n_block_max,
-         ss);
+    KVLoad load;
+    load(block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss);
   }
 
-  template <class TensorCMN,
-            class FrgTensor,
-            class Softmax,
-            class Mask,
-            class PipelineQ,
-            class PipelineKV>
-  CUTE_DEVICE void fmha(
-      const Params& params,
-      const TensorCMN& tScMN_mn,  // ((2, MMA_M), (2, MMA_N), n) => (M, N)
-      FrgTensor& tOrO,            // (MMA, MMA_M, MMA_N)
-      Softmax& softmax,
-      Mask& mask,
-      int tidx,
-      PipelineQ& q_pipeline,
-      typename PipelineQ::PipelineState& q_state,
-      PipelineKV& kv_pipeline,
-      typename PipelineKV::PipelineState& kv_state,
-      int n_block_min,
-      int n_block_max,
-      TensorStorage& ss) {
+  template <class Block, class FrgTensor, class PipelineQ, class PipelineKV>
+  CUTE_DEVICE void fmha(const Params& params,
+                        const Block& block,
+                        FrgTensor& tOrO,  // (MMA, MMA_M, MMA_N)
+                        int tidx,
+                        PipelineQ& q_pipeline,
+                        typename PipelineQ::PipelineState& q_state,
+                        PipelineKV& kv_pipeline,
+                        typename PipelineKV::PipelineState& kv_state,
+                        TensorStorage& ss) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
 
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
 
-    // assert(n_block_min < n_block_max);
+    if (!block.is_valid()) {
+      // skip invalid block
+      return;
+    }
+
+    const auto [n_block_min, n_block_max] = block.get_kv_blocks();
+    if (n_block_min >= n_block_max) {
+      return;  // no kv blocks to process
+    }
+
+    const auto [batch_idx, m_block_idx, kv_head_idx] = block.get_block_coord();
+
+    const auto q_packed_len = block.get_packed_len();
+    const auto q_len = block.get_q_len();
+    const auto kv_len = block.get_kv_len();
 
     // Construct smem tensors
     // (BLK_M, HEAD_DIM), k-major
@@ -311,6 +319,29 @@ struct Sm120CollectiveFMhaWs {
 
     auto tOrO_mn =
         make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
+
+    // (BLK_M, BLK_N, n) => (M, N)
+    auto cMN =
+        local_tile(make_identity_tensor(make_shape(q_packed_len, kv_len)),
+                   Shape<BLK_M, BLK_N>{},
+                   make_coord(m_block_idx, _));
+
+    // (MMA, MMA_M, MMA_N, n) => (M, N)
+    auto tScMN = thr_mma.partition_C(cMN);
+    // ((2, MMA_M), (2, MMA_N), n) => (M, N)
+    auto tScMN_mn =
+        make_tensor(tScMN.data(), LayoutConvertor::to_mn(tScMN.layout()));
+
+    constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
+    // Create softmax and mask
+    OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
+    Mask<kRowsPerThr, kAlibi, kLocal> mask(
+        q_len, kv_len, params.group_size, params.sliding_window);
+    if constexpr (kAlibi) {
+      const auto tScS_mn = tScMN_mn(_, _, _0{});
+      mask.init_alibi(
+          tScS_mn, kv_head_idx, params.sm_scale, params.alibi_slopes_ptr);
+    }
 
     const int n_oob_mask_min =
         n_block_max - (cute::ceil_div(kBlockM, kBlockN) + 1);
