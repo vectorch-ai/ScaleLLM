@@ -34,7 +34,10 @@ class SingleTileScheduler {
     Iterator() = default;
 
     CUTE_DEVICE
-    dim3 operator*() const { return blockIdx; }
+    cute::tuple<int, int, int> operator*() const {
+      // (batch, m_blocks, kv_heads)
+      return {blockIdx.x, blockIdx.y, blockIdx.z};
+    }
 
     CUTE_DEVICE
     Iterator& operator++() {

@@ -68,21 +68,21 @@ struct Sm120CollectiveEpilogue {
   // Convert host side arguments to device side params
   static Params to_underlying_arguments(Arguments const& args) { return args; }
 
-  template <class FrgTensor,
-            class TiledMma,
-            class TensorO,
-            class TensorCO,
-            class ResidueMNK>
-  CUTE_DEVICE void operator()(
-      const Params& /*params*/,
-      const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N)
-      TiledMma tiled_mma,
-      TensorO& gO,         // (BLK_M, HEAD_DIM)
-      const TensorCO& cO,  // (BLK_M, HEAD_DIM) => (M, K)
-      int tidx,
-      const ResidueMNK& residue_mnk,
-      TensorStorage& ss) {
-    static constexpr int kBlockM = get<0>(TileShape{});
+  template <class Block, class FrgTensor, class TiledMma>
+  CUTE_DEVICE void operator()(const Params& /*params*/,
+                              const Block& block,
+                              const FrgTensor& tOrAccO,  // (MMA, MMA_M, MMA_N)
+                              TiledMma tiled_mma,
+                              int tidx,
+                              TensorStorage& ss) {
+    if (!block.is_valid()) {
+      // skip invalid block
+      return;
+    }
+
+    // (BLK_M, HEAD_DIM) => (M, K)
+    auto [gO, cO] = block.get_o_tile();
+    auto residue_mnk = block.get_residue_mnk();
 
     // (BLK_M, HEAD_DIM)
     Tensor sO = make_tensor(make_smem_ptr(ss.smem_o.data()), SmemLayoutO{});

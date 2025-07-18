@@ -11,8 +11,11 @@
 
 #include "common/fast_cast.cuh"
 #include "common/layout_convertor.h"
+#include "common/mask.h"
+#include "common/online_softmax.cuh"
 #include "common/safe_copy.h"
 #include "sm120_collective_load_cpasync_ws.cuh"
+#include "sm120_collective_load_tma_ws.cuh"
 
 namespace llm {
 
@@ -24,12 +27,15 @@ template <class TileShape_,
           bool EVEN_K,
           bool ALIBI,
           bool SOFT_CAP,
-          bool LOCAL>
+          bool LOCAL,
+          bool KV_USE_TMA = false  // whether to use TMA for K/V loading
+          >
 struct Sm120CollectiveFMhaWs {
-  // TODO: multiple stages
   using TileShape = TileShape_;
   using Element = Element_;
   using ElementAccum = float;
+
+  using ClusterShape = Shape<_1, _1, _1>;
 
   static constexpr int kHeadDim = HeadDim_;
   static constexpr int kBlockM = get<0>(TileShape{});
@@ -38,6 +44,7 @@ struct Sm120CollectiveFMhaWs {
 
   static constexpr bool kAlibi = ALIBI;
   static constexpr bool kLocal = LOCAL;
+  static constexpr bool kKVUseTma = KV_USE_TMA;
 
   static_assert(kBlockK == 32 || kBlockK == 64);
   static_assert(kHeadDim % kBlockK == 0);
@@ -76,25 +83,14 @@ struct Sm120CollectiveFMhaWs {
   using SmemLayoutK =
       decltype(tile_to_shape(SmemLayoutAtom_{},
                              Shape<BLK_N, HEAD_DIM, Int<StageCountKV>>{}));
-  using SmemLayoutV =
-      decltype(tile_to_shape(SmemLayoutAtom_{},
-                             Shape<BLK_N, HEAD_DIM, Int<StageCountKV>>{}));
+  using SmemLayoutV = SmemLayoutK;
 
   // V^T smem: (HEAD_DIM, BLK_N, KVStages)
   using SmemLayoutVt = decltype(select<1, 0, 2>(SmemLayoutV{}));
 
-  // s2r tiled copy for gemm-I
-  using SmemTiledCopyQ =
-      decltype(make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, Element>{},
-                                 TiledMma{}));
-  using SmemTiledCopyK =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, Element>{},
-                                 TiledMma{}));
-
-  // s2r tiled copy for gemm-II
-  using SmemTiledCopyVt =
-      decltype(make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, Element>{},
-                                 TiledMma{}));
+  // tma transaction bytes for (BLK_N, HEAD_DIM)
+  static constexpr uint32_t kTmaTransactionBytes =
+      size(take<0, 2>(SmemLayoutK{})) * cutlass::sizeof_bits_v<Element> / 8;
 
   struct TensorStorage {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
@@ -106,22 +102,47 @@ struct Sm120CollectiveFMhaWs {
   };
 
   using PipelineQ = cutlass::PipelineAsync<StageCountQ>;
-  using PipelineKV = cutlass::PipelineAsync<StageCountKV>;
+  using PipelineKV = std::conditional_t<KV_USE_TMA,
+                                        cutlass::PipelineTmaAsync<StageCountKV>,
+                                        cutlass::PipelineAsync<StageCountKV>>;
 
-  using CpAsyncLoad = Sm120CollectiveLoadCpAsyncWs<TileShape,
-                                                   Element,
-                                                   TensorStorage,
-                                                   SmemLayoutQ,
-                                                   SmemLayoutK,
-                                                   SmemLayoutV,
-                                                   PipelineQ,
-                                                   PipelineKV,
-                                                   EVEN_K>;
+  using CpAsyncLoad_ = Sm120CollectiveLoadCpAsyncWs<TileShape,
+                                                    Element,
+                                                    TensorStorage,
+                                                    SmemLayoutQ,
+                                                    SmemLayoutK,
+                                                    SmemLayoutV,
+                                                    PipelineQ,
+                                                    PipelineKV,
+                                                    EVEN_K>;
+
+  using TmaLoad_ = Sm120CollectiveLoadTmaWs<TileShape,
+                                            Element,
+                                            TensorStorage,
+                                            SmemLayoutQ,
+                                            SmemLayoutK,
+                                            SmemLayoutV,
+                                            PipelineQ,
+                                            PipelineKV,
+                                            EVEN_K>;
+
+  using Load = std::conditional_t<KV_USE_TMA, TmaLoad_, CpAsyncLoad_>;
 
   // Host side arguments
   struct Arguments {
+    // sliding window attention
+    int sliding_window;
     // softcap
-    float logits_soft_cap = 0.0;
+    float logits_soft_cap;
+    // softmax scale
+    float sm_scale;
+    // softmax scale in log2
+    float sm_scale_log2;
+    // group size
+    const FastDivmod& group_size;
+
+    // alibi slopes pointer
+    const float* alibi_slopes_ptr;
   };
 
   // Device side params
@@ -134,71 +155,50 @@ struct Sm120CollectiveFMhaWs {
   }
 
   // load Q/K/V from gmem to smem
-  template <class TensorQ,
-            class TensorCQ,
-            class TensorK,
-            class TensorV,
-            class TensorCKV,
-            class ResidueMNK>
-  CUTE_DEVICE void load(const TensorQ& gQ,     // (BLK_M, HEAD_DIM)
-                        const TensorCQ& cQ,    // (BLK_M, HEAD_DIM) => (M, K)
-                        const TensorK& gK,     // (BLK_N, HEAD_DIM, n)
-                        const TensorV& gV,     // (BLK_N, HEAD_DIM, n)
-                        const TensorCKV& cKV,  // (BLK_N, HEAD_DIM, n) => (N, K)
+  template <class Block>
+  CUTE_DEVICE void load(const Block& block,
                         int tidx,
-                        const ResidueMNK& residue_mnk,  // (M, N, K)
                         PipelineQ& q_pipeline,
                         typename PipelineQ::PipelineState& q_state,
                         PipelineKV& kv_pipeline,
                         typename PipelineKV::PipelineState& kv_state,
-                        int n_block_min,
-                        int n_block_max,
                         TensorStorage& ss) {
     // forward to the load implementation
-    CpAsyncLoad load;
-    load(gQ,
-         cQ,
-         gK,
-         gV,
-         cKV,
-         tidx,
-         residue_mnk,
-         q_pipeline,
-         q_state,
-         kv_pipeline,
-         kv_state,
-         n_block_min,
-         n_block_max,
-         ss);
+    Load load;
+    load(block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss);
   }
 
-  template <class TensorCMN,
-            class FrgTensor,
-            class Softmax,
-            class Mask,
-            class PipelineQ,
-            class PipelineKV>
-  CUTE_DEVICE void fmha(
-      const Params& params,
-      const TensorCMN& tScMN_mn,  // ((2, MMA_M), (2, MMA_N), n) => (M, N)
-      FrgTensor& tOrO,            // (MMA, MMA_M, MMA_N)
-      Softmax& softmax,
-      Mask& mask,
-      int tidx,
-      PipelineQ& q_pipeline,
-      typename PipelineQ::PipelineState& q_state,
-      PipelineKV& kv_pipeline,
-      typename PipelineKV::PipelineState& kv_state,
-      int n_block_min,
-      int n_block_max,
-      TensorStorage& ss) {
+  template <class Block, class FrgTensor, class PipelineQ, class PipelineKV>
+  CUTE_DEVICE void fmha(const Params& params,
+                        const Block& block,
+                        FrgTensor& tOrO,  // (MMA, MMA_M, MMA_N)
+                        int tidx,
+                        PipelineQ& q_pipeline,
+                        typename PipelineQ::PipelineState& q_state,
+                        PipelineKV& kv_pipeline,
+                        typename PipelineKV::PipelineState& kv_state,
+                        TensorStorage& ss) {
     static_assert(is_rmem<FrgTensor>::value,
                   "Accum tensor must be rmem resident.");
 
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
 
-    // assert(n_block_min < n_block_max);
+    if (!block.is_valid()) {
+      // skip invalid block
+      return;
+    }
+
+    const auto [n_block_min, n_block_max] = block.get_kv_blocks();
+    if (n_block_min >= n_block_max) {
+      return;  // no kv blocks to process
+    }
+
+    const auto [batch_idx, m_block_idx, kv_head_idx] = block.get_block_coord();
+
+    const auto q_packed_len = block.get_packed_len();
+    const auto q_len = block.get_q_len();
+    const auto kv_len = block.get_kv_len();
 
     // Construct smem tensors
     // (BLK_M, HEAD_DIM), k-major
@@ -219,14 +219,16 @@ struct Sm120CollectiveFMhaWs {
 
     // s2r tiled copy for qkv
     // copy query to rmem
-    SmemTiledCopyQ smem_tiled_copy_Q;
+    auto smem_tiled_copy_Q =
+        make_tiled_copy_A(Copy_Atom<SM75_U32x4_LDSM_N, Element>{}, tiled_mma);
     auto smem_thr_copy_Q = smem_tiled_copy_Q.get_slice(tidx);
     // (CPY,CPY_M,CPY_K)
     auto tSsQ = smem_thr_copy_Q.partition_S(sQ);
     // (CPY,CPY_M,CPY_K)
     auto tSrQ_copy_view = smem_thr_copy_Q.retile_D(tSrQ);
 
-    SmemTiledCopyK smem_tiled_copy_K;
+    auto smem_tiled_copy_K =
+        make_tiled_copy_B(Copy_Atom<SM75_U32x4_LDSM_N, Element>{}, tiled_mma);
     auto smem_thr_copy_K = smem_tiled_copy_K.get_slice(tidx);
     // (CPY,CPY_N,CPY_K, KVStages)
     auto tSsK = smem_thr_copy_K.partition_S(sK);
@@ -258,7 +260,8 @@ struct Sm120CollectiveFMhaWs {
     // (MMA,MMA_K,MMA_N)
     auto tOrVt = thr_mma.partition_fragment_B(sVt(_, _, _0{}));
 
-    SmemTiledCopyVt smem_tiled_copy_Vt;
+    auto smem_tiled_copy_Vt =
+        make_tiled_copy_B(Copy_Atom<SM75_U16x8_LDSM_T, Element>{}, tiled_mma);
     auto smem_thr_copy_Vt = smem_tiled_copy_Vt.get_slice(tidx);
     // (CPY,CPY_K,CPY_N, KVStages)
     auto tOsVt = smem_thr_copy_Vt.partition_S(sVt);
@@ -294,9 +297,6 @@ struct Sm120CollectiveFMhaWs {
       }
     };
 
-    auto tOrO_mn =
-        make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
-
     auto apply_logits_soft_cap = [&](auto& tSrAccS) {
       if constexpr (SOFT_CAP) {
         CUTE_UNROLL
@@ -316,18 +316,42 @@ struct Sm120CollectiveFMhaWs {
     ++q_state;
 
     // ###############  Mainloop  ###############
-    constexpr int n_oob_mask = cute::ceil_div(kBlockM, kBlockN) + 1;
-    const int n_blocks = n_block_max - n_block_min;
-
     // attention score accumulator, (MMA, MMA_M, MMA_N)
     auto tSrS = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_N>{});
     // ((2, MMA_M), (2, MMA_N))
     auto tSrS_mn =
         make_tensor(tSrS.data(), LayoutConvertor::to_mn(tSrS.layout()));
 
+    auto tOrO_mn =
+        make_tensor(tOrO.data(), LayoutConvertor::to_mn(tOrO.layout()));
+
+    // (BLK_M, BLK_N, n) => (M, N)
+    auto cMN =
+        local_tile(make_identity_tensor(make_shape(q_packed_len, kv_len)),
+                   Shape<BLK_M, BLK_N>{},
+                   make_coord(m_block_idx, _));
+
+    // (MMA, MMA_M, MMA_N, n) => (M, N)
+    auto tScMN = thr_mma.partition_C(cMN);
+    // ((2, MMA_M), (2, MMA_N), n) => (M, N)
+    auto tScMN_mn =
+        make_tensor(tScMN.data(), LayoutConvertor::to_mn(tScMN.layout()));
+
+    constexpr int kRowsPerThr = kRowsPerMMA * size<1>(tSrS);
+    // Create softmax and mask
+    OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
+    Mask<kRowsPerThr, kAlibi, kLocal> mask(
+        q_len, kv_len, params.group_size, params.sliding_window);
+    if constexpr (kAlibi) {
+      const auto tScS_mn = tScMN_mn(_, _, _0{});
+      mask.init_alibi(
+          tScS_mn, kv_head_idx, params.sm_scale, params.alibi_slopes_ptr);
+    }
+
+    const int n_oob_mask_min =
+        n_block_max - (cute::ceil_div(kBlockM, kBlockN) + 1);
     CUTE_NO_UNROLL
-    for (int i = 0; i < n_blocks; ++i) {
-      const int ni = n_block_max - 1 - i;
+    for (int ni = n_block_max - 1; ni >= n_block_min; --ni) {
       clear(tSrS);
 
       // wait key g2s copy done
@@ -347,7 +371,7 @@ struct Sm120CollectiveFMhaWs {
       // apply mask
       // ((2, MMA_M), (2, MMA_N)) => (M, N)
       const auto tScS_mn = tScMN_mn(_, _, ni);
-      if (i < n_oob_mask) {
+      if (ni >= n_oob_mask_min) {
         mask.template apply</*OOB_MASK=*/true>(tSrS_mn, tScS_mn);
       } else {
         mask.template apply</*OOB_MASK=*/false>(tSrS_mn, tScS_mn);
