@@ -225,8 +225,8 @@ if __name__ == "__main__":
     for kernel in gen_sm80_mha_kernels():
         (output_dir / kernel.filename).write_text(kernel.template)
 
-    for kernel in gen_sm120_fmha_kernels():
-        (output_dir / kernel.filename).write_text(kernel.template)
+    # for kernel in gen_sm120_fmha_kernels():
+    #     (output_dir / kernel.filename).write_text(kernel.template)
 
     for kernel in gen_mla_kernels():
         (output_dir / kernel.filename).write_text(kernel.template)
