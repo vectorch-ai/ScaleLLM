@@ -35,6 +35,8 @@ struct Sm120CollectiveFMhaWs {
   using Element = Element_;
   using ElementAccum = float;
 
+  using ClusterShape = Shape<_1, _1, _1>;
+
   static constexpr int kHeadDim = HeadDim_;
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockN = get<1>(TileShape{});
@@ -42,6 +44,7 @@ struct Sm120CollectiveFMhaWs {
 
   static constexpr bool kAlibi = ALIBI;
   static constexpr bool kLocal = LOCAL;
+  static constexpr bool kKVUseTma = KV_USE_TMA;
 
   static_assert(kBlockK == 32 || kBlockK == 64);
   static_assert(kHeadDim % kBlockK == 0);
@@ -80,12 +83,14 @@ struct Sm120CollectiveFMhaWs {
   using SmemLayoutK =
       decltype(tile_to_shape(SmemLayoutAtom_{},
                              Shape<BLK_N, HEAD_DIM, Int<StageCountKV>>{}));
-  using SmemLayoutV =
-      decltype(tile_to_shape(SmemLayoutAtom_{},
-                             Shape<BLK_N, HEAD_DIM, Int<StageCountKV>>{}));
+  using SmemLayoutV = SmemLayoutK;
 
   // V^T smem: (HEAD_DIM, BLK_N, KVStages)
   using SmemLayoutVt = decltype(select<1, 0, 2>(SmemLayoutV{}));
+
+  // tma transaction bytes for (BLK_N, HEAD_DIM)
+  static constexpr uint32_t kTmaTransactionBytes =
+      size(take<0, 2>(SmemLayoutK{})) * cutlass::sizeof_bits_v<Element> / 8;
 
   struct TensorStorage {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutQ>> smem_q;
@@ -101,27 +106,27 @@ struct Sm120CollectiveFMhaWs {
                                         cutlass::PipelineTmaAsync<StageCountKV>,
                                         cutlass::PipelineAsync<StageCountKV>>;
 
-  using CpAsyncLoad = Sm120CollectiveLoadCpAsyncWs<TileShape,
-                                                   Element,
-                                                   TensorStorage,
-                                                   SmemLayoutQ,
-                                                   SmemLayoutK,
-                                                   SmemLayoutV,
-                                                   PipelineQ,
-                                                   PipelineKV,
-                                                   EVEN_K>;
+  using CpAsyncLoad_ = Sm120CollectiveLoadCpAsyncWs<TileShape,
+                                                    Element,
+                                                    TensorStorage,
+                                                    SmemLayoutQ,
+                                                    SmemLayoutK,
+                                                    SmemLayoutV,
+                                                    PipelineQ,
+                                                    PipelineKV,
+                                                    EVEN_K>;
 
-  using TmaLoad = Sm120CollectiveLoadTmaWs<TileShape,
-                                           Element,
-                                           TensorStorage,
-                                           SmemLayoutQ,
-                                           SmemLayoutK,
-                                           SmemLayoutV,
-                                           PipelineQ,
-                                           PipelineKV,
-                                           EVEN_K>;
+  using TmaLoad_ = Sm120CollectiveLoadTmaWs<TileShape,
+                                            Element,
+                                            TensorStorage,
+                                            SmemLayoutQ,
+                                            SmemLayoutK,
+                                            SmemLayoutV,
+                                            PipelineQ,
+                                            PipelineKV,
+                                            EVEN_K>;
 
-  using KVLoad = std::conditional_t<KV_USE_TMA, TmaLoad, CpAsyncLoad>;
+  using Load = std::conditional_t<KV_USE_TMA, TmaLoad_, CpAsyncLoad_>;
 
   // Host side arguments
   struct Arguments {
@@ -159,7 +164,7 @@ struct Sm120CollectiveFMhaWs {
                         typename PipelineKV::PipelineState& kv_state,
                         TensorStorage& ss) {
     // forward to the load implementation
-    KVLoad load;
+    Load load;
     load(block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss);
   }
 

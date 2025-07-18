@@ -72,16 +72,18 @@ template <class CollectiveMainloop,
           class WarpScheduler = detail::Sm120WarpSpecializedScheduler>
 class Sm120KernelFmhaWs {
  public:
-  // using TiledMma = typename CollectiveMainloop::TiledMma;
   using TileShape = typename CollectiveMainloop::TileShape;
   using Element = typename CollectiveMainloop::Element;
+  using ClusterShape = typename CollectiveMainloop::ClusterShape;
 
-  // static constexpr int kMmaThreads = CollectiveMainloop::kMmaThreads;
   static const int kThreadsPerBlock =
       WarpScheduler::kNumWarps * cutlass::NumThreadsPerWarp;
 
   using PipelineQ = typename CollectiveMainloop::PipelineQ;
   using PipelineKV = typename CollectiveMainloop::PipelineKV;
+
+  using PipelineParamsQ = typename PipelineQ::Params;
+  using PipelineParamsKV = typename PipelineKV::Params;
 
   using PipelineStateQ = typename PipelineQ::PipelineState;
   using PipelineStateKV = typename PipelineKV::PipelineState;
@@ -118,7 +120,7 @@ class Sm120KernelFmhaWs {
                              SharedStorage& ss) {
     static constexpr int kHeadDim = CollectiveMainloop::kHeadDim;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
-    using Block = FMHABlock<Params, TileShape, Element, kHeadDim, kLocal>;
+    using Block = FmhaBlock<Params, TileShape, Element, kHeadDim, kLocal>;
 
     auto q_state = cutlass::make_producer_start_state<PipelineQ>();
     auto kv_state = cutlass::make_producer_start_state<PipelineKV>();
@@ -130,9 +132,9 @@ class Sm120KernelFmhaWs {
     const auto tidx = threadIdx.x % cutlass::NumThreadsPerWarpGroup;
 
     // process each block
-    for (const auto block_coord : scheduler) {
+    for (const auto blk_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      const Block block(params, block_coord);
+      const Block block(params, blk_coord);
       mainloop.load(
           block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss.mainloop);
     }
@@ -154,7 +156,7 @@ class Sm120KernelFmhaWs {
     using BLK_M = typename CollectiveMainloop::BLK_M;
     using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
 
-    using Block = FMHABlock<Params, TileShape, Element, kHeadDim, kLocal>;
+    using Block = FmhaBlock<Params, TileShape, Element, kHeadDim, kLocal>;
 
     PipelineStateQ q_state;
     PipelineStateKV kv_state;
@@ -179,9 +181,9 @@ class Sm120KernelFmhaWs {
 
     // process each block
     const auto& group_size = params.group_size;
-    for (const auto block_coord : scheduler) {
+    for (const auto blk_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      const Block block(params, block_coord);
+      const Block block(params, blk_coord);
 
       TiledMma tiled_mma;
       // accumulator: (MMA,MMA_M,MMA_K)
@@ -206,6 +208,7 @@ class Sm120KernelFmhaWs {
   CUTE_DEVICE void operator()(const Params& params,
                               const TileSchedulerParams& scheduler_params,
                               char* smem) {
+    static constexpr bool kKVUseTma = CollectiveMainloop::kKVUseTma;
     static constexpr int kNumThreadsLoad =
         WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
     static constexpr int kNumThreadsFMHA =
@@ -217,28 +220,45 @@ class Sm120KernelFmhaWs {
     const auto role = WarpScheduler::warp_idx_to_role(warp_idx);
     const uint32_t lane_predicate = cute::elect_one_sync();
 
+    // thread idx within warp group (4 warps = 128 threads)
+    const auto tidx_in_wg = threadIdx.x % cutlass::NumThreadsPerWarpGroup;
+
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
-    // define pipelines for loading Q, K, V
-    typename PipelineQ::Params q_pipeline_params;
-    if (role == WarpRole::Load) {
-      q_pipeline_params.role = PipelineQ::ThreadCategory::Producer;
-    } else if (role == WarpRole::FMHA) {
-      q_pipeline_params.role = PipelineQ::ThreadCategory::Consumer;
-    }
-    q_pipeline_params.producer_arv_count = kNumThreadsLoad;
-    q_pipeline_params.consumer_arv_count = kNumThreadsFMHA;
-    PipelineQ q_pipeline(ss.pipelines.load_q, q_pipeline_params);
+    // define pipelines for loading Q, KV
+    PipelineQ q_pipeline = [&] {
+      PipelineParamsQ pipeline_params;
+      if (role == WarpRole::Load) {
+        pipeline_params.role = PipelineQ::ThreadCategory::Producer;
+      } else if (role == WarpRole::FMHA) {
+        pipeline_params.role = PipelineQ::ThreadCategory::Consumer;
+      }
+      pipeline_params.producer_arv_count = kNumThreadsLoad;
+      pipeline_params.consumer_arv_count = kNumThreadsFMHA;
+      return PipelineQ(ss.pipelines.load_q, pipeline_params);
+    }();
 
-    typename PipelineKV::Params kv_pipeline_params;
-    if (role == WarpRole::Load) {
-      kv_pipeline_params.role = PipelineKV::ThreadCategory::Producer;
-    } else if (role == WarpRole::FMHA) {
-      kv_pipeline_params.role = PipelineKV::ThreadCategory::Consumer;
-    }
-    kv_pipeline_params.producer_arv_count = kNumThreadsLoad;
-    kv_pipeline_params.consumer_arv_count = kNumThreadsFMHA;
-    PipelineKV kv_pipeline(ss.pipelines.load_kv, kv_pipeline_params);
+    PipelineKV kv_pipeline = [&] {
+      PipelineParamsKV pipeline_params;
+      if (role == WarpRole::Load) {
+        pipeline_params.role = PipelineKV::ThreadCategory::Producer;
+      } else if (role == WarpRole::FMHA) {
+        pipeline_params.role = PipelineKV::ThreadCategory::Consumer;
+      }
+      if constexpr (kKVUseTma) {
+        pipeline_params.transaction_bytes =
+            CollectiveMainloop::kTmaTransactionBytes;
+        pipeline_params.is_leader = (tidx_in_wg == 0);
+        pipeline_params.num_producers = 1;  // only one thread issuing tma
+        pipeline_params.num_consumers = kNumThreadsFMHA;
+        return PipelineKV(
+            ss.pipelines.load_kv, pipeline_params, ClusterShape{});
+      } else {
+        pipeline_params.producer_arv_count = kNumThreadsLoad;
+        pipeline_params.consumer_arv_count = kNumThreadsFMHA;
+        return PipelineKV(ss.pipelines.load_kv, pipeline_params);
+      }
+    }();
 
     // ensure the pipeline init is visible to all blocks in the cluster
     __syncthreads();

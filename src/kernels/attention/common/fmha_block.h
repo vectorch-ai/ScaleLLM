@@ -16,7 +16,7 @@ template <typename Params,
           typename Element,    // Element type
           int kHeadDim,
           bool kLocal>
-struct FMHABlock {
+struct FmhaBlock {
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockN = get<1>(TileShape{});
 
@@ -33,7 +33,7 @@ struct FMHABlock {
   int m_block_base_;
   int packed_len_;
 
-  CUTE_HOST_DEVICE FMHABlock(const Params& params,
+  CUTE_HOST_DEVICE FmhaBlock(const Params& params,
                              const tuple<int, int, int>& blk_coord)
       : params_(params), blk_coord_(blk_coord) {
     // derive parameters
