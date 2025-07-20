@@ -11,6 +11,7 @@
 #include "common/fast_cast.cuh"
 #include "common/layout_convertor.h"
 #include "common/safe_copy.h"
+#include "common/selector.h"
 
 namespace llm {
 
@@ -18,7 +19,6 @@ using namespace cute;
 
 template <class TileShape_,
           class Element_,
-          int HeadDim_,
           bool EVEN_K,
           bool ALIBI,
           bool SOFT_CAP,
@@ -29,7 +29,6 @@ struct Sm80CollectiveMha {
   using Element = Element_;
   using ElementAccum = float;
 
-  static constexpr int kHeadDim = HeadDim_;
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockN = get<1>(TileShape{});
   static constexpr int kBlockK = get<2>(TileShape{});
@@ -37,13 +36,9 @@ struct Sm80CollectiveMha {
   static constexpr bool kAlibi = ALIBI;
   static constexpr bool kLocal = LOCAL;
 
-  static_assert(kBlockK == 32 || kBlockK == 64);
-  static_assert(kHeadDim % kBlockK == 0);
-
   using BLK_M = Int<kBlockM>;
   using BLK_N = Int<kBlockN>;
   using BLK_K = Int<kBlockK>;
-  using HEAD_DIM = Int<kHeadDim>;
 
   // TiledMMA (64x16x16) for gemm-I and gemm-II
   using MMA_Atom_ =
@@ -57,36 +52,26 @@ struct Sm80CollectiveMha {
   static constexpr int kRowsPerMMA = 2;
   static constexpr int kMmaThreads = size(TiledMma{});
 
-  // Atom layout: (8, BLK_K):(BLK_K, 1) k-major
+  // Atom layout for shared memory
   using SmemLayoutAtom_ =
-      decltype(composition(Swizzle<3, 3, 3>{},
-                           Layout<Shape<_8, BLK_K>, Stride<BLK_K, _1>>{}));
+      decltype(smem_layout_atom_selector<Element, kBlockK>());
 
-  // Q smem: (BLK_M, HEAD_DIM)
+  // Q smem: (BLK_M, BLK_K)
   using SmemLayoutQ =
-      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_M, HEAD_DIM>{}));
+      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_M, BLK_K>{}));
 
-  // KV smem: (BLK_N, HEAD_DIM)
+  // KV smem: (BLK_N, BLK_K)
   using SmemLayoutK =
-      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_N, HEAD_DIM>{}));
+      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_N, BLK_K>{}));
   using SmemLayoutV =
-      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_N, HEAD_DIM>{}));
+      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_N, BLK_K>{}));
 
-  // V^T smem: (HEAD_DIM, BLK_N)
+  // V^T smem: (BLK_K, BLK_N)
   using SmemLayoutVt = decltype(select<1, 0>(SmemLayoutV{}));
 
-  // Thr layout for gmem copy
-  using GmemCopyThrLayout_ =
-      std::conditional_t<kBlockK == 32,
-                         Layout<Shape<_32, _4>, Stride<_4, _1>>,
-                         Layout<Shape<_16, _8>, Stride<_8, _1>>>;
-
-  // g2s tiled copy for q
-  using GmemTiledCopyQ = decltype(make_tiled_copy(
-      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
-      GmemCopyThrLayout_{},    // Thr layout: (_16,_8)/(_32, _4)
-      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
-      ));
+  using GmemTiledCopyQ =
+      decltype(gmem_tiled_copy_selector<Element, kMmaThreads, kBlockK>(
+          Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{}));
 
   // g2s tiled copy for kv
   using GmemTiledCopyKV = GmemTiledCopyQ;
@@ -145,11 +130,11 @@ struct Sm80CollectiveMha {
             class ResidueMNK>
   CUTE_DEVICE void operator()(
       const Params& params,
-      const TensorQ& gQ,          // (BLK_M, HEAD_DIM)
-      const TensorCQ& cQ,         // (BLK_M, HEAD_DIM) => (M, K)
-      const TensorK& gK,          // (BLK_N, HEAD_DIM, n)
-      const TensorV& gV,          // (BLK_N, HEAD_DIM, n)
-      const TensorCKV& cKV,       // (BLK_N, HEAD_DIM, n) => (N, K)
+      const TensorQ& gQ,          // (BLK_M, BLK_K)
+      const TensorCQ& cQ,         // (BLK_M, BLK_K) => (M, K)
+      const TensorK& gK,          // (BLK_N, BLK_K, n)
+      const TensorV& gV,          // (BLK_N, BLK_K, n)
+      const TensorCKV& cKV,       // (BLK_N, BLK_K, n) => (N, K)
       const TensorCMN& tScMN_mn,  // ((2, MMA_M), (2, MMA_N), n) => (M, N)
       FrgTensor& tOrO,            // (MMA, MMA_M, MMA_N)
       Softmax& softmax,
@@ -173,14 +158,14 @@ struct Sm80CollectiveMha {
     // Construct shared memory tiles
     auto& ss = *reinterpret_cast<SharedStorage*>(smem);
 
-    // (BLK_M, HEAD_DIM), k-major
+    // (BLK_M, BLK_K), k-major
     Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
-    // (BLK_N, HEAD_DIM), k-major
+    // (BLK_N, BLK_K), k-major
     Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
     Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
 
     // Tensor for V^t; used in GEMM-II.
-    // (HEAD_DIM, BLK_N), k-major
+    // (BLK_K, BLK_N), k-major
     Tensor sVt = make_tensor(make_smem_ptr(ss.smem_vt.data()), SmemLayoutVt{});
 
     // g2s tiled copy for qkv

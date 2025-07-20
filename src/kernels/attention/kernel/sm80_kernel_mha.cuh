@@ -178,7 +178,7 @@ class Sm80KernelMha {
   using Element = typename CollectiveMainloop::Element;
   using BLK_M = typename CollectiveMainloop::BLK_M;
   using BLK_N = typename CollectiveMainloop::BLK_N;
-  using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
+  using BLK_K = typename CollectiveMainloop::BLK_K;
 
   static constexpr int kSharedStorageSize =
       cute::max(sizeof(typename CollectiveMainloop::SharedStorage),
@@ -224,10 +224,10 @@ class Sm80KernelMha {
       const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
       const auto tidx = threadIdx.x;
 
-      // (q_packed_len, HEAD_DIM)
+      // (q_packed_len, BLK_K)
       detail::MHATile<Params> tile(params, batch_idx, kv_head_idx);
       auto [Q, O] = tile.template get_qo_tile<Element>();
-      // (kv_len, HEAD_DIM)
+      // (kv_len, BLK_K)
       auto [K, V] = tile.template get_kv_tile<Element>();
 
       // problem shape
@@ -252,22 +252,22 @@ class Sm80KernelMha {
       const int n_block_min = kLocal ? kv_idx_min / kBlockN : 0;
       const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
 
-      // (BLK_M, HEAD_DIM)
-      Tensor gQ = local_tile(
-          Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-      Tensor gO = local_tile(
-          O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-      // (BLK_M, HEAD_DIM) => (M, K)
+      // (BLK_M, BLK_K)
+      Tensor gQ =
+          local_tile(Q, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+      Tensor gO =
+          local_tile(O, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+      // (BLK_M, BLK_K) => (M, K)
       Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
-                             Shape<BLK_M, HEAD_DIM>{},
+                             Shape<BLK_M, BLK_K>{},
                              make_coord(m_block_idx, _0{}));
 
-      // (BLK_N, HEAD_DIM, n)
-      Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
-      Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
-      // (BLK_N, HEAD_DIM, n) => (N, K)
+      // (BLK_N, BLK_K, n)
+      Tensor gK = local_tile(K, Shape<BLK_N, BLK_K>{}, make_coord(_, _0{}));
+      Tensor gV = local_tile(V, Shape<BLK_N, BLK_K>{}, make_coord(_, _0{}));
+      // (BLK_N, BLK_K, n) => (N, K)
       Tensor cKV = local_tile(make_identity_tensor(K.shape()),
-                              Shape<BLK_N, HEAD_DIM>{},
+                              Shape<BLK_N, BLK_K>{},
                               make_coord(_, _0{}));
 
       // (BLK_M, BLK_N, n) => (M, N)
@@ -278,7 +278,7 @@ class Sm80KernelMha {
 
       TiledMma tiled_mma;
       // accumulator: (MMA,MMA_M,MMA_K)
-      auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
+      auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_K>{});
       clear(tOrAccO);
 
       auto thr_mma = tiled_mma.get_slice(tidx);
