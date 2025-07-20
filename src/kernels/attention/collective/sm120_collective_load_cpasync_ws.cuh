@@ -10,6 +10,7 @@
 #include <cute/tensor.hpp>
 
 #include "common/safe_copy.h"
+#include "common/selector.h"
 
 namespace llm {
 
@@ -25,6 +26,13 @@ template <class TileShape,
           class PipelineKV,
           bool EVEN_K>
 struct Sm120CollectiveLoadCpAsyncWs {
+  static constexpr int kThreads = 128;
+  static constexpr int kBlockK = get<2>(TileShape{});
+  // g2s tiled copy for Q/K/V
+  using GmemTiledCopy =
+      decltype(gmem_tiled_copy_selector<Element, kThreads, kBlockK>(
+          Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{}));
+
   // load Q/K/V tiles from gmem to smem using cp_async
   template <class Block>
   CUTE_DEVICE void operator()(const Block& block,
@@ -34,8 +42,6 @@ struct Sm120CollectiveLoadCpAsyncWs {
                               PipelineKV& kv_pipeline,
                               typename PipelineKV::PipelineState& kv_state,
                               TensorStorage& ss) {
-    static constexpr int kBlockK = get<2>(TileShape{});
-
     if (!block.is_valid()) {
       // skip invalid block
       return;
@@ -61,18 +67,8 @@ struct Sm120CollectiveLoadCpAsyncWs {
     Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
     Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
 
-    // Thr thread layout for gmem copy (4 warps = 128 threads)
-    using GmemCopyThrLayout_ =
-        std::conditional_t<kBlockK == 32,
-                           Layout<Shape<_32, _4>, Stride<_4, _1>>,
-                           Layout<Shape<_16, _8>, Stride<_8, _1>>>;
-
     // g2s tiled copy for q/kv
-    auto gmem_tiled_copy = make_tiled_copy(
-        Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
-        GmemCopyThrLayout_{},    // Thr layout: (_16,_8)/(_32, _4)
-        Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
-    );
+    GmemTiledCopy gmem_tiled_copy;
     auto gmem_thr_copy = gmem_tiled_copy.get_slice(tidx);
 
     // (CPY, CPY_N, CPY_K) => (M, K)
@@ -96,7 +92,7 @@ struct Sm120CollectiveLoadCpAsyncWs {
 
     auto load_query = [&](auto& state) {
       q_pipeline.producer_acquire(state);
-      safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/true, /*ZFILL_K=*/true>(
+      safe_copy</*EVEN_M=*/false, EVEN_K, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
           gmem_tiled_copy, tGgQ, tGsQ, tGcQ, residue_mk);
       q_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
       ++state;

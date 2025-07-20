@@ -14,15 +14,15 @@ using namespace cute;
 template <typename Params,
           typename TileShape,  // (BLK_M, BLK_N, BLK_K)
           typename Element,    // Element type
-          int kHeadDim,
           bool kLocal>
 struct FmhaBlock {
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockN = get<1>(TileShape{});
+  static constexpr int kBlockK = get<2>(TileShape{});
 
   using BLK_M = Int<kBlockM>;
   using BLK_N = Int<kBlockN>;
-  using HEAD_DIM = Int<kHeadDim>;
+  using BLK_K = Int<kBlockK>;
 
   // hold a reference to the parameters and block coordination
   const Params& params_;
@@ -89,7 +89,7 @@ struct FmhaBlock {
     }
   }
 
-  // return the query tile: (BLK_M, HEAD_DIM) => (M, K)
+  // return the query tile: (BLK_M, BLK_K) => (M, K)
   CUTE_HOST_DEVICE auto get_q_tile() const {
     const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
 
@@ -111,17 +111,17 @@ struct FmhaBlock {
         make_stride(select<1, 2>(params_.q_stride), get<3>(params_.q_stride)),
         packed_idx_to_coord);
 
-    // (BLK_M, HEAD_DIM)
+    // (BLK_M, BLK_K)
     Tensor gQ =
-        local_tile(Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-    // (BLK_M, HEAD_DIM) => (M, K)
+        local_tile(Q, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+    // (BLK_M, BLK_K) => (M, K)
     Tensor cQ = local_tile(make_identity_tensor(shape(Q)),
-                           Shape<BLK_M, HEAD_DIM>{},
+                           Shape<BLK_M, BLK_K>{},
                            make_coord(m_block_idx, _0{}));
     return make_tuple(gQ, cQ);
   }
 
-  // return the output tile: (BLK_M, HEAD_DIM) => (M, K)
+  // return the output tile: (BLK_M, BLK_K) => (M, K)
   CUTE_HOST_DEVICE auto get_o_tile() const {
     const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
 
@@ -142,17 +142,17 @@ struct FmhaBlock {
         make_stride(select<1, 2>(params_.o_stride), get<3>(params_.o_stride)),
         packed_idx_to_coord);
 
-    // (BLK_M, HEAD_DIM)
+    // (BLK_M, BLK_K)
     Tensor gO =
-        local_tile(O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-    // (BLK_M, HEAD_DIM) => (M, K)
+        local_tile(O, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+    // (BLK_M, BLK_K) => (M, K)
     Tensor cQ = local_tile(make_identity_tensor(shape(O)),
-                           Shape<BLK_M, HEAD_DIM>{},
+                           Shape<BLK_M, BLK_K>{},
                            make_coord(m_block_idx, _0{}));
     return make_tuple(gO, cQ);
   }
 
-  // return the key/value tile: (BLK_N, HEAD_DIM, n) => (N, K)
+  // return the key/value tile: (BLK_N, BLK_K, n) => (N, K)
   CUTE_HOST_DEVICE auto get_kv_tile() const {
     const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
 
@@ -171,14 +171,41 @@ struct FmhaBlock {
                     make_shape(params_.kv_len, params_.head_dim),
                     select<1, 3>(params_.v_stride));
 
-    // (BLK_N, HEAD_DIM, n)
-    Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
-    Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
-    // (BLK_N, HEAD_DIM, n) => (N, K)
+    // (BLK_N, BLK_K, n)
+    Tensor gK = local_tile(K, Shape<BLK_N, BLK_K>{}, make_coord(_, _0{}));
+    Tensor gV = local_tile(V, Shape<BLK_N, BLK_K>{}, make_coord(_, _0{}));
+    // (BLK_N, BLK_K, n) => (N, K)
     Tensor cKV = local_tile(make_identity_tensor(shape(K)),
-                            Shape<BLK_N, HEAD_DIM>{},
+                            Shape<BLK_N, BLK_K>{},
                             make_coord(_, _0{}));
     return make_tuple(gK, gV, cKV);
+  }
+
+  // functions for tma load
+  // returns kv tma tile: (BLK_N, BLK_K, n) => (1@0, 1@1, 1@2)
+  template <class TMA_K, class TMA_V>
+  CUTE_HOST_DEVICE auto get_kv_tma_tile(TMA_K tma_k, TMA_V tma_v) const {
+    // 1: make_gather_tma_tensor()
+    // tma_tensor = (seq, dim, kv_head) => (1@0, 1@1, 1@2)
+    // 2: partition into tiles
+    // tma_tile = (BLK_N, BLK_K, n) => (1@0, 1@1, 1@2)
+
+    // (Q, D, (B, H))
+    // Tensor mQ_qdl_p = tma_k.get_tma_tensor(select<0,2,3>(problem_shape));
+    // Tensor mQ_qdl = domain_offset(make_coord(q_offs_0, _0{}, make_coord(_0{},
+    // q_offs_2_1)), mQ_qdl_p); (BLK_N, BLK_K, m, k, (b)) Tensor gQ_qdl =
+    // local_tile(mQ_qdl, TileShapeQK{}, make_coord(_, _, _), Step<_1, X,
+    // _1>{});
+
+    // outside in caller part
+    // (BLK_N, BLK_K, n) => (TMA,TMA_M,TMA_N, n)
+    // auto cta_tma = tma.get_slice(Int<0>{});  // CTA slice
+    // (TMA,TMA_M,TMA_N,REST_M,REST_N)
+    // Tensor tAgA_x = cta_tma.partition_S(gA);
+    // (TMA,TMA_M,TMA_N)
+    // Tensor tAsA_x = cta_tma.partition_D(sA);
+
+    return;
   }
 };
 

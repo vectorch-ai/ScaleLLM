@@ -118,9 +118,8 @@ class Sm120KernelFmhaWs {
                              PipelineQ& q_pipeline,
                              PipelineKV& kv_pipeline,
                              SharedStorage& ss) {
-    static constexpr int kHeadDim = CollectiveMainloop::kHeadDim;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
-    using Block = FmhaBlock<Params, TileShape, Element, kHeadDim, kLocal>;
+    using Block = FmhaBlock<Params, TileShape, Element, kLocal>;
 
     auto q_state = cutlass::make_producer_start_state<PipelineQ>();
     auto kv_state = cutlass::make_producer_start_state<PipelineKV>();
@@ -150,13 +149,12 @@ class Sm120KernelFmhaWs {
                              PipelineQ& q_pipeline,
                              PipelineKV& kv_pipeline,
                              SharedStorage& ss) {
-    static constexpr int kHeadDim = CollectiveMainloop::kHeadDim;
     static constexpr bool kLocal = CollectiveMainloop::kLocal;
     using TiledMma = typename CollectiveMainloop::TiledMma;
     using BLK_M = typename CollectiveMainloop::BLK_M;
-    using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
+    using BLK_K = typename CollectiveMainloop::BLK_K;
 
-    using Block = FmhaBlock<Params, TileShape, Element, kHeadDim, kLocal>;
+    using Block = FmhaBlock<Params, TileShape, Element, kLocal>;
 
     PipelineStateQ q_state;
     PipelineStateKV kv_state;
@@ -187,7 +185,7 @@ class Sm120KernelFmhaWs {
 
       TiledMma tiled_mma;
       // accumulator: (MMA,MMA_M,MMA_K)
-      auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
+      auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_K>{});
       clear(tOrAccO);
 
       mainloop.fmha(mainloop_params,
