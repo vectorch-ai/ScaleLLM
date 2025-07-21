@@ -133,18 +133,22 @@ TEST_P(MHAKernelTest, FMHA) {
   const auto options = torch::dtype(dtype).device(torch::kCUDA);
 
   // construct non-contiguous query, key and value
-  const auto data = torch::randn(
-      {batch_size, q_len, n_heads + 2 * n_kv_heads, head_dim}, options);
-  const auto qkv =
-      data.split(/*split_size=*/{n_heads, n_kv_heads, n_kv_heads}, /*dim=*/2);
-  const auto& query = qkv[0];
-  const auto& key = qkv[1];
-  const auto& value = qkv[2];
+  const auto& query =
+      torch::randn({batch_size, q_len, n_heads, head_dim}, options);
+
+  const auto data =
+      torch::randn({batch_size, kv_len, 2 * n_kv_heads, head_dim}, options);
+  const auto kv =
+      data.split(/*split_size=*/{n_kv_heads, n_kv_heads}, /*dim=*/2);
+  const auto& key = kv[0];
+  const auto& value = kv[1];
 
   torch::optional<torch::Tensor> alibi_slopes;
   if (alibi) {
-    alibi_slopes = torch::randn(
-        {n_heads}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+    alibi_slopes =
+        torch::randn({n_heads},
+                     torch::dtype(torch::kFloat32).device(torch::kCUDA)) /
+        kv_len;
   }
 
   auto ref_out = mha_batch_ref(
