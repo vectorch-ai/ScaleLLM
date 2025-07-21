@@ -10,6 +10,7 @@
 #include <cute/tensor.hpp>
 
 #include "common/safe_copy.h"
+#include "common/selector.h"
 
 namespace llm {
 
@@ -26,19 +27,12 @@ template <class TileShape,
           class PipelineKV,
           bool EVEN_K>
 struct Sm120CollectiveLoadTmaWs {
+  static constexpr int kThreads = 128;
   static constexpr int kBlockK = get<2>(TileShape{});
-  // Thr layout for gmem copy
-  using GmemCopyThrLayout_ =
-      std::conditional_t<kBlockK == 32,
-                         Layout<Shape<_32, _4>, Stride<_4, _1>>,
-                         Layout<Shape<_16, _8>, Stride<_8, _1>>>;
-
-  // g2s tiled copy for q
-  using GmemTiledCopyQ = decltype(make_tiled_copy(
-      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
-      GmemCopyThrLayout_{},    // Thr layout: (_16,_8)/(_32, _4)
-      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
-      ));
+  // g2s tiled copy for Q
+  using GmemTiledCopyQ =
+      decltype(gmem_tiled_copy_selector<Element, kThreads, kBlockK>(
+          Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{}));
 
   // using StrideK = ...;
 
@@ -74,13 +68,13 @@ struct Sm120CollectiveLoadTmaWs {
     // (M, N, K)
     const auto residue_mnk = block.get_residue_mnk();
 
-    // (BLK_M, HEAD_DIM) => (M, K)
+    // (BLK_M, BLK_K) => (M, K)
     auto [gQ, cQ] = block.get_q_tile();
 
     // Construct smem tensors
-    // (BLK_M, HEAD_DIM), k-major
+    // (BLK_M, BLK_K), k-major
     Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
-    // (BLK_N, HEAD_DIM, KVStages), k-major
+    // (BLK_N, BLK_K, KVStages), k-major
     Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
     Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
 

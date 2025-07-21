@@ -55,15 +55,15 @@ struct Sm120CollectiveLoadCpAsyncWs {
     // (M, N, K)
     const auto residue_mnk = block.get_residue_mnk();
 
-    // (BLK_M, HEAD_DIM) => (M, K)
+    // (BLK_M, BLK_K) => (M, K)
     auto [gQ, cQ] = block.get_q_tile();
-    // (BLK_N, HEAD_DIM, n) => (N, K)
+    // (BLK_N, BLK_K, n) => (N, K)
     auto [gK, gV, cKV] = block.get_kv_tile();
 
     // Construct smem tensors
-    // (BLK_M, HEAD_DIM), k-major
+    // (BLK_M, BLK_K), k-major
     Tensor sQ = make_tensor(make_smem_ptr(ss.smem_q.data()), SmemLayoutQ{});
-    // (BLK_N, HEAD_DIM, KVStages), k-major
+    // (BLK_N, BLK_K, KVStages), k-major
     Tensor sK = make_tensor(make_smem_ptr(ss.smem_k.data()), SmemLayoutK{});
     Tensor sV = make_tensor(make_smem_ptr(ss.smem_v.data()), SmemLayoutV{});
 

@@ -94,17 +94,20 @@ struct FmhaBlock {
     const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
 
     // packing all q in the same kv head group together
-    const auto head_base = kv_head_idx * params_.group_size;
-    auto packed_idx_to_coord = [this, head_base](int packed_idx) {
+    auto packed_idx_to_coord = [this](int packed_idx) {
       // packed_idx => (seq, kv_heads):(group_size, 1)
       int idx, offset;
       params_.group_size.divmod(packed_idx, idx, offset);
-      return make_coord(idx, head_base + offset);
+      return make_coord(idx, offset);
     };
 
-    // (batch, seq, head, dim) => ((seq, kv_head), dim)
-    const auto offset = batch_idx * get<0>(params_.q_stride);
-    // (q_packed_len, head_dim) gmem tensor
+    // (batch, seq, head, dim)
+    // => (batch, seq, (kv_heads, group), dim)
+    // => (seq, group, dim)
+    const auto offset =
+        batch_idx * get<0>(params_.q_stride) +
+        kv_head_idx * params_.group_size * get<2>(params_.q_stride);
+    // gmem tensor: (packed_len, dim) => ((seq, group), dim)
     auto Q = make_gather_tensor(
         make_gmem_ptr((const Element*)params_.q_ptr + offset),
         make_shape(packed_len_, params_.head_dim),
@@ -126,16 +129,20 @@ struct FmhaBlock {
     const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
 
     // packing all q in the same kv head group together
-    const auto head_base = kv_head_idx * params_.group_size;
-    auto packed_idx_to_coord = [this, head_base](int packed_idx) {
+    auto packed_idx_to_coord = [this](int packed_idx) {
       // packed_idx => (seq, kv_heads):(group_size, 1)
       int idx, offset;
       params_.group_size.divmod(packed_idx, idx, offset);
-      return make_coord(idx, head_base + offset);
+      return make_coord(idx, offset);
     };
 
-    // (batch, seq, head, dim) => ((seq, head), dim)
-    const auto offset = batch_idx * get<0>(params_.o_stride);
+    // (batch, seq, head, dim)
+    // => (batch, seq, (kv_heads, group), dim)
+    // => (seq, group, dim)
+    const auto offset =
+        batch_idx * get<0>(params_.o_stride) +
+        kv_head_idx * params_.group_size * get<2>(params_.o_stride);
+    // gmem tensor: (packed_len, dim) => ((seq, group), dim)
     auto O = make_gather_tensor(
         make_gmem_ptr((Element*)params_.o_ptr + offset),
         make_shape(packed_len_, params_.head_dim),
