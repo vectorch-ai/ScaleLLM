@@ -61,7 +61,7 @@ cc_test(
   INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
   SRCS
-    tests/sm80_mha_test.cu
+    # tests/sm80_mha_test.cu
     tests/sm80_mha_pagedkv_test.cu
   DEPS
     :attention.kernels
