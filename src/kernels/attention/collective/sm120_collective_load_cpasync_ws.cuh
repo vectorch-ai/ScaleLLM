@@ -11,6 +11,7 @@
 
 #include "common/safe_copy.h"
 #include "common/selector.h"
+#include "common/static_dispatch.h"
 
 namespace llm {
 
@@ -31,7 +32,8 @@ struct Sm120CollectiveLoadCpAsyncWs {
   // g2s tiled copy for Q/K/V
   using GmemTiledCopy =
       decltype(gmem_tiled_copy_selector<Element, kThreads, kBlockK>(
-          Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{}));
+          Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL_ZFILL<cute::uint128_t>,
+                    Element>{}));
 
   // load Q/K/V tiles from gmem to smem using cp_async
   template <class Block>
@@ -42,6 +44,8 @@ struct Sm120CollectiveLoadCpAsyncWs {
                               PipelineKV& kv_pipeline,
                               typename PipelineKV::PipelineState& kv_state,
                               TensorStorage& ss) {
+    static constexpr int kStages = size<2>(SmemLayoutK{});
+
     if (!block.is_valid()) {
       // skip invalid block
       return;
@@ -90,84 +94,115 @@ struct Sm120CollectiveLoadCpAsyncWs {
     const auto residue_mk = select<0, 2>(residue_mnk);
     const auto residue_nk = select<1, 2>(residue_mnk);
 
-    auto load_query = [&](auto& state) {
-      q_pipeline.producer_acquire(state);
+    auto load_query = [&]() {
+      q_pipeline.producer_acquire(q_state);
       safe_copy</*EVEN_M=*/false, EVEN_K, /*ZFILL_M=*/true, /*ZFILL_K=*/true>(
           gmem_tiled_copy, tGgQ, tGsQ, tGcQ, residue_mk);
-      q_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
-      ++state;
+      q_pipeline.producer_commit(q_state,
+                                 cutlass::arch::cpasync_barrier_arrive);
+      ++q_state;
     };
 
-    auto load_key = [&](int ni, auto& state) {
-      kv_pipeline.producer_acquire(state);
+    auto load_key = [&](int ni) {
+      kv_pipeline.producer_acquire(kv_state);
       // skip ZFILL_MN for key since Mask will mask out oob with -inf
       safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
           tGgK(_, _, _, ni),
-          tGsK(_, _, _, state.index()),
+          tGsK(_, _, _, kv_state.index()),
           tGcKV(_, _, _, ni),
           residue_nk);
-      kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
-      ++state;
+      kv_pipeline.producer_commit(kv_state,
+                                  cutlass::arch::cpasync_barrier_arrive);
+      ++kv_state;
     };
 
     // load key without oob handling
-    auto load_key_no_oob = [&](int ni, auto& state) {
-      kv_pipeline.producer_acquire(state);
-      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
-          gmem_tiled_copy,
-          tGgK(_, _, _, ni),
-          tGsK(_, _, _, state.index()),
-          tGcKV(_, _, _, ni),
-          residue_nk);
-      kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
-      ++state;
+    auto load_key_no_oob = [&](int ni) {
+      kv_pipeline.producer_acquire(kv_state);
+      if constexpr (EVEN_K) {
+        safe_copy</*EVEN_N=*/true,
+                  EVEN_K,
+                  /*ZFILL_N=*/false,
+                  /*ZFILL_K=*/false>(gmem_tiled_copy,
+                                     tGgK(_, _, _, ni),
+                                     tGsK(_, _, _, kv_state.index()),
+                                     tGcKV(_, _, _, ni),
+                                     residue_nk);
+      } else {
+        DISPATCH_BOOL(kv_state.count() < kStages, ZFILL_K, [&] {
+          safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, ZFILL_K>(
+              gmem_tiled_copy,
+              tGgK(_, _, _, ni),
+              tGsK(_, _, _, kv_state.index()),
+              tGcKV(_, _, _, ni),
+              residue_nk);
+        });
+      }
+      kv_pipeline.producer_commit(kv_state,
+                                  cutlass::arch::cpasync_barrier_arrive);
+      ++kv_state;
     };
 
-    auto load_value = [&](int ni, auto& state) {
-      kv_pipeline.producer_acquire(state);
+    auto load_value = [&](int ni) {
+      kv_pipeline.producer_acquire(kv_state);
       // skipping ZFILL_MN for v may cause nan issue
       safe_copy</*EVEN_N=*/false, EVEN_K, /*ZFILL_N=*/true, /*ZFILL_K=*/true>(
           gmem_tiled_copy,
           tGgV(_, _, _, ni),
-          tGsV(_, _, _, state.index()),
+          tGsV(_, _, _, kv_state.index()),
           tGcKV(_, _, _, ni),
           residue_nk);
-      kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
-      ++state;
+      kv_pipeline.producer_commit(kv_state,
+                                  cutlass::arch::cpasync_barrier_arrive);
+      ++kv_state;
     };
 
     // load value without oob handling
-    auto load_value_no_oob = [&](int ni, auto& state) {
-      kv_pipeline.producer_acquire(state);
-      safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, /*ZFILL_K=*/false>(
-          gmem_tiled_copy,
-          tGgV(_, _, _, ni),
-          tGsV(_, _, _, state.index()),
-          tGcKV(_, _, _, ni),
-          residue_nk);
-      kv_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
-      ++state;
+    auto load_value_no_oob = [&](int ni) {
+      kv_pipeline.producer_acquire(kv_state);
+      if constexpr (EVEN_K) {
+        safe_copy</*EVEN_N=*/true,
+                  EVEN_K,
+                  /*ZFILL_N=*/false,
+                  /*ZFILL_K=*/false>(gmem_tiled_copy,
+                                     tGgV(_, _, _, ni),
+                                     tGsV(_, _, _, kv_state.index()),
+                                     tGcKV(_, _, _, ni),
+                                     residue_nk);
+      } else {
+        DISPATCH_BOOL(kv_state.count() < kStages, ZFILL_K, [&] {
+          safe_copy</*EVEN_N=*/true, EVEN_K, /*ZFILL_N=*/false, ZFILL_K>(
+              gmem_tiled_copy,
+              tGgV(_, _, _, ni),
+              tGsV(_, _, _, kv_state.index()),
+              tGcKV(_, _, _, ni),
+              residue_nk);
+        });
+      }
+      kv_pipeline.producer_commit(kv_state,
+                                  cutlass::arch::cpasync_barrier_arrive);
+      ++kv_state;
     };
 
     // async copy gmem to smem in following order:
     //    Q0, Kn-1, Vn-1, ..., K1, V1, K0, V0
 
     // load Q1
-    load_query(q_state);
+    load_query();
 
     // load Kn-1, Vn-1 with oob handling
     int ni = n_block_max - 1;
-    load_key(ni, kv_state);
-    load_value(ni, kv_state);
+    load_key(ni);
+    load_value(ni);
     --ni;
 
     CUTE_NO_UNROLL
     while (ni >= n_block_min) {
       // load Ki
-      load_key_no_oob(ni, kv_state);
+      load_key_no_oob(ni);
       // load Vi
-      load_value_no_oob(ni, kv_state);
+      load_value_no_oob(ni);
       // advance to next kv block
       --ni;
     }

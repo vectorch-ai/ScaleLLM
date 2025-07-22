@@ -32,7 +32,8 @@ struct Sm120CollectiveLoadTmaWs {
   // g2s tiled copy for Q
   using GmemTiledCopyQ =
       decltype(gmem_tiled_copy_selector<Element, kThreads, kBlockK>(
-          Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{}));
+          Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL_ZFILL<cute::uint128_t>,
+                    Element>{}));
 
   // using StrideK = ...;
 
@@ -98,43 +99,44 @@ struct Sm120CollectiveLoadTmaWs {
     // as args in load_tma_ws? or pass in as parameters?
 
     const auto residue_mk = select<0, 2>(residue_mnk);
-    auto load_query = [&](auto& state) {
-      q_pipeline.producer_acquire(state);
+    auto load_query = [&]() {
+      q_pipeline.producer_acquire(q_state);
       safe_copy</*EVEN_MN=*/false, EVEN_K, /*ZFILL_MN=*/true, /*ZFILL_K=*/true>(
           gmem_tiled_copy_q, tGgQ, tGsQ, tGcQ, residue_mk);
-      q_pipeline.producer_commit(state, cutlass::arch::cpasync_barrier_arrive);
-      ++state;
+      q_pipeline.producer_commit(q_state,
+                                 cutlass::arch::cpasync_barrier_arrive);
+      ++q_state;
     };
 
-    auto load_key = [&](int ni, auto& state) {
-      kv_pipeline.producer_acquire(state);
+    auto load_key = [&](int ni) {
+      kv_pipeline.producer_acquire(kv_state);
       // TMA copy
 
       // kv_pipeline.producer_commit(state);
-      ++state;
+      ++kv_state;
     };
 
-    auto load_value = [&](int ni, auto& state) {
-      kv_pipeline.producer_acquire(state);
+    auto load_value = [&](int ni) {
+      kv_pipeline.producer_acquire(kv_state);
       // TMA copy
 
       // kv_pipeline.producer_commit(state);
-      ++state;
+      ++kv_state;
     };
 
     // async copy gmem to smem in following order:
     //    Q0, Kn-1, Vn-1, ..., K1, V1, K0, V0
 
     // load Q1
-    load_query(q_state);
+    load_query();
 
     // load Kn-1, Vn-1
     CUTE_NO_UNROLL
     for (int ni = n_block_max - 1; ni >= n_block_min; --ni) {
       // load Ki
-      load_key(ni, kv_state);
+      load_key(ni);
       // load Vi
-      load_value(ni, kv_state);
+      load_value(ni);
     }
   }
 };
