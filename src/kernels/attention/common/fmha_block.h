@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cute/config.hpp>
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "cute/config.hpp"
+#include "common/fast_math.h"
 #include "gather_tensor.h"
 
 namespace llm {
@@ -11,11 +12,82 @@ namespace llm {
 using namespace cute;
 
 // AttentionTile specialization for AttentionParams
-template <typename Params,
-          typename TileShape,  // (BLK_M, BLK_N, BLK_K)
+template <typename TileShape,  // (BLK_M, BLK_N, BLK_K)
           typename Element,    // Element type
           bool kLocal>
 struct FmhaBlock {
+  // (B, Q, H, D)
+  using StrideQ = Stride<int64_t, int64_t, int64_t, _1>;
+  using StrideO = StrideQ;
+  // (B, K, KH, D)
+  using StrideK = Stride<int64_t, int64_t, int64_t, _1>;
+  using StrideV = StrideK;
+
+  // Host side parameters
+
+  struct Arguments {
+    const void* __restrict__ q_ptr;
+    const void* __restrict__ k_ptr;
+    const void* __restrict__ v_ptr;
+    void* __restrict__ o_ptr;
+
+    StrideQ q_stride;
+    StrideK k_stride;
+    StrideV v_stride;
+    StrideO o_stride;
+
+    int sliding_window = -1;  // -1 means no sliding window
+  };
+
+  // Device side parameters
+  struct Params {
+    const void* __restrict__ q_ptr;
+    const void* __restrict__ k_ptr;
+    const void* __restrict__ v_ptr;
+    void* __restrict__ o_ptr;
+
+    StrideQ q_stride;
+    StrideK k_stride;
+    StrideV v_stride;
+    StrideO o_stride;
+
+    int sliding_window;
+
+    // Parameters from problem shape
+    int q_len;
+    int kv_len;
+    int head_dim;
+    FastDivmod group_size;
+  };
+
+  template <class ProblemShape>
+  static Params to_underlying_arguments(const ProblemShape& problem_shape,
+                                        const Arguments& args,
+                                        void* workspace = nullptr) {
+    // ProblemShape: (Q, K, D, ((KH, G), B))
+    const int q_len = size<0>(problem_shape);
+    const int kv_len = size<1>(problem_shape);
+    const int head_dim = size<2>(problem_shape);
+    const int group_size = size<3, 0, 1>(problem_shape);
+
+    // TODO: construct tma_load for k/v tensors
+    return {
+        .q_ptr = args.q_ptr,
+        .k_ptr = args.k_ptr,
+        .v_ptr = args.v_ptr,
+        .o_ptr = args.o_ptr,
+        .q_stride = args.q_stride,
+        .k_stride = args.k_stride,
+        .v_stride = args.v_stride,
+        .o_stride = args.o_stride,
+        .sliding_window = args.sliding_window,
+        .q_len = q_len,
+        .kv_len = kv_len,
+        .head_dim = head_dim,
+        .group_size = FastDivmod(group_size),
+    };
+  }
+
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockN = get<1>(TileShape{});
   static constexpr int kBlockK = get<2>(TileShape{});
@@ -26,6 +98,7 @@ struct FmhaBlock {
 
   // hold a reference to the parameters and block coordination
   const Params& params_;
+  // TODO: (m_block_idx, (kv_head_idx, batch_idx))
   // (batch_idx, m_block_idx, kv_head_idx)
   const tuple<int, int, int>& blk_coord_;
 
@@ -33,6 +106,7 @@ struct FmhaBlock {
   int m_block_base_;
   int packed_len_;
 
+  // Constructor
   CUTE_HOST_DEVICE FmhaBlock(const Params& params,
                              const tuple<int, int, int>& blk_coord)
       : params_(params), blk_coord_(blk_coord) {
@@ -50,20 +124,26 @@ struct FmhaBlock {
   // returns packed_len
   CUTE_HOST_DEVICE int get_packed_len() const { return packed_len_; }
 
-  // returns q_len
+  // returns actual query length
   CUTE_HOST_DEVICE int get_q_len() const { return params_.q_len; }
 
-  // returns kv_len
+  // returns actual kv length
   CUTE_HOST_DEVICE int get_kv_len() const { return params_.kv_len; }
 
   // returns head_dim
   CUTE_HOST_DEVICE int get_head_dim() const { return params_.head_dim; }
+
+  // returns group size
+  CUTE_HOST_DEVICE const FastDivmod& get_group_size() const {
+    return params_.group_size;
+  }
 
   // returns redidue mnk
   CUTE_HOST_DEVICE auto get_residue_mnk() const {
     return make_tuple(packed_len_, params_.kv_len, params_.head_dim);
   }
 
+  // returns (m_block_idx, (kv_head_idx, batch_idx))
   // return (batch_idx, m_block_idx, kv_head_idx)
   CUTE_HOST_DEVICE const auto& get_block_coord() const { return blk_coord_; }
 

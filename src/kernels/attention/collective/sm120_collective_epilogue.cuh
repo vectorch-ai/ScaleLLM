@@ -53,7 +53,12 @@ struct Sm120CollectiveEpilogue {
   using Params = Arguments;
 
   // Convert host side arguments to device side params
-  static Params to_underlying_arguments(Arguments const& args) { return args; }
+  template <class ProblemShape>
+  static Params to_underlying_arguments(const ProblemShape& /*problem_shape*/,
+                                        const Arguments& args,
+                                        void* /*workspace*/) {
+    return args;
+  }
 
   template <class Block, class FrgTensor, class TiledMma>
   CUTE_DEVICE void operator()(const Params& /*params*/,

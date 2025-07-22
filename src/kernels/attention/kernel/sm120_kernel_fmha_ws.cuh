@@ -8,8 +8,6 @@
 #include <cute/tensor.hpp>
 #include <cutlass/pipeline/pipeline.hpp>
 
-#include "common/fmha_block.h"
-
 namespace llm {
 
 using namespace cute;
@@ -66,7 +64,9 @@ CUTE_DEVICE void warpgroup_reg_set() {
 
 }  // namespace detail
 
-template <class CollectiveMainloop,
+template <class ProblemShape,  // (Q, K, D, ((KH, G), B))
+          class Block,
+          class CollectiveMainloop,
           class CollectiveEpilogue,
           class TileScheduler,
           class WarpScheduler = detail::Sm120WarpSpecializedScheduler>
@@ -100,32 +100,49 @@ class Sm120KernelFmhaWs {
 
   static constexpr int kSharedStorageSize = sizeof(SharedStorage);
 
-  // Kernel params
-  using MainloopParams = typename CollectiveMainloop::Params;
-  using EpilogueParams = typename CollectiveEpilogue::Params;
-  using TileSchedulerParams = typename TileScheduler::Params;
+  struct Arguments {
+    ProblemShape problem_shape;  // (Q, K, D, ((KH, G), B))
+    typename Block::Arguments block;
+    typename CollectiveMainloop::Arguments mainloop;
+    typename CollectiveEpilogue::Arguments epilogue;
+    // cutlass::KernelHardwareInfo hw_info;
+  };
+
+  struct Params {
+    typename Block::Params block;
+    typename CollectiveMainloop::Params mainloop;
+    typename CollectiveEpilogue::Params epilogue;
+    typename TileScheduler::Params scheduler;
+  };
+
+  // convert arguments to params
+  static Params to_underlying_arguments(Arguments const& args,
+                                        void* workspace) {
+    return Params{Block::to_underlying_arguments(
+                      args.problem_shape, args.block, workspace),
+                  CollectiveMainloop::to_underlying_arguments(
+                      args.problem_shape, args.mainloop, workspace),
+                  CollectiveEpilogue::to_underlying_arguments(
+                      args.problem_shape, args.epilogue, workspace),
+                  TileScheduler::to_underlying_arguments(args.problem_shape,
+                                                         TileShape{})};
+  }
 
   // returns grid and block shape for kernel launch
-  using TileSchedulerArgs = typename TileScheduler::Arguments;
-  static dim3 get_grid_shape(TileSchedulerArgs const& args) {
-    return TileScheduler::get_grid_shape(args);
+  static dim3 get_grid_shape(const Params& params) {
+    return TileScheduler::get_grid_shape(params.scheduler);
   }
   static dim3 get_block_shape() { return kThreadsPerBlock; }
 
-  template <class Params>
   CUTE_DEVICE void load_loop(const Params& params,
-                             const TileSchedulerParams& scheduler_params,
                              PipelineQ& q_pipeline,
                              PipelineKV& kv_pipeline,
                              SharedStorage& ss) {
-    static constexpr bool kLocal = CollectiveMainloop::kLocal;
-    using Block = FmhaBlock<Params, TileShape, Element, kLocal>;
-
     auto q_state = cutlass::make_producer_start_state<PipelineQ>();
     auto kv_state = cutlass::make_producer_start_state<PipelineKV>();
 
     CollectiveMainloop mainloop;
-    TileScheduler scheduler(scheduler_params);
+    TileScheduler scheduler(params.scheduler);
 
     // thread idx within warp group (4 warps = 128 threads)
     const auto tidx = threadIdx.x % cutlass::NumThreadsPerWarpGroup;
@@ -133,7 +150,7 @@ class Sm120KernelFmhaWs {
     // process each block
     for (const auto blk_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      const Block block(params, blk_coord);
+      const Block block(params.block, blk_coord);
       mainloop.load(
           block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss.mainloop);
     }
@@ -143,18 +160,13 @@ class Sm120KernelFmhaWs {
     kv_pipeline.producer_tail(kv_state);
   }  // end of load_loop
 
-  template <class Params>
   CUTE_DEVICE void fmha_loop(const Params& params,
-                             const TileSchedulerParams& scheduler_params,
                              PipelineQ& q_pipeline,
                              PipelineKV& kv_pipeline,
                              SharedStorage& ss) {
-    static constexpr bool kLocal = CollectiveMainloop::kLocal;
     using TiledMma = typename CollectiveMainloop::TiledMma;
     using BLK_M = typename CollectiveMainloop::BLK_M;
     using BLK_K = typename CollectiveMainloop::BLK_K;
-
-    using Block = FmhaBlock<Params, TileShape, Element, kLocal>;
 
     PipelineStateQ q_state;
     PipelineStateKV kv_state;
@@ -162,33 +174,22 @@ class Sm120KernelFmhaWs {
     CollectiveMainloop mainloop;
     CollectiveEpilogue epilogue;
 
-    // construct params
-    MainloopParams mainloop_params{params.sliding_window,
-                                   params.logits_soft_cap,
-                                   params.sm_scale,
-                                   params.sm_scale_log2,
-                                   params.group_size,
-                                   params.alibi_slopes_ptr};
-
-    EpilogueParams epilogue_params;
-
-    TileScheduler scheduler(scheduler_params);
+    TileScheduler scheduler(params.scheduler);
 
     // thread idx within warp group (4 warps = 128 threads)
     const auto tidx = threadIdx.x % cutlass::NumThreadsPerWarpGroup;
 
     // process each block
-    const auto& group_size = params.group_size;
     for (const auto blk_coord : scheduler) {
       // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      const Block block(params, blk_coord);
+      const Block block(params.block, blk_coord);
 
       TiledMma tiled_mma;
       // accumulator: (MMA,MMA_M,MMA_K)
       auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_K>{});
       clear(tOrAccO);
 
-      mainloop.fmha(mainloop_params,
+      mainloop.fmha(params.mainloop,
                     block,
                     tOrAccO,
                     tidx,
@@ -198,14 +199,11 @@ class Sm120KernelFmhaWs {
                     kv_state,
                     ss.mainloop);
 
-      epilogue(epilogue_params, block, tOrAccO, tiled_mma, tidx, ss.epilogue);
+      epilogue(params.epilogue, block, tOrAccO, tiled_mma, tidx, ss.epilogue);
     }
   }  // end of fmha_loop
 
-  template <class Params>
-  CUTE_DEVICE void operator()(const Params& params,
-                              const TileSchedulerParams& scheduler_params,
-                              char* smem) {
+  CUTE_DEVICE void operator()(const Params& params, char* smem) {
     static constexpr bool kKVUseTma = CollectiveMainloop::kKVUseTma;
     static constexpr int kNumThreadsLoad =
         WarpScheduler::kNumWarpsLoad * cutlass::NumThreadsPerWarp;
@@ -264,11 +262,11 @@ class Sm120KernelFmhaWs {
     if (role == WarpRole::Load) {
       detail::warpgroup_reg_set<WarpScheduler::kNumRegLoad>();
       // load Q, K, V from gmem to smem
-      load_loop(params, scheduler_params, q_pipeline, kv_pipeline, ss);
+      load_loop(params, q_pipeline, kv_pipeline, ss);
     } else if (role == WarpRole::FMHA) {
       detail::warpgroup_reg_set<WarpScheduler::kNumRegFMHA>();
       // FMHA mainloop
-      fmha_loop(params, scheduler_params, q_pipeline, kv_pipeline, ss);
+      fmha_loop(params, q_pipeline, kv_pipeline, ss);
     } else if (role == WarpRole::Empty) {
       // Empty warp, do nothing except donating registers
       detail::warpgroup_reg_set<WarpScheduler::kNumRegEmpty>();

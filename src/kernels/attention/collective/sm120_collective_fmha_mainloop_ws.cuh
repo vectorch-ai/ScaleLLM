@@ -130,22 +130,51 @@ struct Sm120CollectiveFMhaWs {
     float logits_soft_cap;
     // softmax scale
     float sm_scale;
-    // softmax scale in log2
-    float sm_scale_log2;
-    // group size
-    const FastDivmod& group_size;
-
-    // alibi slopes pointer
+    // alibi slopes pointer, [n_heads]
     const float* alibi_slopes_ptr;
   };
 
   // Device side params
-  using Params = Arguments;
+  struct Params {
+    // sliding window attention
+    int sliding_window;
+    // softcap
+    float logits_soft_cap;
+    // softmax scale
+    float sm_scale;
+    // softmax scale in log2
+    float sm_scale_log2;
+    // alibi slopes pointer
+    const float* alibi_slopes_ptr;
+  };
 
   // Convert host side arguments to device side params
-  static Params to_underlying_arguments(Arguments const& args) {
-    // no convertion needed.
-    return args;
+  template <class ProblemShape>
+  static Params to_underlying_arguments(const ProblemShape& /*problem_shape*/,
+                                        const Arguments& args,
+                                        void* /*workspace*/) {
+    float sm_scale = args.sm_scale;
+    float logits_soft_cap = args.logits_soft_cap;
+    if (logits_soft_cap != 0.0) {
+      //    Softmax(x * sm_scale) + apply_logits_soft_cap
+      // => Softmax(Tanh(x * sm_scale / soft_cap) * soft_cap)
+      // => Softmax(S' * sm_scale') where
+      //    S'        = Tanh(x * sm_scale / soft_cap)
+      //              = Tanh(x * soft_cap')
+      //    soft_cap' = sm_scale / soft_cap
+      //    sm_scale' = soft_cap
+      const auto sm_scale_hat = logits_soft_cap;
+      logits_soft_cap = sm_scale / logits_soft_cap;
+      sm_scale = sm_scale_hat;
+    }
+    const float sm_scale_log2 = static_cast<float>(sm_scale * M_LOG2E);
+    return {
+        .sliding_window = args.sliding_window,
+        .logits_soft_cap = logits_soft_cap,
+        .sm_scale = sm_scale,
+        .sm_scale_log2 = sm_scale_log2,
+        .alibi_slopes_ptr = args.alibi_slopes_ptr,
+    };
   }
 
   // load Q/K/V from gmem to smem
@@ -193,6 +222,7 @@ struct Sm120CollectiveFMhaWs {
     const auto q_packed_len = block.get_packed_len();
     const auto q_len = block.get_q_len();
     const auto kv_len = block.get_kv_len();
+    const auto& group_size = block.get_group_size();
 
     // Construct smem tensors
     // (BLK_M, BLK_K), k-major
@@ -335,7 +365,7 @@ struct Sm120CollectiveFMhaWs {
     // Create softmax and mask
     OnlineSoftmax<kRowsPerThr> softmax(params.sm_scale_log2);
     Mask<kRowsPerThr, kAlibi, kLocal> mask(
-        q_len, kv_len, params.group_size, params.sliding_window);
+        q_len, kv_len, group_size, params.sliding_window);
     if constexpr (kAlibi) {
       const auto tScS_mn = tScMN_mn(_, _, _0{});
       mask.init_alibi(

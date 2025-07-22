@@ -46,20 +46,20 @@ struct FmhaParams {
   int q_len = 0;
   int kv_len = 0;
 
-  // Only used for variable length sequence
-  // array of length batch_size + 1 holding starting offset of each sequence.
-  const int* __restrict__ q_cu_lens = nullptr;
-  const int* __restrict__ kv_cu_lens = nullptr;
+  // // Only used for variable length sequence
+  // // array of length batch_size + 1 holding starting offset of each sequence.
+  // const int* __restrict__ q_cu_lens = nullptr;
+  // const int* __restrict__ kv_cu_lens = nullptr;
 
-  ////////////////////////////////////////////////
-  // Parameters for paged KV cache
-  ////////////////////////////////////////////////
-  // size for each cache block
-  int block_size = 1;
-  // the first slot id of each block
-  const int* __restrict__ block_table = nullptr;
-  // array of length batch_size + 1 holding starting offset of each sequence.
-  const int* __restrict__ block_cu_lens = nullptr;
+  // ////////////////////////////////////////////////
+  // // Parameters for paged KV cache
+  // ////////////////////////////////////////////////
+  // // size for each cache block
+  // int block_size = 1;
+  // // the first slot id of each block
+  // const int* __restrict__ block_table = nullptr;
+  // // array of length batch_size + 1 holding starting offset of each sequence.
+  // const int* __restrict__ block_cu_lens = nullptr;
 
   ////////////////////////////////////////////////
   // Parameters for local attention
@@ -87,7 +87,7 @@ struct FmhaParams {
   // Parameters for scheduling
   ////////////////////////////////////////////////
   // TODO: remove it after persistent kernel
-  int max_q_len = 0;
+  // int max_q_len = 0;
 };
 
 }  // namespace llm
