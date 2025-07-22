@@ -6,7 +6,7 @@
 
 #include "common/static_dispatch.h"
 #include "device/sm120_fmha_launch.cuh"
-#include "mha_params.h"
+#include "fmha_params.h"
 #include "tests/mha_ref.h"
 
 namespace llm {
@@ -51,36 +51,45 @@ torch::Tensor sm120_fmha(
   const float sm_scale = 1.0 / sqrt(head_dim);
 
   // construct attention params
-  MHAParams params;
+  FmhaParams params;
   params.q_ptr = query.const_data_ptr();
-  params.q_stride =
-      make_stride(query.stride(0), query.stride(1), query.stride(2), _1{});
   params.k_ptr = key.const_data_ptr();
-  params.k_stride =
-      make_stride(key.stride(0), key.stride(1), key.stride(2), _1{});
   params.v_ptr = value.const_data_ptr();
-  params.v_stride =
-      make_stride(value.stride(0), value.stride(1), value.stride(2), _1{});
   params.o_ptr = out.mutable_data_ptr();
-  params.o_stride =
-      make_stride(out.stride(0), out.stride(1), out.stride(2), _1{});
+
+  params.q_batch_stride = query.stride(0);
+  params.q_seq_stride = query.stride(1);
+  params.q_head_stride = query.stride(2);
+
+  params.k_batch_stride = key.stride(0);
+  params.k_seq_stride = key.stride(1);
+  params.k_head_stride = key.stride(2);
+
+  params.v_batch_stride = value.stride(0);
+  params.v_seq_stride = value.stride(1);
+  params.v_head_stride = value.stride(2);
+
+  params.o_batch_stride = out.stride(0);
+  params.o_seq_stride = out.stride(1);
+  params.o_head_stride = out.stride(2);
+
+  params.batch_size = batch_size;
+  params.n_heads = n_heads;
+  params.n_kv_heads = n_kv_heads;
+  params.head_dim = head_dim;
+
+  params.q_len = q_len;
+  params.kv_len = kv_len;
+
+  params.sliding_window = sliding_window;
+  params.logits_soft_cap = logits_soft_cap;
+  params.sm_scale = sm_scale;
+
   params.alibi_slopes_ptr = alibi_slopes.has_value()
                                 ? alibi_slopes.value().const_data_ptr<float>()
                                 : nullptr;
 
-  params.batch_size = batch_size;
-  params.max_q_len = max_q_len;
-  params.n_heads = n_heads;
-  params.n_kv_heads = n_kv_heads;
-  params.q_len = q_len;
-  params.kv_len = kv_len;
-  params.head_dim = head_dim;
-  params.sm_scale = sm_scale;
-  params.logits_soft_cap = logits_soft_cap;
-  params.sliding_window = sliding_window;
-
-  // normalize params that for performance optimization
-  params.normalize();
+  // params.max_q_len = max_q_len;
 
   DISPATCH_TORCH_DTYPE_(query.dtype(), Dtype, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
@@ -91,7 +100,7 @@ torch::Tensor sm120_fmha(
                                 /*ALIBI*/ false,
                                 /*SOFT_CAP*/ false,
                                 /*LOCAL*/ false,
-                                MHAParams>(params, nullptr);
+                                FmhaParams>(params, nullptr);
       });
     });
   });

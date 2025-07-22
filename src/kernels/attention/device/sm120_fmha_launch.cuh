@@ -8,6 +8,7 @@
 
 #include "collective/sm120_collective_epilogue.cuh"
 #include "collective/sm120_collective_fmha_mainloop_ws.cuh"
+#include "common/fmha_block.h"
 #include "common/tile_scheduler.cuh"
 #include "kernel/sm120_kernel_fmha_ws.cuh"
 
@@ -15,29 +16,23 @@ namespace llm {
 
 namespace detail {
 /// Generic kernel template.
-template <typename Operator, typename Params>
+template <typename Operator>
 __global__ __launch_bounds__(Operator::kThreadsPerBlock) void device_kernel(
-    __grid_constant__ const Params params,
-    __grid_constant__ const typename Operator::TileSchedulerParams
-        scheduler_params) {
+    __grid_constant__ const typename Operator::Params params) {
   extern __shared__ char smem[];
   Operator op;
-  op(params, scheduler_params, smem);
+  op(params, smem);
 }
 }  // namespace detail
 
 template <typename Dtype,
-          int HEAD_DIM,
+          int kHeadDim,
           bool EVEN_K,
           bool ALIBI,
           bool SOFT_CAP,
           bool LOCAL,
           typename Params>
 void sm120_launch_mha_kernel(const Params& params, cudaStream_t stream) {
-  const auto batch_size = params.batch_size;
-  const auto n_kv_heads = params.n_kv_heads;
-  const auto max_q_packed_len = params.max_q_len * params.group_size;
-
   // TODO: tune tile shape M/N based on the head dim and smem size
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
   // SM           | 7.0 | 7.2 | 7.5 | 8.0 | 8.6 | 8.7 | 8.9 | 9.0 | 10.x | 12.0|
@@ -55,7 +50,14 @@ void sm120_launch_mha_kernel(const Params& params, cudaStream_t stream) {
   // TMA is used for K/V loading
   constexpr bool KV_USE_TMA = false;
 
-  using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<HEAD_DIM>>;
+  assert(params.n_heads % params.n_kv_heads == 0 &&
+         "n_heads must be divisible by n_kv_heads");
+  const int group_size = params.n_heads / params.n_kv_heads;
+
+  using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<kHeadDim>>;
+
+  using Block = FmhaBlock<TileShape, Dtype, LOCAL>;
+
   using CollectiveMainloop = Sm120CollectiveFMhaWs<TileShape,
                                                    Dtype,
                                                    EVEN_K,
@@ -68,16 +70,63 @@ void sm120_launch_mha_kernel(const Params& params, cudaStream_t stream) {
   // TODO: support persistent kernels
   using TileScheduler = SingleTileScheduler;
 
-  const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
-  typename TileScheduler::Arguments scheduler_args{
-      batch_size, m_blocks, n_kv_heads};
-  auto scheduler_params =
-      TileScheduler::to_underlying_arguments(scheduler_args);
+  // TODO: pass in max_q_len and max_kv_len for variable length
+  // MNKL: (Q K D ((KH G), B))
+  using ProblemShape =
+      cute::tuple<int, int, int, cute::tuple<cute::tuple<int, int>, int>>;
+  ProblemShape problem_shape = make_tuple(
+      params.q_len,
+      params.kv_len,
+      params.head_dim,
+      make_tuple(make_tuple(params.n_kv_heads, group_size), params.batch_size));
 
-  using AttnKernel =
-      Sm120KernelFmhaWs<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;
+  using AttnKernel = Sm120KernelFmhaWs<ProblemShape,  // (Q, K, D, ((KH G), B))
+                                       Block,
+                                       CollectiveMainloop,
+                                       CollectiveEpilogue,
+                                       TileScheduler>;
 
-  auto mha_kernel = detail::device_kernel<AttnKernel, Params>;
+  // TODO: convert params to Kernel Args
+  auto q_stride = make_stride(
+      params.q_batch_stride, params.q_seq_stride, params.q_head_stride, _1{});
+  auto k_stride = make_stride(
+      params.k_batch_stride, params.k_seq_stride, params.k_head_stride, _1{});
+  auto v_stride = make_stride(
+      params.v_batch_stride, params.v_seq_stride, params.v_head_stride, _1{});
+  auto o_stride = make_stride(
+      params.o_batch_stride, params.o_seq_stride, params.o_head_stride, _1{});
+
+  typename AttnKernel::Arguments attn_args{
+      .problem_shape = problem_shape,
+      // Block arguments
+      .block =
+          {
+              .q_ptr = params.q_ptr,
+              .k_ptr = params.k_ptr,
+              .v_ptr = params.v_ptr,
+              .o_ptr = params.o_ptr,
+              .q_stride = q_stride,
+              .k_stride = k_stride,
+              .v_stride = v_stride,
+              .o_stride = o_stride,
+              .sliding_window = params.sliding_window,
+          },
+      // mainloop arguments
+      .mainloop =
+          {
+              .sliding_window = params.sliding_window,
+              .logits_soft_cap = params.logits_soft_cap,
+              .sm_scale = params.sm_scale,
+              .alibi_slopes_ptr = params.alibi_slopes_ptr,
+          },
+      // epilogue arguments
+      .epilogue = {},
+  };
+
+  auto attn_params =
+      AttnKernel::to_underlying_arguments(attn_args, /*workspace*/ nullptr);
+
+  auto mha_kernel = detail::device_kernel<AttnKernel>;
 
   const auto smem_size = AttnKernel::kSharedStorageSize;
   if (smem_size >= 48 * 1024) {
@@ -85,10 +134,10 @@ void sm120_launch_mha_kernel(const Params& params, cudaStream_t stream) {
         mha_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   }
 
-  const dim3 grid = AttnKernel::get_grid_shape(scheduler_args);
+  const dim3 grid = AttnKernel::get_grid_shape(attn_params);
   const dim3 block = AttnKernel::get_block_shape();
 
-  mha_kernel<<<grid, block, smem_size, stream>>>(params, scheduler_params);
+  mha_kernel<<<grid, block, smem_size, stream>>>(attn_params);
   // TODO: check launch status
 }
 

@@ -86,10 +86,8 @@ void sm80_launch_mla_kernel(const Params& params, cudaStream_t stream) {
   constexpr int BLK_M = get<0>(TileShape{});
 
   const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
-  typename TileScheduler::Arguments scheduler_args{
-      batch_size, m_blocks, /*n_kv_heads=*/1};
-  auto scheduler_params =
-      TileScheduler::to_underlying_arguments(scheduler_args);
+  typename TileScheduler::Params scheduler_params{
+      .batch_size = batch_size, .m_blocks = m_blocks, .n_kv_heads = 1};
 
   using AttnKernel =
       Sm80KernelMla<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;
@@ -102,7 +100,7 @@ void sm80_launch_mla_kernel(const Params& params, cudaStream_t stream) {
         mla_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   }
 
-  const dim3 grid = AttnKernel::get_grid_shape(scheduler_args);
+  const dim3 grid = AttnKernel::get_grid_shape(scheduler_params);
   const dim3 block = AttnKernel::get_block_shape();
 
   mla_kernel<<<grid, block, smem_size, stream>>>(params, scheduler_params);
