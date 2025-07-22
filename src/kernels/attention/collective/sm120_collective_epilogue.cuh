@@ -9,32 +9,27 @@
 
 #include "common/fast_cast.cuh"
 #include "common/safe_copy.h"
+#include "common/selector.h"
 
 namespace llm {
 using namespace cute;
 
-template <class TileShape_, class Element_, int HeadDim_, bool EVEN_K_>
+template <class TileShape, class Element, bool EVEN_K>
 struct Sm120CollectiveEpilogue {
-  using TileShape = TileShape_;
-  using Element = Element_;
-
-  static constexpr int kHeadDim = HeadDim_;
-  static constexpr bool EVEN_K = EVEN_K_;
-
+  static constexpr int kThreads = 128;
   static constexpr int kBlockM = get<0>(TileShape{});
   static constexpr int kBlockK = get<2>(TileShape{});
 
   using BLK_M = Int<kBlockM>;
   using BLK_K = Int<kBlockK>;
-  using HEAD_DIM = Int<kHeadDim>;
 
   using SmemLayoutAtom_ =
-      decltype(composition(Swizzle<3, 3, 3>{},
-                           Layout<Shape<_8, BLK_K>, Stride<BLK_K, _1>>{}));
+      decltype(smem_layout_atom_selector<Element, kBlockK>());
+  static constexpr int kSmemBlockK = size<1>(SmemLayoutAtom_{});
 
-  // Q smem: (BLK_M, HEAD_DIM)
+  // Q smem: (BLK_M, BLK_K)
   using SmemLayoutO =
-      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_M, HEAD_DIM>{}));
+      decltype(tile_to_shape(SmemLayoutAtom_{}, Shape<BLK_M, BLK_K>{}));
 
   // use 128-bit vectorizing copy
   using VectorizingCopy_ = AutoVectorizingCopyWithAssumedAlignment<128>;
@@ -42,18 +37,10 @@ struct Sm120CollectiveEpilogue {
   // r2s copy atom for O
   using SmemCopyAtom_ = Copy_Atom<VectorizingCopy_, Element>;
 
-  // Thr layout for gmem copy
-  using GmemCopyThrLayout_ =
-      std::conditional_t<kBlockK == 32,
-                         Layout<Shape<_32, _4>, Stride<_4, _1>>,
-                         Layout<Shape<_16, _8>, Stride<_8, _1>>>;
-
   // s2g tiled copy for O
-  using GmemTiledCopyO = decltype(make_tiled_copy(
-      Copy_Atom<VectorizingCopy_, Element>{},
-      GmemCopyThrLayout_{},    // Thr layout: (_16,_8)/(_32, _4)
-      Layout<Shape<_1, _8>>{}  // Val layout: 8 vals per read
-      ));
+  using GmemTiledCopyO =
+      decltype(gmem_tiled_copy_selector<Element, kThreads, kBlockK>(
+          Copy_Atom<VectorizingCopy_, Element>{}));
 
   struct TensorStorage {
     cute::array_aligned<Element, cute::cosize_v<SmemLayoutO>> smem_o;
@@ -80,11 +67,11 @@ struct Sm120CollectiveEpilogue {
       return;
     }
 
-    // (BLK_M, HEAD_DIM) => (M, K)
+    // (BLK_M, BLK_K) => (M, K)
     auto [gO, cO] = block.get_o_tile();
     auto residue_mnk = block.get_residue_mnk();
 
-    // (BLK_M, HEAD_DIM)
+    // (BLK_M, BLK_K)
     Tensor sO = make_tensor(make_smem_ptr(ss.smem_o.data()), SmemLayoutO{});
 
     // 1. cast output from ElementAccumulator to Element

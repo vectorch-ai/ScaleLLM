@@ -51,18 +51,11 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
   // * 12.0      : 0, 8, 16, 32, 64, 100
   constexpr int BLK_M = 64;
   constexpr int BLK_N = 64;
-  constexpr int BLK_K = HEAD_DIM % 64 == 0 ? 64 : 32;
 
-  using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<BLK_K>>;
-  using CollectiveMainloop = Sm80CollectiveMha<TileShape,
-                                               Dtype,
-                                               HEAD_DIM,
-                                               EVEN_K,
-                                               ALIBI,
-                                               SOFT_CAP,
-                                               LOCAL>;
-  using CollectiveEpilogue =
-      Sm80CollectiveEpilogue<TileShape, Dtype, HEAD_DIM, EVEN_K>;
+  using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<HEAD_DIM>>;
+  using CollectiveMainloop =
+      Sm80CollectiveMha<TileShape, Dtype, EVEN_K, ALIBI, SOFT_CAP, LOCAL>;
+  using CollectiveEpilogue = Sm80CollectiveEpilogue<TileShape, Dtype, EVEN_K>;
 
   // TODO: support persistent kernels
   using TileScheduler = SingleTileScheduler;

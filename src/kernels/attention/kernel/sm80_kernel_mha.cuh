@@ -41,22 +41,25 @@ struct MHATile<MHAParams> {
     // (batch, seq, head, dim)
 
     // packed all q/o in the same kv head group together
-    const auto head_base = kv_head_idx_ * params_.group_size;
-    auto packed_idx_to_coord = [this, head_base](int packed_idx) {
+    auto packed_idx_to_coord = [this](int packed_idx) {
       int idx, offset;
       params_.group_size.divmod(packed_idx, idx, offset);
-      return make_coord(idx, head_base + offset);
+      return make_coord(idx, offset);
     };
 
     const auto packed_len = params_.q_len * params_.group_size;
-    const auto q_offset = batch_idx_ * get<0>(params_.q_stride);
+    const auto q_offset =
+        (batch_idx_ * get<0>(params_.q_stride)) +
+        (kv_head_idx_ * params_.group_size * get<2>(params_.q_stride));
     auto q = make_gather_tensor(
         make_gmem_ptr((const Element*)params_.q_ptr + q_offset),
         make_shape(packed_len, params_.head_dim),
         make_stride(select<1, 2>(params_.q_stride), get<3>(params_.q_stride)),
         packed_idx_to_coord);
 
-    const auto o_offset = batch_idx_ * get<0>(params_.o_stride);
+    const auto o_offset =
+        (batch_idx_ * get<0>(params_.o_stride)) +
+        (kv_head_idx_ * params_.group_size * get<2>(params_.o_stride));
     auto o = make_gather_tensor(
         make_gmem_ptr((Element*)params_.o_ptr + o_offset),
         make_shape(packed_len, params_.head_dim),
@@ -69,10 +72,10 @@ struct MHATile<MHAParams> {
   template <typename Element>
   CUTE_HOST_DEVICE auto get_kv_tile() const {
     // (batch, seq, kv_head, dim)
-    const auto k_offset = batch_idx_ * get<0>(params_.k_stride) +
-                          kv_head_idx_ * get<2>(params_.k_stride);
-    const auto v_offset = batch_idx_ * get<0>(params_.v_stride) +
-                          kv_head_idx_ * get<2>(params_.v_stride);
+    const auto k_offset = (batch_idx_ * get<0>(params_.k_stride)) +
+                          (kv_head_idx_ * get<2>(params_.k_stride));
+    const auto v_offset = (batch_idx_ * get<0>(params_.v_stride)) +
+                          (kv_head_idx_ * get<2>(params_.v_stride));
     // k[batch_idx, :, kv_head_idx, :]
     auto k =
         make_tensor(make_gmem_ptr((const Element*)params_.k_ptr + k_offset),
@@ -105,22 +108,26 @@ struct MHATile<MHAPagedKVParams> {
   CUTE_HOST_DEVICE auto get_qo_tile() const {
     const auto begin = params_.q_cu_lens[batch_idx_];
     const auto qo_len = params_.q_cu_lens[batch_idx_ + 1] - begin;
-    const auto head_base = kv_head_idx_ * params_.group_size;
-    auto packed_idx_to_coord = [this, head_base](int packed_idx) {
+
+    auto packed_idx_to_coord = [this](int packed_idx) {
       int idx, offset;
       params_.group_size.divmod(packed_idx, idx, offset);
-      return make_coord(idx, head_base + offset);
+      return make_coord(idx, offset);
     };
 
     const auto packed_len = qo_len * params_.group_size;
-    const auto q_offset = begin * get<0>(params_.q_stride);
+    const auto q_offset =
+        (begin * get<0>(params_.q_stride)) +
+        (kv_head_idx_ * params_.group_size * get<1>(params_.q_stride));
     auto q = make_gather_tensor(
         make_gmem_ptr((const Element*)params_.q_ptr + q_offset),
         make_shape(packed_len, params_.head_dim),
         make_stride(select<0, 1>(params_.q_stride), get<2>(params_.q_stride)),
         packed_idx_to_coord);
 
-    const auto o_offset = begin * get<0>(params_.o_stride);
+    const auto o_offset =
+        (begin * get<0>(params_.o_stride)) +
+        (kv_head_idx_ * params_.group_size * get<1>(params_.o_stride));
     auto o = make_gather_tensor(
         make_gmem_ptr((Element*)params_.o_ptr + o_offset),
         make_shape(packed_len, params_.head_dim),
@@ -178,7 +185,7 @@ class Sm80KernelMha {
   using Element = typename CollectiveMainloop::Element;
   using BLK_M = typename CollectiveMainloop::BLK_M;
   using BLK_N = typename CollectiveMainloop::BLK_N;
-  using HEAD_DIM = typename CollectiveMainloop::HEAD_DIM;
+  using BLK_K = typename CollectiveMainloop::BLK_K;
 
   static constexpr int kSharedStorageSize =
       cute::max(sizeof(typename CollectiveMainloop::SharedStorage),
@@ -224,10 +231,10 @@ class Sm80KernelMha {
       const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
       const auto tidx = threadIdx.x;
 
-      // (q_packed_len, HEAD_DIM)
+      // (q_packed_len, BLK_K)
       detail::MHATile<Params> tile(params, batch_idx, kv_head_idx);
       auto [Q, O] = tile.template get_qo_tile<Element>();
-      // (kv_len, HEAD_DIM)
+      // (kv_len, BLK_K)
       auto [K, V] = tile.template get_kv_tile<Element>();
 
       // problem shape
@@ -252,22 +259,22 @@ class Sm80KernelMha {
       const int n_block_min = kLocal ? kv_idx_min / kBlockN : 0;
       const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
 
-      // (BLK_M, HEAD_DIM)
-      Tensor gQ = local_tile(
-          Q, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-      Tensor gO = local_tile(
-          O, Shape<BLK_M, HEAD_DIM>{}, make_coord(m_block_idx, _0{}));
-      // (BLK_M, HEAD_DIM) => (M, K)
+      // (BLK_M, BLK_K)
+      Tensor gQ =
+          local_tile(Q, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+      Tensor gO =
+          local_tile(O, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+      // (BLK_M, BLK_K) => (M, K)
       Tensor cQ = local_tile(make_identity_tensor(Q.shape()),
-                             Shape<BLK_M, HEAD_DIM>{},
+                             Shape<BLK_M, BLK_K>{},
                              make_coord(m_block_idx, _0{}));
 
-      // (BLK_N, HEAD_DIM, n)
-      Tensor gK = local_tile(K, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
-      Tensor gV = local_tile(V, Shape<BLK_N, HEAD_DIM>{}, make_coord(_, _0{}));
-      // (BLK_N, HEAD_DIM, n) => (N, K)
+      // (BLK_N, BLK_K, n)
+      Tensor gK = local_tile(K, Shape<BLK_N, BLK_K>{}, make_coord(_, _0{}));
+      Tensor gV = local_tile(V, Shape<BLK_N, BLK_K>{}, make_coord(_, _0{}));
+      // (BLK_N, BLK_K, n) => (N, K)
       Tensor cKV = local_tile(make_identity_tensor(K.shape()),
-                              Shape<BLK_N, HEAD_DIM>{},
+                              Shape<BLK_N, BLK_K>{},
                               make_coord(_, _0{}));
 
       // (BLK_M, BLK_N, n) => (M, N)
@@ -278,7 +285,7 @@ class Sm80KernelMha {
 
       TiledMma tiled_mma;
       // accumulator: (MMA,MMA_M,MMA_K)
-      auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, HEAD_DIM>{});
+      auto tOrAccO = partition_fragment_C(tiled_mma, Shape<BLK_M, BLK_K>{});
       clear(tOrAccO);
 
       auto thr_mma = tiled_mma.get_slice(tidx);
