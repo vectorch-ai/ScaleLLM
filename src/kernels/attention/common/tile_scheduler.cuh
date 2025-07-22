@@ -17,10 +17,10 @@ class SingleTileScheduler {
     int n_kv_heads = 0;
   };
 
-  static dim3 get_grid_shape(Params const& args) {
-    return {(uint32_t)args.batch_size,
-            (uint32_t)args.m_blocks,
-            (uint32_t)args.n_kv_heads};
+  static dim3 get_grid_shape(Params const& params) {
+    return {(uint32_t)params.batch_size,
+            (uint32_t)params.m_blocks,
+            (uint32_t)params.n_kv_heads};
   }
 
   template <class ProblemShape, class TileShape>

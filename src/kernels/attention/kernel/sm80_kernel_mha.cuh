@@ -199,9 +199,8 @@ class Sm80KernelMha {
   using TileSchedulerParams = typename TileScheduler::Params;
 
   // returns grid and block shape for kernel launch
-  using TileSchedulerArgs = typename TileScheduler::Arguments;
-  static dim3 get_grid_shape(TileSchedulerArgs const& args) {
-    return TileScheduler::get_grid_shape(args);
+  static dim3 get_grid_shape(TileSchedulerParams const& params) {
+    return TileScheduler::get_grid_shape(params);
   }
   static dim3 get_block_shape() { return kMmaThreads; }
 
