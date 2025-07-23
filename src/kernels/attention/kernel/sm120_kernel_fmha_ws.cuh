@@ -2,6 +2,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cutlass/arch/arch.h>
 #include <cutlass/arch/reg_reconfig.h>
 
 #include <cute/layout.hpp>
@@ -72,12 +73,16 @@ template <class ProblemShape,  // (Q, K, D, ((KH, G), B))
           class WarpScheduler = detail::Sm120WarpSpecializedScheduler>
 class Sm120KernelFmhaWs {
  public:
+  using ArchTag = cutlass::arch::Sm120;
+
   using TileShape = typename CollectiveMainloop::TileShape;
   using Element = typename CollectiveMainloop::Element;
   using ClusterShape = typename CollectiveMainloop::ClusterShape;
 
-  static const int kThreadsPerBlock =
+  // needed for cutlass::kernel
+  static constexpr uint32_t MaxThreadsPerBlock =
       WarpScheduler::kNumWarps * cutlass::NumThreadsPerWarp;
+  static constexpr uint32_t MinBlocksPerMultiprocessor = 1;
 
   using PipelineQ = typename CollectiveMainloop::PipelineQ;
   using PipelineKV = typename CollectiveMainloop::PipelineKV;
@@ -132,7 +137,7 @@ class Sm120KernelFmhaWs {
   static dim3 get_grid_shape(const Params& params) {
     return TileScheduler::get_grid_shape(params.scheduler);
   }
-  static dim3 get_block_shape() { return kThreadsPerBlock; }
+  static dim3 get_block_shape() { return MaxThreadsPerBlock; }
 
   CUTE_DEVICE void load_loop(const Params& params,
                              PipelineQ& q_pipeline,
