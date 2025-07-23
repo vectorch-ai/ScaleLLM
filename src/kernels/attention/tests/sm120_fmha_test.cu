@@ -4,9 +4,8 @@
 #include <cstdint>
 #include <cute/layout.hpp>
 
-#include "common/static_dispatch.h"
-#include "device/sm120_fmha_launch.cuh"
 #include "fmha_params.h"
+#include "fmha_runner.h"
 #include "tests/mha_ref.h"
 
 namespace llm {
@@ -93,15 +92,7 @@ torch::Tensor sm120_fmha(
 
   DISPATCH_TORCH_DTYPE_(query.dtype(), Dtype, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      DISPATCH_BOOL(params.head_dim == HEAD_DIM, EVEN_K, [&] {
-        sm120_launch_mha_kernel<Dtype,
-                                HEAD_DIM,
-                                EVEN_K,
-                                /*ALIBI*/ false,
-                                /*SOFT_CAP*/ false,
-                                /*LOCAL*/ false,
-                                FmhaParams>(params, nullptr);
-      });
+      FmhaRunner<Dtype, HEAD_DIM>::run(params, /*stream=*/nullptr);
     });
   });
   return out;
@@ -182,9 +173,9 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(6),                                // n_heads
         ::testing::Values(6 /*mha*/, 3 /*gqa*/, 1 /*mqa*/),  // n_kv_heads
         ::testing::Values(32, 64),                           // head_dim
-        ::testing::Values(0.0),                              // logits_soft_cap
-        ::testing::Values(false),                            // alibi slope
-        ::testing::Values(-1)                                // sliding window
+        ::testing::Values(0.0, 50.0),                        // logits_soft_cap
+        ::testing::Values(false, true),                      // alibi slope
+        ::testing::Values(-1, 0, 10)                         // sliding window
         ));
 
 }  // namespace llm
