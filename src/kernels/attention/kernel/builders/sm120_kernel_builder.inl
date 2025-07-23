@@ -1,14 +1,5 @@
 #pragma once
 
-// #include <cuda.h>
-// #include <cuda_runtime.h>
-// #include <cutlass/arch/arch.h>
-// #include <cutlass/arch/reg_reconfig.h>
-
-// #include <cute/layout.hpp>
-// #include <cute/tensor.hpp>
-// #include <cutlass/pipeline/pipeline.hpp>
-
 #include <cutlass/arch/arch.h>
 
 #include <cute/tensor.hpp>
