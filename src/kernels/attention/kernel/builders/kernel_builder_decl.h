@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cute/util/type_traits.hpp>
+
 namespace llm {
 
 template <class ArchTag,
@@ -17,7 +19,7 @@ template <class ArchTag,
           bool KV_USE_TMA,
           class Enable = void>
 struct KernelBuilder {
-  static_assert(sizeof(Element) == 0,
+  static_assert(cute::dependent_false<Element>,
                 "Could not build a kernel for given parameters.");
 };
 
