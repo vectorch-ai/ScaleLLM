@@ -79,11 +79,6 @@ class Sm120KernelFmhaWs {
   using Element = typename CollectiveMainloop::Element;
   using ClusterShape = typename CollectiveMainloop::ClusterShape;
 
-  // needed for cutlass::device_kernel
-  static constexpr uint32_t MaxThreadsPerBlock =
-      WarpScheduler::kNumWarps * cutlass::NumThreadsPerWarp;
-  static constexpr uint32_t MinBlocksPerMultiprocessor = 1;
-
   using PipelineQ = typename CollectiveMainloop::PipelineQ;
   using PipelineKV = typename CollectiveMainloop::PipelineKV;
 
@@ -104,6 +99,11 @@ class Sm120KernelFmhaWs {
   };
 
   static constexpr int kSharedStorageSize = sizeof(SharedStorage);
+
+  // needed for cutlass::device_kernel
+  static constexpr uint32_t MaxThreadsPerBlock =
+      WarpScheduler::kNumWarps * cutlass::NumThreadsPerWarp;
+  static constexpr uint32_t MinBlocksPerMultiprocessor = 1;
 
   struct Arguments {
     ProblemShape problem_shape;  // (Q, K, D, ((KH, G), B))
