@@ -5,20 +5,14 @@
 #include <cute/layout.hpp>
 #include <cute/tensor.hpp>
 
-#include "collective/sm120_collective_epilogue.cuh"
-#include "collective/sm120_collective_fmha_mainloop_ws.cuh"
-#include "common/fmha_block.h"
-#include "common/tile_scheduler.cuh"
 #include "device/fmha.cuh"
 #include "fmha_params.h"
-#include "kernel/sm120_kernel_fmha_ws.cuh"
+#include "kernel/kernel_builder.h"  // IWYU pragma: keep
 
 namespace llm {
-// ? Should include ArchTag?
-//  * select right kernel based on ArchTag?
-// ? how to support fast compliling?
+// TODO: support fast compliling
 //  * only compile the kernel for the target compute capability
-template <typename Element, int kHeadDim>
+template <class ArchTag, typename Element, int kHeadDim>
 class FmhaRunner {
  public:
   static bool run(const FmhaParams& params, cudaStream_t stream = nullptr) {
@@ -64,26 +58,25 @@ class FmhaRunner {
 
     using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<kHeadDim>>;
 
-    using Block = FmhaBlock<TileShape, Element, LOCAL>;
+    // (B, Q, H, D)
+    using StrideQ = Stride<int64_t, int64_t, int64_t, _1>;
+    using StrideK = Stride<int64_t, int64_t, int64_t, _1>;
+    using StrideV = StrideK;
+    using StrideO = StrideQ;
 
-    using CollectiveMainloop = Sm120CollectiveFMhaWs<TileShape,
-                                                     Element,
-                                                     EVEN_K,
-                                                     ALIBI,
-                                                     SOFT_CAP,
-                                                     LOCAL,
-                                                     KV_USE_TMA>;
-    using CollectiveEpilogue =
-        Sm120CollectiveEpilogue<TileShape, Element, EVEN_K>;
-
-    // TODO: support persistent kernels
-    using TileScheduler = SingleTileScheduler;
-
-    using AttnKernel = Sm120KernelFmhaWs<ProblemShape,
-                                         Block,
-                                         CollectiveMainloop,
-                                         CollectiveEpilogue,
-                                         TileScheduler>;
+    using AttnKernel = typename KernelBuilder<ArchTag,
+                                              ProblemShape,
+                                              TileShape,
+                                              Element,
+                                              StrideQ,
+                                              StrideK,
+                                              StrideV,
+                                              StrideO,
+                                              EVEN_K,
+                                              ALIBI,
+                                              SOFT_CAP,
+                                              LOCAL,
+                                              KV_USE_TMA>::Kernel;
 
     assert(params.n_heads % params.n_kv_heads == 0 &&
            "n_heads must be divisible by n_kv_heads");

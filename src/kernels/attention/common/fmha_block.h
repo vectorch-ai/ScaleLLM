@@ -14,17 +14,13 @@ using namespace cute;
 // AttentionTile specialization for AttentionParams
 template <typename TileShape,  // (BLK_M, BLK_N, BLK_K)
           typename Element,    // Element type
+          typename StrideQ,    // (B, Q, H, D)
+          typename StrideK,    // (B, Q, H, D)
+          typename StrideV,    // (B, Q, KH, D)
+          typename StrideO,    // (B, Q, KH, D)
           bool kLocal>
 struct FmhaBlock {
-  // (B, Q, H, D)
-  using StrideQ = Stride<int64_t, int64_t, int64_t, _1>;
-  using StrideO = StrideQ;
-  // (B, K, KH, D)
-  using StrideK = Stride<int64_t, int64_t, int64_t, _1>;
-  using StrideV = StrideK;
-
   // Host side parameters
-
   struct Arguments {
     const void* __restrict__ q_ptr;
     const void* __restrict__ k_ptr;

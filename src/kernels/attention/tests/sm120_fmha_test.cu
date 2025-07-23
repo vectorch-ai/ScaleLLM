@@ -89,10 +89,10 @@ torch::Tensor sm120_fmha(
                                 : nullptr;
 
   // params.max_q_len = max_q_len;
-
+  using ArchTag = cutlass::arch::Sm120;
   DISPATCH_TORCH_DTYPE_(query.dtype(), Dtype, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      FmhaRunner<Dtype, HEAD_DIM>::run(params, /*stream=*/nullptr);
+      FmhaRunner<ArchTag, Dtype, HEAD_DIM>::run(params, /*stream=*/nullptr);
     });
   });
   return out;
