@@ -79,7 +79,7 @@ class Sm120KernelFmhaWs {
   using Element = typename CollectiveMainloop::Element;
   using ClusterShape = typename CollectiveMainloop::ClusterShape;
 
-  // needed for cutlass::kernel
+  // needed for cutlass::device_kernel
   static constexpr uint32_t MaxThreadsPerBlock =
       WarpScheduler::kNumWarps * cutlass::NumThreadsPerWarp;
   static constexpr uint32_t MinBlocksPerMultiprocessor = 1;
