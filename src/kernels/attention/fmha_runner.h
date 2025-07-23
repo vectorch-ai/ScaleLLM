@@ -21,7 +21,7 @@ namespace llm {
 template <typename Element, int kHeadDim>
 class FmhaRunner {
  public:
-  bool run(const FmhaParams& params, cudaStream_t stream = nullptr) const {
+  static bool run(const FmhaParams& params, cudaStream_t stream = nullptr) {
     assert(params.head_dim <= kHeadDim);
     // dispatch to proper kernel instantiation based on params
     DISPATCH_BOOL(params.head_dim == kHeadDim, EVEN_K, [&] {
@@ -37,8 +37,8 @@ class FmhaRunner {
   }
 
   template <bool EVEN_K, bool ALIBI, bool SOFT_CAP, bool LOCAL>
-  bool run_kernel(const FmhaParams& params,
-                  cudaStream_t stream = nullptr) const {
+  static bool run_kernel(const FmhaParams& params,
+                         cudaStream_t stream = nullptr) {
     // TODO: tune tile shape M/N based on the head dim and smem size
     // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
     // SM           | 7.0 | 7.2 | 7.5 | 8.0 | 8.6 | 8.7 | 8.9 | 9.0 | 10.x
@@ -107,7 +107,6 @@ class FmhaRunner {
 
     typename AttnKernel::Arguments attn_args{
         .problem_shape = problem_shape,
-        // Block arguments
         .block =
             {
                 .q_ptr = params.q_ptr,
@@ -120,7 +119,6 @@ class FmhaRunner {
                 .o_stride = o_stride,
                 .sliding_window = params.sliding_window,
             },
-        // mainloop arguments
         .mainloop =
             {
                 .sliding_window = params.sliding_window,
@@ -128,7 +126,6 @@ class FmhaRunner {
                 .sm_scale = params.sm_scale,
                 .alibi_slopes_ptr = params.alibi_slopes_ptr,
             },
-        // epilogue arguments
         .epilogue = {},
     };
 

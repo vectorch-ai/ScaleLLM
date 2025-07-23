@@ -38,7 +38,7 @@ class Fmha {
     return true;
   }
 
-  bool run(cudaStream_t stream = nullptr) {
+  bool run(cudaStream_t stream = nullptr) const {
     const dim3 block = Kernel::get_block_shape();
     const dim3 grid = Kernel::get_grid_shape(params_);
     constexpr int smem_size = Kernel::kSharedStorageSize;
@@ -63,7 +63,6 @@ class Fmha {
       status = cutlass::kernel_launch<Kernel>(
           grid, block, smem_size, stream, params_, /*launch_with_pdl=*/false);
     }
-    // check_launch_status
     return cutlass::Status::kSuccess == status;
   }
 

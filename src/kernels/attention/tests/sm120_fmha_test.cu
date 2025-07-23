@@ -92,8 +92,7 @@ torch::Tensor sm120_fmha(
 
   DISPATCH_TORCH_DTYPE_(query.dtype(), Dtype, [&] {
     DISPATCH_HEAD_DIM_(head_dim, HEAD_DIM, [&] {
-      FmhaRunner<Dtype, HEAD_DIM> runner;
-      runner.run(params, /*stream=*/nullptr);
+      FmhaRunner<Dtype, HEAD_DIM>::run(params, /*stream=*/nullptr);
     });
   });
   return out;
