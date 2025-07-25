@@ -10,6 +10,9 @@ namespace llm {
 using namespace cute;
 class SingleTileScheduler {
  public:
+  // (m_block_idx, ((kv_head_idx, _0), batch_idx))
+  using BlocKCoord = Coord<int, Coord<Coord<int, _0>, int>>;
+
   // Device side kernel arguments
   struct Params {
     int batch_size = 0;
@@ -46,8 +49,7 @@ class SingleTileScheduler {
     Iterator() = default;
 
     CUTE_DEVICE
-    auto operator*() const {
-      // (m_block_idx, ((kv_head_idx, _0), batch_idx))
+    BlocKCoord operator*() const {
       return make_coord(
           (int)blockIdx.x,
           make_coord(make_coord((int)blockIdx.y, _0{}), (int)blockIdx.z));

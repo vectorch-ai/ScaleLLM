@@ -12,13 +12,14 @@ namespace llm {
 using namespace cute;
 
 // AttentionTile specialization for AttentionParams
-template <typename TileShape,  // (BLK_M, BLK_N, BLK_K)
-          typename Element,    // Element type
-          typename StrideQ,    // (Q, D, ((KH, G), B))
-          typename StrideK,    // (K, D, ((KH, _0), B))
-          typename StrideV,    // (V, D, ((KH, _0), B))
-          typename StrideO,    // (Q, Q, ((KH, G), B))
-          bool kLocal>
+template <typename TileShape,   // (BLK_M, BLK_N, BLK_K)
+          typename BlocKCoord,  // (m_block_idx, ((kv_head_idx, _0), batch_idx))
+          typename Element,     // Element type
+          typename StrideQ,     // (Q, D, ((KH, G), B))
+          typename StrideK,     // (K, D, ((KH, _0), B))
+          typename StrideV,     // (V, D, ((KH, _0), B))
+          typename StrideO      // (Q, Q, ((KH, G), B))
+          >
 struct FmhaBlock {
   // Host side parameters
   struct Arguments {
@@ -31,8 +32,6 @@ struct FmhaBlock {
     StrideK k_stride;
     StrideV v_stride;
     StrideO o_stride;
-
-    int sliding_window = -1;  // -1 means no sliding window
   };
 
   // Device side parameters
@@ -47,8 +46,6 @@ struct FmhaBlock {
     StrideV v_stride;
     StrideO o_stride;
 
-    int sliding_window;
-
     // Parameters from problem shape
     int batch_size;
     int q_len;
@@ -58,18 +55,6 @@ struct FmhaBlock {
     int n_kv_heads;  // number of kv heads
     FastDivmod group_size;
   };
-
-  // using StrideK = ...;
-
-  // using TMA_K = decltype(make_tma_copy(
-  //       GmemTiledCopy{}, // TMA_COPY
-  //       make_tensor(static_cast<InternalElementA const*>(nullptr),
-  //       repeat_like(StrideK{}, int32_t(0)), StrideK{}),
-  //       SmemLayoutK{}(_,_,_0{})));
-
-  // Tensor tensor_k = make_tensor(ptr_k, make_layout(make_shape(M,K,L),
-  // args.stride_k)); auto tma_load_k = make_tma_copy(SM90_TMA_LOAD{},
-  // gtensor_k, SmemLayoutK{}(_,_,_0{}));
 
   template <class ProblemShape>
   static Params to_underlying_arguments(const ProblemShape& problem_shape,
@@ -93,7 +78,6 @@ struct FmhaBlock {
         .k_stride = args.k_stride,
         .v_stride = args.v_stride,
         .o_stride = args.o_stride,
-        .sliding_window = args.sliding_window,
         .batch_size = batch_size,
         .q_len = q_len,
         .kv_len = kv_len,
@@ -113,9 +97,6 @@ struct FmhaBlock {
 
   // hold a reference to the parameters and block coordination
   const Params& params_;
-  // TODO: pass in as parameter is better
-  // (m_block_idx, ((kv_head_idx, _0), batch_idx))
-  using BlocKCoord = Coord<int, Coord<Coord<int, _0>, int>>;
   const BlocKCoord& blk_coord_;
 
   // derived parameters to avoid recomputation
@@ -161,9 +142,9 @@ struct FmhaBlock {
   // returns (m_block_idx, ((kv_head_idx, _0), batch_idx))
   CUTE_HOST_DEVICE const auto& get_block_coord() const { return blk_coord_; }
 
-  // TODO: pass in kLocal and sliding_window instead
   // returns kv block range: (n_block_min, n_block_max]
-  CUTE_HOST_DEVICE auto get_kv_blocks() const {
+  template <bool kLocal>
+  CUTE_HOST_DEVICE auto get_kv_blocks(int sliding_window) const {
     static constexpr int kBlockM = get<0>(TileShape{});
     static constexpr int kBlockN = get<1>(TileShape{});
 
@@ -176,7 +157,7 @@ struct FmhaBlock {
     const int n_block_max = cute::ceil_div(kv_idx_max, kBlockN);
 
     if constexpr (kLocal) {
-      const int kv_idx_min = std::max(0, diagonal - params_.sliding_window);
+      const int kv_idx_min = std::max(0, diagonal - sliding_window);
       const int n_block_min = kv_idx_min / kBlockN;
       return make_tuple(n_block_min, n_block_max);
     } else {
@@ -300,31 +281,44 @@ struct FmhaBlock {
   }
 
   // functions for tma load
+
+  // using StrideK = ...;
+
+  // using TMA_K = decltype(make_tma_copy(
+  //       GmemTiledCopy{}, // TMA_COPY
+  //       make_tensor(static_cast<InternalElementA const*>(nullptr),
+  //       repeat_like(StrideK{}, int32_t(0)), StrideK{}),
+  //       SmemLayoutK{}(_,_,_0{})));
+
+  // Tensor tensor_k = make_tensor(ptr_k, make_layout(make_shape(M,K,L),
+  // args.stride_k)); auto tma_load_k = make_tma_copy(SM90_TMA_LOAD{},
+  // gtensor_k, SmemLayoutK{}(_,_,_0{}));
+
   // returns kv tma tile: (BLK_N, BLK_K, n) => (1@0, 1@1, 1@2)
-  template <class TMA_K, class TMA_V>
-  CUTE_HOST_DEVICE auto get_kv_tma_tile(TMA_K tma_k, TMA_V tma_v) const {
-    // 1: make_gather_tma_tensor()
-    // tma_tensor = (seq, dim, kv_head) => (1@0, 1@1, 1@2)
-    // 2: partition into tiles
-    // tma_tile = (BLK_N, BLK_K, n) => (1@0, 1@1, 1@2)
+  // template <class TMA_K, class TMA_V>
+  // CUTE_HOST_DEVICE auto get_kv_tma_tile(TMA_K tma_k, TMA_V tma_v) const {
+  // 1: make_gather_tma_tensor()
+  // tma_tensor = (seq, dim, kv_head) => (1@0, 1@1, 1@2)
+  // 2: partition into tiles
+  // tma_tile = (BLK_N, BLK_K, n) => (1@0, 1@1, 1@2)
 
-    // (Q, D, (B, H))
-    // Tensor mQ_qdl_p = tma_k.get_tma_tensor(select<0,2,3>(problem_shape));
-    // Tensor mQ_qdl = domain_offset(make_coord(q_offs_0, _0{}, make_coord(_0{},
-    // q_offs_2_1)), mQ_qdl_p); (BLK_N, BLK_K, m, k, (b)) Tensor gQ_qdl =
-    // local_tile(mQ_qdl, TileShapeQK{}, make_coord(_, _, _), Step<_1, X,
-    // _1>{});
+  // (Q, D, (B, H))
+  // Tensor mQ_qdl_p = tma_k.get_tma_tensor(select<0,2,3>(problem_shape));
+  // Tensor mQ_qdl = domain_offset(make_coord(q_offs_0, _0{}, make_coord(_0{},
+  // q_offs_2_1)), mQ_qdl_p); (BLK_N, BLK_K, m, k, (b)) Tensor gQ_qdl =
+  // local_tile(mQ_qdl, TileShapeQK{}, make_coord(_, _, _), Step<_1, X,
+  // _1>{});
 
-    // outside in caller part
-    // (BLK_N, BLK_K, n) => (TMA,TMA_M,TMA_N, n)
-    // auto cta_tma = tma.get_slice(Int<0>{});  // CTA slice
-    // (TMA,TMA_M,TMA_N,REST_M,REST_N)
-    // Tensor tAgA_x = cta_tma.partition_S(gA);
-    // (TMA,TMA_M,TMA_N)
-    // Tensor tAsA_x = cta_tma.partition_D(sA);
+  // outside in caller part
+  // (BLK_N, BLK_K, n) => (TMA,TMA_M,TMA_N, n)
+  // auto cta_tma = tma.get_slice(Int<0>{});  // CTA slice
+  // (TMA,TMA_M,TMA_N,REST_M,REST_N)
+  // Tensor tAgA_x = cta_tma.partition_S(gA);
+  // (TMA,TMA_M,TMA_N)
+  // Tensor tAsA_x = cta_tma.partition_D(sA);
 
-    return;
-  }
+  //   return;
+  // }
 };
 
 }  // namespace llm

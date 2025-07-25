@@ -39,8 +39,16 @@ struct KernelBuilder<cutlass::arch::Sm120,
                      LOCAL,
                      KV_USE_TMA,
                      cute::enable_if_t<not cute::is_tuple_v<Element>>> {
-  using Block =
-      FmhaBlock<TileShape, Element, StrideQ, StrideK, StrideV, StrideO, LOCAL>;
+  // TODO: support persistent kernels
+  using TileScheduler = SingleTileScheduler;
+  using BlocKCoord = TileScheduler::BlocKCoord;
+  using Block = FmhaBlock<TileShape,
+                          BlocKCoord,
+                          Element,
+                          StrideQ,
+                          StrideK,
+                          StrideV,
+                          StrideO>;
 
   using CollectiveMainloop = Sm120CollectiveFMhaWs<TileShape,
                                                    Element,
@@ -54,9 +62,6 @@ struct KernelBuilder<cutlass::arch::Sm120,
   // TODO: pass in SmemLayout to Block for TMA definitions
   using CollectiveEpilogue =
       Sm120CollectiveEpilogue<TileShape, Element, EVEN_K>;
-
-  // TODO: support persistent kernels
-  using TileScheduler = SingleTileScheduler;
 
   using Kernel = Sm120KernelFmhaWs<ProblemShape,
                                    Block,

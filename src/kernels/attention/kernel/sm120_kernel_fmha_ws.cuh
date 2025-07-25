@@ -154,10 +154,15 @@ class Sm120KernelFmhaWs {
 
     // process each block
     for (const auto blk_coord : scheduler) {
-      // block coord: (batch_idx, m_block_idx, kv_head_idx)
       const Block block(params.block, blk_coord);
-      mainloop.load(
-          block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss.mainloop);
+      mainloop.load(params.mainloop,
+                    block,
+                    tidx,
+                    q_pipeline,
+                    q_state,
+                    kv_pipeline,
+                    kv_state,
+                    ss.mainloop);
     }
 
     // prevent early exit of producer blocks in cluster
@@ -186,7 +191,6 @@ class Sm120KernelFmhaWs {
 
     // process each block
     for (const auto blk_coord : scheduler) {
-      // block coord: (batch_idx, m_block_idx, kv_head_idx)
       const Block block(params.block, blk_coord);
 
       TiledMma tiled_mma;

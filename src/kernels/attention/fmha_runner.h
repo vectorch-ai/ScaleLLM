@@ -129,7 +129,6 @@ class FmhaRunner {
                 .k_stride = k_stride,
                 .v_stride = v_stride,
                 .o_stride = o_stride,
-                .sliding_window = params.sliding_window,
             },
         .mainloop =
             {

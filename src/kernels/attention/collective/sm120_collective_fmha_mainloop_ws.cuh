@@ -179,16 +179,35 @@ struct Sm120CollectiveFMhaWs {
 
   // load Q/K/V from gmem to smem
   template <class Block>
-  CUTE_DEVICE void load(const Block& block,
+  CUTE_DEVICE void load(const Params& params,
+                        const Block& block,
                         int tidx,
                         PipelineQ& q_pipeline,
                         typename PipelineQ::PipelineState& q_state,
                         PipelineKV& kv_pipeline,
                         typename PipelineKV::PipelineState& kv_state,
                         TensorStorage& ss) {
+    if (!block.is_valid()) {
+      // skip invalid block
+      return;
+    }
+    const auto [n_block_min, n_block_max] =
+        block.template get_kv_blocks<LOCAL>(params.sliding_window);
+    if (n_block_min >= n_block_max) {
+      return;  // no kv blocks to process
+    }
+
     // forward to the load implementation
     Load load;
-    load(block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss);
+    load(block,
+         tidx,
+         n_block_min,
+         n_block_max,
+         q_pipeline,
+         q_state,
+         kv_pipeline,
+         kv_state,
+         ss);
   }
 
   template <class Block, class FrgTensor, class PipelineQ, class PipelineKV>
@@ -212,7 +231,8 @@ struct Sm120CollectiveFMhaWs {
       return;
     }
 
-    const auto [n_block_min, n_block_max] = block.get_kv_blocks();
+    const auto [n_block_min, n_block_max] =
+        block.template get_kv_blocks<LOCAL>(params.sliding_window);
     if (n_block_min >= n_block_max) {
       return;  // no kv blocks to process
     }
