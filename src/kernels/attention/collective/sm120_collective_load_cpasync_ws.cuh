@@ -39,22 +39,14 @@ struct Sm120CollectiveLoadCpAsyncWs {
   template <class Block>
   CUTE_DEVICE void operator()(const Block& block,
                               int tidx,
+                              int n_block_min,
+                              int n_block_max,
                               PipelineQ& q_pipeline,
                               typename PipelineQ::PipelineState& q_state,
                               PipelineKV& kv_pipeline,
                               typename PipelineKV::PipelineState& kv_state,
                               TensorStorage& ss) {
     static constexpr int kStages = size<2>(SmemLayoutK{});
-
-    if (!block.is_valid()) {
-      // skip invalid block
-      return;
-    }
-
-    const auto [n_block_min, n_block_max] = block.get_kv_blocks();
-    if (n_block_min >= n_block_max) {
-      return;  // no kv blocks to process
-    }
 
     // (M, N, K)
     const auto residue_mnk = block.get_residue_mnk();

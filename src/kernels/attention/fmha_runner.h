@@ -53,16 +53,17 @@ class FmhaRunner {
 
     // TODO: pass in max_q_len and max_kv_len for variable length
     // MNKL: (Q K D ((KH G), B))
-    using ProblemShape =
-        cute::tuple<int, int, int, cute::tuple<cute::tuple<int, int>, int>>;
+    using ProblemShape = Shape<int, int, int, Shape<Shape<int, int>, int>>;
 
     using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<kHeadDim>>;
 
-    // (B, Q, H, D)
-    using StrideQ = Stride<int64_t, int64_t, int64_t, _1>;
-    using StrideK = Stride<int64_t, int64_t, int64_t, _1>;
-    using StrideV = StrideK;
+    // (Q, D, ((KH, G), B))
+    using StrideQ =
+        Stride<int64_t, _1, Stride<Stride<int64_t, int64_t>, int64_t>>;
     using StrideO = StrideQ;
+    // (K/V, D, ((KH, _0), B))
+    using StrideK = Stride<int64_t, _1, Stride<Stride<int64_t, _0>, int64_t>>;
+    using StrideV = StrideK;
 
     using AttnKernel = typename KernelBuilder<ArchTag,
                                               ProblemShape,
@@ -82,25 +83,43 @@ class FmhaRunner {
            "n_heads must be divisible by n_kv_heads");
     const int group_size = params.n_heads / params.n_kv_heads;
 
+    // MNKL: (Q K D ((KH G), B))
     ProblemShape problem_shape =
-        make_tuple(params.q_len,
+        make_shape(params.q_len,
                    params.kv_len,
                    params.head_dim,
-                   make_tuple(make_tuple(params.n_kv_heads, group_size),
+                   make_shape(make_shape(params.n_kv_heads, group_size),
                               params.batch_size));
 
-    auto q_stride = make_stride(
-        params.q_batch_stride, params.q_seq_stride, params.q_head_stride, _1{});
-    auto k_stride = make_stride(
-        params.k_batch_stride, params.k_seq_stride, params.k_head_stride, _1{});
-    auto v_stride = make_stride(
-        params.v_batch_stride, params.v_seq_stride, params.v_head_stride, _1{});
-    auto o_stride = make_stride(
-        params.o_batch_stride, params.o_seq_stride, params.o_head_stride, _1{});
+    // (Q, D, ((KH, G), B))
+    auto q_stride =
+        make_stride(params.q_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.q_head_stride * group_size,
+                                            params.q_head_stride),
+                                params.q_batch_stride));
+    auto o_stride =
+        make_stride(params.o_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.o_head_stride * group_size,
+                                            params.o_head_stride),
+                                params.o_batch_stride));
+
+    // (K/V, D, ((KH, _0), B))
+    auto k_stride =
+        make_stride(params.k_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.k_head_stride, _0{}),
+                                params.k_batch_stride));
+    auto v_stride =
+        make_stride(params.v_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.v_head_stride, _0{}),
+                                params.v_batch_stride));
 
     typename AttnKernel::Arguments attn_args{
         .problem_shape = problem_shape,
-        .block =
+        .input =
             {
                 .q_ptr = params.q_ptr,
                 .k_ptr = params.k_ptr,
@@ -110,7 +129,6 @@ class FmhaRunner {
                 .k_stride = k_stride,
                 .v_stride = v_stride,
                 .o_stride = o_stride,
-                .sliding_window = params.sliding_window,
             },
         .mainloop =
             {

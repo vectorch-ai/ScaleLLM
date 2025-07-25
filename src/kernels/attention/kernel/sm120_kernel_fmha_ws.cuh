@@ -107,14 +107,14 @@ class Sm120KernelFmhaWs {
 
   struct Arguments {
     ProblemShape problem_shape;  // (Q, K, D, ((KH, G), B))
-    typename Block::Arguments block;
+    typename Block::Arguments input;
     typename CollectiveMainloop::Arguments mainloop;
     typename CollectiveEpilogue::Arguments epilogue;
     // cutlass::KernelHardwareInfo hw_info;
   };
 
   struct Params {
-    typename Block::Params block;
+    typename Block::Params input;
     typename CollectiveMainloop::Params mainloop;
     typename CollectiveEpilogue::Params epilogue;
     typename TileScheduler::Params scheduler;
@@ -124,7 +124,7 @@ class Sm120KernelFmhaWs {
   static Params to_underlying_arguments(Arguments const& args,
                                         void* workspace) {
     return Params{Block::to_underlying_arguments(
-                      args.problem_shape, args.block, workspace),
+                      args.problem_shape, args.input, workspace),
                   CollectiveMainloop::to_underlying_arguments(
                       args.problem_shape, args.mainloop, workspace),
                   CollectiveEpilogue::to_underlying_arguments(
@@ -154,10 +154,15 @@ class Sm120KernelFmhaWs {
 
     // process each block
     for (const auto blk_coord : scheduler) {
-      // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      const Block block(params.block, blk_coord);
-      mainloop.load(
-          block, tidx, q_pipeline, q_state, kv_pipeline, kv_state, ss.mainloop);
+      const Block block(params.input, blk_coord);
+      mainloop.load(params.mainloop,
+                    block,
+                    tidx,
+                    q_pipeline,
+                    q_state,
+                    kv_pipeline,
+                    kv_state,
+                    ss.mainloop);
     }
 
     // prevent early exit of producer blocks in cluster
@@ -186,8 +191,7 @@ class Sm120KernelFmhaWs {
 
     // process each block
     for (const auto blk_coord : scheduler) {
-      // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      const Block block(params.block, blk_coord);
+      const Block block(params.input, blk_coord);
 
       TiledMma tiled_mma;
       // accumulator: (MMA,MMA_M,MMA_K)
