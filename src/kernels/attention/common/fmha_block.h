@@ -14,10 +14,10 @@ using namespace cute;
 // AttentionTile specialization for AttentionParams
 template <typename TileShape,  // (BLK_M, BLK_N, BLK_K)
           typename Element,    // Element type
-          typename StrideQ,    // (B, Q, H, D)
-          typename StrideK,    // (B, Q, H, D)
-          typename StrideV,    // (B, Q, KH, D)
-          typename StrideO,    // (B, Q, KH, D)
+          typename StrideQ,    // (Q, D, ((KH, G), B))
+          typename StrideK,    // (K, D, ((KH, _0), B))
+          typename StrideV,    // (V, D, ((KH, _0), B))
+          typename StrideO,    // (Q, Q, ((KH, G), B))
           bool kLocal>
 struct FmhaBlock {
   // Host side parameters
@@ -50,11 +50,26 @@ struct FmhaBlock {
     int sliding_window;
 
     // Parameters from problem shape
+    int batch_size;
     int q_len;
     int kv_len;
     int head_dim;
+    // int n_heads;
+    int n_kv_heads;  // number of kv heads
     FastDivmod group_size;
   };
+
+  // using StrideK = ...;
+
+  // using TMA_K = decltype(make_tma_copy(
+  //       GmemTiledCopy{}, // TMA_COPY
+  //       make_tensor(static_cast<InternalElementA const*>(nullptr),
+  //       repeat_like(StrideK{}, int32_t(0)), StrideK{}),
+  //       SmemLayoutK{}(_,_,_0{})));
+
+  // Tensor tensor_k = make_tensor(ptr_k, make_layout(make_shape(M,K,L),
+  // args.stride_k)); auto tma_load_k = make_tma_copy(SM90_TMA_LOAD{},
+  // gtensor_k, SmemLayoutK{}(_,_,_0{}));
 
   template <class ProblemShape>
   static Params to_underlying_arguments(const ProblemShape& problem_shape,
@@ -64,7 +79,9 @@ struct FmhaBlock {
     const int q_len = size<0>(problem_shape);
     const int kv_len = size<1>(problem_shape);
     const int head_dim = size<2>(problem_shape);
+    const int n_kv_heads = size<3, 0, 0>(problem_shape);
     const int group_size = size<3, 0, 1>(problem_shape);
+    const int batch_size = size<3, 1>(problem_shape);
 
     // TODO: construct tma_load for k/v tensors
     return {
@@ -77,9 +94,11 @@ struct FmhaBlock {
         .v_stride = args.v_stride,
         .o_stride = args.o_stride,
         .sliding_window = args.sliding_window,
+        .batch_size = batch_size,
         .q_len = q_len,
         .kv_len = kv_len,
         .head_dim = head_dim,
+        .n_kv_heads = n_kv_heads,
         .group_size = FastDivmod(group_size),
     };
   }
@@ -94,20 +113,20 @@ struct FmhaBlock {
 
   // hold a reference to the parameters and block coordination
   const Params& params_;
-  // TODO: (m_block_idx, (kv_head_idx, batch_idx))
-  // (batch_idx, m_block_idx, kv_head_idx)
-  const tuple<int, int, int>& blk_coord_;
+  // TODO: pass in as parameter is better
+  // (m_block_idx, ((kv_head_idx, _0), batch_idx))
+  using BlocKCoord = Coord<int, Coord<Coord<int, _0>, int>>;
+  const BlocKCoord& blk_coord_;
 
   // derived parameters to avoid recomputation
   int m_block_base_;
   int packed_len_;
 
   // Constructor
-  CUTE_HOST_DEVICE FmhaBlock(const Params& params,
-                             const tuple<int, int, int>& blk_coord)
+  CUTE_HOST_DEVICE FmhaBlock(const Params& params, const BlocKCoord& blk_coord)
       : params_(params), blk_coord_(blk_coord) {
     // derive parameters
-    m_block_base_ = get<1>(blk_coord) * get<0>(TileShape{});
+    m_block_base_ = get<0>(blk_coord) * get<0>(TileShape{});
     packed_len_ = params_.q_len * params_.group_size;
   }
 
@@ -139,10 +158,10 @@ struct FmhaBlock {
     return make_tuple(packed_len_, params_.kv_len, params_.head_dim);
   }
 
-  // returns (m_block_idx, (kv_head_idx, batch_idx))
-  // return (batch_idx, m_block_idx, kv_head_idx)
+  // returns (m_block_idx, ((kv_head_idx, _0), batch_idx))
   CUTE_HOST_DEVICE const auto& get_block_coord() const { return blk_coord_; }
 
+  // TODO: pass in kLocal and sliding_window instead
   // returns kv block range: (n_block_min, n_block_max]
   CUTE_HOST_DEVICE auto get_kv_blocks() const {
     static constexpr int kBlockM = get<0>(TileShape{});
@@ -167,7 +186,17 @@ struct FmhaBlock {
 
   // return the query tile: (BLK_M, BLK_K) => (M, K)
   CUTE_HOST_DEVICE auto get_q_tile() const {
-    const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
+    // (Q, D, ((KH, G), B))
+    auto q_shape = make_shape(
+        params_.q_len,
+        params_.head_dim,
+        make_shape(make_shape(params_.n_kv_heads, (int)params_.group_size),
+                   params_.batch_size));
+    auto mQ = make_tensor(make_gmem_ptr((const Element*)params_.q_ptr),
+                          q_shape,
+                          params_.q_stride);
+    // (Q, D, G)
+    auto Q = mQ(_, _, get<1>(blk_coord_));
 
     // packing all q in the same kv head group together
     auto packed_idx_to_coord = [this](int packed_idx) {
@@ -177,24 +206,23 @@ struct FmhaBlock {
       return make_coord(idx, offset);
     };
 
-    // (batch, seq, head, dim)
-    // => (batch, seq, (kv_heads, group), dim)
-    // => (seq, group, dim)
-    const auto offset =
-        batch_idx * get<0>(params_.q_stride) +
-        kv_head_idx * params_.group_size * get<2>(params_.q_stride);
-    // gmem tensor: (packed_len, dim) => ((seq, group), dim)
-    auto Q = make_gather_tensor(
-        make_gmem_ptr((const Element*)params_.q_ptr + offset),
-        make_shape(packed_len_, params_.head_dim),
-        make_stride(select<1, 2>(params_.q_stride), get<3>(params_.q_stride)),
-        packed_idx_to_coord);
+    // ((Q, G), D)
+    auto p_stride = make_stride(
+        make_stride(get<0>(params_.q_stride), get<2, 0, 1>(params_.q_stride)),
+        get<1>(params_.q_stride));
 
+    // packed tensor: (pQ, D) => ((Q, G), D)
+    auto pQ = make_gather_tensor(Q.data(),
+                                 make_shape(packed_len_, params_.head_dim),
+                                 p_stride,
+                                 packed_idx_to_coord);
+
+    const auto m_block_idx = get<0>(blk_coord_);
     // (BLK_M, BLK_K)
     Tensor gQ =
-        local_tile(Q, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+        local_tile(pQ, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
     // (BLK_M, BLK_K) => (M, K)
-    Tensor cQ = local_tile(make_identity_tensor(shape(Q)),
+    Tensor cQ = local_tile(make_identity_tensor(shape(pQ)),
                            Shape<BLK_M, BLK_K>{},
                            make_coord(m_block_idx, _0{}));
     return make_tuple(gQ, cQ);
@@ -202,7 +230,17 @@ struct FmhaBlock {
 
   // return the output tile: (BLK_M, BLK_K) => (M, K)
   CUTE_HOST_DEVICE auto get_o_tile() const {
-    const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
+    // blk_coord: (m_block_idx, ((kv_head_idx, _0), batch_idx))
+    // (Q, D, ((KH, G), B))
+    auto o_shape = make_shape(
+        params_.q_len,
+        params_.head_dim,
+        make_shape(make_shape(params_.n_kv_heads, (int)params_.group_size),
+                   params_.batch_size));
+    auto mO = make_tensor(
+        make_gmem_ptr((Element*)params_.o_ptr), o_shape, params_.o_stride);
+    // (Q, D, G)
+    auto O = mO(_, _, get<1>(blk_coord_));
 
     // packing all q in the same kv head group together
     auto packed_idx_to_coord = [this](int packed_idx) {
@@ -211,25 +249,21 @@ struct FmhaBlock {
       params_.group_size.divmod(packed_idx, idx, offset);
       return make_coord(idx, offset);
     };
-
-    // (batch, seq, head, dim)
-    // => (batch, seq, (kv_heads, group), dim)
-    // => (seq, group, dim)
-    const auto offset =
-        batch_idx * get<0>(params_.o_stride) +
-        kv_head_idx * params_.group_size * get<2>(params_.o_stride);
-    // gmem tensor: (packed_len, dim) => ((seq, group), dim)
-    auto O = make_gather_tensor(
-        make_gmem_ptr((Element*)params_.o_ptr + offset),
+    // packed tensor: (packed_len, dim) => ((seq, group), dim)
+    auto pO = make_gather_tensor(
+        O.data(),
         make_shape(packed_len_, params_.head_dim),
-        make_stride(select<1, 2>(params_.o_stride), get<3>(params_.o_stride)),
+        make_stride(make_stride(get<0>(params_.q_stride),
+                                get<2, 0, 1>(params_.q_stride)),
+                    get<1>(params_.q_stride)),
         packed_idx_to_coord);
 
+    const auto m_block_idx = get<0>(blk_coord_);
     // (BLK_M, BLK_K)
     Tensor gO =
-        local_tile(O, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
+        local_tile(pO, Shape<BLK_M, BLK_K>{}, make_coord(m_block_idx, _0{}));
     // (BLK_M, BLK_K) => (M, K)
-    Tensor cQ = local_tile(make_identity_tensor(shape(O)),
+    Tensor cQ = local_tile(make_identity_tensor(shape(pO)),
                            Shape<BLK_M, BLK_K>{},
                            make_coord(m_block_idx, _0{}));
     return make_tuple(gO, cQ);
@@ -237,22 +271,23 @@ struct FmhaBlock {
 
   // return the key/value tile: (BLK_N, BLK_K, n) => (N, K)
   CUTE_HOST_DEVICE auto get_kv_tile() const {
-    const auto& [batch_idx, m_block_idx, kv_head_idx] = blk_coord_;
+    // blk_coord: (m_block_idx, ((kv_head_idx, _0), batch_idx))
+    // (KV, D, ((KH, G), B))
+    auto kv_shape = make_shape(
+        params_.kv_len,
+        params_.head_dim,
+        make_shape(make_shape(params_.n_kv_heads, (int)params_.group_size),
+                   params_.batch_size));
+    auto mK = make_tensor(make_gmem_ptr((const Element*)params_.k_ptr),
+                          kv_shape,
+                          params_.k_stride);
+    auto mV = make_tensor(make_gmem_ptr((const Element*)params_.v_ptr),
+                          kv_shape,
+                          params_.v_stride);
 
-    const auto k_offset = (batch_idx * get<0>(params_.k_stride)) +
-                          (kv_head_idx * get<2>(params_.k_stride));
-    const auto v_offset = (batch_idx * get<0>(params_.v_stride)) +
-                          (kv_head_idx * get<2>(params_.v_stride));
-
-    // (batch, seq, kv_head, dim) => (seq, dim)
-    auto K =
-        make_tensor(make_gmem_ptr((const Element*)params_.k_ptr + k_offset),
-                    make_shape(params_.kv_len, params_.head_dim),
-                    select<1, 3>(params_.k_stride));
-    auto V =
-        make_tensor(make_gmem_ptr((const Element*)params_.v_ptr + v_offset),
-                    make_shape(params_.kv_len, params_.head_dim),
-                    select<1, 3>(params_.v_stride));
+    // (Q, D)
+    auto K = mK(_, _, get<1>(blk_coord_));
+    auto V = mV(_, _, get<1>(blk_coord_));
 
     // (BLK_N, BLK_K, n)
     Tensor gK = local_tile(K, Shape<BLK_N, BLK_K>{}, make_coord(_, _0{}));

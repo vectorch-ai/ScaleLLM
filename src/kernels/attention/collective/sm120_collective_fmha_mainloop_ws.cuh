@@ -217,7 +217,10 @@ struct Sm120CollectiveFMhaWs {
       return;  // no kv blocks to process
     }
 
-    const auto [batch_idx, m_block_idx, kv_head_idx] = block.get_block_coord();
+    // (m_block_idx, ((kv_head_idx, _0), batch_idx))
+    const auto& block_coord = block.get_block_coord();
+    const int m_block_idx = get<0>(block_coord);
+    const int kv_head_idx = get<1, 0, 0>(block_coord);
 
     const auto q_packed_len = block.get_packed_len();
     const auto q_len = block.get_q_len();

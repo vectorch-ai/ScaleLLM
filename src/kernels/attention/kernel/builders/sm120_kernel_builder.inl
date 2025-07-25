@@ -49,6 +49,9 @@ struct KernelBuilder<cutlass::arch::Sm120,
                                                    SOFT_CAP,
                                                    LOCAL,
                                                    KV_USE_TMA>;
+  // using SmemLayoutK = typename CollectiveMainloop::SmemLayoutK;
+  // using SmemLayoutV = typename CollectiveMainloop::SmemLayoutV;
+  // TODO: pass in SmemLayout to Block for TMA definitions
   using CollectiveEpilogue =
       Sm120CollectiveEpilogue<TileShape, Element, EVEN_K>;
 

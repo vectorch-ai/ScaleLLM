@@ -58,11 +58,13 @@ class FmhaRunner {
 
     using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<kHeadDim>>;
 
-    // (B, Q, H, D)
-    using StrideQ = Stride<int64_t, int64_t, int64_t, _1>;
-    using StrideK = Stride<int64_t, int64_t, int64_t, _1>;
-    using StrideV = StrideK;
+    // (Q, D, ((KH, G), B))
+    using StrideQ =
+        Stride<int64_t, _1, Stride<Stride<int64_t, int64_t>, int64_t>>;
     using StrideO = StrideQ;
+    // (K/V, D, ((KH, _0), B))
+    using StrideK = Stride<int64_t, _1, Stride<Stride<int64_t, _0>, int64_t>>;
+    using StrideV = StrideK;
 
     using AttnKernel = typename KernelBuilder<ArchTag,
                                               ProblemShape,
@@ -89,14 +91,31 @@ class FmhaRunner {
                    make_tuple(make_tuple(params.n_kv_heads, group_size),
                               params.batch_size));
 
-    auto q_stride = make_stride(
-        params.q_batch_stride, params.q_seq_stride, params.q_head_stride, _1{});
-    auto k_stride = make_stride(
-        params.k_batch_stride, params.k_seq_stride, params.k_head_stride, _1{});
-    auto v_stride = make_stride(
-        params.v_batch_stride, params.v_seq_stride, params.v_head_stride, _1{});
-    auto o_stride = make_stride(
-        params.o_batch_stride, params.o_seq_stride, params.o_head_stride, _1{});
+    // (Q, D, ((KH, G), B))
+    auto q_stride =
+        make_stride(params.q_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.q_head_stride * group_size,
+                                            params.q_head_stride),
+                                params.q_batch_stride));
+    auto o_stride =
+        make_stride(params.o_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.o_head_stride * group_size,
+                                            params.o_head_stride),
+                                params.o_batch_stride));
+
+    // (K/V, D, ((KH, _0), B))
+    auto k_stride =
+        make_stride(params.k_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.k_head_stride, _0{}),
+                                params.k_batch_stride));
+    auto v_stride =
+        make_stride(params.v_seq_stride,
+                    _1{},
+                    make_stride(make_stride(params.v_head_stride, _0{}),
+                                params.v_batch_stride));
 
     typename AttnKernel::Arguments attn_args{
         .problem_shape = problem_shape,

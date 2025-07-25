@@ -35,18 +35,6 @@ struct Sm120CollectiveLoadTmaWs {
           Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL_ZFILL<cute::uint128_t>,
                     Element>{}));
 
-  // using StrideK = ...;
-
-  // using TMA_K = decltype(make_tma_copy(
-  //       GmemTiledCopy{}, // TMA_COPY
-  //       make_tensor(static_cast<InternalElementA const*>(nullptr),
-  //       repeat_like(StrideK{}, int32_t(0)), StrideK{}),
-  //       SmemLayoutK{}(_,_,_0{})));
-
-  // Tensor tensor_k = make_tensor(ptr_k, make_layout(make_shape(M,K,L),
-  // args.stride_k)); auto tma_load_k = make_tma_copy(SM90_TMA_LOAD{},
-  // gtensor_k, SmemLayoutK{}(_,_,_0{}));
-
   // load Q using cp_async and K/V using tma
   template <class Block>
   CUTE_DEVICE void operator()(const Block& block,

@@ -18,9 +18,9 @@ class SingleTileScheduler {
   };
 
   static dim3 get_grid_shape(Params const& params) {
-    return {(uint32_t)params.batch_size,
-            (uint32_t)params.m_blocks,
-            (uint32_t)params.n_kv_heads};
+    return {(uint32_t)params.m_blocks,
+            (uint32_t)params.n_kv_heads,
+            (uint32_t)params.batch_size};
   }
 
   template <class ProblemShape, class TileShape>
@@ -46,9 +46,11 @@ class SingleTileScheduler {
     Iterator() = default;
 
     CUTE_DEVICE
-    tuple<int, int, int> operator*() const {
-      // (batch, m_blocks, kv_heads)
-      return {blockIdx.x, blockIdx.y, blockIdx.z};
+    auto operator*() const {
+      // (m_block_idx, ((kv_head_idx, _0), batch_idx))
+      return make_coord(
+          (int)blockIdx.x,
+          make_coord(make_coord((int)blockIdx.y, _0{}), (int)blockIdx.z));
     }
 
     CUTE_DEVICE
