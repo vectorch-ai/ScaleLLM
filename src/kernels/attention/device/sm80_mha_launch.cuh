@@ -62,7 +62,7 @@ void sm80_launch_mha_kernel(const Params& params, cudaStream_t stream) {
 
   const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
   typename TileScheduler::Params scheduler_params{
-      .batch_size = batch_size, .m_blocks = m_blocks, .n_kv_heads = n_kv_heads};
+      .m_blocks = m_blocks, .n_kv_heads = n_kv_heads, .batch_size = batch_size};
   using AttnKernel =
       Sm80KernelMha<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;
 

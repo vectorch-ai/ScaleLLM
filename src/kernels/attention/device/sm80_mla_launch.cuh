@@ -87,7 +87,7 @@ void sm80_launch_mla_kernel(const Params& params, cudaStream_t stream) {
 
   const auto m_blocks = cute::ceil_div(max_q_packed_len, BLK_M);
   typename TileScheduler::Params scheduler_params{
-      .batch_size = batch_size, .m_blocks = m_blocks, .n_kv_heads = 1};
+      .m_blocks = m_blocks, .n_kv_heads = 1, .batch_size = batch_size};
 
   using AttnKernel =
       Sm80KernelMla<CollectiveMainloop, CollectiveEpilogue, TileScheduler>;

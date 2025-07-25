@@ -226,8 +226,11 @@ class Sm80KernelMha {
     // process each block
     const auto& group_size = params.group_size;
     for (const auto block_coord : scheduler) {
-      // block coord: (batch_idx, m_block_idx, kv_head_idx)
-      const auto [batch_idx, m_block_idx, kv_head_idx] = block_coord;
+      // block coord: (m_block_idx, ((kv_head_idx, _0), batch_idx))
+      const int m_block_idx = size<0>(block_coord);
+      const int kv_head_idx = size<1, 0, 0>(block_coord);
+      const int batch_idx = size<1, 1>(block_coord);
+
       const auto tidx = threadIdx.x;
 
       // (q_packed_len, BLK_K)

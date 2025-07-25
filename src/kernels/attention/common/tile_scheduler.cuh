@@ -15,9 +15,9 @@ class SingleTileScheduler {
 
   // Device side kernel arguments
   struct Params {
-    int batch_size = 0;
     int m_blocks = 0;
     int n_kv_heads = 0;
+    int batch_size = 0;
   };
 
   static dim3 get_grid_shape(Params const& params) {
@@ -38,7 +38,9 @@ class SingleTileScheduler {
     const int max_q_packed_len = max_q_len * group_size;
     const int m_blocks = ceil_div(max_q_packed_len, size<0>(tile_shape));
 
-    return {batch_size, m_blocks, n_kv_heads};
+    return {.m_blocks = m_blocks,
+            .n_kv_heads = n_kv_heads,
+            .batch_size = batch_size};
   }
 
   // End Iterator tag
