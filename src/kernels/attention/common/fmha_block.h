@@ -61,12 +61,12 @@ struct FmhaBlock {
                                         const Arguments& args,
                                         void* workspace = nullptr) {
     // ProblemShape: (Q, K, D, ((KH, G), B))
-    const int q_len = size<0>(problem_shape);
-    const int kv_len = size<1>(problem_shape);
-    const int head_dim = size<2>(problem_shape);
-    const int n_kv_heads = size<3, 0, 0>(problem_shape);
-    const int group_size = size<3, 0, 1>(problem_shape);
-    const int batch_size = size<3, 1>(problem_shape);
+    const int q_len = get<0>(problem_shape);
+    const int kv_len = get<1>(problem_shape);
+    const int head_dim = get<2>(problem_shape);
+    const int n_kv_heads = get<3, 0, 0>(problem_shape);
+    const int group_size = get<3, 0, 1>(problem_shape);
+    const int batch_size = get<3, 1>(problem_shape);
 
     // TODO: construct tma_load for k/v tensors
     return {

@@ -209,9 +209,9 @@ class Sm80KernelMla {
     const auto& group_size = params.group_size;
     for (const auto block_coord : scheduler) {
       // block coord: (m_block_idx, ((kv_head_idx, _0), batch_idx))
-      const int m_block_idx = size<0>(block_coord);
-      const int kv_head_idx = size<1, 0, 0>(block_coord);
-      const int batch_idx = size<1, 1>(block_coord);
+      const int m_block_idx = get<0>(block_coord);
+      const int kv_head_idx = get<1, 0, 0>(block_coord);
+      const int batch_idx = get<1, 1>(block_coord);
       const auto tidx = threadIdx.x;
 
       // Q/O: (q_packed_len, HEAD_DIM)
