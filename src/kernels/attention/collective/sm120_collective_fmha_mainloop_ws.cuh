@@ -238,14 +238,16 @@ struct Sm120CollectiveFMhaWs {
     }
 
     // (m_block_idx, ((kv_head_idx, _0), batch_idx))
-    const auto& block_coord = block.get_block_coord();
-    const int m_block_idx = get<0>(block_coord);
-    const int kv_head_idx = get<1, 0, 0>(block_coord);
+    const auto& blk_coord = block.get_coord();
+    const int m_block_idx = get<0>(blk_coord);
+    const int kv_head_idx = get<1, 0, 0>(blk_coord);
 
-    const auto q_packed_len = block.get_packed_len();
-    const auto q_len = block.get_q_len();
-    const auto kv_len = block.get_kv_len();
+    const auto& problem_shape = block.get_problem_shape();
+    const int q_len = get<0>(problem_shape);
+    const int kv_len = get<1>(problem_shape);
+
     const auto& group_size = block.get_group_size();
+    const int q_packed_len = block.get_packed_len();
 
     // Construct smem tensors
     // (BLK_M, BLK_K), k-major

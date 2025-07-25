@@ -114,6 +114,7 @@ class Sm120KernelFmhaWs {
   };
 
   struct Params {
+    ProblemShape problem_shape;  // (Q, K, D, ((KH, G), B))
     typename Block::Params input;
     typename CollectiveMainloop::Params mainloop;
     typename CollectiveEpilogue::Params epilogue;
@@ -123,14 +124,15 @@ class Sm120KernelFmhaWs {
   // convert arguments to params
   static Params to_underlying_arguments(Arguments const& args,
                                         void* workspace) {
-    return Params{Block::to_underlying_arguments(
+    return Params{.problem_shape = args.problem_shape,
+                  .input = Block::to_underlying_arguments(
                       args.problem_shape, args.input, workspace),
-                  CollectiveMainloop::to_underlying_arguments(
+                  .mainloop = CollectiveMainloop::to_underlying_arguments(
                       args.problem_shape, args.mainloop, workspace),
-                  CollectiveEpilogue::to_underlying_arguments(
+                  .epilogue = CollectiveEpilogue::to_underlying_arguments(
                       args.problem_shape, args.epilogue, workspace),
-                  TileScheduler::to_underlying_arguments(args.problem_shape,
-                                                         TileShape{})};
+                  .scheduler = TileScheduler::to_underlying_arguments(
+                      args.problem_shape, TileShape{})};
   }
 
   // returns grid and block shape for kernel launch
@@ -154,7 +156,7 @@ class Sm120KernelFmhaWs {
 
     // process each block
     for (const auto blk_coord : scheduler) {
-      const Block block(params.input, blk_coord);
+      const Block block(params.problem_shape, params.input, blk_coord);
       mainloop.load(params.mainloop,
                     block,
                     tidx,
@@ -191,7 +193,7 @@ class Sm120KernelFmhaWs {
 
     // process each block
     for (const auto blk_coord : scheduler) {
-      const Block block(params.input, blk_coord);
+      const Block block(params.problem_shape, params.input, blk_coord);
 
       TiledMma tiled_mma;
       // accumulator: (MMA,MMA_M,MMA_K)

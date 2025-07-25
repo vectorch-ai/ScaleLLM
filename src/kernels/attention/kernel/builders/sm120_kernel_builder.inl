@@ -42,7 +42,8 @@ struct KernelBuilder<cutlass::arch::Sm120,
   // TODO: support persistent kernels
   using TileScheduler = SingleTileScheduler;
   using BlocKCoord = TileScheduler::BlocKCoord;
-  using Block = FmhaBlock<TileShape,
+  using Block = FmhaBlock<ProblemShape,
+                          TileShape,
                           BlocKCoord,
                           Element,
                           StrideQ,
