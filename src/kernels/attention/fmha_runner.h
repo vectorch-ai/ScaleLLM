@@ -53,8 +53,7 @@ class FmhaRunner {
 
     // TODO: pass in max_q_len and max_kv_len for variable length
     // MNKL: (Q K D ((KH G), B))
-    using ProblemShape =
-        cute::tuple<int, int, int, cute::tuple<cute::tuple<int, int>, int>>;
+    using ProblemShape = Shape<int, int, int, Shape<Shape<int, int>, int>>;
 
     using TileShape = Shape<Int<BLK_M>, Int<BLK_N>, Int<kHeadDim>>;
 
@@ -84,11 +83,12 @@ class FmhaRunner {
            "n_heads must be divisible by n_kv_heads");
     const int group_size = params.n_heads / params.n_kv_heads;
 
+    // MNKL: (Q K D ((KH G), B))
     ProblemShape problem_shape =
-        make_tuple(params.q_len,
+        make_shape(params.q_len,
                    params.kv_len,
                    params.head_dim,
-                   make_tuple(make_tuple(params.n_kv_heads, group_size),
+                   make_shape(make_shape(params.n_kv_heads, group_size),
                               params.batch_size));
 
     // (Q, D, ((KH, G), B))
@@ -119,7 +119,7 @@ class FmhaRunner {
 
     typename AttnKernel::Arguments attn_args{
         .problem_shape = problem_shape,
-        .block =
+        .input =
             {
                 .q_ptr = params.q_ptr,
                 .k_ptr = params.k_ptr,
