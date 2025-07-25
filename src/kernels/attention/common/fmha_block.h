@@ -36,10 +36,10 @@ struct FmhaBlock {
 
   // Device side parameters
   struct Params {
-    const void* __restrict__ q_ptr;
-    const void* __restrict__ k_ptr;
-    const void* __restrict__ v_ptr;
-    void* __restrict__ o_ptr;
+    const Element* __restrict__ q_ptr;
+    const Element* __restrict__ k_ptr;
+    const Element* __restrict__ v_ptr;
+    Element* __restrict__ o_ptr;
 
     StrideQ q_stride;
     StrideK k_stride;
@@ -70,10 +70,10 @@ struct FmhaBlock {
 
     // TODO: construct tma_load for k/v tensors
     return {
-        .q_ptr = args.q_ptr,
-        .k_ptr = args.k_ptr,
-        .v_ptr = args.v_ptr,
-        .o_ptr = args.o_ptr,
+        .q_ptr = (const Element*)args.q_ptr,
+        .k_ptr = (const Element*)args.k_ptr,
+        .v_ptr = (const Element*)args.v_ptr,
+        .o_ptr = (Element*)args.o_ptr,
         .q_stride = args.q_stride,
         .k_stride = args.k_stride,
         .v_stride = args.v_stride,
@@ -173,29 +173,28 @@ struct FmhaBlock {
         params_.head_dim,
         make_shape(make_shape(params_.n_kv_heads, (int)params_.group_size),
                    params_.batch_size));
-    auto mQ = make_tensor(make_gmem_ptr((const Element*)params_.q_ptr),
-                          q_shape,
-                          params_.q_stride);
-    // (Q, D, G)
+    auto mQ =
+        make_tensor(make_gmem_ptr(params_.q_ptr), q_shape, params_.q_stride);
+    // (Q, D, G*)
     auto Q = mQ(_, _, get<1>(blk_coord_));
 
     // packing all q in the same kv head group together
     auto packed_idx_to_coord = [this](int packed_idx) {
-      // packed_idx => (seq, kv_heads):(group_size, 1)
+      // packed_idx => (Q, G):(G, 1)
       int idx, offset;
       params_.group_size.divmod(packed_idx, idx, offset);
       return make_coord(idx, offset);
     };
 
     // ((Q, G), D)
-    auto p_stride = make_stride(
+    auto q_stride = make_stride(
         make_stride(get<0>(params_.q_stride), get<2, 0, 1>(params_.q_stride)),
         get<1>(params_.q_stride));
 
     // packed tensor: (pQ, D) => ((Q, G), D)
     auto pQ = make_gather_tensor(Q.data(),
                                  make_shape(packed_len_, params_.head_dim),
-                                 p_stride,
+                                 q_stride,
                                  packed_idx_to_coord);
 
     const auto m_block_idx = get<0>(blk_coord_);
@@ -211,33 +210,32 @@ struct FmhaBlock {
 
   // return the output tile: (BLK_M, BLK_K) => (M, K)
   CUTE_HOST_DEVICE auto get_o_tile() const {
-    // blk_coord: (m_block_idx, ((kv_head_idx, _0), batch_idx))
     // (Q, D, ((KH, G), B))
     auto o_shape = make_shape(
         params_.q_len,
         params_.head_dim,
         make_shape(make_shape(params_.n_kv_heads, (int)params_.group_size),
                    params_.batch_size));
-    auto mO = make_tensor(
-        make_gmem_ptr((Element*)params_.o_ptr), o_shape, params_.o_stride);
-    // (Q, D, G)
+    auto mO =
+        make_tensor(make_gmem_ptr(params_.o_ptr), o_shape, params_.o_stride);
+    // (Q, D, G*)
     auto O = mO(_, _, get<1>(blk_coord_));
 
     // packing all q in the same kv head group together
     auto packed_idx_to_coord = [this](int packed_idx) {
-      // packed_idx => (seq, kv_heads):(group_size, 1)
+      // packed_idx => (Q, G):(G, 1)
       int idx, offset;
       params_.group_size.divmod(packed_idx, idx, offset);
       return make_coord(idx, offset);
     };
-    // packed tensor: (packed_len, dim) => ((seq, group), dim)
-    auto pO = make_gather_tensor(
-        O.data(),
-        make_shape(packed_len_, params_.head_dim),
-        make_stride(make_stride(get<0>(params_.q_stride),
-                                get<2, 0, 1>(params_.q_stride)),
-                    get<1>(params_.q_stride)),
-        packed_idx_to_coord);
+    auto o_stride = make_stride(
+        make_stride(get<0>(params_.o_stride), get<2, 0, 1>(params_.o_stride)),
+        get<1>(params_.o_stride));
+    // packed tensor: (pO, D) => ((O, G), D)
+    auto pO = make_gather_tensor(O.data(),
+                                 make_shape(packed_len_, params_.head_dim),
+                                 o_stride,
+                                 packed_idx_to_coord);
 
     const auto m_block_idx = get<0>(blk_coord_);
     // (BLK_M, BLK_K)
@@ -252,21 +250,18 @@ struct FmhaBlock {
 
   // return the key/value tile: (BLK_N, BLK_K, n) => (N, K)
   CUTE_HOST_DEVICE auto get_kv_tile() const {
-    // blk_coord: (m_block_idx, ((kv_head_idx, _0), batch_idx))
     // (KV, D, ((KH, G), B))
     auto kv_shape = make_shape(
         params_.kv_len,
         params_.head_dim,
         make_shape(make_shape(params_.n_kv_heads, (int)params_.group_size),
                    params_.batch_size));
-    auto mK = make_tensor(make_gmem_ptr((const Element*)params_.k_ptr),
-                          kv_shape,
-                          params_.k_stride);
-    auto mV = make_tensor(make_gmem_ptr((const Element*)params_.v_ptr),
-                          kv_shape,
-                          params_.v_stride);
+    auto mK =
+        make_tensor(make_gmem_ptr(params_.k_ptr), kv_shape, params_.k_stride);
+    auto mV =
+        make_tensor(make_gmem_ptr(params_.v_ptr), kv_shape, params_.v_stride);
 
-    // (Q, D)
+    // (K/V, D)
     auto K = mK(_, _, get<1>(blk_coord_));
     auto V = mV(_, _, get<1>(blk_coord_));
 
