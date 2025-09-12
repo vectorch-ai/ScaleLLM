@@ -5,7 +5,7 @@
     "dockerfile": "Dockerfile",
     "args": {
       "BASE_IMAGE": "vectorchai/scalellm_manylinux2_28:cuda12.8",
-      "TORCH_VERSION": "2.7.1",
+      "TORCH_VERSION": "2.8.0",
       "CUDA_VERSION": "12.8",
       "USER": "${localEnv:USER:vscode}",
       "UID": "${localEnv:UID:1000}",

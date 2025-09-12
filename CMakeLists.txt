@@ -175,14 +175,14 @@ if (DEFINED ENV{LIBTORCH_ROOT})
 else()
   include(FetchContent)
   if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
-    # download libtorch 2.7.1 with cuda 12.8 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu128/libtorch-cxx11-abi-shared-with-deps-2.7.1%2Bcu128.zip")
+    # download libtorch 2.8.0 with cuda 12.8 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu128/libtorch-cxx11-abi-shared-with-deps-2.8.0%2Bcu128.zip")
   elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.6)
-    # download libtorch 2.7.1 with cuda 12.6 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu126/libtorch-cxx11-abi-shared-with-deps-2.7.1%2Bcu126.zip")
+    # download libtorch 2.8.0 with cuda 12.6 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu126/libtorch-cxx11-abi-shared-with-deps-2.8.0%2Bcu126.zip")
   elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 11.8)
-    # download libtorch 2.7.1 with cuda 11.8 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.7.1%2Bcu118.zip")
+    # download libtorch 2.8.0 with cuda 11.8 from pytorch.org
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.8.0%2Bcu118.zip")
   else()
     # error out if cuda version is not supported
     message(FATAL_ERROR "Unsupported CUDA version: ${CUDAToolkit_VERSION}")
@@ -201,7 +201,7 @@ else()
   FetchContent_MakeAvailable(libtorch)
 
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
-  message(STATUS "Downloading and using libtorch 2.7.1 for cuda ${CUDAToolkit_VERSION} at ${libtorch_SOURCE_DIR}")
+  message(STATUS "Downloading and using libtorch 2.8.0 for cuda ${CUDAToolkit_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
 
 # carry over torch flags to the rest of the project
