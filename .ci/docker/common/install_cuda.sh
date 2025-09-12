@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# adapted from https://github.com/pytorch/pytorch/blob/main/.ci/docker/common/install_cuda.sh
+# Adapted from https://github.com/pytorch/pytorch/blob/main/.ci/docker/common/install_cuda.sh
 
 set -ex
 
@@ -11,6 +11,8 @@ if [ ${targetarch} = 'amd64' ] || [ "${targetarch}" = 'x86_64' ]; then
 else
   arch_path='sbsa'
 fi
+
+NVSHMEM_VERSION=3.3.24
 
 function install_cuda {
   version=$1
@@ -69,33 +71,56 @@ function install_cusparselt {
   rm -rf tmp_cusparselt
 }
 
+function install_nvshmem {
+  cuda_major_version=$1      # e.g. "12"
+  nvshmem_version=$2         # e.g. "3.3.9"
+
+  case "${arch_path}" in
+    sbsa)
+      dl_arch="aarch64"
+      ;;
+    x86_64)
+      dl_arch="x64"
+      ;;
+    *)
+      dl_arch="${arch}"
+      ;;
+  esac
+
+  tmpdir="tmp_nvshmem"
+  mkdir -p "${tmpdir}" && cd "${tmpdir}"
+
+  # nvSHMEM license: https://docs.nvidia.com/nvshmem/api/sla.html
+  # This pattern is a lie as it is not consistent across versions, for 3.3.9 it was cuda_ver-arch-nvshhem-ver
+  filename="libnvshmem-linux-${arch_path}-${nvshmem_version}_cuda${cuda_major_version}-archive"
+  suffix=".tar.xz"
+  url="https://developer.download.nvidia.com/compute/nvshmem/redist/libnvshmem/linux-${arch_path}/${filename}${suffix}"
+
+  # download, unpack, install
+  wget -q "${url}"
+  tar xf "${filename}${suffix}"
+  cp -a "${filename}/include/"* /usr/local/cuda/include/
+  cp -a "${filename}/lib/"*     /usr/local/cuda/lib64/
+
+  # cleanup
+  cd ..
+  rm -rf "${tmpdir}"
+
+  echo "nvSHMEM ${nvshmem_version} for CUDA ${cuda_major_version} (${arch_path}) installed."
+}
+
 function install_126 {
   CUDNN_VERSION=9.10.2.21
-  NCCL_VERSION=v2.27.3-1
+  NCCL_VERSION=v2.27.5-1
   CUSPARSELT_VERSION=0.7.1.0
 
-  echo "Installing CUDA 12.6.3 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
+  echo "Installing CUDA 12.6.3, cuDNN ${CUDNN_VERSION}, NCCL ${NCCL_VERSION}, NVSHMEM ${NVSHMEM_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
+
   install_cuda 12.6.3 cuda_12.6.3_560.35.05_linux
 
   install_cudnn 12 $CUDNN_VERSION
 
-  install_nccl $NCCL_VERSION
-
-  install_cusparselt $CUSPARSELT_VERSION
-
-  ldconfig
-}
-
-function install_128 {
-  CUDNN_VERSION=9.8.0.87
-  NCCL_VERSION=v2.27.3-1
-  CUSPARSELT_VERSION=0.7.1.0
-
-  echo "Installing CUDA 12.8.1 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
-  # install CUDA 12.8.1 in the same container
-  install_cuda 12.8.1 cuda_12.8.1_570.124.06_linux
-
-  install_cudnn 12 $CUDNN_VERSION
+  install_nvshmem 12 $NVSHMEM_VERSION
 
   install_nccl $NCCL_VERSION
 
@@ -106,14 +131,18 @@ function install_128 {
 
 function install_129 {
   CUDNN_VERSION=9.10.2.21
-  NCCL_VERSION=v2.27.3-1
+  NCCL_VERSION=v2.27.5-1
   CUSPARSELT_VERSION=0.7.1.0
 
-  echo "Installing CUDA 12.9.1 and cuDNN ${CUDNN_VERSION} and NCCL ${NCCL_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
+  echo "Installing CUDA 12.9.1, cuDNN ${CUDNN_VERSION}, NCCL ${NCCL_VERSION}, NVSHMEM ${NVSHMEM_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
+
   # install CUDA 12.9.1 in the same container
   install_cuda 12.9.1 cuda_12.9.1_575.57.08_linux
 
+  # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
   install_cudnn 12 $CUDNN_VERSION
+
+  install_nvshmem 12 $NVSHMEM_VERSION
 
   install_nccl $NCCL_VERSION
 
@@ -122,49 +151,61 @@ function install_129 {
   ldconfig
 }
 
-function prune_126 {
-  echo "Pruning CUDA 12.6"
-  #####################################################################################
-  # CUDA 12.6 prune static libs
-  #####################################################################################
-  export NVPRUNE="/usr/local/cuda-12.6/bin/nvprune"
-  export CUDA_LIB_DIR="/usr/local/cuda-12.6/lib64"
+function install_128 {
+  CUDNN_VERSION=9.8.0.87
+  NCCL_VERSION=v2.27.5-1
+  CUSPARSELT_VERSION=0.7.1.0
 
-  export GENCODE="-gencode arch=compute_50,code=sm_50 -gencode arch=compute_60,code=sm_60 -gencode arch=compute_70,code=sm_70 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_86,code=sm_86 -gencode arch=compute_90,code=sm_90"
-  export GENCODE_CUDNN="-gencode arch=compute_50,code=sm_50 -gencode arch=compute_60,code=sm_60 -gencode arch=compute_61,code=sm_61 -gencode arch=compute_70,code=sm_70 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_86,code=sm_86 -gencode arch=compute_90,code=sm_90"
+  echo "Installing CUDA 12.8.1, cuDNN ${CUDNN_VERSION}, NCCL ${NCCL_VERSION}, NVSHMEM ${NVSHMEM_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
 
-  if [[ -n "$OVERRIDE_GENCODE" ]]; then
-      export GENCODE=$OVERRIDE_GENCODE
-  fi
-  if [[ -n "$OVERRIDE_GENCODE_CUDNN" ]]; then
-      export GENCODE_CUDNN=$OVERRIDE_GENCODE_CUDNN
-  fi
+  # install CUDA 12.8.1 in the same container
+  install_cuda 12.8.1 cuda_12.8.1_570.124.06_linux
 
-  # all CUDA libs except CuDNN and CuBLAS
-  ls $CUDA_LIB_DIR/ | grep "\.a" | grep -v "culibos" | grep -v "cudart" | grep -v "cudnn" | grep -v "cublas" | grep -v "metis"  \
-      | xargs -I {} bash -c \
-                "echo {} && $NVPRUNE $GENCODE $CUDA_LIB_DIR/{} -o $CUDA_LIB_DIR/{}"
+  # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
+  install_cudnn 12 $CUDNN_VERSION
 
-  # prune CuDNN and CuBLAS
-  $NVPRUNE $GENCODE_CUDNN $CUDA_LIB_DIR/libcublas_static.a -o $CUDA_LIB_DIR/libcublas_static.a
-  $NVPRUNE $GENCODE_CUDNN $CUDA_LIB_DIR/libcublasLt_static.a -o $CUDA_LIB_DIR/libcublasLt_static.a
+  install_nvshmem 12 $NVSHMEM_VERSION
 
-  #####################################################################################
-  # CUDA 12.6 prune visual tools
-  #####################################################################################
-  export CUDA_BASE="/usr/local/cuda-12.6/"
-  rm -rf $CUDA_BASE/libnvvp $CUDA_BASE/nsightee_plugins $CUDA_BASE/nsight-compute-2024.3.2 $CUDA_BASE/nsight-systems-2024.5.1/
+  install_nccl $NCCL_VERSION
+
+  install_cusparselt $CUSPARSELT_VERSION
+
+  ldconfig
+}
+
+function install_130 {
+  CUDNN_VERSION=9.13.0.50
+  NCCL_VERSION=v2.27.7-1
+  CUSPARSELT_VERSION=0.8.0.4_cuda13
+
+  echo "Installing CUDA 12.8.1, cuDNN ${CUDNN_VERSION}, NCCL ${NCCL_VERSION}, NVSHMEM ${NVSHMEM_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
+
+  # install CUDA 13.0 in the same container
+  install_cuda 13.0.0 cuda_13.0.0_580.65.06_linux
+
+  # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
+  install_cudnn 13 $CUDNN_VERSION
+
+  install_nvshmem 13 $NVSHMEM_VERSION
+
+  install_nccl $NCCL_VERSION
+
+  install_cusparselt $CUSPARSELT_VERSION
+
+  ldconfig
 }
 
 # idiomatic parameter and option handling in sh
 while test $# -gt 0
 do
     case "$1" in
-    12.6|12.6.*) install_126; prune_126
+    12.6|12.6.*) install_126;
         ;;
     12.8|12.8.*) install_128;
         ;;
     12.9|12.9.*) install_129;
+        ;;
+    13.0|13.0.*) install_130;
         ;;
     *) echo "bad argument $1"; exit 1
         ;;

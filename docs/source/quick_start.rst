@@ -25,31 +25,31 @@ If you want to install ScaleLLM with different versions of CUDA and PyTorch, you
 
         .. tabs::
 
-            .. tab:: PyTorch 2.7.1
+            .. tab:: PyTorch 2.8.0
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu128/torch2.7.1/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu128/torch2.8.0/
 
     .. tab:: CUDA 12.6
 
         .. tabs::
 
-            .. tab:: PyTorch 2.7.1
+            .. tab:: PyTorch 2.8.0
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu126/torch2.7.1/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu126/torch2.8.0/
 
     .. tab:: CUDA 11.8
 
         .. tabs::
 
-            .. tab:: PyTorch 2.7.1
+            .. tab:: PyTorch 2.8.0
 
                 .. code-block:: bash
 
-                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.7.1/
+                    $ pip install -U scalellm -i https://whl.vectorch.com/cu118/torch2.8.0/
 
 
 Build from source

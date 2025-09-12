@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: ["11.8", "12.6", "12.8"]
+        cuda: ["12.6", "12.8", "12.9"]
     runs-on: [self-hosted, linux]
     steps:
       - name: Checkout repository

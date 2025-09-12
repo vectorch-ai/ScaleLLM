@@ -173,16 +173,14 @@ if (DEFINED ENV{LIBTORCH_ROOT})
   find_package(Torch REQUIRED HINTS "$ENV{LIBTORCH_ROOT}")
   message(STATUS "Using libtorch at $ENV{LIBTORCH_ROOT}")
 else()
+  SET(TORCH_VERSION "2.8.0")
   include(FetchContent)
-  if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
-    # download libtorch 2.7.1 with cuda 12.8 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu128/libtorch-cxx11-abi-shared-with-deps-2.7.1%2Bcu128.zip")
+  if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.9)
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu129/libtorch-shared-with-deps-${TORCH_VERSION}%2Bcu129.zip")
+  elseif (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu128/libtorch-shared-with-deps-${TORCH_VERSION}%2Bcu128.zip")
   elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.6)
-    # download libtorch 2.7.1 with cuda 12.6 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu126/libtorch-cxx11-abi-shared-with-deps-2.7.1%2Bcu126.zip")
-  elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 11.8)
-    # download libtorch 2.7.1 with cuda 11.8 from pytorch.org
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu118/libtorch-cxx11-abi-shared-with-deps-2.7.1%2Bcu118.zip")
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu126/libtorch-shared-with-deps-${TORCH_VERSION}%2Bcu126.zip")
   else()
     # error out if cuda version is not supported
     message(FATAL_ERROR "Unsupported CUDA version: ${CUDAToolkit_VERSION}")
@@ -194,14 +192,13 @@ else()
     set(LIBTORCH_SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/libtorch-src)
   endif()
 
+  message(STATUS "Downloading libtorch ${TORCH_VERSION} from ${LIBTORCH_URL}")
   FetchContent_Declare(libtorch
     URL ${LIBTORCH_URL}
     SOURCE_DIR ${LIBTORCH_SOURCE_DIR}
   )
   FetchContent_MakeAvailable(libtorch)
-
   find_package(Torch REQUIRED PATHS ${libtorch_SOURCE_DIR} NO_DEFAULT_PATH)
-  message(STATUS "Downloading and using libtorch 2.7.1 for cuda ${CUDAToolkit_VERSION} at ${libtorch_SOURCE_DIR}")
 endif()
 
 # carry over torch flags to the rest of the project
