@@ -26,12 +26,14 @@ COPY ./common/install_gcc.sh install_gcc.sh
 RUN bash ./install_gcc.sh && rm install_gcc.sh
 RUN gcc --version; g++ --version
 
+# Install cmake
 ARG CMAKE_VERSION=3.29.3
 COPY ./common/install_cmake.sh install_cmake.sh
 RUN if [ -n "${CMAKE_VERSION}" ]; then bash ./install_cmake.sh; fi
 RUN rm install_cmake.sh
 RUN cmake --version
 
+# Install ninja
 ARG NINJA_VERSION=1.12.1
 COPY ./common/install_ninja.sh install_ninja.sh
 RUN if [ -n "${NINJA_VERSION}" ]; then bash ./install_ninja.sh; fi
@@ -54,7 +56,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 RUN chmod -R a+w ${RUSTUP_HOME} ${CARGO_HOME}
 RUN rustup --version; cargo --version; rustc --version
 
-# Install cuda, cudnn and nccl
+# Install cuda, cudnn, nvshmem, nccl and cusparselt
 ARG CUDA_VERSION=12.1
 COPY ./common/install_cuda.sh install_cuda.sh
 RUN bash ./install_cuda.sh ${CUDA_VERSION} && rm install_cuda.sh
