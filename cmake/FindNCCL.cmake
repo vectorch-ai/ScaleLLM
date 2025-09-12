@@ -28,19 +28,6 @@ find_path(NCCL_INCLUDE_DIR
 )
 mark_as_advanced(NCCL_INCLUDE_DIR)
 
-if (USE_STATIC_NCCL)
-  MESSAGE(STATUS "USE_STATIC_NCCL is set. Linking with static NCCL library.")
-  SET(NCCL_LIBNAME "nccl_static")
-  if (NCCL_VERSION)  # Prefer the versioned library if a specific NCCL version is specified
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a.${NCCL_VERSION}" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-  endif()
-else()
-  SET(NCCL_LIBNAME "nccl")
-  if (NCCL_VERSION)  # Prefer the versioned library if a specific NCCL version is specified
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ".so.${NCCL_VERSION}" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-  endif()
-endif()
-
 # Read version from header
 if(EXISTS "${NCCL_INCLUDE_DIR}/nccl.h")
   file(READ ${NCCL_INCLUDE_DIR}/nccl.h NCCL_HEADER_CONTENTS)
@@ -67,7 +54,7 @@ if(NCCL_HEADER_CONTENTS)
 endif()
 
 find_library(NCCL_LIBRARY
-  NAMES ${NCCL_LIBNAME}
+  NAMES nccl
   HINTS
     $ENV{NCCL_ROOT}
     $ENV{CUDA_HOME}

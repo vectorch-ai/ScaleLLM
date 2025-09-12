@@ -25,15 +25,6 @@ def get_torch_root():
         return None
 
 
-def get_nccl_root():
-    try:
-        from nvidia import nccl
-
-        return str(Path(nccl.__file__).parent)
-    except ImportError:
-        return None
-
-
 def get_cuda_version():
     import torch.utils.cpp_extension as torch_cpp_ext
 
@@ -214,11 +205,6 @@ class CMakeBuild(build_ext):
                 "Please install requirements first, pip install -r requirements.txt"
             )
         env["LIBTORCH_ROOT"] = LIBTORCH_ROOT
-
-        NCCL_ROOT = get_nccl_root()
-        if NCCL_ROOT is not None:
-            env["NCCL_ROOT"] = NCCL_ROOT
-            env["NCCL_VERSION"] = "2"
 
         # print cmake args
         print("CMake Args: ", cmake_args)
