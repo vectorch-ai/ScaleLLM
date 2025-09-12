@@ -28,17 +28,10 @@ find_path(NCCL_INCLUDE_DIR
 )
 mark_as_advanced(NCCL_INCLUDE_DIR)
 
-if (USE_STATIC_NCCL)
-  MESSAGE(STATUS "USE_STATIC_NCCL is set. Linking with static NCCL library.")
-  SET(NCCL_LIBNAME "nccl_static")
-  if (NCCL_VERSION)  # Prefer the versioned library if a specific NCCL version is specified
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a.${NCCL_VERSION}" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-  endif()
-else()
-  SET(NCCL_LIBNAME "nccl")
-  if (NCCL_VERSION)  # Prefer the versioned library if a specific NCCL version is specified
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ".so.${NCCL_VERSION}" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-  endif()
+
+SET(NCCL_LIBNAME "nccl")
+if (NCCL_VERSION)  # Prefer the versioned library if a specific NCCL version is specified
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".so.${NCCL_VERSION}" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
 # Read version from header
