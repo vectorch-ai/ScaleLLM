@@ -21,7 +21,7 @@ jobs:
   build_wheel:
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         cuda: ["12.8"]
         torch: ["2.8.0"]
     runs-on: [self-hosted, linux]
@@ -87,7 +87,7 @@ jobs:
     needs: build_wheel
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         cuda: ["12.8"]
         torch: ["2.8.0"]
     runs-on: [self-hosted, linux, gpu]

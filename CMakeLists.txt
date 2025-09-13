@@ -17,8 +17,10 @@ set(CMAKE_MESSAGE_LOG_LEVEL STATUS)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
 if(POLICY CMP0135)
-  # CMP0135: ExternalProject ignores timestamps in archives by default for the URL download method.
-  cmake_policy(SET CMP0135 NEW)
+  cmake_policy(SET CMP0135 NEW) # Set download timestamp to current time
+endif()
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW) # Ignore FindBoost and use BoostConfig
 endif()
 
 function(parse_make_options options prefix)

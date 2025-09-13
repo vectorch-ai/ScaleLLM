@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.12"]
+        python: ["3.13"]
         cuda: ["12.8"]
         torch: ["2.8.0"]
     runs-on: [self-hosted, linux]
@@ -90,7 +90,7 @@ jobs:
     needs: build_wheel
     strategy:
       matrix:
-        python: ["3.12"]
+        python: ["3.13"]
         cuda: ["12.8"]
         torch: ["2.8.0"]
     runs-on: [self-hosted, linux, gpu]
