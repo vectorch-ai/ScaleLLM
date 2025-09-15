@@ -81,6 +81,10 @@ jobs:
       CUDA_VERSION: ${{ matrix.cuda }}
       TORCH_VERSION: ${{ matrix.torch }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Delete old files
         run: rm -rf dist/*
 
