@@ -7,6 +7,6 @@ requests
 anyio
 six
 httpx
-transformers
+transformers==4.56.1
 accelerate
 openai
