@@ -5,8 +5,8 @@ pytest-rerunfailures==14.0
 pytest-shard==0.1.2
 requests==2.32.3
 anyio==4.4.0
-openai==1.37.0
 six==1.16.0
-transformers==4.43.3
-accelerate==0.33.0
 httpx==0.27.2
+transformers
+accelerate
+openai
