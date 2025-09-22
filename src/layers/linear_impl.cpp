@@ -28,14 +28,11 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
   // we allocate the transpose.
   weight_ = register_parameter(
       "weight",
-      torch::empty({out_features_per_partition, in_features}, options),
-      /*requires_grad=*/false);
+      torch::empty({out_features_per_partition, in_features}, options));
 
   if (bias) {
-    bias_ =
-        register_parameter("bias",
-                           torch::empty({out_features_per_partition}, options),
-                           /*requires_grad=*/false);
+    bias_ = register_parameter(
+        "bias", torch::empty({out_features_per_partition}, options));
   }
 }
 
@@ -104,13 +101,10 @@ RowParallelLinearImpl::RowParallelLinearImpl(
   // Allocate the transpose since linear performs XA^T.
   weight_ = register_parameter(
       "weight",
-      torch::empty({out_features, in_features_per_partition}, options),
-      /*requires_grad=*/false);
+      torch::empty({out_features, in_features_per_partition}, options));
 
   if (bias) {
-    bias_ = register_parameter("bias",
-                               torch::empty({out_features}, options),
-                               /*requires_grad=*/false);
+    bias_ = register_parameter("bias", torch::empty({out_features}, options));
   }
 }
 

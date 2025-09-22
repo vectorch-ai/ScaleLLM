@@ -18,11 +18,11 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 // llama2 model compatible with huggingface weights
 namespace llm::hf {
 
-class LlamaMLPImpl : public llm::nn::Module {
+class LlamaMLPImpl : public Module {
  public:
   LlamaMLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -84,7 +84,7 @@ class LlamaMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(LlamaMLP);
 
-class LlamaAttentionImpl : public llm::nn::Module {
+class LlamaAttentionImpl : public Module {
  public:
   LlamaAttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -167,7 +167,7 @@ class LlamaAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(LlamaAttention);
 
-class LlamaDecoderLayerImpl : public llm::nn::Module {
+class LlamaDecoderLayerImpl : public Module {
  public:
   LlamaDecoderLayerImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -227,7 +227,7 @@ class LlamaDecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(LlamaDecoderLayer);
 
-class LlamaModelImpl : public llm::nn::Module {
+class LlamaModelImpl : public Module {
  public:
   LlamaModelImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -242,7 +242,7 @@ class LlamaModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = LlamaDecoderLayer(
@@ -297,7 +297,7 @@ class LlamaModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<LlamaDecoderLayer> layers_;
 
@@ -305,7 +305,7 @@ class LlamaModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(LlamaModel);
 
-class LlamaForCausalLMImpl : public llm::nn::Module {
+class LlamaForCausalLMImpl : public Module {
  public:
   LlamaForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,

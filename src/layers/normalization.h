@@ -65,7 +65,7 @@ inline torch::Tensor layer_norm(torch::Tensor input,
 // apply layer normalization over a mini-batch of inputs as described in
 // the paper `Layer Normalization`: https://arxiv.org/abs/1607.06450
 // x = ((x - mean(x)) / sqrt(std(x) + eps)) * weight + bias
-class LayerNormImpl : public llm::nn::Module {
+class LayerNormImpl : public Module {
  public:
   // dim: the dim over which the mean and std are calculated separately.
   // eps: a value added to the denominator for numerical stability.
@@ -75,13 +75,11 @@ class LayerNormImpl : public llm::nn::Module {
                 const torch::TensorOptions& options)
       : eps_(eps) {
     normalized_shape_ = {dim};
-    weight_ = register_parameter("weight",
-                                 torch::empty(normalized_shape_, options),
-                                 /*requires_grad=*/false);
+    weight_ =
+        register_parameter("weight", torch::empty(normalized_shape_, options));
     if (bias) {
-      bias_ = register_parameter("bias",
-                                 torch::zeros(normalized_shape_, options),
-                                 /*requires_grad=*/false);
+      bias_ =
+          register_parameter("bias", torch::zeros(normalized_shape_, options));
     }
   }
 
@@ -145,13 +143,11 @@ class LayerNormImpl : public llm::nn::Module {
 LLM_MODULE(LayerNorm);
 
 // Root mean square normalization
-class RMSNormImpl : public llm::nn::Module {
+class RMSNormImpl : public Module {
  public:
   RMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter("weight",
-                                 torch::empty({dim}, options),
-                                 /*requires_grad=*/false);
+    weight_ = register_parameter("weight", torch::empty({dim}, options));
   }
 
   torch::Tensor forward(const torch::Tensor& input) {
@@ -195,13 +191,11 @@ class RMSNormImpl : public llm::nn::Module {
 };
 LLM_MODULE(RMSNorm);
 
-class GemmaRMSNormImpl : public llm::nn::Module {
+class GemmaRMSNormImpl : public Module {
  public:
   GemmaRMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter("weight",
-                                 torch::empty({dim}, options),
-                                 /*requires_grad=*/false);
+    weight_ = register_parameter("weight", torch::empty({dim}, options));
   }
 
   torch::Tensor forward(const torch::Tensor& input) {
@@ -246,15 +240,13 @@ class GemmaRMSNormImpl : public llm::nn::Module {
 LLM_MODULE(GemmaRMSNorm);
 
 // Root mean square normalization
-class RMSNormResidualImpl : public llm::nn::Module {
+class RMSNormResidualImpl : public Module {
  public:
   RMSNormResidualImpl(int64_t dim,
                       float eps,
                       const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter("weight",
-                                 torch::empty({dim}, options),
-                                 /*requires_grad=*/false);
+    weight_ = register_parameter("weight", torch::empty({dim}, options));
   }
 
   torch::Tensor forward(const torch::Tensor& input, torch::Tensor& residual) {

@@ -1,14 +1,10 @@
 #include "module.h"
 
-#include <c10/util/Exception.h>
-#include <torch/csrc/autograd/generated/VariableType.h>
-#include <torch/ordered_dict.h>
-
-#include <ostream>
-#include <string>
 #include <typeinfo>
 
-namespace llm::nn {
+namespace llm {
+using namespace torch;
+
 namespace {
 /// Joins names hierarchically: "name_prefix.name" if `name_prefix` is
 /// non-empty, else just "name".
@@ -38,91 +34,11 @@ Module::Module(std::string name) : Module() {
 
 const std::string& Module::name() const noexcept {
   // If the name optional is empty at this point, we grab the name of the
-  // dynamic type via RTTI. Note that we cannot do this in the constructor,
-  // because in the constructor of a base class `this` always refers to the base
-  // type. Inheritance effectively does not work in constructors. Also this note
-  // from http://en.cppreference.com/w/cpp/language/typeid:
-  // If typeid is used on an object under construction or destruction (in a
-  // destructor or in a constructor, including constructor's initializer list
-  // or default member initializers), then the std::type_info object referred
-  // to by this typeid represents the class that is being constructed or
-  // destroyed even if it is not the most-derived class.
+  // dynamic type via RTTI.
   if (!name_.has_value()) {
     name_ = c10::demangle(typeid(*this).name());
-#if defined(_WIN32)
-    // Windows adds "struct" or "class" as a prefix.
-    if (name_->find("struct ") == 0) {
-      name_->erase(name_->begin(), name_->begin() + 7);
-    } else if (name_->find("class ") == 0) {
-      name_->erase(name_->begin(), name_->begin() + 6);
-    }
-#endif  // defined(_WIN32)
   }
   return *name_;
-}
-
-std::shared_ptr<Module> Module::clone(
-    const std::optional<Device>& device) const {
-  TORCH_CHECK(
-      false,
-      "clone() has not been implemented for ",
-      name(),
-      ". Subclass torch::nn::Cloneable<",
-      name(),
-      "> instead of torch::nn::Module to inherit the ability to clone.");
-}
-
-void Module::apply(const ModuleApplyFunction& function) {
-  function(*this);
-  apply_to_submodules(
-      [&function](const std::string&, const std::shared_ptr<Module>& module) {
-        function(*module);
-      });
-}
-
-void Module::apply(const ConstModuleApplyFunction& function) const {
-  function(*this);
-  apply_to_submodules(
-      [&function](const std::string&, const std::shared_ptr<Module>& module) {
-        function(*module);
-      });
-}
-
-void Module::apply(const NamedModuleApplyFunction& function,
-                   const std::string& name_prefix) {
-  function(/*name=*/name_prefix, *this);
-  apply_to_submodules(
-      [&function](const std::string& name,
-                  const std::shared_ptr<Module>& module) {
-        function(name, *module);
-      },
-      name_prefix);
-}
-
-void Module::apply(const ConstNamedModuleApplyFunction& function,
-                   const std::string& name_prefix) const {
-  function(/*name=*/name_prefix, *this);
-  apply_to_submodules(
-      [&function](const std::string& name,
-                  const std::shared_ptr<Module>& module) {
-        function(name, *module);
-      },
-      name_prefix);
-}
-
-void Module::apply(const ModulePointerApplyFunction& function) const {
-  function(shared_from_this_checked());
-  apply_to_submodules(
-      [&function](const std::string&, const std::shared_ptr<Module>& module) {
-        function(module);
-      });
-}
-
-void Module::apply(const NamedModulePointerApplyFunction& function,
-                   const std::string& name_prefix) const {
-  function(
-      /*name=*/name_prefix, shared_from_this_checked());
-  apply_to_submodules(function, name_prefix);
 }
 
 std::vector<Tensor> Module::parameters(bool recurse) const {
@@ -217,14 +133,58 @@ OrderedDict<std::string, std::shared_ptr<Module>> Module::named_children()
   return children_;
 }
 
-void Module::train(bool on) {
-  for (auto& child : children_) {
-    child.value()->train(on);
-  }
-  is_training_ = on;
+void Module::apply(const ModuleApplyFunction& function) {
+  function(*this);
+  apply_to_submodules(
+      [&function](const std::string&, const std::shared_ptr<Module>& module) {
+        function(*module);
+      });
 }
 
-void Module::eval() { train(/*on=*/false); }
+void Module::apply(const ConstModuleApplyFunction& function) const {
+  function(*this);
+  apply_to_submodules(
+      [&function](const std::string&, const std::shared_ptr<Module>& module) {
+        function(*module);
+      });
+}
+
+void Module::apply(const NamedModuleApplyFunction& function,
+                   const std::string& name_prefix) {
+  function(/*name=*/name_prefix, *this);
+  apply_to_submodules(
+      [&function](const std::string& name,
+                  const std::shared_ptr<Module>& module) {
+        function(name, *module);
+      },
+      name_prefix);
+}
+
+void Module::apply(const ConstNamedModuleApplyFunction& function,
+                   const std::string& name_prefix) const {
+  function(/*name=*/name_prefix, *this);
+  apply_to_submodules(
+      [&function](const std::string& name,
+                  const std::shared_ptr<Module>& module) {
+        function(name, *module);
+      },
+      name_prefix);
+}
+
+void Module::apply(const ModulePointerApplyFunction& function) const {
+  function(shared_from_this_checked());
+  apply_to_submodules(
+      [&function](const std::string&, const std::shared_ptr<Module>& module) {
+        function(module);
+      });
+}
+
+void Module::apply(const NamedModulePointerApplyFunction& function,
+                   const std::string& name_prefix) const {
+  function(
+      /*name=*/name_prefix, shared_from_this_checked());
+  apply_to_submodules(function, name_prefix);
+}
 
 void Module::to(torch::Device device, torch::Dtype dtype, bool non_blocking) {
   to_impl(device, dtype, non_blocking);
@@ -238,75 +198,13 @@ void Module::to(torch::Device device, bool non_blocking) {
   to_impl(device, non_blocking);
 }
 
-bool Module::is_training() const noexcept { return is_training_; }
-
-void Module::zero_grad(bool set_to_none) {
-  for (auto& child : children_) {
-    child.value()->zero_grad(set_to_none);
-  }
-  for (auto& parameter : named_parameters(/*recurse=*/false)) {
-    auto& grad = parameter->mutable_grad();
-    if (grad.defined()) {
-      grad = grad.detach();
-
-      if (set_to_none)
-        grad.reset();
-      else
-        grad.zero_();
-    }
-  }
-}
-
-void Module::save(serialize::OutputArchive& archive) const {
-  for (const auto& parameter : named_parameters(/*recurse=*/false)) {
-    archive.write(parameter.key(), parameter.value());
-  }
-  for (const auto& buffer : named_buffers(/*recurse=*/false)) {
-    archive.write(buffer.key(), buffer.value(), /*is_buffer=*/true);
-  }
-  for (const auto& child : children_) {
-    if (child.value()->is_serializable()) {
-      serialize::OutputArchive child_archive(archive.compilation_unit());
-      child.value()->save(child_archive);
-      archive.write(child.key(), child_archive);
-    }
-  }
-}
-
-void Module::load(serialize::InputArchive& archive) {
-  for (auto& parameter : named_parameters(/*recurse=*/false)) {
-    archive.read(parameter.key(), parameter.value());
-  }
-  for (auto& buffer : named_buffers(/*recurse=*/false)) {
-    archive.read(buffer.key(), buffer.value(), /*is_buffer=*/true);
-  }
-  for (const auto& child : children_) {
-    if (child.value()->is_serializable()) {
-      serialize::InputArchive child_archive;
-      archive.read(child.key(), child_archive);
-      child.value()->load(child_archive);
-    }
-  }
-}
-
-bool Module::is_serializable() const { return true; }
-
-Tensor& Module::register_parameter(std::string name,
-                                   Tensor tensor,
-                                   bool requires_grad) {
+Tensor& Module::register_parameter(std::string name, Tensor tensor) {
   TORCH_CHECK(!name.empty(), "Parameter name must not be empty");
   TORCH_CHECK(name.find('.') == std::string::npos,
               "Parameter name must not contain a dot (got '",
               name,
               "')");
-  if (!tensor.defined()) {
-    if (requires_grad) {
-      TORCH_WARN("An undefined tensor cannot require grad. ",
-                 "Ignoring the `requires_grad=true` function parameter.");
-    }
-  } else {
-    tensor.set_requires_grad(requires_grad);
-  }
+  tensor.set_requires_grad(false);
   return parameters_.insert(std::move(name), std::move(tensor));
 }
 
@@ -344,8 +242,7 @@ void Module::pretty_print_recursive(std::ostream& stream,
   }
 }
 
-void Module::clone_(Module& other, const std::optional<Device>& device) {}
-
+// NOLINTNEXTLINE(misc-no-recursion)
 void Module::apply_to_submodules(
     const NamedModulePointerApplyFunction& function,
     const std::string& name_prefix) const {
@@ -375,23 +272,8 @@ std::shared_ptr<Module> Module::shared_from_this_checked() const {
   return std::const_pointer_cast<Module>(ptr);
 }
 
-std::ostream& operator<<(std::ostream& stream, const nn::Module& module) {
+std::ostream& operator<<(std::ostream& stream, const Module& module) {
   module.pretty_print_recursive(stream, "");
   return stream;
 }
-
-serialize::OutputArchive& operator<<(
-    serialize::OutputArchive& archive,
-    const std::shared_ptr<nn::Module>& module) {
-  TORCH_CHECK(module != nullptr, "Cannot serialize empty module");
-  module->save(archive);
-  return archive;
-}
-
-serialize::InputArchive& operator>>(serialize::InputArchive& archive,
-                                    const std::shared_ptr<nn::Module>& module) {
-  TORCH_CHECK(module != nullptr, "Cannot deserialize empty module");
-  module->load(archive);
-  return archive;
-}
-}  // namespace llm::nn
+}  // namespace llm

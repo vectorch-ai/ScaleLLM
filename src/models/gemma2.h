@@ -19,12 +19,12 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 
 // Gemma2 model compatible with huggingface weight
 namespace llm::hf {
 
-class Gemma2MLPImpl : public llm::nn::Module {
+class Gemma2MLPImpl : public Module {
  public:
   Gemma2MLPImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -85,7 +85,7 @@ class Gemma2MLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(Gemma2MLP);
 
-class Gemma2AttentionImpl : public llm::nn::Module {
+class Gemma2AttentionImpl : public Module {
  public:
   Gemma2AttentionImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
@@ -173,7 +173,7 @@ class Gemma2AttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(Gemma2Attention);
 
-class Gemma2DecoderLayerImpl : public llm::nn::Module {
+class Gemma2DecoderLayerImpl : public Module {
  public:
   Gemma2DecoderLayerImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
@@ -265,7 +265,7 @@ class Gemma2DecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(Gemma2DecoderLayer);
 
-class Gemma2ModelImpl : public llm::nn::Module {
+class Gemma2ModelImpl : public Module {
  public:
   Gemma2ModelImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -290,7 +290,7 @@ class Gemma2ModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       // Attention Type: [LOCAL_SLIDING, Global, LOCAL_SLIDING, Global, ...]
@@ -356,13 +356,13 @@ class Gemma2ModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<Gemma2DecoderLayer> layers_;
 };
 LLM_MODULE(Gemma2Model);
 
-class Gemma2ForCausalLMImpl : public llm::nn::Module {
+class Gemma2ForCausalLMImpl : public Module {
  public:
   Gemma2ForCausalLMImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,

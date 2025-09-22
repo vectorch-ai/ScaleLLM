@@ -14,12 +14,12 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 // gpt-neox model compatible with huggingface weights
 
 namespace llm::hf {
 
-class GPTNeoXMLPImpl : public llm::nn::Module {
+class GPTNeoXMLPImpl : public Module {
  public:
   GPTNeoXMLPImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -77,7 +77,7 @@ class GPTNeoXMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTNeoXMLP);
 
-class GPTNeoXAttentionImpl : public llm::nn::Module {
+class GPTNeoXAttentionImpl : public Module {
  public:
   GPTNeoXAttentionImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
@@ -171,7 +171,7 @@ class GPTNeoXAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTNeoXAttention);
 
-class GPTNeoXLayerImpl : public llm::nn::Module {
+class GPTNeoXLayerImpl : public Module {
  public:
   GPTNeoXLayerImpl(uint32_t layer_id,
                    const ModelArgs& args,
@@ -248,7 +248,7 @@ class GPTNeoXLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTNeoXLayer);
 
-class GPTNeoXModelImpl : public llm::nn::Module {
+class GPTNeoXModelImpl : public Module {
  public:
   GPTNeoXModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -263,7 +263,7 @@ class GPTNeoXModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = GPTNeoXLayer(
@@ -321,7 +321,7 @@ class GPTNeoXModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GPTNeoXLayer> layers_;
 
@@ -329,7 +329,7 @@ class GPTNeoXModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTNeoXModel);
 
-class GPTNeoXForCausalLMImpl : public llm::nn::Module {
+class GPTNeoXForCausalLMImpl : public Module {
  public:
   GPTNeoXForCausalLMImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,

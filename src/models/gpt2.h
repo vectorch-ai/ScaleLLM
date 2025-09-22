@@ -15,13 +15,13 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 
 // gpt2 model compatible with huggingface weights
 
 namespace llm::hf {
 
-class GPT2MLPImpl : public llm::nn::Module {
+class GPT2MLPImpl : public Module {
  public:
   GPT2MLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
@@ -85,7 +85,7 @@ class GPT2MLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPT2MLP);
 
-class GPT2AttentionImpl : public llm::nn::Module {
+class GPT2AttentionImpl : public Module {
  public:
   GPT2AttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -173,7 +173,7 @@ class GPT2AttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPT2Attention);
 
-class GPT2BlockImpl : public llm::nn::Module {
+class GPT2BlockImpl : public Module {
  public:
   GPT2BlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -235,7 +235,7 @@ class GPT2BlockImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPT2Block);
 
-class GPT2ModelImpl : public llm::nn::Module {
+class GPT2ModelImpl : public Module {
  public:
   GPT2ModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -252,7 +252,7 @@ class GPT2ModelImpl : public llm::nn::Module {
 
     handler_ = AttentionHandler::create_handler(args, options);
 
-    blocks_ = register_module("h", llm::nn::ModuleList());
+    blocks_ = register_module("h", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -313,7 +313,7 @@ class GPT2ModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GPT2Block> layers_;
 
@@ -321,7 +321,7 @@ class GPT2ModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPT2Model);
 
-class GPT2ForCausalLMImpl : public llm::nn::Module {
+class GPT2ForCausalLMImpl : public Module {
  public:
   GPT2ForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,

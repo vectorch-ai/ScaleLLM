@@ -13,11 +13,11 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 // simple model for test
 namespace llm {
 
-class SimpleMLPImpl : public llm::nn::Module {
+class SimpleMLPImpl : public Module {
  public:
   SimpleMLPImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -73,7 +73,7 @@ class SimpleMLPImpl : public llm::nn::Module {
 
 LLM_MODULE(SimpleMLP);
 
-class SimpleDecoderLayerImpl : public llm::nn::Module {
+class SimpleDecoderLayerImpl : public Module {
  public:
   SimpleDecoderLayerImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
@@ -104,7 +104,7 @@ class SimpleDecoderLayerImpl : public llm::nn::Module {
 
 LLM_MODULE(SimpleDecoderLayer);
 
-class SimpleModelImpl : public llm::nn::Module {
+class SimpleModelImpl : public Module {
  public:
   SimpleModelImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -115,7 +115,7 @@ class SimpleModelImpl : public llm::nn::Module {
         ParallelEmbedding(
             args.vocab_size(), args.hidden_size(), parallel_args, options));
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = SimpleDecoderLayer(args, quant_args, parallel_args, options);
@@ -154,12 +154,12 @@ class SimpleModelImpl : public llm::nn::Module {
 
  private:
   ParallelEmbedding embed_tokens_{nullptr};
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   std::vector<SimpleDecoderLayer> layers_;
 };
 LLM_MODULE(SimpleModel);
 
-class SimpleForCausalLMImpl : public llm::nn::Module {
+class SimpleForCausalLMImpl : public Module {
  public:
   SimpleForCausalLMImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,

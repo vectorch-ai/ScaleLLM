@@ -16,16 +16,14 @@ namespace llm {
 // This module is often used to store word embeddings and retrieve them using
 // indices.
 
-class EmbeddingImpl : public llm::nn::Module {
+class EmbeddingImpl : public Module {
  public:
   EmbeddingImpl(int64_t num_embeddings,
                 int64_t embedding_dim,
                 const torch::TensorOptions& options) {
     // register the weight parameter
     weight_ = register_parameter(
-        "weight",
-        torch::empty({num_embeddings, embedding_dim}, options),
-        /*requires_grad=*/false);
+        "weight", torch::empty({num_embeddings, embedding_dim}, options));
   }
 
   // The input to the module is a list of indices, and the output is the
@@ -68,7 +66,7 @@ class EmbeddingImpl : public llm::nn::Module {
 LLM_MODULE(Embedding);
 
 // Embedding parallelized in the embedding dimension.
-class ParallelEmbeddingImpl : public llm::nn::Module {
+class ParallelEmbeddingImpl : public Module {
  public:
   ParallelEmbeddingImpl(int64_t num_embeddings,
                         int64_t embedding_dim,
@@ -84,8 +82,7 @@ class ParallelEmbeddingImpl : public llm::nn::Module {
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings, embedding_dim_per_partition}, options),
-        /*requires_grad=*/false);
+        torch::empty({num_embeddings, embedding_dim_per_partition}, options));
   }
 
   // The input to the module is a list of indices, and the output is the
@@ -139,7 +136,7 @@ class ParallelEmbeddingImpl : public llm::nn::Module {
 LLM_MODULE(ParallelEmbedding);
 
 // Embedding parallelized in the vocabulary dimension
-class VocabParallelEmbeddingImpl : public llm::nn::Module {
+class VocabParallelEmbeddingImpl : public Module {
  public:
   VocabParallelEmbeddingImpl(int64_t num_embeddings,
                              int64_t embedding_dim,
@@ -154,8 +151,7 @@ class VocabParallelEmbeddingImpl : public llm::nn::Module {
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings_per_partition, embedding_dim}, options),
-        /*requires_grad=*/false);
+        torch::empty({num_embeddings_per_partition, embedding_dim}, options));
   }
 
   // The input to the module is a list of indices, and the output is the

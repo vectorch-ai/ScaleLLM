@@ -19,13 +19,13 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 // QWen2 model compatible with huggingface weights
 // ref to:
 // https://github.com/huggingface/transformers/blob/v4.43.3/src/transformers/models/qwen2/modeling_qwen2.py
 namespace llm::hf {
 
-class QWen2MLPImpl : public llm::nn::Module {
+class QWen2MLPImpl : public Module {
  public:
   QWen2MLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -86,7 +86,7 @@ class QWen2MLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWen2MLP);
 
-class QWen2AttentionImpl : public llm::nn::Module {
+class QWen2AttentionImpl : public Module {
  public:
   QWen2AttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -170,7 +170,7 @@ class QWen2AttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWen2Attention);
 
-class QWen2DecoderLayerImpl : public llm::nn::Module {
+class QWen2DecoderLayerImpl : public Module {
  public:
   QWen2DecoderLayerImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -238,7 +238,7 @@ class QWen2DecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWen2DecoderLayer);
 
-class QWen2ModelImpl : public llm::nn::Module {
+class QWen2ModelImpl : public Module {
  public:
   QWen2ModelImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -253,7 +253,7 @@ class QWen2ModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       int32_t sliding_window = -1;
@@ -318,7 +318,7 @@ class QWen2ModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<QWen2DecoderLayer> layers_;
 
@@ -326,7 +326,7 @@ class QWen2ModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWen2Model);
 
-class QWen2ForCausalLMImpl : public llm::nn::Module {
+class QWen2ForCausalLMImpl : public Module {
  public:
   QWen2ForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,

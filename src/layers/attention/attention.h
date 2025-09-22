@@ -10,7 +10,7 @@
 
 namespace llm {
 
-class AttentionImpl : public llm::nn::Module {
+class AttentionImpl : public Module {
  public:
   AttentionImpl(int64_t n_heads,
                 int64_t n_kv_heads,

@@ -16,14 +16,14 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 #include "tokenizer/tokenizer_args.h"
 
 // ChatGLM model compatible with huggingface weights
 
 namespace llm::hf {
 
-class ChatGLMMLPImpl : public llm::nn::Module {
+class ChatGLMMLPImpl : public Module {
  public:
   ChatGLMMLPImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -82,7 +82,7 @@ class ChatGLMMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(ChatGLMMLP);
 
-class ChatGLMAttentionImpl : public llm::nn::Module {
+class ChatGLMAttentionImpl : public Module {
  public:
   ChatGLMAttentionImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
@@ -167,7 +167,7 @@ class ChatGLMAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(ChatGLMAttention);
 
-class ChatGLMBlockImpl : public llm::nn::Module {
+class ChatGLMBlockImpl : public Module {
  public:
   ChatGLMBlockImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -278,7 +278,7 @@ class ChatGLMBlockImpl : public llm::nn::Module {
 };
 LLM_MODULE(ChatGLMBlock);
 
-class ChatGLMModelImpl : public llm::nn::Module {
+class ChatGLMModelImpl : public Module {
  public:
   ChatGLMModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -290,7 +290,7 @@ class ChatGLMModelImpl : public llm::nn::Module {
         args, /*interleaved=*/true, options);
 
     // register submodules
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = ChatGLMBlock(
@@ -370,7 +370,7 @@ class ChatGLMModelImpl : public llm::nn::Module {
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   // parameter members, must be registered
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<ChatGLMBlock> layers_;
 
@@ -383,7 +383,7 @@ class ChatGLMModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(ChatGLMModel);
 
-class ChatGLMForCausalLMImpl : public llm::nn::Module {
+class ChatGLMForCausalLMImpl : public Module {
  public:
   ChatGLMForCausalLMImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,

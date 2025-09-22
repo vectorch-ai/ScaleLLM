@@ -88,7 +88,6 @@ class ModelRegistry {
            const ParallelArgs& parallel_args,                              \
            const torch::TensorOptions& options) {                          \
           ModelClass model(args, quant_args, parallel_args, options);      \
-          model->eval();                                                   \
           return std::make_unique<llm::CausalLMImpl<ModelClass>>(          \
               std::move(model), options);                                  \
         });                                                                \

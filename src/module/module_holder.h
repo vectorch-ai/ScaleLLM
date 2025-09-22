@@ -1,33 +1,98 @@
 #pragma once
 
-#include <torch/arg.h>
-#include <torch/csrc/utils/variadic.h>
-#include <torch/detail/static.h>
-#include <torch/serialize/archive.h>
-#include <torch/types.h>
-
 #include <memory>
 #include <type_traits>
 #include <utility>
 
 namespace llm {
 namespace detail {
-// Dump all the template metaprogramming in this file.
-#include "pimpl-inl.h"
+struct ModuleHolderIndicator {};
+
+// A type trait that is true for types that are `ModuleHolder`s.
+template <typename T>
+using is_module_holder =
+    std::is_base_of<ModuleHolderIndicator, std::decay_t<T>>;
+
+template <typename T>
+using disable_if_module_holder_t =
+    std::enable_if_t<!is_module_holder<T>::value>;
+
+// A collection of templates that answer the question whether a type `T` is a
+// `ModuleHolder`, and if so whether its contained type is of type `C`.
+
+// Base template.
+template <bool is_module_holder_value, typename T, typename C>
+struct is_module_holder_of_impl;
+
+// False branch. `T` is not a `ModuleHolder` and thus not a `ModuleHolder` with
+// contained type `C`.
+template <typename T, typename C>
+struct is_module_holder_of_impl<false, T, C> : std::false_type {};
+
+// True branch. `T` is a `ModuleHolder` and thus we can legit access its
+// `ContainedType` and compare it against `C`.
+template <typename T, typename C>
+struct is_module_holder_of_impl<true, T, C>
+    : std::is_same<typename T::ContainedType, C> {};
+
+// Helper template.
+template <typename T, typename C>
+struct is_module_holder_of
+    : is_module_holder_of_impl<is_module_holder<T>::value,
+                               std::decay_t<T>,
+                               std::decay_t<C>> {};
+
+/// Detects if a type T has a forward() method.
+template <typename T>
+struct has_forward {
+  // Declare two types with differing size.
+  using yes = int8_t;
+  using no = int16_t;
+
+  template <typename U>
+  static yes test(decltype(&U::forward));
+  template <typename U>
+  static no test(...);
+
+  // Finally we test statically whether the size of the type returned by the
+  // selected overload is the size of the `yes` type.
+  static constexpr bool value = (sizeof(test<T>(nullptr)) == sizeof(yes));
+};
+
+// A collection of templates that allow deducing the return type of the
+// `forward()` method, but only if a module actually has a `forward()` method,
+// and otherwise deduces to the type `void`.
+
+template <bool has_forward_value, typename C, typename... Args>
+struct return_type_of_forward_impl;
+
+template <typename C, typename... Args>
+struct return_type_of_forward_impl<true, C, Args...> {
+  using type = decltype(::std::declval<C>().forward(::std::declval<Args>()...));
+};
+
+template <typename C, typename... Args>
+struct return_type_of_forward_impl<false, C, Args...> {
+  using type = void;
+};
+
+template <typename C, typename... Args>
+using return_type_of_forward =
+    return_type_of_forward_impl<has_forward<C>::value, C, Args...>;
+
+template <typename C, typename... Args>
+using return_type_of_forward_t =
+    typename return_type_of_forward<C, Args...>::type;
+
 }  // namespace detail
 
-namespace nn {
-using namespace torch;
-
 /// A `ModuleHolder` is essentially a wrapper around `std::shared_ptr<M>` where
-/// `M` is an `nn::Module` subclass, with convenient constructors defined for
+/// `M` is an `Module` subclass, with convenient constructors defined for
 /// the kind of constructions we want to allow for our modules.
 template <typename Contained>
 class ModuleHolder : detail::ModuleHolderIndicator {
  protected:
   /// The module pointer this class wraps.
-  /// NOTE: Must be placed at the top of the class so that we can use it with
-  /// trailing return types below.
   // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   std::shared_ptr<Contained> impl_;
 
@@ -36,10 +101,6 @@ class ModuleHolder : detail::ModuleHolderIndicator {
 
   /// Default constructs the contained module if if has a default constructor,
   /// else produces a static error.
-  ///
-  /// NOTE: This uses the behavior of template
-  /// classes in C++ that constructors (or any methods) are only compiled when
-  /// actually used.
   ModuleHolder() : impl_(default_construct()) {
     static_assert(
         std::is_default_constructible_v<Contained>,
@@ -139,46 +200,22 @@ class ModuleHolder : detail::ModuleHolderIndicator {
 /// Pretty prints the given `Module` into the `ostream`.
 template <typename ModuleType>
 std::ostream& operator<<(std::ostream& stream,
-                         const nn::ModuleHolder<ModuleType>& module) {
+                         const ModuleHolder<ModuleType>& module) {
   return stream << *module;
 }
 
-/// Serializes a `ModuleHolder` into an `OutputArchive`.
-template <typename ModuleType>
-serialize::OutputArchive& operator<<(
-    serialize::OutputArchive& archive,
-    const nn::ModuleHolder<ModuleType>& module) {
-  return archive << module.ptr();
-}
-
-/// Deserializes a `ModuleHolder` from an `InputArchive`.
-template <typename ModuleType>
-serialize::InputArchive& operator>>(serialize::InputArchive& archive,
-                                    nn::ModuleHolder<ModuleType>& module) {
-  return archive >> module.ptr();
-}
-
-}  // namespace nn
 }  // namespace llm
 
-// Workaround for CUDA 10.2 and below not allowing attribute unused on
-// using declarations.
-#ifdef __CUDACC__
-#define UNUSED_EXCEPT_CUDA
-#else
-#define UNUSED_EXCEPT_CUDA [[maybe_unused]]
-#endif
-
-/// Defines a class `Name` which inherits from `nn::ModuleHolder` to provide a
+/// Defines a class `Name` which inherits from `ModuleHolder` to provide a
 /// wrapper over a `std::shared_ptr<ImplType>`.
 /// `Impl` is a type alias for `ImplType` which provides a way to call static
 /// method of `ImplType`.
-#define LLM_MODULE_IMPL(Name, ImplType)                              \
-  class Name : public llm::nn::ModuleHolder<ImplType> { /* NOLINT */ \
-   public:                                                           \
-    using llm::nn::ModuleHolder<ImplType>::ModuleHolder;             \
-    using Impl TORCH_UNUSED_EXCEPT_CUDA = ImplType;                  \
+#define LLM_MODULE_IMPL(Name, ImplType)                     \
+  class Name : public ModuleHolder<ImplType> { /* NOLINT */ \
+   public:                                                  \
+    using ModuleHolder<ImplType>::ModuleHolder;             \
+    using Impl [[maybe_unused]] = ImplType;                 \
   }
 
-/// Like `TORCH_MODULE_IMPL`, but defaults the `ImplType` name to `<Name>Impl`.
+/// Like `LLM_MODULE_IMPL`, but defaults the `ImplType` name to `<Name>Impl`.
 #define LLM_MODULE(Name) LLM_MODULE_IMPL(Name, Name##Impl)

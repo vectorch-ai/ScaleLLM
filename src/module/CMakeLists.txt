@@ -5,7 +5,7 @@ cc_library(
     module
   HDRS
     module.h
-    modulelist.h
+    module_list.h
     module_holder.h
   SRCS
     module.cpp

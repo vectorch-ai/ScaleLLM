@@ -17,11 +17,11 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 // mpt model compatible with huggingface weights
 namespace llm::hf {
 
-class MPTMLPImpl : public llm::nn::Module {
+class MPTMLPImpl : public Module {
  public:
   MPTMLPImpl(const ModelArgs& args,
              const QuantArgs& quant_args,
@@ -78,7 +78,7 @@ class MPTMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(MPTMLP);
 
-class MPTAttentionImpl : public llm::nn::Module {
+class MPTAttentionImpl : public Module {
  public:
   MPTAttentionImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -234,7 +234,7 @@ class MPTAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(MPTAttention);
 
-class MPTBlockImpl : public llm::nn::Module {
+class MPTBlockImpl : public Module {
  public:
   MPTBlockImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -294,7 +294,7 @@ class MPTBlockImpl : public llm::nn::Module {
 };
 LLM_MODULE(MPTBlock);
 
-class MPTModelImpl : public llm::nn::Module {
+class MPTModelImpl : public Module {
  public:
   MPTModelImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -312,7 +312,7 @@ class MPTModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_alibi(
         args, alibi_slopes, options);
 
-    blocks_ = register_module("blocks", llm::nn::ModuleList());
+    blocks_ = register_module("blocks", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -390,7 +390,7 @@ class MPTModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<MPTBlock> layers_;
 
@@ -398,7 +398,7 @@ class MPTModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(MPTModel);
 
-class MPTForCausalLMImpl : public llm::nn::Module {
+class MPTForCausalLMImpl : public Module {
  public:
   MPTForCausalLMImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,

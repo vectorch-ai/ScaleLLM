@@ -41,11 +41,11 @@ class RotaryEmbeddingImpl : public torch::nn::Module {
 
 // RotaryEmbedding is a wrapper class that chooses the right rotary positional
 // embedding implementation based on the args.
-// Similar to TORCH_MODULE(RotaryEmbedding) except of the explicit constructor.
+// Similar to LLM_MODULE(RotaryEmbedding) except of the explicit constructor.
 class RotaryEmbedding : public torch::nn::ModuleHolder<RotaryEmbeddingImpl> {
  public:
   using torch::nn::ModuleHolder<RotaryEmbeddingImpl>::ModuleHolder;
-  using Impl __attribute__((__unused__)) = RotaryEmbeddingImpl;
+  using Impl [[maybe_unused]] = RotaryEmbeddingImpl;
 
   // construct a rotary positional embedding.
   // chose right implementation based on the args.

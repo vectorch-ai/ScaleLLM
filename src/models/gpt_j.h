@@ -14,12 +14,12 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 // GPTJ model compatible with huggingface weights
 
 namespace llm::hf {
 
-class GPTJMLPImpl : public llm::nn::Module {
+class GPTJMLPImpl : public Module {
  public:
   GPTJMLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
@@ -73,7 +73,7 @@ class GPTJMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTJMLP);
 
-class GPTJAttentionImpl : public llm::nn::Module {
+class GPTJAttentionImpl : public Module {
  public:
   GPTJAttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -145,7 +145,7 @@ class GPTJAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTJAttention);
 
-class GPTJBlockImpl : public llm::nn::Module {
+class GPTJBlockImpl : public Module {
  public:
   GPTJBlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -200,7 +200,7 @@ class GPTJBlockImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTJBlock);
 
-class GPTJModelImpl : public llm::nn::Module {
+class GPTJModelImpl : public Module {
  public:
   GPTJModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -215,7 +215,7 @@ class GPTJModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/true, options);
 
-    blocks_ = register_module("h", llm::nn::ModuleList());
+    blocks_ = register_module("h", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -273,7 +273,7 @@ class GPTJModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GPTJBlock> layers_;
 
@@ -281,7 +281,7 @@ class GPTJModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(GPTJModel);
 
-class GPTJForCausalLMImpl : public llm::nn::Module {
+class GPTJForCausalLMImpl : public Module {
  public:
   GPTJForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,

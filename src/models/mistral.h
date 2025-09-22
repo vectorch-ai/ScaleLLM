@@ -15,11 +15,11 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 // Mistral model compatible with huggingface weights
 namespace llm::hf {
 
-class MistralMLPImpl : public llm::nn::Module {
+class MistralMLPImpl : public Module {
  public:
   MistralMLPImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -79,7 +79,7 @@ class MistralMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(MistralMLP);
 
-class MistralAttentionImpl : public llm::nn::Module {
+class MistralAttentionImpl : public Module {
  public:
   MistralAttentionImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
@@ -158,7 +158,7 @@ class MistralAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(MistralAttention);
 
-class MistralDecoderLayerImpl : public llm::nn::Module {
+class MistralDecoderLayerImpl : public Module {
  public:
   MistralDecoderLayerImpl(const ModelArgs& args,
                           const QuantArgs& quant_args,
@@ -218,7 +218,7 @@ class MistralDecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(MistralDecoderLayer);
 
-class MistralModelImpl : public llm::nn::Module {
+class MistralModelImpl : public Module {
  public:
   MistralModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -233,7 +233,7 @@ class MistralModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = MistralDecoderLayer(
@@ -288,7 +288,7 @@ class MistralModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<MistralDecoderLayer> layers_;
 
@@ -296,7 +296,7 @@ class MistralModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(MistralModel);
 
-class MistralForCausalLMImpl : public llm::nn::Module {
+class MistralForCausalLMImpl : public Module {
  public:
   MistralForCausalLMImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,

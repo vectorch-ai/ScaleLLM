@@ -15,13 +15,13 @@
 #include "models/parameters.h"
 #include "module/module.h"
 #include "module/module_holder.h"
-#include "module/modulelist.h"
+#include "module/module_list.h"
 
 // bloom model compatible with huggingface weights
 
 namespace llm::hf {
 
-class BloomMLPImpl : public llm::nn::Module {
+class BloomMLPImpl : public Module {
  public:
   BloomMLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -79,7 +79,7 @@ class BloomMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(BloomMLP);
 
-class BloomAttentionImpl : public llm::nn::Module {
+class BloomAttentionImpl : public Module {
  public:
   BloomAttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -173,7 +173,7 @@ class BloomAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(BloomAttention);
 
-class BloomBlockImpl : public llm::nn::Module {
+class BloomBlockImpl : public Module {
  public:
   BloomBlockImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -245,7 +245,7 @@ class BloomBlockImpl : public llm::nn::Module {
 };
 LLM_MODULE(BloomBlock);
 
-class BloomModelImpl : public llm::nn::Module {
+class BloomModelImpl : public Module {
  public:
   BloomModelImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -268,7 +268,7 @@ class BloomModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_alibi(
         args, alibi_slopes, options);
 
-    blocks_ = register_module("h", llm::nn::ModuleList());
+    blocks_ = register_module("h", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -362,7 +362,7 @@ class BloomModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<BloomBlock> layers_;
 
@@ -371,7 +371,7 @@ class BloomModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(BloomModel);
 
-class BloomForCausalLMImpl : public llm::nn::Module {
+class BloomForCausalLMImpl : public Module {
  public:
   BloomForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,

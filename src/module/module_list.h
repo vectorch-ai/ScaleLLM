@@ -7,57 +7,12 @@
 #include <utility>
 #include <vector>
 
-#include "cloneable.h"
 #include "module.h"
 #include "module_holder.h"
 
-namespace llm::nn {
-
+namespace llm {
 /// A list of `Module`s that registers its elements.
-///
-/// \rst
-/// .. code-block:: cpp
-///
-///   torch::nn::ModuleList mlist(
-///     torch::nn::Linear(3, 4),
-///     torch::nn::BatchNorm1d(4),
-///     torch::nn::Dropout(0.5)
-///   );
-///
-///   for (const auto &module : *mlist) {
-///     module->pretty_print(std::cout);
-///   }
-///
-/// \endrst
-///
-/// Why should you use `ModuleList` instead of a simple `std::vector`? The value
-/// a `ModuleList` provides over manually calling a sequence of modules is that
-/// it allows treating the whole container *as a single module*, such that
-/// performing a transformation on the `ModuleList` applies to each of the
-/// modules it stores (which are each a registered submodule of the
-/// `ModuleList`). For example, calling
-/// `.to(torch::kCUDA)` on a `ModuleList` will move each module in the list to
-/// CUDA memory. For example:
-///
-/// \rst
-/// .. code-block:: cpp
-///
-///   torch::nn::ModuleList mlist(
-///     torch::nn::Linear(3, 4),
-///     torch::nn::BatchNorm1d(4),
-///     torch::nn::Dropout(0.5)
-///   );
-///
-///   // Convert all modules to CUDA.
-///   mlist->to(torch::kCUDA);
-///
-/// \endrst
-///
-/// Finally, `ModuleList` provides a lightweight container API, such as allowing
-/// iteration over submodules, positional access, adding a new module after
-/// construction via `push_back`, as well as joining two `ModuleList`s via
-/// `extend`.
-class ModuleListImpl : public Cloneable<ModuleListImpl> {
+class ModuleListImpl : public Module {
  public:
   using Iterator = std::vector<std::shared_ptr<Module>>::iterator;
   using ConstIterator = std::vector<std::shared_ptr<Module>>::const_iterator;
@@ -71,24 +26,9 @@ class ModuleListImpl : public Cloneable<ModuleListImpl> {
     push_back_var(std::forward<Modules>(modules)...);
   }
 
-  /// Special cloning function for `ModuleList` because it does not use
-  /// `reset()`.
-  std::shared_ptr<Module> clone(
-      const std::optional<Device>& device = std::nullopt) const override {
-    auto clone = std::make_shared<ModuleListImpl>();
-    for (const auto& module : modules_) {
-      clone->push_back(module->clone(device));
-    }
-    return clone;
-  }
-
-  /// `reset()` is empty for `ModuleList`, since it does not have parameters of
-  /// its own.
-  void reset() override {}
-
   /// Pretty prints the `ModuleList` module into the given `stream`.
   void pretty_print(std::ostream& stream) const override {
-    stream << "torch::nn::ModuleList";
+    stream << "ModuleList";
   }
 
   void push_back(std::shared_ptr<Module> module) {
@@ -255,4 +195,4 @@ class ModuleListImpl : public Cloneable<ModuleListImpl> {
 /// module storage semantics.
 LLM_MODULE(ModuleList);
 
-}  // namespace llm::nn
+}  // namespace llm
