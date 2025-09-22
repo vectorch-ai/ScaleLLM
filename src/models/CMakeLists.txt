@@ -22,5 +22,3 @@ cc_library(
     glog::glog
     torch
 )
-
-add_subdirectory(module)

@@ -3,7 +3,7 @@ include(cc_test)
 
 cc_library(
   NAME
-    linear 
+    linear
   HDRS
     linear.h
     qkv_linear.h
@@ -21,35 +21,37 @@ cc_library(
     :model_parallel
     :quantization
     :kernels
+    :module
     glog::glog
     gflags::gflags
     torch
 )
 
 cc_library(
-  NAME 
+  NAME
     pos_embedding
-  HDRS 
+  HDRS
     pos_embedding.h
-  SRCS 
+  SRCS
     pos_embedding.cpp
   DEPS
     :state_dict
     :memory
     :kernels
+    :module
     glog::glog
     gflags::gflags
     torch
 )
 
 cc_library(
-  NAME 
+  NAME
     layers
-  HDRS 
+  HDRS
     normalization.h
     embedding.h
     activation.h
-  SRCS 
+  SRCS
     activation.cpp
   DEPS
     :state_dict
@@ -58,6 +60,7 @@ cc_library(
     :pos_embedding
     :attention
     :kernels
+    :module
     glog::glog
     gflags::gflags
     torch

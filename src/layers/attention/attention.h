@@ -5,10 +5,12 @@
 #include "layers/attention/handler.h"
 #include "memory/kv_cache.h"
 #include "models/parameters.h"
+#include "module/module.h"
+#include "module/module_holder.h"
 
 namespace llm {
 
-class AttentionImpl : public torch::nn::Module {
+class AttentionImpl : public llm::nn::Module {
  public:
   AttentionImpl(int64_t n_heads,
                 int64_t n_kv_heads,
@@ -38,6 +40,6 @@ class AttentionImpl : public torch::nn::Module {
   // sliding window for self-attention, -1 means no sliding window
   int32_t sliding_window_ = -1;
 };
-TORCH_MODULE(Attention);
+LLM_MODULE(Attention);
 
 }  // namespace llm

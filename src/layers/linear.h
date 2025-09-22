@@ -5,6 +5,8 @@
 
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
+#include "module/module.h"
+#include "module/module_holder.h"
 #include "quantization/quant_args.h"
 
 namespace llm {
@@ -14,7 +16,7 @@ using TensorTransform = std::function<torch::Tensor(const torch::Tensor&)>;
 // an interface for parallel linear layer.
 // all linear classes should inherit from this class and implement the forward
 // function.
-class ParallelLinearImpl : public torch::nn::Module {
+class ParallelLinearImpl : public llm::nn::Module {
  public:
   ~ParallelLinearImpl() override = default;
 
@@ -37,10 +39,9 @@ class ParallelLinearImpl : public torch::nn::Module {
   }
 };
 
-class ColumnParallelLinear
-    : public torch::nn::ModuleHolder<ParallelLinearImpl> {
+class ColumnParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
  public:
-  using torch::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
+  using llm::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
   using Impl __attribute__((__unused__)) = ParallelLinearImpl;
 
   // construct a rotary positional embedding.
@@ -61,9 +62,9 @@ class ColumnParallelLinear
                        const torch::TensorOptions& options);
 };
 
-class RowParallelLinear : public torch::nn::ModuleHolder<ParallelLinearImpl> {
+class RowParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
  public:
-  using torch::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
+  using llm::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
   using Impl __attribute__((__unused__)) = ParallelLinearImpl;
 
   // construct a rotary positional embedding.

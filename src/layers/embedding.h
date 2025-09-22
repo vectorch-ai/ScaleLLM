@@ -7,6 +7,8 @@
 
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
+#include "module/module.h"
+#include "module/module_holder.h"
 
 namespace llm {
 
@@ -14,7 +16,7 @@ namespace llm {
 // This module is often used to store word embeddings and retrieve them using
 // indices.
 
-class EmbeddingImpl : public torch::nn::Module {
+class EmbeddingImpl : public llm::nn::Module {
  public:
   EmbeddingImpl(int64_t num_embeddings,
                 int64_t embedding_dim,
@@ -63,10 +65,10 @@ class EmbeddingImpl : public torch::nn::Module {
   // whether the weight is loaded
   bool is_loaded_ = false;
 };
-TORCH_MODULE(Embedding);
+LLM_MODULE(Embedding);
 
 // Embedding parallelized in the embedding dimension.
-class ParallelEmbeddingImpl : public torch::nn::Module {
+class ParallelEmbeddingImpl : public llm::nn::Module {
  public:
   ParallelEmbeddingImpl(int64_t num_embeddings,
                         int64_t embedding_dim,
@@ -134,10 +136,10 @@ class ParallelEmbeddingImpl : public torch::nn::Module {
   // parallel args
   ParallelArgs parallel_args_;
 };
-TORCH_MODULE(ParallelEmbedding);
+LLM_MODULE(ParallelEmbedding);
 
 // Embedding parallelized in the vocabulary dimension
-class VocabParallelEmbeddingImpl : public torch::nn::Module {
+class VocabParallelEmbeddingImpl : public llm::nn::Module {
  public:
   VocabParallelEmbeddingImpl(int64_t num_embeddings,
                              int64_t embedding_dim,
@@ -152,8 +154,7 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings_per_partition, embedding_dim},
-                     options),
+        torch::empty({num_embeddings_per_partition, embedding_dim}, options),
         /*requires_grad=*/false);
   }
 
@@ -218,5 +219,5 @@ class VocabParallelEmbeddingImpl : public torch::nn::Module {
   int64_t start_index_ = 0;
   int64_t end_index_ = 0;
 };
-TORCH_MODULE(VocabParallelEmbedding);
+LLM_MODULE(VocabParallelEmbedding);
 }  // namespace llm

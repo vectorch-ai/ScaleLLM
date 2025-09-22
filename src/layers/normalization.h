@@ -7,6 +7,8 @@
 
 #include "kernels/layernorm_kernels.h"
 #include "model_loader/state_dict.h"
+#include "module/module.h"
+#include "module/module_holder.h"
 
 DECLARE_bool(disable_custom_kernels);
 namespace llm {
@@ -63,7 +65,7 @@ inline torch::Tensor layer_norm(torch::Tensor input,
 // apply layer normalization over a mini-batch of inputs as described in
 // the paper `Layer Normalization`: https://arxiv.org/abs/1607.06450
 // x = ((x - mean(x)) / sqrt(std(x) + eps)) * weight + bias
-class LayerNormImpl : public torch::nn::Module {
+class LayerNormImpl : public llm::nn::Module {
  public:
   // dim: the dim over which the mean and std are calculated separately.
   // eps: a value added to the denominator for numerical stability.
@@ -140,10 +142,10 @@ class LayerNormImpl : public torch::nn::Module {
   float eps_;
   std::vector<int64_t> normalized_shape_;
 };
-TORCH_MODULE(LayerNorm);
+LLM_MODULE(LayerNorm);
 
 // Root mean square normalization
-class RMSNormImpl : public torch::nn::Module {
+class RMSNormImpl : public llm::nn::Module {
  public:
   RMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
@@ -191,9 +193,9 @@ class RMSNormImpl : public torch::nn::Module {
   // configs
   float eps_;
 };
-TORCH_MODULE(RMSNorm);
+LLM_MODULE(RMSNorm);
 
-class GemmaRMSNormImpl : public torch::nn::Module {
+class GemmaRMSNormImpl : public llm::nn::Module {
  public:
   GemmaRMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
@@ -241,10 +243,10 @@ class GemmaRMSNormImpl : public torch::nn::Module {
   // configs
   float eps_;
 };
-TORCH_MODULE(GemmaRMSNorm);
+LLM_MODULE(GemmaRMSNorm);
 
 // Root mean square normalization
-class RMSNormResidualImpl : public torch::nn::Module {
+class RMSNormResidualImpl : public llm::nn::Module {
  public:
   RMSNormResidualImpl(int64_t dim,
                       float eps,
@@ -304,6 +306,6 @@ class RMSNormResidualImpl : public torch::nn::Module {
   // configs
   float eps_;
 };
-TORCH_MODULE(RMSNormResidual);
+LLM_MODULE(RMSNormResidual);
 
 }  // namespace llm
