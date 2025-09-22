@@ -3,6 +3,8 @@
 #include <typeinfo>
 
 namespace llm::nn {
+using namespace torch;
+
 namespace {
 /// Joins names hierarchically: "name_prefix.name" if `name_prefix` is
 /// non-empty, else just "name".
@@ -240,6 +242,7 @@ void Module::pretty_print_recursive(std::ostream& stream,
   }
 }
 
+// NOLINTNEXTLINE(misc-no-recursion)
 void Module::apply_to_submodules(
     const NamedModulePointerApplyFunction& function,
     const std::string& name_prefix) const {

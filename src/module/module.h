@@ -12,7 +12,6 @@
 #include "module_holder.h"
 
 namespace llm::nn {
-using namespace torch;
 
 /// The base class for all modules.
 ///
@@ -45,19 +44,21 @@ class Module : public std::enable_shared_from_this<Module> {
 
   /// Returns the parameters of this `Module` and if `recurse` is true, also
   /// recursively of every submodule.
-  std::vector<Tensor> parameters(bool recurse = true) const;
+  std::vector<torch::Tensor> parameters(bool recurse = true) const;
 
   /// Returns an `OrderedDict` with the parameters of this `Module` along with
   /// their keys, and if `recurse` is true also recursively of every submodule.
-  OrderedDict<std::string, Tensor> named_parameters(bool recurse = true) const;
+  torch::OrderedDict<std::string, torch::Tensor> named_parameters(
+      bool recurse = true) const;
 
   /// Returns the buffers of this `Module` and if `recurse` is true, also
   /// recursively of every submodule.
-  std::vector<Tensor> buffers(bool recurse = true) const;
+  std::vector<torch::Tensor> buffers(bool recurse = true) const;
 
   /// Returns an `OrderedDict` with the buffers of this `Module` along with
   /// their keys, and if `recurse` is true also recursively of every submodule.
-  OrderedDict<std::string, Tensor> named_buffers(bool recurse = true) const;
+  torch::OrderedDict<std::string, torch::Tensor> named_buffers(
+      bool recurse = true) const;
 
   /// Returns the submodules of this `Module` (the entire submodule hierarchy)
   /// and if `include_self` is true, also inserts a `shared_ptr` to this module
@@ -69,7 +70,7 @@ class Module : public std::enable_shared_from_this<Module> {
   /// inserts a `shared_ptr` to this module in the first position. If
   /// `name_prefix` is given, it is prepended to every key as
   /// `<name_prefix>.<key>` (and just `name_prefix` for the module itself).
-  OrderedDict<std::string, std::shared_ptr<Module>> named_modules(
+  torch::OrderedDict<std::string, std::shared_ptr<Module>> named_modules(
       const std::string& name_prefix = std::string(),
       bool include_self = true) const;
 
@@ -78,7 +79,8 @@ class Module : public std::enable_shared_from_this<Module> {
 
   /// Returns an `OrderedDict` of the direct submodules of this `Module` and
   /// their keys.
-  OrderedDict<std::string, std::shared_ptr<Module>> named_children() const;
+  torch::OrderedDict<std::string, std::shared_ptr<Module>> named_children()
+      const;
 
   /// Applies the `function` to the `Module` and recursively to every submodule.
   using ModuleApplyFunction = std::function<void(Module&)>;
@@ -147,10 +149,10 @@ class Module : public std::enable_shared_from_this<Module> {
   virtual void pretty_print(std::ostream& stream) const;
 
   /// Registers a parameter with this `Module`.
-  Tensor& register_parameter(std::string name, Tensor tensor);
+  torch::Tensor& register_parameter(std::string name, torch::Tensor tensor);
 
   /// Registers a buffer with this `Module`.
-  Tensor& register_buffer(std::string name, Tensor tensor);
+  torch::Tensor& register_buffer(std::string name, torch::Tensor tensor);
 
   /// Registers a submodule with this `Module`.
   template <typename ModuleType>
@@ -182,7 +184,7 @@ class Module : public std::enable_shared_from_this<Module> {
   /// The registered parameters of this `Module`.
   /// Inorder to access parameters_ in ParameterDict and ParameterList
   // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
-  OrderedDict<std::string, Tensor> parameters_;
+  torch::OrderedDict<std::string, torch::Tensor> parameters_;
 
  private:
   /// Pretty prints the given `Module` into the `ostream`.
@@ -209,10 +211,10 @@ class Module : public std::enable_shared_from_this<Module> {
   std::shared_ptr<Module> shared_from_this_checked() const;
 
   /// The registered buffers of this `Module`.
-  OrderedDict<std::string, Tensor> buffers_;
+  torch::OrderedDict<std::string, torch::Tensor> buffers_;
 
   /// The registered (direct) submodules of this `Module`.
-  OrderedDict<std::string, std::shared_ptr<Module>> children_;
+  torch::OrderedDict<std::string, std::shared_ptr<Module>> children_;
 
   /// The module's name (e.g. "LSTM").
   mutable std::optional<std::string> name_;
