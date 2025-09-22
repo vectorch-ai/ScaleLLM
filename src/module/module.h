@@ -11,7 +11,7 @@
 
 #include "module_holder.h"
 
-namespace llm::nn {
+namespace llm {
 
 /// The base class for all modules.
 ///
@@ -188,8 +188,7 @@ class Module : public std::enable_shared_from_this<Module> {
 
  private:
   /// Pretty prints the given `Module` into the `ostream`.
-  friend std::ostream& operator<<(std::ostream& stream,
-                                  const nn::Module& module);
+  friend std::ostream& operator<<(std::ostream& stream, const Module& module);
 
   // Private methods.
 
@@ -220,19 +219,19 @@ class Module : public std::enable_shared_from_this<Module> {
   mutable std::optional<std::string> name_;
 };
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ nn::Module ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Module ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 template <typename ModuleType>
 typename ModuleType::ContainedType* Module::as() noexcept {
   // Use the contained type of the `ModuleHolder`, e.g. `LinearImpl` for
-  // `Linear`, since `LinearImpl` inherits `nn::Module`.
+  // `Linear`, since `LinearImpl` inherits `Module`.
   return as<typename ModuleType::ContainedType>();
 }
 
 template <typename ModuleType>
 const typename ModuleType::ContainedType* Module::as() const noexcept {
   // Use the contained type of the `ModuleHolder`, e.g. `LinearImpl` for
-  // `Linear`, since `LinearImpl` inherits `nn::Module`.
+  // `Linear`, since `LinearImpl` inherits `Module`.
   return as<typename ModuleType::ContainedType>();
 }
 
@@ -297,4 +296,4 @@ void Module::to_impl(Ts&&... ts) {
   }
 }
 
-}  // namespace llm::nn
+}  // namespace llm

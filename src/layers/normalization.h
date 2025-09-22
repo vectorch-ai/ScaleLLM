@@ -65,7 +65,7 @@ inline torch::Tensor layer_norm(torch::Tensor input,
 // apply layer normalization over a mini-batch of inputs as described in
 // the paper `Layer Normalization`: https://arxiv.org/abs/1607.06450
 // x = ((x - mean(x)) / sqrt(std(x) + eps)) * weight + bias
-class LayerNormImpl : public llm::nn::Module {
+class LayerNormImpl : public Module {
  public:
   // dim: the dim over which the mean and std are calculated separately.
   // eps: a value added to the denominator for numerical stability.
@@ -143,7 +143,7 @@ class LayerNormImpl : public llm::nn::Module {
 LLM_MODULE(LayerNorm);
 
 // Root mean square normalization
-class RMSNormImpl : public llm::nn::Module {
+class RMSNormImpl : public Module {
  public:
   RMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
@@ -191,7 +191,7 @@ class RMSNormImpl : public llm::nn::Module {
 };
 LLM_MODULE(RMSNorm);
 
-class GemmaRMSNormImpl : public llm::nn::Module {
+class GemmaRMSNormImpl : public Module {
  public:
   GemmaRMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
@@ -240,7 +240,7 @@ class GemmaRMSNormImpl : public llm::nn::Module {
 LLM_MODULE(GemmaRMSNorm);
 
 // Root mean square normalization
-class RMSNormResidualImpl : public llm::nn::Module {
+class RMSNormResidualImpl : public Module {
  public:
   RMSNormResidualImpl(int64_t dim,
                       float eps,

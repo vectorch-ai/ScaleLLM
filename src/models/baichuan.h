@@ -31,7 +31,7 @@ enum class BaichuanType : uint8_t {
   Baichuan2_13B,
 };
 
-class BaichuanMLPImpl : public llm::nn::Module {
+class BaichuanMLPImpl : public Module {
  public:
   BaichuanMLPImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -92,7 +92,7 @@ class BaichuanMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(BaichuanMLP);
 
-class BaichuanAttentionImpl : public llm::nn::Module {
+class BaichuanAttentionImpl : public Module {
  public:
   BaichuanAttentionImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -179,7 +179,7 @@ class BaichuanAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(BaichuanAttention);
 
-class BaichuanDecoderLayerImpl : public llm::nn::Module {
+class BaichuanDecoderLayerImpl : public Module {
  public:
   BaichuanDecoderLayerImpl(const ModelArgs& args,
                            const QuantArgs& quant_args,
@@ -247,7 +247,7 @@ class BaichuanDecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(BaichuanDecoderLayer);
 
-class BaichuanModelImpl : public llm::nn::Module {
+class BaichuanModelImpl : public Module {
  public:
   BaichuanModelImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -271,7 +271,7 @@ class BaichuanModelImpl : public llm::nn::Module {
           args, alibi_slopes, options);
     }
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = BaichuanDecoderLayer(args,
@@ -366,7 +366,7 @@ class BaichuanModelImpl : public llm::nn::Module {
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   // parameter members, must be registered
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<BaichuanDecoderLayer> layers_;
 
@@ -375,7 +375,7 @@ class BaichuanModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(BaichuanModel);
 
-class BaichuanForCausalLMImpl : public llm::nn::Module {
+class BaichuanForCausalLMImpl : public Module {
  public:
   BaichuanForCausalLMImpl(const ModelArgs& args,
                           const QuantArgs& quant_args,

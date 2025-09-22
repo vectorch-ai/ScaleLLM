@@ -24,7 +24,7 @@
 // Gemma model compatible with huggingface weight
 namespace llm::hf {
 
-class GemmaMLPImpl : public llm::nn::Module {
+class GemmaMLPImpl : public Module {
  public:
   GemmaMLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -85,7 +85,7 @@ class GemmaMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(GemmaMLP);
 
-class GemmaAttentionImpl : public llm::nn::Module {
+class GemmaAttentionImpl : public Module {
  public:
   GemmaAttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -165,7 +165,7 @@ class GemmaAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(GemmaAttention);
 
-class GemmaDecoderLayerImpl : public llm::nn::Module {
+class GemmaDecoderLayerImpl : public Module {
  public:
   GemmaDecoderLayerImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -234,7 +234,7 @@ class GemmaDecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(GemmaDecoderLayer);
 
-class GemmaModelImpl : public llm::nn::Module {
+class GemmaModelImpl : public Module {
  public:
   GemmaModelImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -261,7 +261,7 @@ class GemmaModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = GemmaDecoderLayer(
@@ -320,13 +320,13 @@ class GemmaModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GemmaDecoderLayer> layers_;
 };
 LLM_MODULE(GemmaModel);
 
-class GemmaForCausalLMImpl : public llm::nn::Module {
+class GemmaForCausalLMImpl : public Module {
  public:
   GemmaForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,

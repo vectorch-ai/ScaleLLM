@@ -16,7 +16,7 @@ using TensorTransform = std::function<torch::Tensor(const torch::Tensor&)>;
 // an interface for parallel linear layer.
 // all linear classes should inherit from this class and implement the forward
 // function.
-class ParallelLinearImpl : public llm::nn::Module {
+class ParallelLinearImpl : public Module {
  public:
   ~ParallelLinearImpl() override = default;
 
@@ -39,9 +39,9 @@ class ParallelLinearImpl : public llm::nn::Module {
   }
 };
 
-class ColumnParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
+class ColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
  public:
-  using llm::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
+  using ModuleHolder<ParallelLinearImpl>::ModuleHolder;
   using Impl [[maybe_unused]] = ParallelLinearImpl;
 
   // construct a rotary positional embedding.
@@ -62,9 +62,9 @@ class ColumnParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
                        const torch::TensorOptions& options);
 };
 
-class RowParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
+class RowParallelLinear : public ModuleHolder<ParallelLinearImpl> {
  public:
-  using llm::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
+  using ModuleHolder<ParallelLinearImpl>::ModuleHolder;
   using Impl [[maybe_unused]] = ParallelLinearImpl;
 
   // construct a rotary positional embedding.

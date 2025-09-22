@@ -10,9 +10,9 @@
 #include "module.h"
 #include "module_holder.h"
 
-namespace llm::nn {
+namespace llm {
 /// A list of `Module`s that registers its elements.
-class ModuleListImpl : public llm::nn::Module {
+class ModuleListImpl : public Module {
  public:
   using Iterator = std::vector<std::shared_ptr<Module>>::iterator;
   using ConstIterator = std::vector<std::shared_ptr<Module>>::const_iterator;
@@ -28,7 +28,7 @@ class ModuleListImpl : public llm::nn::Module {
 
   /// Pretty prints the `ModuleList` module into the given `stream`.
   void pretty_print(std::ostream& stream) const override {
-    stream << "llm::nn::ModuleList";
+    stream << "ModuleList";
   }
 
   void push_back(std::shared_ptr<Module> module) {
@@ -195,4 +195,4 @@ class ModuleListImpl : public llm::nn::Module {
 /// module storage semantics.
 LLM_MODULE(ModuleList);
 
-}  // namespace llm::nn
+}  // namespace llm

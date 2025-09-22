@@ -20,7 +20,7 @@
 // Internlm model compatible with huggingface weights
 namespace llm::hf {
 
-class InternlmMLPImpl : public llm::nn::Module {
+class InternlmMLPImpl : public Module {
  public:
   InternlmMLPImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -81,7 +81,7 @@ class InternlmMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(InternlmMLP);
 
-class InternlmAttentionImpl : public llm::nn::Module {
+class InternlmAttentionImpl : public Module {
  public:
   InternlmAttentionImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -155,7 +155,7 @@ class InternlmAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(InternlmAttention);
 
-class InternlmDecoderLayerImpl : public llm::nn::Module {
+class InternlmDecoderLayerImpl : public Module {
  public:
   InternlmDecoderLayerImpl(const ModelArgs& args,
                            const QuantArgs& quant_args,
@@ -215,7 +215,7 @@ class InternlmDecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(InternlmDecoderLayer);
 
-class InternlmModelImpl : public llm::nn::Module {
+class InternlmModelImpl : public Module {
  public:
   InternlmModelImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -230,7 +230,7 @@ class InternlmModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = InternlmDecoderLayer(
@@ -285,7 +285,7 @@ class InternlmModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<InternlmDecoderLayer> layers_;
 
@@ -293,7 +293,7 @@ class InternlmModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(InternlmModel);
 
-class InternlmForCausalLMImpl : public llm::nn::Module {
+class InternlmForCausalLMImpl : public Module {
  public:
   InternlmForCausalLMImpl(const ModelArgs& args,
                           const QuantArgs& quant_args,

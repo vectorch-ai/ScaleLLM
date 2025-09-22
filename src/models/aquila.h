@@ -21,7 +21,7 @@
 // Aquila model compatible with huggingface weights
 namespace llm::hf {
 
-class AquilaMLPImpl : public llm::nn::Module {
+class AquilaMLPImpl : public Module {
  public:
   AquilaMLPImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -82,7 +82,7 @@ class AquilaMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(AquilaMLP);
 
-class AquilaAttentionImpl : public llm::nn::Module {
+class AquilaAttentionImpl : public Module {
  public:
   AquilaAttentionImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
@@ -169,7 +169,7 @@ class AquilaAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(AquilaAttention);
 
-class AquilaDecoderLayerImpl : public llm::nn::Module {
+class AquilaDecoderLayerImpl : public Module {
  public:
   AquilaDecoderLayerImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
@@ -229,7 +229,7 @@ class AquilaDecoderLayerImpl : public llm::nn::Module {
 };
 LLM_MODULE(AquilaDecoderLayer);
 
-class AquilaModelImpl : public llm::nn::Module {
+class AquilaModelImpl : public Module {
  public:
   AquilaModelImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -244,7 +244,7 @@ class AquilaModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = AquilaDecoderLayer(
@@ -298,7 +298,7 @@ class AquilaModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<AquilaDecoderLayer> layers_;
 
@@ -306,7 +306,7 @@ class AquilaModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(AquilaModel);
 
-class AquilaForCausalLMImpl : public llm::nn::Module {
+class AquilaForCausalLMImpl : public Module {
  public:
   AquilaForCausalLMImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,

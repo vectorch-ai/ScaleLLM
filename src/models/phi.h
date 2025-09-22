@@ -19,7 +19,7 @@
 
 namespace llm::hf {
 
-class PhiMLPImpl : public llm::nn::Module {
+class PhiMLPImpl : public Module {
  public:
   PhiMLPImpl(const ModelArgs& args,
              const QuantArgs& quant_args,
@@ -73,7 +73,7 @@ class PhiMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(PhiMLP);
 
-class PhiAttentionImpl : public llm::nn::Module {
+class PhiAttentionImpl : public Module {
  public:
   PhiAttentionImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -160,7 +160,7 @@ class PhiAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(PhiAttention);
 
-class PhiBlockImpl : public llm::nn::Module {
+class PhiBlockImpl : public Module {
  public:
   PhiBlockImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -215,7 +215,7 @@ class PhiBlockImpl : public llm::nn::Module {
 };
 LLM_MODULE(PhiBlock);
 
-class PhiModelImpl : public llm::nn::Module {
+class PhiModelImpl : public Module {
  public:
   PhiModelImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -230,7 +230,7 @@ class PhiModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("h", llm::nn::ModuleList());
+    blocks_ = register_module("h", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -281,13 +281,13 @@ class PhiModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<PhiBlock> layers_;
 };
 LLM_MODULE(PhiModel);
 
-class PhiLMHeadImpl : public llm::nn::Module {
+class PhiLMHeadImpl : public Module {
  public:
   PhiLMHeadImpl(const ModelArgs& args,
                 const ParallelArgs& parallel_args,
@@ -329,7 +329,7 @@ class PhiLMHeadImpl : public llm::nn::Module {
 };
 LLM_MODULE(PhiLMHead);
 
-class PhiForCausalLMImpl : public llm::nn::Module {
+class PhiForCausalLMImpl : public Module {
  public:
   PhiForCausalLMImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,

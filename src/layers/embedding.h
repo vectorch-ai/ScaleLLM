@@ -16,7 +16,7 @@ namespace llm {
 // This module is often used to store word embeddings and retrieve them using
 // indices.
 
-class EmbeddingImpl : public llm::nn::Module {
+class EmbeddingImpl : public Module {
  public:
   EmbeddingImpl(int64_t num_embeddings,
                 int64_t embedding_dim,
@@ -66,7 +66,7 @@ class EmbeddingImpl : public llm::nn::Module {
 LLM_MODULE(Embedding);
 
 // Embedding parallelized in the embedding dimension.
-class ParallelEmbeddingImpl : public llm::nn::Module {
+class ParallelEmbeddingImpl : public Module {
  public:
   ParallelEmbeddingImpl(int64_t num_embeddings,
                         int64_t embedding_dim,
@@ -136,7 +136,7 @@ class ParallelEmbeddingImpl : public llm::nn::Module {
 LLM_MODULE(ParallelEmbedding);
 
 // Embedding parallelized in the vocabulary dimension
-class VocabParallelEmbeddingImpl : public llm::nn::Module {
+class VocabParallelEmbeddingImpl : public Module {
  public:
   VocabParallelEmbeddingImpl(int64_t num_embeddings,
                              int64_t embedding_dim,

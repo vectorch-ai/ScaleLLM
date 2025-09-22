@@ -12,7 +12,7 @@
 
 namespace llm {
 
-class FusedColumnParallelLinearImpl : public llm::nn::Module {
+class FusedColumnParallelLinearImpl : public Module {
  public:
   FusedColumnParallelLinearImpl(int64_t in_features,
                                 const std::vector<int64_t>& out_features,

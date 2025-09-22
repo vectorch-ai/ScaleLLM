@@ -23,7 +23,7 @@
 // adopted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
 namespace llm::hf {
 
-class QWenMLPImpl : public llm::nn::Module {
+class QWenMLPImpl : public Module {
  public:
   QWenMLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
@@ -83,7 +83,7 @@ class QWenMLPImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWenMLP);
 
-class QWenAttentionImpl : public llm::nn::Module {
+class QWenAttentionImpl : public Module {
  public:
   QWenAttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -156,7 +156,7 @@ class QWenAttentionImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWenAttention);
 
-class QWenBlockImpl : public llm::nn::Module {
+class QWenBlockImpl : public Module {
  public:
   QWenBlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -211,7 +211,7 @@ class QWenBlockImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWenBlock);
 
-class QWenModelImpl : public llm::nn::Module {
+class QWenModelImpl : public Module {
  public:
   QWenModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -226,7 +226,7 @@ class QWenModelImpl : public llm::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", llm::nn::ModuleList());
+    blocks_ = register_module("layers", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -281,7 +281,7 @@ class QWenModelImpl : public llm::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  llm::nn::ModuleList blocks_{nullptr};
+  ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<QWenBlock> layers_;
 
@@ -289,7 +289,7 @@ class QWenModelImpl : public llm::nn::Module {
 };
 LLM_MODULE(QWenModel);
 
-class QWenForCausalLMImpl : public llm::nn::Module {
+class QWenForCausalLMImpl : public Module {
  public:
   QWenForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,

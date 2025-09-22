@@ -86,10 +86,8 @@ using return_type_of_forward_t =
 
 }  // namespace detail
 
-namespace nn {
-
 /// A `ModuleHolder` is essentially a wrapper around `std::shared_ptr<M>` where
-/// `M` is an `nn::Module` subclass, with convenient constructors defined for
+/// `M` is an `Module` subclass, with convenient constructors defined for
 /// the kind of constructions we want to allow for our modules.
 template <typename Contained>
 class ModuleHolder : detail::ModuleHolderIndicator {
@@ -202,22 +200,21 @@ class ModuleHolder : detail::ModuleHolderIndicator {
 /// Pretty prints the given `Module` into the `ostream`.
 template <typename ModuleType>
 std::ostream& operator<<(std::ostream& stream,
-                         const nn::ModuleHolder<ModuleType>& module) {
+                         const ModuleHolder<ModuleType>& module) {
   return stream << *module;
 }
 
-}  // namespace nn
 }  // namespace llm
 
-/// Defines a class `Name` which inherits from `nn::ModuleHolder` to provide a
+/// Defines a class `Name` which inherits from `ModuleHolder` to provide a
 /// wrapper over a `std::shared_ptr<ImplType>`.
 /// `Impl` is a type alias for `ImplType` which provides a way to call static
 /// method of `ImplType`.
-#define LLM_MODULE_IMPL(Name, ImplType)                              \
-  class Name : public llm::nn::ModuleHolder<ImplType> { /* NOLINT */ \
-   public:                                                           \
-    using llm::nn::ModuleHolder<ImplType>::ModuleHolder;             \
-    using Impl [[maybe_unused]] = ImplType;                          \
+#define LLM_MODULE_IMPL(Name, ImplType)                     \
+  class Name : public ModuleHolder<ImplType> { /* NOLINT */ \
+   public:                                                  \
+    using ModuleHolder<ImplType>::ModuleHolder;             \
+    using Impl [[maybe_unused]] = ImplType;                 \
   }
 
 /// Like `LLM_MODULE_IMPL`, but defaults the `ImplType` name to `<Name>Impl`.

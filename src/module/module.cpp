@@ -2,7 +2,7 @@
 
 #include <typeinfo>
 
-namespace llm::nn {
+namespace llm {
 using namespace torch;
 
 namespace {
@@ -272,8 +272,8 @@ std::shared_ptr<Module> Module::shared_from_this_checked() const {
   return std::const_pointer_cast<Module>(ptr);
 }
 
-std::ostream& operator<<(std::ostream& stream, const nn::Module& module) {
+std::ostream& operator<<(std::ostream& stream, const Module& module) {
   module.pretty_print_recursive(stream, "");
   return stream;
 }
-}  // namespace llm::nn
+}  // namespace llm
