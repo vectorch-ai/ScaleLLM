@@ -10,19 +10,19 @@
 #include <type_traits>
 #include <utility>
 
-namespace torch {
-namespace detail {
-// Dump all the template metaprogramming in this file.
-#include <torch/csrc/api/include/torch/nn/pimpl-inl.h>
-}  // namespace detail
+// namespace detail {
+// // Dump all the template metaprogramming in this file.
+// // #include <torch/csrc/api/include/torch/nn/pimpl-inl.h>
+// }  // namespace detail
 
-namespace nn {
+namespace llm::nn {
+using namespace torch;
 
 /// A `ModuleHolder` is essentially a wrapper around `std::shared_ptr<M>` where
 /// `M` is an `nn::Module` subclass, with convenient constructors defined for
 /// the kind of constructions we want to allow for our modules.
 template <typename Contained>
-class ModuleHolder : torch::detail::ModuleHolderIndicator {
+class ModuleHolder {
  protected:
   /// The module pointer this class wraps.
   /// NOTE: Must be placed at the top of the class so that we can use it with
@@ -54,15 +54,15 @@ class ModuleHolder : torch::detail::ModuleHolderIndicator {
 
   /// Constructs the `ModuleHolder` with a contained module, forwarding all
   /// arguments to its constructor.
-  template <
-      typename Head,
-      typename... Tail,
-      typename = std::enable_if_t<
-          !(torch::detail::is_module_holder_of<Head, ContainedType>::value &&
-            (sizeof...(Tail) == 0))>>
-  explicit ModuleHolder(Head&& head, Tail&&... tail)
-      : impl_(new Contained(std::forward<Head>(head),
-                            std::forward<Tail>(tail)...)) {}
+  // template <
+  //     typename Head,
+  //     typename... Tail,
+  //     typename = std::enable_if_t<
+  //         !(torch::detail::is_module_holder_of<Head, ContainedType>::value &&
+  //           (sizeof...(Tail) == 0))>>
+  // explicit ModuleHolder(Head&& head, Tail&&... tail)
+  //     : impl_(new Contained(std::forward<Head>(head),
+  //                           std::forward<Tail>(tail)...)) {}
 
   /// Constructs the `ModuleHolder` from a pointer to the contained type.
   /// Example: `Linear(std::make_shared<LinearImpl>(...))`.
@@ -104,15 +104,15 @@ class ModuleHolder : torch::detail::ModuleHolderIndicator {
   }
 
   /// Calls the `forward()` method of the contained module.
-  template <typename... Args>
-  auto operator()(Args&&... args)
-      -> torch::detail::return_type_of_forward_t<Contained, Args...> {
-    // This will not compile if the module does not have a `forward()` method
-    // (as expected).
-    // NOTE: `std::forward` is qualified to prevent VS2017 emitting
-    // error C2872: 'std': ambiguous symbol
-    return impl_->forward(::std::forward<Args>(args)...);
-  }
+  // template <typename... Args>
+  // auto operator()(Args&&... args)
+  //     -> torch::detail::return_type_of_forward_t<Contained, Args...> {
+  //   // This will not compile if the module does not have a `forward()` method
+  //   // (as expected).
+  //   // NOTE: `std::forward` is qualified to prevent VS2017 emitting
+  //   // error C2872: 'std': ambiguous symbol
+  //   return impl_->forward(::std::forward<Args>(args)...);
+  // }
 
   /// Forwards to the subscript operator of the contained module.
   /// NOTE: std::forward is qualified to prevent VS2017 emitting
@@ -158,27 +158,26 @@ serialize::InputArchive& operator>>(serialize::InputArchive& archive,
   return archive >> module.ptr();
 }
 
-}  // namespace nn
-}  // namespace torch
+}  // namespace llm::nn
 
 // Workaround for CUDA 10.2 and below not allowing attribute unused on
 // using declarations.
 #ifdef __CUDACC__
-#define TORCH_UNUSED_EXCEPT_CUDA
+#define UNUSED_EXCEPT_CUDA
 #else
-#define TORCH_UNUSED_EXCEPT_CUDA [[maybe_unused]]
+#define UNUSED_EXCEPT_CUDA [[maybe_unused]]
 #endif
 
 /// Defines a class `Name` which inherits from `nn::ModuleHolder` to provide a
 /// wrapper over a `std::shared_ptr<ImplType>`.
 /// `Impl` is a type alias for `ImplType` which provides a way to call static
 /// method of `ImplType`.
-#define TORCH_MODULE_IMPL(Name, ImplType)                              \
-  class Name : public torch::nn::ModuleHolder<ImplType> { /* NOLINT */ \
-   public:                                                             \
-    using torch::nn::ModuleHolder<ImplType>::ModuleHolder;             \
-    using Impl TORCH_UNUSED_EXCEPT_CUDA = ImplType;                    \
+#define LLM_MODULE_IMPL(Name, ImplType)                              \
+  class Name : public llm::nn::ModuleHolder<ImplType> { /* NOLINT */ \
+   public:                                                           \
+    using llm::nn::ModuleHolder<ImplType>::ModuleHolder;             \
+    using Impl TORCH_UNUSED_EXCEPT_CUDA = ImplType;                  \
   }
 
 /// Like `TORCH_MODULE_IMPL`, but defaults the `ImplType` name to `<Name>Impl`.
-#define TORCH_MODULE(Name) TORCH_MODULE_IMPL(Name, Name##Impl)
+#define LLM_MODULE(Name) LLM_MODULE_IMPL(Name, Name##Impl)

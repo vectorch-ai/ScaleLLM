@@ -1,13 +1,14 @@
+#include "module.h"
+
 #include <c10/util/Exception.h>
 #include <torch/csrc/autograd/generated/VariableType.h>
-#include <torch/nn/module.h>
 #include <torch/ordered_dict.h>
 
 #include <ostream>
 #include <string>
 #include <typeinfo>
 
-namespace torch::nn {
+namespace llm::nn {
 namespace {
 /// Joins names hierarchically: "name_prefix.name" if `name_prefix` is
 /// non-empty, else just "name".
@@ -393,4 +394,4 @@ serialize::InputArchive& operator>>(serialize::InputArchive& archive,
   module->load(archive);
   return archive;
 }
-}  // namespace torch::nn
+}  // namespace llm::nn

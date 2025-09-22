@@ -7,7 +7,11 @@
 #include <utility>
 #include <vector>
 
-namespace torch::nn {
+#include "cloneable.h"
+#include "module.h"
+#include "module_holder.h"
+
+namespace llm::nn {
 
 /// A list of `Module`s that registers its elements.
 ///
@@ -249,6 +253,6 @@ class ModuleListImpl : public Cloneable<ModuleListImpl> {
 /// See the documentation for `ModuleListImpl` class to learn what methods it
 /// provides, or the documentation for `ModuleHolder` to learn about PyTorch's
 /// module storage semantics.
-TORCH_MODULE(ModuleList);
+LLM_MODULE(ModuleList);
 
-}  // namespace torch::nn
+}  // namespace llm::nn

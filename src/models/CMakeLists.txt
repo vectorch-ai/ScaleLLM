@@ -2,7 +2,7 @@ include(cc_library)
 include(cc_test)
 
 cc_library(
-  NAME 
+  NAME
     models
   HDRS
     model_args.h
@@ -18,7 +18,9 @@ cc_library(
     :quantization
     :memory
     :chat_template
+    :module
     glog::glog
     torch
 )
 
+add_subdirectory(module)

@@ -15,7 +15,10 @@
 #include <string>
 #include <type_traits>
 
-namespace torch::nn {
+#include "module_holder.h"
+
+namespace llm::nn {
+using namespace torch;
 
 /// The base class for all modules in PyTorch.
 ///
@@ -528,15 +531,15 @@ class Module : public std::enable_shared_from_this<Module> {
         "`FORWARD_HAS_DEFAULT_ARGS` macro to do so.");
   }
 
-  virtual std::vector<AnyValue> _forward_populate_default_args(
-      std::vector<AnyValue>&& arguments) {
-    TORCH_CHECK(
-        false,
-        "torch::nn::Module subclass that has default arguments in `forward` "
-        "method ",
-        "must override `_forward_populate_default_args` method. Please use ",
-        "`FORWARD_HAS_DEFAULT_ARGS` macro to do so.");
-  }
+  // virtual std::vector<AnyValue> _forward_populate_default_args(
+  //     std::vector<AnyValue>&& arguments) {
+  //   TORCH_CHECK(
+  //       false,
+  //       "torch::nn::Module subclass that has default arguments in `forward` "
+  //       "method ",
+  //       "must override `_forward_populate_default_args` method. Please use ",
+  //       "`FORWARD_HAS_DEFAULT_ARGS` macro to do so.");
+  // }
 
   /// The registered parameters of this `Module`.
   /// Inorder to access parameters_ in ParameterDict and ParameterList
@@ -686,4 +689,4 @@ void Module::to_impl(Ts&&... ts) {
   }
 }
 
-}  // namespace torch::nn
+}  // namespace llm::nn
