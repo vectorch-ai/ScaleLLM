@@ -12,12 +12,14 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 // Phi model compatible with huggingface weights
 
 namespace llm::hf {
 
-class PhiMLPImpl : public torch::nn::Module {
+class PhiMLPImpl : public llm::nn::Module {
  public:
   PhiMLPImpl(const ModelArgs& args,
              const QuantArgs& quant_args,
@@ -69,9 +71,9 @@ class PhiMLPImpl : public torch::nn::Module {
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(PhiMLP);
+LLM_MODULE(PhiMLP);
 
-class PhiAttentionImpl : public torch::nn::Module {
+class PhiAttentionImpl : public llm::nn::Module {
  public:
   PhiAttentionImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -156,9 +158,9 @@ class PhiAttentionImpl : public torch::nn::Module {
   // size for q, k, v
   std::vector<int64_t> qkv_sizes_;
 };
-TORCH_MODULE(PhiAttention);
+LLM_MODULE(PhiAttention);
 
-class PhiBlockImpl : public torch::nn::Module {
+class PhiBlockImpl : public llm::nn::Module {
  public:
   PhiBlockImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -211,9 +213,9 @@ class PhiBlockImpl : public torch::nn::Module {
 
   LayerNorm ln_{nullptr};
 };
-TORCH_MODULE(PhiBlock);
+LLM_MODULE(PhiBlock);
 
-class PhiModelImpl : public torch::nn::Module {
+class PhiModelImpl : public llm::nn::Module {
  public:
   PhiModelImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -228,7 +230,7 @@ class PhiModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("h", torch::nn::ModuleList());
+    blocks_ = register_module("h", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -279,13 +281,13 @@ class PhiModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<PhiBlock> layers_;
 };
-TORCH_MODULE(PhiModel);
+LLM_MODULE(PhiModel);
 
-class PhiLMHeadImpl : public torch::nn::Module {
+class PhiLMHeadImpl : public llm::nn::Module {
  public:
   PhiLMHeadImpl(const ModelArgs& args,
                 const ParallelArgs& parallel_args,
@@ -325,9 +327,9 @@ class PhiLMHeadImpl : public torch::nn::Module {
 
   ColumnParallelLinear linear_{nullptr};
 };
-TORCH_MODULE(PhiLMHead);
+LLM_MODULE(PhiLMHead);
 
-class PhiForCausalLMImpl : public torch::nn::Module {
+class PhiForCausalLMImpl : public llm::nn::Module {
  public:
   PhiForCausalLMImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -381,7 +383,7 @@ class PhiForCausalLMImpl : public torch::nn::Module {
 
   PhiLMHead lm_head_{nullptr};
 };
-TORCH_MODULE(PhiForCausalLM);
+LLM_MODULE(PhiForCausalLM);
 
 // clang-format off
 // register the model to make it available

@@ -12,12 +12,14 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 // GPTJ model compatible with huggingface weights
 
 namespace llm::hf {
 
-class GPTJMLPImpl : public torch::nn::Module {
+class GPTJMLPImpl : public llm::nn::Module {
  public:
   GPTJMLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
@@ -69,9 +71,9 @@ class GPTJMLPImpl : public torch::nn::Module {
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(GPTJMLP);
+LLM_MODULE(GPTJMLP);
 
-class GPTJAttentionImpl : public torch::nn::Module {
+class GPTJAttentionImpl : public llm::nn::Module {
  public:
   GPTJAttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -141,9 +143,9 @@ class GPTJAttentionImpl : public torch::nn::Module {
   // module members without parameters
   Attention atten_{nullptr};
 };
-TORCH_MODULE(GPTJAttention);
+LLM_MODULE(GPTJAttention);
 
-class GPTJBlockImpl : public torch::nn::Module {
+class GPTJBlockImpl : public llm::nn::Module {
  public:
   GPTJBlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -196,9 +198,9 @@ class GPTJBlockImpl : public torch::nn::Module {
 
   LayerNorm ln_1_{nullptr};
 };
-TORCH_MODULE(GPTJBlock);
+LLM_MODULE(GPTJBlock);
 
-class GPTJModelImpl : public torch::nn::Module {
+class GPTJModelImpl : public llm::nn::Module {
  public:
   GPTJModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -213,7 +215,7 @@ class GPTJModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/true, options);
 
-    blocks_ = register_module("h", torch::nn::ModuleList());
+    blocks_ = register_module("h", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -271,15 +273,15 @@ class GPTJModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GPTJBlock> layers_;
 
   LayerNorm ln_f_{nullptr};
 };
-TORCH_MODULE(GPTJModel);
+LLM_MODULE(GPTJModel);
 
-class GPTJForCausalLMImpl : public torch::nn::Module {
+class GPTJForCausalLMImpl : public llm::nn::Module {
  public:
   GPTJForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
@@ -338,7 +340,7 @@ class GPTJForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(GPTJForCausalLM);
+LLM_MODULE(GPTJForCausalLM);
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gptj, GPTJForCausalLM);

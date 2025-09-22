@@ -17,11 +17,14 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 
 // Gemma model compatible with huggingface weight
 namespace llm::hf {
 
-class GemmaMLPImpl : public torch::nn::Module {
+class GemmaMLPImpl : public llm::nn::Module {
  public:
   GemmaMLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -80,9 +83,9 @@ class GemmaMLPImpl : public torch::nn::Module {
   // activation function
   ActFunc act_func_{nullptr};
 };
-TORCH_MODULE(GemmaMLP);
+LLM_MODULE(GemmaMLP);
 
-class GemmaAttentionImpl : public torch::nn::Module {
+class GemmaAttentionImpl : public llm::nn::Module {
  public:
   GemmaAttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -160,9 +163,9 @@ class GemmaAttentionImpl : public torch::nn::Module {
   // module members without parameters
   Attention atten_{nullptr};
 };
-TORCH_MODULE(GemmaAttention);
+LLM_MODULE(GemmaAttention);
 
-class GemmaDecoderLayerImpl : public torch::nn::Module {
+class GemmaDecoderLayerImpl : public llm::nn::Module {
  public:
   GemmaDecoderLayerImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -229,9 +232,9 @@ class GemmaDecoderLayerImpl : public torch::nn::Module {
 
   GemmaRMSNorm post_attention_layernorm_{nullptr};
 };
-TORCH_MODULE(GemmaDecoderLayer);
+LLM_MODULE(GemmaDecoderLayer);
 
-class GemmaModelImpl : public torch::nn::Module {
+class GemmaModelImpl : public llm::nn::Module {
  public:
   GemmaModelImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -258,7 +261,7 @@ class GemmaModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = GemmaDecoderLayer(
@@ -317,13 +320,13 @@ class GemmaModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GemmaDecoderLayer> layers_;
 };
-TORCH_MODULE(GemmaModel);
+LLM_MODULE(GemmaModel);
 
-class GemmaForCausalLMImpl : public torch::nn::Module {
+class GemmaForCausalLMImpl : public llm::nn::Module {
  public:
   GemmaForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
@@ -386,7 +389,7 @@ class GemmaForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(GemmaForCausalLM);
+LLM_MODULE(GemmaForCausalLM);
 
 class GemmaChatTemplate final : public CodedChatTemplate {
  public:

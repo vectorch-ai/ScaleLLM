@@ -14,13 +14,16 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 #include "tokenizer/tokenizer_args.h"
 
 // ChatGLM model compatible with huggingface weights
 
 namespace llm::hf {
 
-class ChatGLMMLPImpl : public torch::nn::Module {
+class ChatGLMMLPImpl : public llm::nn::Module {
  public:
   ChatGLMMLPImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -77,9 +80,9 @@ class ChatGLMMLPImpl : public torch::nn::Module {
   // calculate act(x) * y
   ActFunc act_with_mul_{nullptr};
 };
-TORCH_MODULE(ChatGLMMLP);
+LLM_MODULE(ChatGLMMLP);
 
-class ChatGLMAttentionImpl : public torch::nn::Module {
+class ChatGLMAttentionImpl : public llm::nn::Module {
  public:
   ChatGLMAttentionImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
@@ -162,9 +165,9 @@ class ChatGLMAttentionImpl : public torch::nn::Module {
   // size for local q, k, v
   std::vector<int64_t> qkv_sizes_;
 };
-TORCH_MODULE(ChatGLMAttention);
+LLM_MODULE(ChatGLMAttention);
 
-class ChatGLMBlockImpl : public torch::nn::Module {
+class ChatGLMBlockImpl : public llm::nn::Module {
  public:
   ChatGLMBlockImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -273,9 +276,9 @@ class ChatGLMBlockImpl : public torch::nn::Module {
   bool residual_post_layernorm_ = false;
   bool use_rms_norm_ = false;
 };
-TORCH_MODULE(ChatGLMBlock);
+LLM_MODULE(ChatGLMBlock);
 
-class ChatGLMModelImpl : public torch::nn::Module {
+class ChatGLMModelImpl : public llm::nn::Module {
  public:
   ChatGLMModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -287,7 +290,7 @@ class ChatGLMModelImpl : public torch::nn::Module {
         args, /*interleaved=*/true, options);
 
     // register submodules
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = ChatGLMBlock(
@@ -367,7 +370,7 @@ class ChatGLMModelImpl : public torch::nn::Module {
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   // parameter members, must be registered
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<ChatGLMBlock> layers_;
 
@@ -378,9 +381,9 @@ class ChatGLMModelImpl : public torch::nn::Module {
   bool post_layernorm_ = false;
   bool use_rms_norm_ = false;
 };
-TORCH_MODULE(ChatGLMModel);
+LLM_MODULE(ChatGLMModel);
 
-class ChatGLMForCausalLMImpl : public torch::nn::Module {
+class ChatGLMForCausalLMImpl : public llm::nn::Module {
  public:
   ChatGLMForCausalLMImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
@@ -450,7 +453,7 @@ class ChatGLMForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear output_layer_{nullptr};
 };
-TORCH_MODULE(ChatGLMForCausalLM);
+LLM_MODULE(ChatGLMForCausalLM);
 
 class ChatGLMChatTemplate final : public CodedChatTemplate {
  public:

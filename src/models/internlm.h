@@ -14,11 +14,13 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 // Internlm model compatible with huggingface weights
 namespace llm::hf {
 
-class InternlmMLPImpl : public torch::nn::Module {
+class InternlmMLPImpl : public llm::nn::Module {
  public:
   InternlmMLPImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -77,9 +79,9 @@ class InternlmMLPImpl : public torch::nn::Module {
   // calculate act(x) * y
   ActFunc act_func_{nullptr};
 };
-TORCH_MODULE(InternlmMLP);
+LLM_MODULE(InternlmMLP);
 
-class InternlmAttentionImpl : public torch::nn::Module {
+class InternlmAttentionImpl : public llm::nn::Module {
  public:
   InternlmAttentionImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -151,9 +153,9 @@ class InternlmAttentionImpl : public torch::nn::Module {
   // module members without parameters
   Attention atten_{nullptr};
 };
-TORCH_MODULE(InternlmAttention);
+LLM_MODULE(InternlmAttention);
 
-class InternlmDecoderLayerImpl : public torch::nn::Module {
+class InternlmDecoderLayerImpl : public llm::nn::Module {
  public:
   InternlmDecoderLayerImpl(const ModelArgs& args,
                            const QuantArgs& quant_args,
@@ -211,9 +213,9 @@ class InternlmDecoderLayerImpl : public torch::nn::Module {
 
   RMSNorm post_attention_layernorm_{nullptr};
 };
-TORCH_MODULE(InternlmDecoderLayer);
+LLM_MODULE(InternlmDecoderLayer);
 
-class InternlmModelImpl : public torch::nn::Module {
+class InternlmModelImpl : public llm::nn::Module {
  public:
   InternlmModelImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -228,7 +230,7 @@ class InternlmModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = InternlmDecoderLayer(
@@ -283,15 +285,15 @@ class InternlmModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<InternlmDecoderLayer> layers_;
 
   RMSNorm norm_{nullptr};
 };
-TORCH_MODULE(InternlmModel);
+LLM_MODULE(InternlmModel);
 
-class InternlmForCausalLMImpl : public torch::nn::Module {
+class InternlmForCausalLMImpl : public llm::nn::Module {
  public:
   InternlmForCausalLMImpl(const ModelArgs& args,
                           const QuantArgs& quant_args,
@@ -350,7 +352,7 @@ class InternlmForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(InternlmForCausalLM);
+LLM_MODULE(InternlmForCausalLM);
 
 class InternlmDialog final : public CodedChatTemplate {
  public:

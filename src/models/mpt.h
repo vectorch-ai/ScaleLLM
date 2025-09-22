@@ -15,11 +15,13 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 // mpt model compatible with huggingface weights
 namespace llm::hf {
 
-class MPTMLPImpl : public torch::nn::Module {
+class MPTMLPImpl : public llm::nn::Module {
  public:
   MPTMLPImpl(const ModelArgs& args,
              const QuantArgs& quant_args,
@@ -74,9 +76,9 @@ class MPTMLPImpl : public torch::nn::Module {
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(MPTMLP);
+LLM_MODULE(MPTMLP);
 
-class MPTAttentionImpl : public torch::nn::Module {
+class MPTAttentionImpl : public llm::nn::Module {
  public:
   MPTAttentionImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -230,9 +232,9 @@ class MPTAttentionImpl : public torch::nn::Module {
   int64_t hidden_size_ = 0;
   int64_t head_dim_ = 0;
 };
-TORCH_MODULE(MPTAttention);
+LLM_MODULE(MPTAttention);
 
-class MPTBlockImpl : public torch::nn::Module {
+class MPTBlockImpl : public llm::nn::Module {
  public:
   MPTBlockImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -290,9 +292,9 @@ class MPTBlockImpl : public torch::nn::Module {
 
   LayerNorm norm_2_{nullptr};
 };
-TORCH_MODULE(MPTBlock);
+LLM_MODULE(MPTBlock);
 
-class MPTModelImpl : public torch::nn::Module {
+class MPTModelImpl : public llm::nn::Module {
  public:
   MPTModelImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -310,7 +312,7 @@ class MPTModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_alibi(
         args, alibi_slopes, options);
 
-    blocks_ = register_module("blocks", torch::nn::ModuleList());
+    blocks_ = register_module("blocks", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -388,15 +390,15 @@ class MPTModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<MPTBlock> layers_;
 
   LayerNorm norm_f_{nullptr};
 };
-TORCH_MODULE(MPTModel);
+LLM_MODULE(MPTModel);
 
-class MPTForCausalLMImpl : public torch::nn::Module {
+class MPTForCausalLMImpl : public llm::nn::Module {
  public:
   MPTForCausalLMImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -456,7 +458,7 @@ class MPTForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(MPTForCausalLM);
+LLM_MODULE(MPTForCausalLM);
 
 class MPTChatTemplate final : public CodedChatTemplate {
  public:

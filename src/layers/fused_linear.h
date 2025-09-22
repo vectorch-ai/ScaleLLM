@@ -6,11 +6,13 @@
 #include "linear.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
+#include "module/module.h"
+#include "module/module_holder.h"
 #include "quantization/quant_args.h"
 
 namespace llm {
 
-class FusedColumnParallelLinearImpl : public torch::nn::Module {
+class FusedColumnParallelLinearImpl : public llm::nn::Module {
  public:
   FusedColumnParallelLinearImpl(int64_t in_features,
                                 const std::vector<int64_t>& out_features,
@@ -44,6 +46,6 @@ class FusedColumnParallelLinearImpl : public torch::nn::Module {
   // whether the linear layer is fused
   bool fused_ = false;
 };
-TORCH_MODULE(FusedColumnParallelLinear);
+LLM_MODULE(FusedColumnParallelLinear);
 
 }  // namespace llm

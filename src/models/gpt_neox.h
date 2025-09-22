@@ -12,12 +12,14 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 // gpt-neox model compatible with huggingface weights
 
 namespace llm::hf {
 
-class GPTNeoXMLPImpl : public torch::nn::Module {
+class GPTNeoXMLPImpl : public llm::nn::Module {
  public:
   GPTNeoXMLPImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -73,9 +75,9 @@ class GPTNeoXMLPImpl : public torch::nn::Module {
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(GPTNeoXMLP);
+LLM_MODULE(GPTNeoXMLP);
 
-class GPTNeoXAttentionImpl : public torch::nn::Module {
+class GPTNeoXAttentionImpl : public llm::nn::Module {
  public:
   GPTNeoXAttentionImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
@@ -167,9 +169,9 @@ class GPTNeoXAttentionImpl : public torch::nn::Module {
   int64_t hidden_size_ = 0;
   int64_t head_dim_ = 0;
 };
-TORCH_MODULE(GPTNeoXAttention);
+LLM_MODULE(GPTNeoXAttention);
 
-class GPTNeoXLayerImpl : public torch::nn::Module {
+class GPTNeoXLayerImpl : public llm::nn::Module {
  public:
   GPTNeoXLayerImpl(uint32_t layer_id,
                    const ModelArgs& args,
@@ -244,9 +246,9 @@ class GPTNeoXLayerImpl : public torch::nn::Module {
 
   bool use_parallel_residual_;
 };
-TORCH_MODULE(GPTNeoXLayer);
+LLM_MODULE(GPTNeoXLayer);
 
-class GPTNeoXModelImpl : public torch::nn::Module {
+class GPTNeoXModelImpl : public llm::nn::Module {
  public:
   GPTNeoXModelImpl(const ModelArgs& args,
                    const QuantArgs& quant_args,
@@ -261,7 +263,7 @@ class GPTNeoXModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = GPTNeoXLayer(
@@ -319,15 +321,15 @@ class GPTNeoXModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GPTNeoXLayer> layers_;
 
   LayerNorm final_layer_norm_{nullptr};
 };
-TORCH_MODULE(GPTNeoXModel);
+LLM_MODULE(GPTNeoXModel);
 
-class GPTNeoXForCausalLMImpl : public torch::nn::Module {
+class GPTNeoXForCausalLMImpl : public llm::nn::Module {
  public:
   GPTNeoXForCausalLMImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
@@ -386,7 +388,7 @@ class GPTNeoXForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear embed_out_{nullptr};
 };
-TORCH_MODULE(GPTNeoXForCausalLM);
+LLM_MODULE(GPTNeoXForCausalLM);
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gpt_neox, GPTNeoXForCausalLM);
