@@ -13,12 +13,15 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 
 // bloom model compatible with huggingface weights
 
 namespace llm::hf {
 
-class BloomMLPImpl : public torch::nn::Module {
+class BloomMLPImpl : public llm::nn::Module {
  public:
   BloomMLPImpl(const ModelArgs& args,
                const QuantArgs& quant_args,
@@ -74,9 +77,9 @@ class BloomMLPImpl : public torch::nn::Module {
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(BloomMLP);
+LLM_MODULE(BloomMLP);
 
-class BloomAttentionImpl : public torch::nn::Module {
+class BloomAttentionImpl : public llm::nn::Module {
  public:
   BloomAttentionImpl(const ModelArgs& args,
                      const QuantArgs& quant_args,
@@ -168,9 +171,9 @@ class BloomAttentionImpl : public torch::nn::Module {
   int64_t hidden_size_ = 0;
   int64_t head_dim_ = 0;
 };
-TORCH_MODULE(BloomAttention);
+LLM_MODULE(BloomAttention);
 
-class BloomBlockImpl : public torch::nn::Module {
+class BloomBlockImpl : public llm::nn::Module {
  public:
   BloomBlockImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -240,9 +243,9 @@ class BloomBlockImpl : public torch::nn::Module {
 
   bool residual_post_layernorm_ = false;
 };
-TORCH_MODULE(BloomBlock);
+LLM_MODULE(BloomBlock);
 
-class BloomModelImpl : public torch::nn::Module {
+class BloomModelImpl : public llm::nn::Module {
  public:
   BloomModelImpl(const ModelArgs& args,
                  const QuantArgs& quant_args,
@@ -265,7 +268,7 @@ class BloomModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_alibi(
         args, alibi_slopes, options);
 
-    blocks_ = register_module("h", torch::nn::ModuleList());
+    blocks_ = register_module("h", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -359,16 +362,16 @@ class BloomModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<BloomBlock> layers_;
 
   // final layer norm
   LayerNorm ln_f_{nullptr};
 };
-TORCH_MODULE(BloomModel);
+LLM_MODULE(BloomModel);
 
-class BloomForCausalLMImpl : public torch::nn::Module {
+class BloomForCausalLMImpl : public llm::nn::Module {
  public:
   BloomForCausalLMImpl(const ModelArgs& args,
                        const QuantArgs& quant_args,
@@ -428,7 +431,7 @@ class BloomForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(BloomForCausalLM);
+LLM_MODULE(BloomForCausalLM);
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(bloom, BloomForCausalLM);

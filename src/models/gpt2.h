@@ -13,12 +13,15 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 
 // gpt2 model compatible with huggingface weights
 
 namespace llm::hf {
 
-class GPT2MLPImpl : public torch::nn::Module {
+class GPT2MLPImpl : public llm::nn::Module {
  public:
   GPT2MLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
@@ -80,9 +83,9 @@ class GPT2MLPImpl : public torch::nn::Module {
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(GPT2MLP);
+LLM_MODULE(GPT2MLP);
 
-class GPT2AttentionImpl : public torch::nn::Module {
+class GPT2AttentionImpl : public llm::nn::Module {
  public:
   GPT2AttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -168,9 +171,9 @@ class GPT2AttentionImpl : public torch::nn::Module {
   int64_t hidden_size_ = 0;
   int64_t head_dim_ = 0;
 };
-TORCH_MODULE(GPT2Attention);
+LLM_MODULE(GPT2Attention);
 
-class GPT2BlockImpl : public torch::nn::Module {
+class GPT2BlockImpl : public llm::nn::Module {
  public:
   GPT2BlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -230,9 +233,9 @@ class GPT2BlockImpl : public torch::nn::Module {
 
   LayerNorm ln_2_{nullptr};
 };
-TORCH_MODULE(GPT2Block);
+LLM_MODULE(GPT2Block);
 
-class GPT2ModelImpl : public torch::nn::Module {
+class GPT2ModelImpl : public llm::nn::Module {
  public:
   GPT2ModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -249,7 +252,7 @@ class GPT2ModelImpl : public torch::nn::Module {
 
     handler_ = AttentionHandler::create_handler(args, options);
 
-    blocks_ = register_module("h", torch::nn::ModuleList());
+    blocks_ = register_module("h", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -310,15 +313,15 @@ class GPT2ModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<GPT2Block> layers_;
 
   LayerNorm ln_f_{nullptr};
 };
-TORCH_MODULE(GPT2Model);
+LLM_MODULE(GPT2Model);
 
-class GPT2ForCausalLMImpl : public torch::nn::Module {
+class GPT2ForCausalLMImpl : public llm::nn::Module {
  public:
   GPT2ForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
@@ -378,7 +381,7 @@ class GPT2ForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(GPT2ForCausalLM);
+LLM_MODULE(GPT2ForCausalLM);
 
 // register the model to make it available
 REGISTER_CAUSAL_MODEL(gpt2, GPT2ForCausalLM);

@@ -16,12 +16,14 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 // QWen model compatible with huggingface weights
 // adopted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
 namespace llm::hf {
 
-class QWenMLPImpl : public torch::nn::Module {
+class QWenMLPImpl : public llm::nn::Module {
  public:
   QWenMLPImpl(const ModelArgs& args,
               const QuantArgs& quant_args,
@@ -79,9 +81,9 @@ class QWenMLPImpl : public torch::nn::Module {
 
   ActFunc act_{nullptr};
 };
-TORCH_MODULE(QWenMLP);
+LLM_MODULE(QWenMLP);
 
-class QWenAttentionImpl : public torch::nn::Module {
+class QWenAttentionImpl : public llm::nn::Module {
  public:
   QWenAttentionImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -152,9 +154,9 @@ class QWenAttentionImpl : public torch::nn::Module {
   // module members without parameters
   Attention atten_{nullptr};
 };
-TORCH_MODULE(QWenAttention);
+LLM_MODULE(QWenAttention);
 
-class QWenBlockImpl : public torch::nn::Module {
+class QWenBlockImpl : public llm::nn::Module {
  public:
   QWenBlockImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -207,9 +209,9 @@ class QWenBlockImpl : public torch::nn::Module {
 
   RMSNorm ln_2_{nullptr};
 };
-TORCH_MODULE(QWenBlock);
+LLM_MODULE(QWenBlock);
 
-class QWenModelImpl : public torch::nn::Module {
+class QWenModelImpl : public llm::nn::Module {
  public:
   QWenModelImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -224,7 +226,7 @@ class QWenModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -279,15 +281,15 @@ class QWenModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<QWenBlock> layers_;
 
   RMSNorm ln_f_{nullptr};
 };
-TORCH_MODULE(QWenModel);
+LLM_MODULE(QWenModel);
 
-class QWenForCausalLMImpl : public torch::nn::Module {
+class QWenForCausalLMImpl : public llm::nn::Module {
  public:
   QWenForCausalLMImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
@@ -346,7 +348,7 @@ class QWenForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(QWenForCausalLM);
+LLM_MODULE(QWenForCausalLM);
 
 class QwenChatTemplate final : public CodedChatTemplate {
  public:

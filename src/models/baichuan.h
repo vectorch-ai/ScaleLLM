@@ -16,6 +16,9 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 
 // Baichuan model compatible with huggingface weights
 
@@ -28,7 +31,7 @@ enum class BaichuanType : uint8_t {
   Baichuan2_13B,
 };
 
-class BaichuanMLPImpl : public torch::nn::Module {
+class BaichuanMLPImpl : public llm::nn::Module {
  public:
   BaichuanMLPImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -87,9 +90,9 @@ class BaichuanMLPImpl : public torch::nn::Module {
   // activation function
   ActFunc act_func_{nullptr};
 };
-TORCH_MODULE(BaichuanMLP);
+LLM_MODULE(BaichuanMLP);
 
-class BaichuanAttentionImpl : public torch::nn::Module {
+class BaichuanAttentionImpl : public llm::nn::Module {
  public:
   BaichuanAttentionImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -174,9 +177,9 @@ class BaichuanAttentionImpl : public torch::nn::Module {
   // size for local q, k, v
   std::vector<int64_t> qkv_sizes_;
 };
-TORCH_MODULE(BaichuanAttention);
+LLM_MODULE(BaichuanAttention);
 
-class BaichuanDecoderLayerImpl : public torch::nn::Module {
+class BaichuanDecoderLayerImpl : public llm::nn::Module {
  public:
   BaichuanDecoderLayerImpl(const ModelArgs& args,
                            const QuantArgs& quant_args,
@@ -242,9 +245,9 @@ class BaichuanDecoderLayerImpl : public torch::nn::Module {
   RMSNormResidual input_layernorm_{nullptr};
   RMSNormResidual post_attention_layernorm_{nullptr};
 };
-TORCH_MODULE(BaichuanDecoderLayer);
+LLM_MODULE(BaichuanDecoderLayer);
 
-class BaichuanModelImpl : public torch::nn::Module {
+class BaichuanModelImpl : public llm::nn::Module {
  public:
   BaichuanModelImpl(const ModelArgs& args,
                     const QuantArgs& quant_args,
@@ -268,7 +271,7 @@ class BaichuanModelImpl : public torch::nn::Module {
           args, alibi_slopes, options);
     }
 
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = BaichuanDecoderLayer(args,
@@ -363,16 +366,16 @@ class BaichuanModelImpl : public torch::nn::Module {
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
   // parameter members, must be registered
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<BaichuanDecoderLayer> layers_;
 
   // final layer norm
   RMSNormResidual norm_{nullptr};
 };
-TORCH_MODULE(BaichuanModel);
+LLM_MODULE(BaichuanModel);
 
-class BaichuanForCausalLMImpl : public torch::nn::Module {
+class BaichuanForCausalLMImpl : public llm::nn::Module {
  public:
   BaichuanForCausalLMImpl(const ModelArgs& args,
                           const QuantArgs& quant_args,
@@ -460,7 +463,7 @@ class BaichuanForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(BaichuanForCausalLM);
+LLM_MODULE(BaichuanForCausalLM);
 
 class BaichuanChatTemplate final : public CodedChatTemplate {
  public:

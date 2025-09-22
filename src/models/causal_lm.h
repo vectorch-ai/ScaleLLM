@@ -15,9 +15,9 @@
 namespace llm {
 
 // An interface for causal language models that can hold different models.
-class CausalLM : public torch::nn::Module {
+class CausalLM {
  public:
-  ~CausalLM() override = default;
+  virtual ~CausalLM() = default;
 
   // tokens: [num_tokens]
   // positions: [num_tokens] token pos in the sequence

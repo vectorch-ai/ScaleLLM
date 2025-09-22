@@ -14,11 +14,14 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 
 // Aquila model compatible with huggingface weights
 namespace llm::hf {
 
-class AquilaMLPImpl : public torch::nn::Module {
+class AquilaMLPImpl : public llm::nn::Module {
  public:
   AquilaMLPImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -77,9 +80,9 @@ class AquilaMLPImpl : public torch::nn::Module {
   // activation function
   ActFunc act_func_{nullptr};
 };
-TORCH_MODULE(AquilaMLP);
+LLM_MODULE(AquilaMLP);
 
-class AquilaAttentionImpl : public torch::nn::Module {
+class AquilaAttentionImpl : public llm::nn::Module {
  public:
   AquilaAttentionImpl(const ModelArgs& args,
                       const QuantArgs& quant_args,
@@ -164,9 +167,9 @@ class AquilaAttentionImpl : public torch::nn::Module {
   // size for q, k, v
   std::vector<int64_t> qkv_sizes_;
 };
-TORCH_MODULE(AquilaAttention);
+LLM_MODULE(AquilaAttention);
 
-class AquilaDecoderLayerImpl : public torch::nn::Module {
+class AquilaDecoderLayerImpl : public llm::nn::Module {
  public:
   AquilaDecoderLayerImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
@@ -224,9 +227,9 @@ class AquilaDecoderLayerImpl : public torch::nn::Module {
 
   RMSNorm post_attention_layernorm_{nullptr};
 };
-TORCH_MODULE(AquilaDecoderLayer);
+LLM_MODULE(AquilaDecoderLayer);
 
-class AquilaModelImpl : public torch::nn::Module {
+class AquilaModelImpl : public llm::nn::Module {
  public:
   AquilaModelImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -241,7 +244,7 @@ class AquilaModelImpl : public torch::nn::Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = AquilaDecoderLayer(
@@ -295,15 +298,15 @@ class AquilaModelImpl : public torch::nn::Module {
   // attention handler
   std::unique_ptr<AttentionHandler> handler_{nullptr};
 
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   // hold same data but different type as blocks_ to avoid type cast
   std::vector<AquilaDecoderLayer> layers_;
 
   RMSNorm norm_{nullptr};
 };
-TORCH_MODULE(AquilaModel);
+LLM_MODULE(AquilaModel);
 
-class AquilaForCausalLMImpl : public torch::nn::Module {
+class AquilaForCausalLMImpl : public llm::nn::Module {
  public:
   AquilaForCausalLMImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -362,7 +365,7 @@ class AquilaForCausalLMImpl : public torch::nn::Module {
 
   ColumnParallelLinear lm_head_{nullptr};
 };
-TORCH_MODULE(AquilaForCausalLM);
+LLM_MODULE(AquilaForCausalLM);
 
 class AquilaChatTemplate final : public CodedChatTemplate {
  public:

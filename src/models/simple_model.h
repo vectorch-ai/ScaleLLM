@@ -11,11 +11,13 @@
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-
+#include "module/module.h"
+#include "module/module_holder.h"
+#include "module/modulelist.h"
 // simple model for test
 namespace llm {
 
-class SimpleMLPImpl : public torch::nn::Module {
+class SimpleMLPImpl : public llm::nn::Module {
  public:
   SimpleMLPImpl(const ModelArgs& args,
                 const QuantArgs& quant_args,
@@ -69,9 +71,9 @@ class SimpleMLPImpl : public torch::nn::Module {
   ActFunc act_func_{nullptr};
 };
 
-TORCH_MODULE(SimpleMLP);
+LLM_MODULE(SimpleMLP);
 
-class SimpleDecoderLayerImpl : public torch::nn::Module {
+class SimpleDecoderLayerImpl : public llm::nn::Module {
  public:
   SimpleDecoderLayerImpl(const ModelArgs& args,
                          const QuantArgs& quant_args,
@@ -100,9 +102,9 @@ class SimpleDecoderLayerImpl : public torch::nn::Module {
   SimpleMLP mlp_{nullptr};
 };
 
-TORCH_MODULE(SimpleDecoderLayer);
+LLM_MODULE(SimpleDecoderLayer);
 
-class SimpleModelImpl : public torch::nn::Module {
+class SimpleModelImpl : public llm::nn::Module {
  public:
   SimpleModelImpl(const ModelArgs& args,
                   const QuantArgs& quant_args,
@@ -113,7 +115,7 @@ class SimpleModelImpl : public torch::nn::Module {
         ParallelEmbedding(
             args.vocab_size(), args.hidden_size(), parallel_args, options));
 
-    blocks_ = register_module("layers", torch::nn::ModuleList());
+    blocks_ = register_module("layers", llm::nn::ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block = SimpleDecoderLayer(args, quant_args, parallel_args, options);
@@ -152,12 +154,12 @@ class SimpleModelImpl : public torch::nn::Module {
 
  private:
   ParallelEmbedding embed_tokens_{nullptr};
-  torch::nn::ModuleList blocks_{nullptr};
+  llm::nn::ModuleList blocks_{nullptr};
   std::vector<SimpleDecoderLayer> layers_;
 };
-TORCH_MODULE(SimpleModel);
+LLM_MODULE(SimpleModel);
 
-class SimpleForCausalLMImpl : public torch::nn::Module {
+class SimpleForCausalLMImpl : public llm::nn::Module {
  public:
   SimpleForCausalLMImpl(const ModelArgs& args,
                         const QuantArgs& quant_args,
@@ -190,7 +192,7 @@ class SimpleForCausalLMImpl : public torch::nn::Module {
  private:
   SimpleModel model_{nullptr};
 };
-TORCH_MODULE(SimpleForCausalLM);
+LLM_MODULE(SimpleForCausalLM);
 REGISTER_CAUSAL_MODEL(simple, SimpleForCausalLM);
 
 REGISTER_MODEL_ARGS(simple, [&] {

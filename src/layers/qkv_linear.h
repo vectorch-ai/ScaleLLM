@@ -12,7 +12,7 @@ namespace llm {
 
 // a thin wrapper to handle state_dict loading for QKV with
 // support of MQA/GQA
-class QKVColumnParallelLinearImpl : public torch::nn::Module {
+class QKVColumnParallelLinearImpl : public llm::nn::Module {
  public:
   QKVColumnParallelLinearImpl(int64_t hidden_size,
                               int64_t n_heads,
@@ -47,6 +47,6 @@ class QKVColumnParallelLinearImpl : public torch::nn::Module {
 
   int64_t head_dim_ = 0;
 };
-TORCH_MODULE(QKVColumnParallelLinear);
+LLM_MODULE(QKVColumnParallelLinear);
 
 }  // namespace llm
