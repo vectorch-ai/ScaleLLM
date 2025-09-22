@@ -128,32 +128,26 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features / pack_factor, out_features_per_partition},
-                     options.dtype(torch::kInt32)),
-        /*requires_grad=*/false);
+                     options.dtype(torch::kInt32)));
   } else {
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features, out_features_per_partition / pack_factor},
-                     options.dtype(torch::kInt32)),
-        /*requires_grad=*/false);
+                     options.dtype(torch::kInt32)));
   }
   qzeros_ = register_parameter(
       "qzeros",
       torch::empty({round_up(in_features, group_size),
                     out_features_per_partition / pack_factor},
-                   options.dtype(torch::kInt32)),
-      /*requires_grad=*/false);
+                   options.dtype(torch::kInt32)));
 
   scales_ = register_parameter("scales",
                                torch::empty({round_up(in_features, group_size),
                                              out_features_per_partition},
-                                            options),
-                               /*requires_grad=*/false);
+                                            options));
   if (bias) {
-    bias_ =
-        register_parameter("bias",
-                           torch::empty({out_features_per_partition}, options),
-                           /*requires_grad=*/false);
+    bias_ = register_parameter(
+        "bias", torch::empty({out_features_per_partition}, options));
   }
 }
 
@@ -245,33 +239,27 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features_per_partition / pack_factor, out_features},
-                     options.dtype(torch::kInt32)),
-        /*requires_grad=*/false);
+                     options.dtype(torch::kInt32)));
   } else {
     qweight_ = register_parameter(
         "qweight",
         torch::empty({in_features_per_partition, out_features / pack_factor},
-                     options.dtype(torch::kInt32)),
-        /*requires_grad=*/false);
+                     options.dtype(torch::kInt32)));
   }
   qzeros_ = register_parameter(
       "qzeros",
       torch::empty({round_up(in_features_per_partition, group_size),
                     out_features / pack_factor},
-                   options.dtype(torch::kInt32)),
-      /*requires_grad=*/false);
+                   options.dtype(torch::kInt32)));
 
   scales_ = register_parameter(
       "scales",
       torch::empty(
           {round_up(in_features_per_partition, group_size), out_features},
-          options),
-      /*requires_grad=*/false);
+          options));
 
   if (bias) {
-    bias_ = register_parameter("bias",
-                               torch::empty({out_features}, options),
-                               /*requires_grad=*/false);
+    bias_ = register_parameter("bias", torch::empty({out_features}, options));
   }
 }
 

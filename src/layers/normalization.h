@@ -75,13 +75,11 @@ class LayerNormImpl : public llm::nn::Module {
                 const torch::TensorOptions& options)
       : eps_(eps) {
     normalized_shape_ = {dim};
-    weight_ = register_parameter("weight",
-                                 torch::empty(normalized_shape_, options),
-                                 /*requires_grad=*/false);
+    weight_ =
+        register_parameter("weight", torch::empty(normalized_shape_, options));
     if (bias) {
-      bias_ = register_parameter("bias",
-                                 torch::zeros(normalized_shape_, options),
-                                 /*requires_grad=*/false);
+      bias_ =
+          register_parameter("bias", torch::zeros(normalized_shape_, options));
     }
   }
 
@@ -149,9 +147,7 @@ class RMSNormImpl : public llm::nn::Module {
  public:
   RMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter("weight",
-                                 torch::empty({dim}, options),
-                                 /*requires_grad=*/false);
+    weight_ = register_parameter("weight", torch::empty({dim}, options));
   }
 
   torch::Tensor forward(const torch::Tensor& input) {
@@ -199,9 +195,7 @@ class GemmaRMSNormImpl : public llm::nn::Module {
  public:
   GemmaRMSNormImpl(int64_t dim, float eps, const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter("weight",
-                                 torch::empty({dim}, options),
-                                 /*requires_grad=*/false);
+    weight_ = register_parameter("weight", torch::empty({dim}, options));
   }
 
   torch::Tensor forward(const torch::Tensor& input) {
@@ -252,9 +246,7 @@ class RMSNormResidualImpl : public llm::nn::Module {
                       float eps,
                       const torch::TensorOptions& options)
       : eps_(eps) {
-    weight_ = register_parameter("weight",
-                                 torch::empty({dim}, options),
-                                 /*requires_grad=*/false);
+    weight_ = register_parameter("weight", torch::empty({dim}, options));
   }
 
   torch::Tensor forward(const torch::Tensor& input, torch::Tensor& residual) {

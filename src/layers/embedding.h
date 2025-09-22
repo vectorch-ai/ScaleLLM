@@ -23,9 +23,7 @@ class EmbeddingImpl : public llm::nn::Module {
                 const torch::TensorOptions& options) {
     // register the weight parameter
     weight_ = register_parameter(
-        "weight",
-        torch::empty({num_embeddings, embedding_dim}, options),
-        /*requires_grad=*/false);
+        "weight", torch::empty({num_embeddings, embedding_dim}, options));
   }
 
   // The input to the module is a list of indices, and the output is the
@@ -84,8 +82,7 @@ class ParallelEmbeddingImpl : public llm::nn::Module {
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings, embedding_dim_per_partition}, options),
-        /*requires_grad=*/false);
+        torch::empty({num_embeddings, embedding_dim_per_partition}, options));
   }
 
   // The input to the module is a list of indices, and the output is the
@@ -154,8 +151,7 @@ class VocabParallelEmbeddingImpl : public llm::nn::Module {
     // register the weight parameter
     weight_ = register_parameter(
         "weight",
-        torch::empty({num_embeddings_per_partition, embedding_dim}, options),
-        /*requires_grad=*/false);
+        torch::empty({num_embeddings_per_partition, embedding_dim}, options));
   }
 
   // The input to the module is a list of indices, and the output is the

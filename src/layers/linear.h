@@ -42,7 +42,7 @@ class ParallelLinearImpl : public llm::nn::Module {
 class ColumnParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
  public:
   using llm::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
-  using Impl __attribute__((__unused__)) = ParallelLinearImpl;
+  using Impl [[maybe_unused]] = ParallelLinearImpl;
 
   // construct a rotary positional embedding.
   // chose right implementation based on the args.
@@ -65,7 +65,7 @@ class ColumnParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
 class RowParallelLinear : public llm::nn::ModuleHolder<ParallelLinearImpl> {
  public:
   using llm::nn::ModuleHolder<ParallelLinearImpl>::ModuleHolder;
-  using Impl __attribute__((__unused__)) = ParallelLinearImpl;
+  using Impl [[maybe_unused]] = ParallelLinearImpl;
 
   // construct a rotary positional embedding.
   // chose right implementation based on the args.
