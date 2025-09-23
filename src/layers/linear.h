@@ -39,42 +39,42 @@ class ParallelLinearImpl : public Module {
   }
 };
 
-class LegacyColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
+class ColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
  public:
   using ModuleHolder<ParallelLinearImpl>::ModuleHolder;
   using Impl [[maybe_unused]] = ParallelLinearImpl;
 
   // construct a rotary positional embedding.
   // chose right implementation based on the args.
-  LegacyColumnParallelLinear(int64_t in_features,
-                             int64_t out_features,
-                             bool bias,
-                             bool gather_output,
-                             const QuantArgs& quant_args,
-                             const ParallelArgs& parallel_args,
-                             const torch::TensorOptions& options);
+  ColumnParallelLinear(int64_t in_features,
+                       int64_t out_features,
+                       bool bias,
+                       bool gather_output,
+                       const QuantArgs& quant_args,
+                       const ParallelArgs& parallel_args,
+                       const torch::TensorOptions& options);
 
-  LegacyColumnParallelLinear(int64_t in_features,
-                             int64_t out_features,
-                             bool bias,
-                             bool gather_output,
-                             const ParallelArgs& parallel_args,
-                             const torch::TensorOptions& options);
+  ColumnParallelLinear(int64_t in_features,
+                       int64_t out_features,
+                       bool bias,
+                       bool gather_output,
+                       const ParallelArgs& parallel_args,
+                       const torch::TensorOptions& options);
 };
 
-class LegacyRowParallelLinear : public ModuleHolder<ParallelLinearImpl> {
+class RowParallelLinear : public ModuleHolder<ParallelLinearImpl> {
  public:
   using ModuleHolder<ParallelLinearImpl>::ModuleHolder;
   using Impl [[maybe_unused]] = ParallelLinearImpl;
 
   // construct a rotary positional embedding.
   // chose right implementation based on the args.
-  LegacyRowParallelLinear(int64_t in_features,
-                          int64_t out_features,
-                          bool bias,
-                          bool input_is_parallelized,
-                          const QuantArgs& quant_args,
-                          const ParallelArgs& parallel_args,
-                          const torch::TensorOptions& options);
+  RowParallelLinear(int64_t in_features,
+                    int64_t out_features,
+                    bool bias,
+                    bool input_is_parallelized,
+                    const QuantArgs& quant_args,
+                    const ParallelArgs& parallel_args,
+                    const torch::TensorOptions& options);
 };
 }  // namespace llm

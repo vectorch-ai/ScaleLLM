@@ -215,14 +215,13 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
 
 // construct a ColumnParallelLinear.
 // chose right implementation based on the args.
-LegacyColumnParallelLinear::LegacyColumnParallelLinear(
-    int64_t in_features,
-    int64_t out_features,
-    bool bias,
-    bool gather_output,
-    const QuantArgs& quant_args,
-    const ParallelArgs& parallel_args,
-    const torch::TensorOptions& options)
+ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
+                                           int64_t out_features,
+                                           bool bias,
+                                           bool gather_output,
+                                           const QuantArgs& quant_args,
+                                           const ParallelArgs& parallel_args,
+                                           const torch::TensorOptions& options)
     : ModuleHolder(create_column_parallel_linear(in_features,
                                                  out_features,
                                                  bias,
@@ -231,13 +230,12 @@ LegacyColumnParallelLinear::LegacyColumnParallelLinear(
                                                  parallel_args,
                                                  options)) {}
 
-LegacyColumnParallelLinear::LegacyColumnParallelLinear(
-    int64_t in_features,
-    int64_t out_features,
-    bool bias,
-    bool gather_output,
-    const ParallelArgs& parallel_args,
-    const torch::TensorOptions& options)
+ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
+                                           int64_t out_features,
+                                           bool bias,
+                                           bool gather_output,
+                                           const ParallelArgs& parallel_args,
+                                           const torch::TensorOptions& options)
     : ModuleHolder(create_column_parallel_linear(in_features,
                                                  out_features,
                                                  bias,
@@ -248,14 +246,13 @@ LegacyColumnParallelLinear::LegacyColumnParallelLinear(
 
 // construct a rotary positional embedding.
 // chose right implementation based on the args.
-LegacyRowParallelLinear::LegacyRowParallelLinear(
-    int64_t in_features,
-    int64_t out_features,
-    bool bias,
-    bool input_is_parallelized,
-    const QuantArgs& quant_args,
-    const ParallelArgs& parallel_args,
-    const torch::TensorOptions& options)
+RowParallelLinear::RowParallelLinear(int64_t in_features,
+                                     int64_t out_features,
+                                     bool bias,
+                                     bool input_is_parallelized,
+                                     const QuantArgs& quant_args,
+                                     const ParallelArgs& parallel_args,
+                                     const torch::TensorOptions& options)
     : ModuleHolder(create_row_parallel_linear(in_features,
                                               out_features,
                                               bias,

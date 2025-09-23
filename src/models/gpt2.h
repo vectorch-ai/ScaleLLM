@@ -47,32 +47,31 @@ class GPT2MLPImpl : public Module {
 
     // register the weight parameter
     c_fc_ = register_module("c_fc",
-                            LegacyColumnParallelLinear(hidden_size,
-                                                       intermediate_size,
-                                                       /*bias=*/true,
-                                                       /*gather_output=*/false,
-                                                       quant_args,
-                                                       parallel_args,
-                                                       options),
+                            ColumnParallelLinear(hidden_size,
+                                                 intermediate_size,
+                                                 /*bias=*/true,
+                                                 /*gather_output=*/false,
+                                                 quant_args,
+                                                 parallel_args,
+                                                 options),
                             detail::transpose_selector);
-    c_proj_ =
-        register_module("c_proj",
-                        LegacyRowParallelLinear(intermediate_size,
+    c_proj_ = register_module("c_proj",
+                              RowParallelLinear(intermediate_size,
                                                 hidden_size,
                                                 /*bias=*/true,
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
                                                 options),
-                        detail::transpose_selector);
+                              detail::transpose_selector);
   }
 
   torch::Tensor forward(torch::Tensor x) { return c_proj_(act_(c_fc_(x))); }
 
  private:
   // parameter members, must be registered
-  LegacyColumnParallelLinear c_fc_{nullptr};
-  LegacyRowParallelLinear c_proj_{nullptr};
+  ColumnParallelLinear c_fc_{nullptr};
+  RowParallelLinear c_proj_{nullptr};
 
   ActFunc act_{nullptr};
 };
@@ -91,27 +90,25 @@ class GPT2AttentionImpl : public Module {
     head_dim_ = args.head_dim();
 
     // register submodules
-    c_attn_ =
-        register_module("c_attn",
-                        LegacyColumnParallelLinear(hidden_size_,
+    c_attn_ = register_module("c_attn",
+                              ColumnParallelLinear(hidden_size_,
                                                    3 * hidden_size_,
                                                    /*bias=*/true,
                                                    /*gather_output=*/false,
                                                    quant_args,
                                                    parallel_args,
                                                    options),
-                        detail::transpose_selector);
+                              detail::transpose_selector);
 
-    c_proj_ =
-        register_module("c_proj",
-                        LegacyRowParallelLinear(hidden_size_,
+    c_proj_ = register_module("c_proj",
+                              RowParallelLinear(hidden_size_,
                                                 hidden_size_,
                                                 /*bias=*/true,
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
                                                 options),
-                        detail::transpose_selector);
+                              detail::transpose_selector);
 
     // initialize attention
     atten_ = register_module(
@@ -137,9 +134,9 @@ class GPT2AttentionImpl : public Module {
 
  private:
   // parameter members, must be registered
-  LegacyColumnParallelLinear c_attn_{nullptr};
+  ColumnParallelLinear c_attn_{nullptr};
 
-  LegacyRowParallelLinear c_proj_{nullptr};
+  RowParallelLinear c_proj_{nullptr};
 
   // module members without parameters
   Attention atten_{nullptr};

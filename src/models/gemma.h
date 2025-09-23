@@ -52,13 +52,13 @@ class GemmaMLPImpl : public Module {
         /*selector=*/nullptr);
     down_proj_ =
         register_module("down_proj",
-                        LegacyRowParallelLinear(intermediate_size,
-                                                hidden_size,
-                                                /*bias=*/false,
-                                                /*input_is_parallelized=*/true,
-                                                quant_args,
-                                                parallel_args,
-                                                options));
+                        RowParallelLinear(intermediate_size,
+                                          hidden_size,
+                                          /*bias=*/false,
+                                          /*input_is_parallelized=*/true,
+                                          quant_args,
+                                          parallel_args,
+                                          options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -69,7 +69,7 @@ class GemmaMLPImpl : public Module {
  private:
   // parameter members, must be registered
   FusedColumnParallelLinear gate_up_proj_{nullptr};
-  LegacyRowParallelLinear down_proj_{nullptr};
+  RowParallelLinear down_proj_{nullptr};
 
   // activation function
   ActFunc act_func_{nullptr};
@@ -108,9 +108,8 @@ class GemmaAttentionImpl : public Module {
             options),
         /*selector=*/nullptr);
 
-    o_proj_ =
-        register_module("o_proj",
-                        LegacyRowParallelLinear(n_heads * head_dim,
+    o_proj_ = register_module("o_proj",
+                              RowParallelLinear(n_heads * head_dim,
                                                 hidden_size,
                                                 /*bias=*/false,
                                                 /*input_is_parallelized=*/true,
@@ -141,7 +140,7 @@ class GemmaAttentionImpl : public Module {
   // parameter members, must be registered
   QKVColumnParallelLinear qkv_proj_{nullptr};
 
-  LegacyRowParallelLinear o_proj_{nullptr};
+  RowParallelLinear o_proj_{nullptr};
 
   // module members without parameters
   Attention atten_{nullptr};

@@ -62,7 +62,6 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   // parallel args
   ParallelArgs parallel_args_;
 };
-LLM_MODULE(ColumnParallelLinear);
 
 // Linear layer with row parallelism.
 //     The linear layer is defined as Y = XA + b. A is parallelized along
@@ -116,5 +115,4 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   // parallel args
   ParallelArgs parallel_args_;
 };
-LLM_MODULE(RowParallelLinear);
 }  // namespace llm
