@@ -9,7 +9,7 @@
 
 namespace llm {
 
-class QKVLinearTest
+class QKVColumnParallelLinearTest
     : public ::testing::TestWithParam<std::tuple<int64_t /*n_tokens*/,
                                                  int64_t /*n_heads*/,
                                                  int64_t /*n_kv_heads*/,
@@ -17,7 +17,7 @@ class QKVLinearTest
                                                  int64_t /*head_dim*/,
                                                  int64_t /*hidden_size*/>> {};
 
-TEST_P(QKVLinearTest, LoadFusedWeight) {
+TEST_P(QKVColumnParallelLinearTest, LoadFusedWeight) {
   const auto& [n_tokens, n_heads, n_kv_heads, n_shards, head_dim, hidden_size] =
       GetParam();
 
@@ -51,18 +51,19 @@ TEST_P(QKVLinearTest, LoadFusedWeight) {
   for (int32_t shard_id = 0; shard_id < n_shards; ++shard_id) {
     QuantArgs quant_args;
     ParallelArgs parallel_args(shard_id, n_shards, nullptr);
-    QKVColumnParallelLinearImpl linear(hidden_size,
-                                       n_heads,
-                                       n_kv_heads,
-                                       head_dim,
-                                       /*bias=*/false,
-                                       /*gather_output=*/false,
-                                       quant_args,
-                                       parallel_args,
-                                       options);
-    linear.load_state_dict(state_dict,
-                           /*prefixes=*/{"query.", "key.", "value."},
-                           /*kv_prefixes=*/{"key.", "value."});
+    QKVColumnParallelLinearImpl linear(
+        hidden_size,
+        n_heads,
+        n_kv_heads,
+        head_dim,
+        /*bias=*/false,
+        /*gather_output=*/false,
+        std::vector<std::string>{"query.", "key.", "value."},
+        quant_args,
+        parallel_args,
+        options);
+    linear.load(state_dict);
+    EXPECT_TRUE(linear.verify());
 
     // generate random input and compare with the output
     auto input = torch::randn({n_tokens, hidden_size}, options);
@@ -84,7 +85,7 @@ TEST_P(QKVLinearTest, LoadFusedWeight) {
 
 INSTANTIATE_TEST_SUITE_P(
     QKVLinearTestSuite,
-    QKVLinearTest,
+    QKVColumnParallelLinearTest,
     ::testing::Combine(::testing::Values(10, 32),      // n_tokens
                        ::testing::Values(8, 16, 32),   // n_heads
                        ::testing::Values(1, 2, 4, 8),  // n_kv_heads
