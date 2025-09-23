@@ -8,7 +8,9 @@
 #include <iosfwd>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "model_loader/state_dict.h"
 #include "module_holder.h"
 
 namespace llm {
@@ -148,13 +150,41 @@ class Module : public std::enable_shared_from_this<Module> {
   /// `stream` should be returned from the method, to allow easy chaining.
   virtual void pretty_print(std::ostream& stream) const;
 
+  // load weights from the checkpoint, override this method if necessary
+  virtual void load(const StateDict& state_dict,
+                    const std::string& name_prefix = std::string());
+
+  // verify whether the weights are loaded, override this method if necessary
+  virtual bool verify(const std::string& name_prefix = std::string()) const;
+
   /// Registers a parameter with this `Module`.
+  using TensorLoader =
+      std::function<torch::Tensor(const StateDict&, const std::string&)>;
+  torch::Tensor& register_parameter(std::string name,
+                                    torch::Tensor tensor,
+                                    const TensorLoader& loader);
+
   torch::Tensor& register_parameter(std::string name, torch::Tensor tensor);
+
+  torch::Tensor& register_sharded_parameter(std::string name,
+                                            int dim,
+                                            int rank,
+                                            int world_size,
+                                            torch::Tensor tensor);
 
   /// Registers a buffer with this `Module`.
   torch::Tensor& register_buffer(std::string name, torch::Tensor tensor);
 
   /// Registers a submodule with this `Module`.
+  using StateDictSelector =
+      std::function<StateDict(const StateDict&, const std::string&)>;
+
+  template <typename ModuleType>
+  std::shared_ptr<ModuleType> register_module(
+      std::string name,
+      std::shared_ptr<ModuleType> module,
+      const StateDictSelector& selector);
+
   template <typename ModuleType>
   std::shared_ptr<ModuleType> register_module(
       std::string name,
@@ -165,26 +195,15 @@ class Module : public std::enable_shared_from_this<Module> {
       std::string name,
       ModuleHolder<ModuleType> module_holder);
 
-  /// Replaces a registered submodule with this `Module`.
   template <typename ModuleType>
-  std::shared_ptr<ModuleType> replace_module(
-      const std::string& name,
-      std::shared_ptr<ModuleType> module);
+  std::shared_ptr<ModuleType> register_module(
+      std::string name,
+      ModuleHolder<ModuleType> module_holder,
+      const StateDictSelector& selector);
 
-  template <typename ModuleType>
-  std::shared_ptr<ModuleType> replace_module(
-      const std::string& name,
-      ModuleHolder<ModuleType> module_holder);
-
-  /// Unregisters a submodule from this `Module`. If there is no such module
-  /// with `name` an exception is thrown.
-  void unregister_module(const std::string& name);
-
- protected:
-  /// The registered parameters of this `Module`.
-  /// Inorder to access parameters_ in ParameterDict and ParameterList
-  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
-  torch::OrderedDict<std::string, torch::Tensor> parameters_;
+  /// Unregisters a submodule from this `Module`. Returns false if no such
+  /// submodule was registered.
+  bool unregister_module(const std::string& name);
 
  private:
   /// Pretty prints the given `Module` into the `ostream`.
@@ -209,11 +228,25 @@ class Module : public std::enable_shared_from_this<Module> {
   /// Returns a shared_ptr to `this` in a safe (checked) way.
   std::shared_ptr<Module> shared_from_this_checked() const;
 
+  struct Parameter {
+    torch::Tensor tensor;
+    std::function<torch::Tensor(const StateDict&, const std::string&)> loader;
+    bool is_loaded = false;
+  };
+
+  struct Child {
+    std::shared_ptr<Module> module;
+    std::function<StateDict(const StateDict&, const std::string&)> selector;
+  };
+
+  /// The registered parameters of this `Module`.
+  torch::OrderedDict<std::string, Parameter> parameters_;
+
   /// The registered buffers of this `Module`.
   torch::OrderedDict<std::string, torch::Tensor> buffers_;
 
   /// The registered (direct) submodules of this `Module`.
-  torch::OrderedDict<std::string, std::shared_ptr<Module>> children_;
+  torch::OrderedDict<std::string, Child> children_;
 
   /// The module's name (e.g. "LSTM").
   mutable std::optional<std::string> name_;
@@ -248,14 +281,24 @@ const ModuleType* Module::as() const noexcept {
 template <typename ModuleType>
 std::shared_ptr<ModuleType> Module::register_module(
     std::string name,
-    std::shared_ptr<ModuleType> module) {
+    std::shared_ptr<ModuleType> module,
+    const StateDictSelector& selector) {
   TORCH_CHECK(!name.empty(), "Submodule name must not be empty");
-  TORCH_CHECK(name.find('.') == std::string::npos,
-              "Submodule name must not contain a dot (got '",
-              name,
-              "')");
-  auto& base_module = children_.insert(std::move(name), std::move(module));
+  Child child{.module = std::move(module), .selector = selector};
+  auto& base_module =
+      children_.insert(std::move(name), std::move(child)).module;
   return std::dynamic_pointer_cast<ModuleType>(base_module);
+}
+
+template <typename ModuleType>
+std::shared_ptr<ModuleType> Module::register_module(
+    std::string name,
+    std::shared_ptr<ModuleType> module) {
+  auto default_selector = [](const StateDict& sd, const std::string& key) {
+    const std::string prefix = key + '.';
+    return sd.select(prefix);
+  };
+  return register_module(std::move(name), std::move(module), default_selector);
 }
 
 template <typename ModuleType>
@@ -266,25 +309,18 @@ std::shared_ptr<ModuleType> Module::register_module(
 }
 
 template <typename ModuleType>
-std::shared_ptr<ModuleType> Module::replace_module(
-    const std::string& name,
-    std::shared_ptr<ModuleType> module) {
-  auto& base_module = (children_[name] = std::move(module));
-  return std::dynamic_pointer_cast<ModuleType>(base_module);
-}
-
-template <typename ModuleType>
-std::shared_ptr<ModuleType> Module::replace_module(
-    const std::string& name,
-    ModuleHolder<ModuleType> module_holder) {
-  return replace_module(name, module_holder.ptr());
+std::shared_ptr<ModuleType> Module::register_module(
+    std::string name,
+    ModuleHolder<ModuleType> module_holder,
+    const StateDictSelector& selector) {
+  return register_module(std::move(name), module_holder.ptr(), selector);
 }
 
 template <typename... Ts>
 void Module::to_impl(Ts&&... ts) {
   // First call `to()` on every child module.
   for (auto& child : children_) {
-    child.value()->to(ts...);
+    child.value().module->to(ts...);
   }
   // Then move every parameter to the new dtype/device.
   for (auto& parameter : named_parameters(/*recurse=*/false)) {
