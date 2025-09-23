@@ -310,11 +310,20 @@ std::ostream& operator<<(std::ostream& stream, const Module& module) {
 
 // load weights from the checkpoint, override this method if necessary
 // NOLINTNEXTLINE(misc-no-recursion)
-void Module::load(const StateDict& state_dict, const std::string& name_prefix) {
+size_t Module::load(const StateDict& state_dict,
+                    const std::string& name_prefix) {
+  size_t total_loaded = 0;
   // load parameters one by one
   for (auto& item : parameters_) {
     const auto& key = item.key();
     auto& param = item.value();
+    const auto& param_tensor = param.tensor;
+    // skip loading for undefined tensor
+    if (!param_tensor.defined()) {
+      // mark as loaded to pass verification
+      param.is_loaded = true;
+      continue;
+    }
 
     // clear the load status before loading
     param.is_loaded = false;
@@ -323,14 +332,14 @@ void Module::load(const StateDict& state_dict, const std::string& name_prefix) {
       continue;
     }
 
-    const auto& param_tensor = param.tensor;
     if (param_tensor.sizes() == tensor.sizes()) {
       // copy data to the parameter tensor
       param_tensor.copy_(tensor);
       // mark as loaded
       param.is_loaded = true;
+      ++total_loaded;
     } else {
-      LOG(ERROR) << "Parameter size mismatch for "
+      LOG(ERROR) << "Size mismatch for parameter "
                  << join_name(name_prefix, key) << ": expected "
                  << param_tensor.sizes() << ", got " << tensor.sizes();
     }
@@ -344,8 +353,10 @@ void Module::load(const StateDict& state_dict, const std::string& name_prefix) {
     const auto& child = item.value();
     // select state dict for the child module
     const auto child_state_dict = child.selector(state_dict, key);
-    child.module->load(child_state_dict, join_name(name_prefix, key));
+    total_loaded +=
+        child.module->load(child_state_dict, join_name(name_prefix, key));
   }
+  return total_loaded;
 }
 
 // verify whether the weights are loaded, override this method if necessary

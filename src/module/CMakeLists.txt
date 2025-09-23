@@ -1,4 +1,5 @@
 include(cc_library)
+include(cc_test)
 
 cc_library(
   NAME
@@ -11,5 +12,17 @@ cc_library(
     module.cpp
   DEPS
     glog::glog
+    torch
+)
+
+cc_test(
+  NAME
+    module_test
+  SRCS
+    module_test.cpp
+  DEPS
+    :module
+    :state_dict
+    :gtest_main
     torch
 )

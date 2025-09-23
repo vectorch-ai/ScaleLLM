@@ -151,8 +151,9 @@ class Module : public std::enable_shared_from_this<Module> {
   virtual void pretty_print(std::ostream& stream) const;
 
   // load weights from the checkpoint, override this method if necessary
-  virtual void load(const StateDict& state_dict,
-                    const std::string& name_prefix = std::string());
+  // returns the number of loaded parameters
+  virtual size_t load(const StateDict& state_dict,
+                      const std::string& name_prefix = std::string());
 
   // verify whether the weights are loaded, override this method if necessary
   virtual bool verify(const std::string& name_prefix = std::string()) const;
