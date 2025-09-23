@@ -12,42 +12,6 @@
 
 namespace llm {
 
-class LegacyFusedColumnParallelLinearImpl : public Module {
- public:
-  LegacyFusedColumnParallelLinearImpl(int64_t in_features,
-                                      const std::vector<int64_t>& out_features,
-                                      bool bias,
-                                      bool gather_output,
-                                      const QuantArgs& quant_args,
-                                      const ParallelArgs& parallel_args,
-                                      const torch::TensorOptions& options);
-
-  std::vector<torch::Tensor> forward(torch::Tensor input);
-
-  // load_state_dict for fused weights
-  void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string>& prefixes);
-
-  void verify_loaded_weights(const std::string& prefix = "") const;
-
-  // whether the linear layer is fused
-  bool fused() const { return fused_; }
-
- private:
-  // non-fused linear layers
-  std::vector<ColumnParallelLinear> parallel_linears_;
-
-  // fused linear layer
-  ColumnParallelLinear fused_linear_{nullptr};
-
-  // sizes for each split
-  std::vector<int64_t> split_sizes_;
-
-  // whether the linear layer is fused
-  bool fused_ = false;
-};
-LLM_MODULE(LegacyFusedColumnParallelLinear);
-
 class FusedColumnParallelLinearImpl : public Module {
  public:
   FusedColumnParallelLinearImpl(int64_t in_features,
