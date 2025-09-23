@@ -7,7 +7,7 @@
 // #include "chatglm.h"   // IWYU pragma: keep
 #include "gemma.h"  // IWYU pragma: keep
 // #include "gemma2.h"    // IWYU pragma: keep
-// #include "gpt2.h"  // IWYU pragma: keep
+#include "gpt2.h"  // IWYU pragma: keep
 // #include "gpt_j.h"     // IWYU pragma: keep
 // #include "gpt_neox.h"  // IWYU pragma: keep
 // #include "internlm.h"  // IWYU pragma: keep
