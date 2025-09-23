@@ -329,10 +329,13 @@ size_t Module::load(const StateDict& state_dict,
     param.is_loaded = false;
     const auto tensor = param.loader(state_dict, key);
     if (!tensor.defined()) {
+      LOG(ERROR) << "Missing parameter: " << join_name(name_prefix, key);
       continue;
     }
 
     if (param_tensor.sizes() == tensor.sizes()) {
+      LOG(INFO) << "Loading parameter: " << join_name(name_prefix, key)
+                << " of size " << tensor.sizes();
       // copy data to the parameter tensor
       param_tensor.copy_(tensor);
       // mark as loaded
@@ -351,10 +354,14 @@ size_t Module::load(const StateDict& state_dict,
   for (const auto& item : children_) {
     const auto& key = item.key();
     const auto& child = item.value();
-    // select state dict for the child module
-    const auto child_state_dict = child.selector(state_dict, key);
-    total_loaded +=
-        child.module->load(child_state_dict, join_name(name_prefix, key));
+    if (child.selector) {
+      // select state dict for the child module
+      const auto child_state_dict = child.selector(state_dict, key);
+      total_loaded +=
+          child.module->load(child_state_dict, join_name(name_prefix, key));
+    } else {
+      total_loaded += child.module->load(state_dict, name_prefix);
+    }
   }
   return total_loaded;
 }
@@ -375,7 +382,9 @@ bool Module::verify(const std::string& name_prefix) const {
   for (const auto& item : children_) {
     const auto& key = item.key();
     const auto& child = item.value();
-    const bool child_loaded = child.module->verify(join_name(name_prefix, key));
+    const std::string prefix =
+        child.selector ? join_name(name_prefix, key) : name_prefix;
+    const bool child_loaded = child.module->verify(prefix);
     all_loaded = all_loaded && child_loaded;
   }
   return all_loaded;

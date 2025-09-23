@@ -296,8 +296,7 @@ std::shared_ptr<ModuleType> Module::register_module(
     std::string name,
     std::shared_ptr<ModuleType> module) {
   auto default_selector = [](const StateDict& sd, const std::string& key) {
-    const std::string prefix = key + '.';
-    return sd.select(prefix);
+    return sd.select(key + ".");
   };
   return register_module(std::move(name), std::move(module), default_selector);
 }

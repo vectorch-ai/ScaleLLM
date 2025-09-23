@@ -73,6 +73,7 @@ class ParallelEmbeddingImpl : public Module {
                         const ParallelArgs& parallel_args,
                         const torch::TensorOptions& options)
       : parallel_args_(parallel_args) {
+    const auto rank = parallel_args_.rank();
     const auto world_size = parallel_args_.world_size();
     CHECK(embedding_dim % world_size == 0)
         << "out_features " << embedding_dim << " not divisible by world_size "
@@ -80,8 +81,11 @@ class ParallelEmbeddingImpl : public Module {
     const int64_t embedding_dim_per_partition = embedding_dim / world_size;
 
     // register the weight parameter
-    weight_ = register_parameter(
+    weight_ = register_sharded_parameter(
         "weight",
+        /*dim=*/1,
+        rank,
+        world_size,
         torch::empty({num_embeddings, embedding_dim_per_partition}, options));
   }
 

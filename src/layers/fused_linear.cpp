@@ -24,13 +24,13 @@ FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
     // fused linear layer
     const int64_t out_features = std::accumulate(
         out_features_vec.begin(), out_features_vec.end(), int64_t(0));
-    fused_linear_ = ColumnParallelLinear(in_features,
-                                         out_features,
-                                         bias,
-                                         gather_output,
-                                         quant_args,
-                                         parallel_args,
-                                         options);
+    fused_linear_ = LegacyColumnParallelLinear(in_features,
+                                               out_features,
+                                               bias,
+                                               gather_output,
+                                               quant_args,
+                                               parallel_args,
+                                               options);
     // calculate split sizes
     split_sizes_.reserve(out_features_vec.size());
     const auto world_size = parallel_args.world_size();

@@ -70,11 +70,15 @@ class CausalLMImpl : public CausalLM {
   }
 
   void load_state_dict(const StateDict& state_dict) override {
-    model_->load_state_dict(state_dict);
+    model_->load(state_dict);
   }
 
   void verify_loaded_weights() const override {
-    return model_->verify_loaded_weights();
+    bool success = model_->verify();
+    if (!success) {
+      LOG(FATAL) << "Failed to verify loaded weights for the model."
+                 << " Please check the log for more details.";
+    }
   }
 
   torch::Device device() const override { return options_.device(); }

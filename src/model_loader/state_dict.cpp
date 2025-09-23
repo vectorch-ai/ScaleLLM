@@ -219,4 +219,14 @@ StateDict StateDict::select_with_transform(
   return selected;
 }
 
+StateDict StateDict::select_with_transform(
+    const std::string& prefix,
+    std::function<torch::Tensor(const torch::Tensor&)> transform_func) const {
+  return select_with_transform(
+      prefix,
+      [transform_func](const std::string&, const torch::Tensor& tensor) {
+        return transform_func(tensor);
+      });
+}
+
 }  // namespace llm

@@ -35,10 +35,10 @@ class FusedColumnParallelLinearImpl : public Module {
 
  private:
   // non-fused linear layers
-  std::vector<ColumnParallelLinear> parallel_linears_;
+  std::vector<LegacyColumnParallelLinear> parallel_linears_;
 
   // fused linear layer
-  ColumnParallelLinear fused_linear_{nullptr};
+  LegacyColumnParallelLinear fused_linear_{nullptr};
 
   // sizes for each split
   std::vector<int64_t> split_sizes_;

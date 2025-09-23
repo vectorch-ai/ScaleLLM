@@ -46,6 +46,10 @@ class StateDict final {
   StateDict select_with_transform(const std::string& prefix,
                                   TensorTransform transform_func) const;
 
+  StateDict select_with_transform(
+      const std::string& prefix,
+      std::function<torch::Tensor(const torch::Tensor&)> transform_func) const;
+
   size_t size() const { return dict_.size(); }
 
   std::string_view prefix() const { return prefix_; }
