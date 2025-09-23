@@ -39,7 +39,7 @@ class Gemma2MLPImpl : public Module {
     // register the weight parameter
     gate_up_proj_ = register_module(
         "gate_up_proj",
-        FusedColumnParallelLinear(
+        LegacyFusedColumnParallelLinear(
             hidden_size,
             std::vector<int64_t>{intermediate_size, intermediate_size},
             /*bias=*/false,
@@ -77,7 +77,7 @@ class Gemma2MLPImpl : public Module {
 
  private:
   // parameter members, must be registered
-  FusedColumnParallelLinear gate_up_proj_{nullptr};
+  LegacyFusedColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 
   // activation function

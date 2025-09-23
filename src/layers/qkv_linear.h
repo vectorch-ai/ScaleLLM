@@ -40,7 +40,7 @@ class QKVColumnParallelLinearImpl : public Module {
   }
 
  private:
-  FusedColumnParallelLinear parallel_linear_{nullptr};
+  LegacyFusedColumnParallelLinear parallel_linear_{nullptr};
 
   // replication ratio of kv heads for MQA/GQA cases
   int64_t kv_replication_ratio_ = 0;

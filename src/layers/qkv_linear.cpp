@@ -36,14 +36,15 @@ QKVColumnParallelLinearImpl::QKVColumnParallelLinearImpl(
                                        effective_kv_heads * head_dim,
                                        effective_kv_heads * head_dim};
 
-  parallel_linear_ = register_module("parallel_linear",
-                                     FusedColumnParallelLinear(hidden_size,
-                                                               out_features,
-                                                               bias,
-                                                               gather_output,
-                                                               quant_args,
-                                                               parallel_args,
-                                                               options));
+  parallel_linear_ =
+      register_module("parallel_linear",
+                      LegacyFusedColumnParallelLinear(hidden_size,
+                                                      out_features,
+                                                      bias,
+                                                      gather_output,
+                                                      quant_args,
+                                                      parallel_args,
+                                                      options));
 }
 
 // special load_state_dict for fused cases

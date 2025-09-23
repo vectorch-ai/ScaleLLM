@@ -10,7 +10,7 @@
 
 namespace llm {
 
-FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
+LegacyFusedColumnParallelLinearImpl::LegacyFusedColumnParallelLinearImpl(
     int64_t in_features,
     const std::vector<int64_t>& out_features_vec,
     bool bias,
@@ -55,7 +55,7 @@ FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
   }
 }
 
-std::vector<torch::Tensor> FusedColumnParallelLinearImpl::forward(
+std::vector<torch::Tensor> LegacyFusedColumnParallelLinearImpl::forward(
     torch::Tensor input) {
   if (fused_) {
     auto fused_output = fused_linear_->forward(input);
@@ -72,7 +72,7 @@ std::vector<torch::Tensor> FusedColumnParallelLinearImpl::forward(
   return outputs;
 }
 
-void FusedColumnParallelLinearImpl::load_state_dict(
+void LegacyFusedColumnParallelLinearImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string>& prefixes) {
   if (fused_) {
@@ -85,7 +85,7 @@ void FusedColumnParallelLinearImpl::load_state_dict(
   }
 }
 
-void FusedColumnParallelLinearImpl::verify_loaded_weights(
+void LegacyFusedColumnParallelLinearImpl::verify_loaded_weights(
     const std::string& prefix) const {
   if (fused_) {
     fused_linear_->verify_loaded_weights(prefix);

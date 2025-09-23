@@ -325,12 +325,14 @@ size_t Module::load(const StateDict& state_dict,
       continue;
     }
 
-    // clear the load status before loading
-    param.is_loaded = false;
     const auto tensor = param.loader(state_dict, key);
     if (!tensor.defined()) {
-      LOG(ERROR) << "Missing parameter: " << join_name(name_prefix, key);
       continue;
+    }
+
+    if (param.is_loaded) {
+      LOG(WARNING) << "Parameter " << join_name(name_prefix, key)
+                   << " is already loaded";
     }
 
     if (param_tensor.sizes() == tensor.sizes()) {

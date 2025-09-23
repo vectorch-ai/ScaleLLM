@@ -12,15 +12,15 @@
 
 namespace llm {
 
-class FusedColumnParallelLinearImpl : public Module {
+class LegacyFusedColumnParallelLinearImpl : public Module {
  public:
-  FusedColumnParallelLinearImpl(int64_t in_features,
-                                const std::vector<int64_t>& out_features,
-                                bool bias,
-                                bool gather_output,
-                                const QuantArgs& quant_args,
-                                const ParallelArgs& parallel_args,
-                                const torch::TensorOptions& options);
+  LegacyFusedColumnParallelLinearImpl(int64_t in_features,
+                                      const std::vector<int64_t>& out_features,
+                                      bool bias,
+                                      bool gather_output,
+                                      const QuantArgs& quant_args,
+                                      const ParallelArgs& parallel_args,
+                                      const torch::TensorOptions& options);
 
   std::vector<torch::Tensor> forward(torch::Tensor input);
 
@@ -46,6 +46,6 @@ class FusedColumnParallelLinearImpl : public Module {
   // whether the linear layer is fused
   bool fused_ = false;
 };
-LLM_MODULE(FusedColumnParallelLinear);
+LLM_MODULE(LegacyFusedColumnParallelLinear);
 
 }  // namespace llm

@@ -11,6 +11,7 @@
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
+#include "layers/linear_impl.h"
 #include "layers/normalization.h"
 #include "layers/qkv_linear.h"
 #include "memory/kv_cache.h"
@@ -39,7 +40,7 @@ class GemmaMLPImpl : public Module {
     // register the weight parameter
     gate_up_proj_ = register_module(
         "gate_up_proj",
-        FusedColumnParallelLinear(
+        LegacyFusedColumnParallelLinear(
             hidden_size,
             std::vector<int64_t>{intermediate_size, intermediate_size},
             /*bias=*/false,
@@ -49,13 +50,13 @@ class GemmaMLPImpl : public Module {
             options));
     down_proj_ =
         register_module("down_proj",
-                        RowParallelLinear(intermediate_size,
-                                          hidden_size,
-                                          /*bias=*/false,
-                                          /*input_is_parallelized=*/true,
-                                          quant_args,
-                                          parallel_args,
-                                          options));
+                        LegacyRowParallelLinear(intermediate_size,
+                                                hidden_size,
+                                                /*bias=*/false,
+                                                /*input_is_parallelized=*/true,
+                                                quant_args,
+                                                parallel_args,
+                                                options));
   }
 
   torch::Tensor forward(torch::Tensor x) {
@@ -77,8 +78,8 @@ class GemmaMLPImpl : public Module {
 
  private:
   // parameter members, must be registered
-  FusedColumnParallelLinear gate_up_proj_{nullptr};
-  RowParallelLinear down_proj_{nullptr};
+  LegacyFusedColumnParallelLinear gate_up_proj_{nullptr};
+  LegacyRowParallelLinear down_proj_{nullptr};
 
   // activation function
   ActFunc act_func_{nullptr};
@@ -113,8 +114,9 @@ class GemmaAttentionImpl : public Module {
                                                         parallel_args,
                                                         options));
 
-    o_proj_ = register_module("o_proj",
-                              RowParallelLinear(n_heads * head_dim,
+    o_proj_ =
+        register_module("o_proj",
+                        LegacyRowParallelLinear(n_heads * head_dim,
                                                 hidden_size,
                                                 /*bias=*/false,
                                                 /*input_is_parallelized=*/true,
@@ -158,7 +160,7 @@ class GemmaAttentionImpl : public Module {
   // parameter members, must be registered
   QKVColumnParallelLinear qkv_proj_{nullptr};
 
-  RowParallelLinear o_proj_{nullptr};
+  LegacyRowParallelLinear o_proj_{nullptr};
 
   // module members without parameters
   Attention atten_{nullptr};
@@ -337,7 +339,7 @@ class GemmaForCausalLMImpl : public Module {
     model_ = register_module(
         "model", GemmaModel(args, quant_args, parallel_args, options));
 
-    lm_head_ = register_module("lm_head",
+    lm_head_ = register_module("model.embed_tokens",
                                ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
                                                     /*bias=*/false,
