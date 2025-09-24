@@ -67,19 +67,19 @@ TEST_P(QKVColumnParallelLinearTest, LoadFusedWeight) {
 
     // generate random input and compare with the output
     auto input = torch::randn({n_tokens, hidden_size}, options);
-    auto qkv = linear.forward(input);
+    const auto [q, k, v] = linear.forward(input);
 
     const int64_t kv_shard_id =
         n_kv_heads >= n_shards ? shard_id : n_kv_heads * shard_id / n_shards;
 
     auto query = input.matmul(query_chunks[shard_id].t());
-    EXPECT_TRUE(torch::allclose(qkv[0], query, /*rtol=*/1e-5, /*atol=*/1e-5));
+    EXPECT_TRUE(torch::allclose(q, query, /*rtol=*/1e-5, /*atol=*/1e-5));
 
     auto key = input.matmul(key_chunks[kv_shard_id].t());
-    EXPECT_TRUE(torch::allclose(qkv[1], key, /*rtol=*/1e-5, /*atol=*/1e-5));
+    EXPECT_TRUE(torch::allclose(k, key, /*rtol=*/1e-5, /*atol=*/1e-5));
 
     auto value = input.matmul(value_chunks[kv_shard_id].t());
-    EXPECT_TRUE(torch::allclose(qkv[2], value, /*rtol=*/1e-5, /*atol=*/1e-5));
+    EXPECT_TRUE(torch::allclose(v, value, /*rtol=*/1e-5, /*atol=*/1e-5));
   }
 }
 

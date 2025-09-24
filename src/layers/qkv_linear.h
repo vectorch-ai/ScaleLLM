@@ -27,8 +27,11 @@ class QKVColumnParallelLinearImpl : public Module {
                               const ParallelArgs& parallel_args,
                               const torch::TensorOptions& options);
 
-  std::vector<torch::Tensor> forward(torch::Tensor input) {
-    return parallel_linear_->forward(input);
+  // returns (query, key, value)
+  std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
+      torch::Tensor input) {
+    const auto qkv = parallel_linear_->forward(input);
+    return {qkv[0], qkv[1], qkv[2]};
   }
 
  private:

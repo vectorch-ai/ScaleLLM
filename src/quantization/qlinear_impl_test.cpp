@@ -46,8 +46,8 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
                                            /*bits=*/4);
   weights = weights.to(torch::kCUDA);
 
-  qlinear.load_state_dict(*state_dict);
-  qlinear.verify_loaded_weights();
+  qlinear.load(*state_dict);
+  EXPECT_TRUE(qlinear.verify());
 
   auto input = torch::rand({40960, in_features}, options);
   auto output = qlinear.forward(input);
@@ -83,8 +83,8 @@ TEST(QlinearTest, RowParallelQuantLinear) {
                                            /*bits=*/4);
   weights = weights.to(torch::kCUDA);
 
-  qlinear.load_state_dict(*state_dict);
-  qlinear.verify_loaded_weights();
+  qlinear.load(*state_dict);
+  EXPECT_TRUE(qlinear.verify());
 
   auto input = torch::rand({40960, in_features}, options);
   auto output = qlinear.forward(input);
