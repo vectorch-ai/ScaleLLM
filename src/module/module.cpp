@@ -336,8 +336,8 @@ size_t Module::load(const StateDict& state_dict,
     }
 
     if (param_tensor.sizes() == tensor.sizes()) {
-      LOG(INFO) << "Loading parameter: " << join_name(name_prefix, key)
-                << " of size " << tensor.sizes();
+      // LOG(INFO) << "Loading parameter: " << join_name(name_prefix, key)
+      //           << " of size " << tensor.sizes();
       // copy data to the parameter tensor
       param_tensor.copy_(tensor);
       // mark as loaded
@@ -376,7 +376,8 @@ bool Module::verify(const std::string& name_prefix) const {
     const auto& key = item.key();
     const auto& param = item.value();
     if (!param.is_loaded) {
-      LOG(ERROR) << "Missing parameter: " << join_name(name_prefix, key);
+      LOG(ERROR) << "Missing parameter: " << join_name(name_prefix, key)
+                 << ", size: " << param.tensor.sizes();
     }
     all_loaded = all_loaded && param.is_loaded;
   }
