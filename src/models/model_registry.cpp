@@ -2,7 +2,7 @@
 
 #include <glog/logging.h>
 
-#include "models.h"  // IWYU pragma: keep
+#include "registered_models.h"  // IWYU pragma: keep
 
 namespace llm {
 
