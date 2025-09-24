@@ -55,23 +55,15 @@ torch::Tensor ColumnParallelLinearImpl::forward(torch::Tensor input) {
 
 // load the weight from the checkpoint
 void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
-  // call load_state_dict with identity transform
-  load_state_dict(state_dict,
-                  [](const torch::Tensor& tensor) { return tensor; });
-}
-
-void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict,
-                                               TensorTransform transform_func) {
-  CHECK(transform_func != nullptr) << "transform_func must be provided";
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
   // load sharded weights on dim 0
-  LOAD_SHARDED_WEIGHT_WITH_TRANSFORM(weight, 0);
+  LOAD_SHARDED_WEIGHT(weight, 0);
 
   if (bias_.defined()) {
     // load sharded bias on dim 0
-    LOAD_SHARDED_WEIGHT_WITH_TRANSFORM(bias, 0);
+    LOAD_SHARDED_WEIGHT(bias, 0);
   }
 }
 

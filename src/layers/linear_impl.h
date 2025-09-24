@@ -26,10 +26,6 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   // load the weight from the checkpoint
   void load_state_dict(const StateDict& state_dict) override;
 
-  // load state dict with a transform function
-  void load_state_dict(const StateDict& state_dict,
-                       TensorTransform transform_func) override;
-
   // special load_state_dict for fused cases
   void load_state_dict(const StateDict& state_dict,
                        const std::vector<std::string>& prefixes) override;

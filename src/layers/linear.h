@@ -26,12 +26,6 @@ class ParallelLinearImpl : public Module {
 
   virtual void verify_loaded_weights(const std::string& prefix = "") const = 0;
 
-  // load state dict with a transform function
-  virtual void load_state_dict(const StateDict& /*state_dict*/,
-                               TensorTransform /*transform_func*/) {
-    LOG(FATAL) << "not implemented";
-  }
-
   // special load_state_dict for fused cases
   virtual void load_state_dict(const StateDict& /*state_dict*/,
                                const std::vector<std::string>& /*prefixes*/) {

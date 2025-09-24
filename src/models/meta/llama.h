@@ -127,10 +127,9 @@ class LlamaAttentionImpl : public Module {
                         const InputParameters& input_params) {
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
-    const auto qkv = qkv_proj_(x);
+    const auto [q, k, v] = qkv_proj_(x);
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    const auto output =
-        atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
+    const auto output = atten_(q, k, v, positions, kv_cache, input_params);
     return o_proj_(output);
   }
 
