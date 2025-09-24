@@ -2,6 +2,8 @@
 
 #include <typeinfo>
 
+#include "model_loader/state_dict.h"
+
 namespace llm {
 using namespace torch;
 
@@ -49,8 +51,9 @@ OrderedDict<std::string, Tensor> Module::named_parameters(bool recurse) const {
   OrderedDict<std::string, Tensor> result;
   if (!recurse) {
     for (const auto& parameter : parameters_) {
-      if (parameter.value().defined()) {
-        result.insert(parameter.key(), parameter.value());
+      const auto& param_tensor = parameter.value().tensor;
+      if (param_tensor.defined()) {
+        result.insert(parameter.key(), param_tensor);
       }
     }
   } else {
@@ -125,12 +128,20 @@ OrderedDict<std::string, std::shared_ptr<Module>> Module::named_modules(
 }
 
 std::vector<std::shared_ptr<Module>> Module::children() const {
-  return children_.values();
+  std::vector<std::shared_ptr<Module>> result;
+  for (const auto& item : children_) {
+    result.push_back(item.value().module);
+  }
+  return result;
 }
 
 OrderedDict<std::string, std::shared_ptr<Module>> Module::named_children()
     const {
-  return children_;
+  OrderedDict<std::string, std::shared_ptr<Module>> result;
+  for (const auto& item : children_) {
+    result.insert(item.key(), item.value().module);
+  }
+  return result;
 }
 
 void Module::apply(const ModuleApplyFunction& function) {
@@ -198,31 +209,51 @@ void Module::to(torch::Device device, bool non_blocking) {
   to_impl(device, non_blocking);
 }
 
-Tensor& Module::register_parameter(std::string name, Tensor tensor) {
+Tensor& Module::register_parameter(std::string name,
+                                   Tensor tensor,
+                                   const TensorLoader& loader) {
   TORCH_CHECK(!name.empty(), "Parameter name must not be empty");
-  TORCH_CHECK(name.find('.') == std::string::npos,
-              "Parameter name must not contain a dot (got '",
-              name,
-              "')");
-  tensor.set_requires_grad(false);
-  return parameters_.insert(std::move(name), std::move(tensor));
+  // tensor.set_requires_grad(false);
+  Parameter param{
+      .tensor = std::move(tensor), .loader = loader, .is_loaded = false};
+  return parameters_.insert(std::move(name), std::move(param)).tensor;
+}
+
+Tensor& Module::register_parameter(std::string name, Tensor tensor) {
+  auto default_loader = [](const StateDict& sd, const std::string& key) {
+    return sd.get_tensor(key);
+  };
+  return register_parameter(std::move(name), std::move(tensor), default_loader);
+}
+
+Tensor& Module::register_sharded_parameter(std::string name,
+                                           int dim,
+                                           int rank,
+                                           int world_size,
+                                           Tensor tensor) {
+  TORCH_CHECK(!name.empty(), "Parameter name must not be empty");
+  // tensor.set_requires_grad(false);
+  Parameter param{
+      .tensor = std::move(tensor),
+      .loader =
+          [dim, rank, world_size](const StateDict& sd, const std::string& key) {
+            return sd.get_sharded_tensor(key, dim, rank, world_size);
+          },
+      .is_loaded = false};
+  return parameters_.insert(std::move(name), std::move(param)).tensor;
 }
 
 Tensor& Module::register_buffer(std::string name, Tensor tensor) {
   TORCH_CHECK(!name.empty(), "Buffer name must not be empty");
-  TORCH_CHECK(name.find('.') == std::string::npos,
-              "Buffer name must not contain a dot (got '",
-              name,
-              "')");
   return buffers_.insert(std::move(name), std::move(tensor));
 }
 
-void Module::unregister_module(const std::string& name) {
-  TORCH_CHECK(children_.contains(name),
-              "No Module with name `",
-              name,
-              "` is registered");
+bool Module::unregister_module(const std::string& name) {
+  if (!children_.contains(name)) {
+    return false;
+  }
   children_.erase(name);
+  return true;
 }
 
 void Module::pretty_print(std::ostream& stream) const { stream << name(); }
@@ -235,7 +266,7 @@ void Module::pretty_print_recursive(std::ostream& stream,
     const std::string next_indentation = indentation + "  ";
     for (const auto& child : children_) {
       stream << next_indentation << "(" << child.key() << "): ";
-      child.value()->pretty_print_recursive(stream, next_indentation);
+      child.value().module->pretty_print_recursive(stream, next_indentation);
       stream << '\n';
     }
     stream << indentation << ")";
@@ -248,8 +279,8 @@ void Module::apply_to_submodules(
     const std::string& name_prefix) const {
   for (const auto& child : children_) {
     auto qualified_name = join_name(name_prefix, child.key());
-    function(qualified_name, child.value());
-    child.value()->apply_to_submodules(function, qualified_name);
+    function(qualified_name, child.value().module);
+    child.value().module->apply_to_submodules(function, qualified_name);
   }
 }
 
@@ -275,5 +306,90 @@ std::shared_ptr<Module> Module::shared_from_this_checked() const {
 std::ostream& operator<<(std::ostream& stream, const Module& module) {
   module.pretty_print_recursive(stream, "");
   return stream;
+}
+
+// load weights from the checkpoint, override this method if necessary
+// NOLINTNEXTLINE(misc-no-recursion)
+size_t Module::load(const StateDict& state_dict,
+                    const std::string& name_prefix) {
+  size_t total_loaded = 0;
+  // load parameters one by one
+  for (auto& item : parameters_) {
+    const auto& key = item.key();
+    auto& param = item.value();
+    const auto& param_tensor = param.tensor;
+    // skip loading for undefined tensor
+    if (!param_tensor.defined()) {
+      // mark as loaded to pass verification
+      param.is_loaded = true;
+      continue;
+    }
+
+    const auto tensor = param.loader(state_dict, key);
+    if (!tensor.defined()) {
+      continue;
+    }
+
+    if (param.is_loaded) {
+      LOG(WARNING) << "Parameter " << join_name(name_prefix, key)
+                   << " is already loaded";
+    }
+
+    if (param_tensor.sizes() == tensor.sizes()) {
+      // LOG(INFO) << "Loading parameter: " << join_name(name_prefix, key)
+      //           << " of size " << tensor.sizes();
+      // copy data to the parameter tensor
+      param_tensor.copy_(tensor);
+      // mark as loaded
+      param.is_loaded = true;
+      ++total_loaded;
+    } else {
+      LOG(ERROR) << "Size mismatch for parameter "
+                 << join_name(name_prefix, key) << ": expected "
+                 << param_tensor.sizes() << ", got " << tensor.sizes();
+    }
+  }
+
+  // don't need to load buffers, since they are initialized in the constructor
+
+  // recursively load children modules
+  for (const auto& item : children_) {
+    const auto& key = item.key();
+    const auto& child = item.value();
+    if (child.selector) {
+      // select state dict for the child module
+      const auto child_state_dict = child.selector(state_dict, key);
+      total_loaded +=
+          child.module->load(child_state_dict, join_name(name_prefix, key));
+    } else {
+      total_loaded += child.module->load(state_dict, name_prefix);
+    }
+  }
+  return total_loaded;
+}
+
+// verify whether the weights are loaded, override this method if necessary
+// NOLINTNEXTLINE(misc-no-recursion)
+bool Module::verify(const std::string& name_prefix) const {
+  bool all_loaded = true;
+  for (const auto& item : parameters_) {
+    const auto& key = item.key();
+    const auto& param = item.value();
+    if (!param.is_loaded) {
+      LOG(ERROR) << "Missing parameter: " << join_name(name_prefix, key)
+                 << ", size: " << param.tensor.sizes();
+    }
+    all_loaded = all_loaded && param.is_loaded;
+  }
+
+  for (const auto& item : children_) {
+    const auto& key = item.key();
+    const auto& child = item.value();
+    const std::string prefix =
+        child.selector ? join_name(name_prefix, key) : name_prefix;
+    const bool child_loaded = child.module->verify(prefix);
+    all_loaded = all_loaded && child_loaded;
+  }
+  return all_loaded;
 }
 }  // namespace llm

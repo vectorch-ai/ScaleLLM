@@ -32,11 +32,12 @@ ScaleLLM
 
 <div align="left">
 
-[ScaleLLM](#) is a cutting-edge inference system engineered for large language models (LLMs), designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3.1](https://github.com/meta-llama/llama3), [Gemma2](https://github.com/google-deepmind/gemma), Bloom, GPT-NeoX, and more.
+[ScaleLLM](#) is a cutting-edge inference system engineered for large language models (LLMs), designed to meet the demands of production environments. It extends its support to a wide range of popular open-source models, including [Llama3.1](https://github.com/meta-llama/llama3), [Gemma2](https://github.com/google-deepmind/gemma), [Phi](https://huggingface.co/microsoft/phi-2), and more.
 
 ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
 
 ## News:
+* [01/2025] - Optimized inhouse Attention kernels
 * [06/2024] - ScaleLLM is now available on [PyPI](https://pypi.org/project/scalellm/). You can install it using `pip install scalellm`.
 * [03/2024] - [Advanced features](#advanced-features) support for ✅ [CUDA graph](#cuda-graph), ✅ [prefix cache](#prefix-cache), ✅ [chunked prefill](#chunked-prefill) and ✅ [speculative decoding](#speculative-decoding).
 * [11/2023] - [First release](https://github.com/vectorch-ai/ScaleLLM/releases/tag/v0.0.1) with support for popular [open-source models](#supported-models).
@@ -274,21 +275,11 @@ Quantization is a crucial process for reducing the memory footprint of models. S
 
 |   Models   | Tensor Parallel | Quantization | Chat API | HF models examples |
 | :--------: | :-------------: | :----------: | :------: | :---------------------------:|
-|   Aquila   |       Yes       |     Yes      |    Yes   | [BAAI/Aquila-7B](https://huggingface.co/BAAI/Aquila-7B), [BAAI/AquilaChat-7B](https://huggingface.co/BAAI/AquilaChat-7B) |
-|   Bloom    |       Yes       |     Yes      |    No    | [bigscience/bloom](https://huggingface.co/bigscience/bloom) |
-|   Baichuan |       Yes       |     Yes      |    Yes   | [baichuan-inc/Baichuan2-7B-Chat](https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat) |
-| ChatGLM4/3 |       Yes       |     Yes      |    Yes   | [THUDM/chatglm3-6b](https://huggingface.co/THUDM/chatglm3-6b) |
 |   Gemma2   |       Yes       |     Yes      |    Yes   | [google/gemma-2-2b](https://huggingface.co/google/gemma-2-2b) |
-|   GPT_j    |       Yes       |     Yes      |    No    | [EleutherAI/gpt-j-6b](https://huggingface.co/EleutherAI/gpt-j-6b) |
-|  GPT_NeoX  |       Yes       |     Yes      |    No    | [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) |
 |    GPT2    |       Yes       |     Yes      |    No    | [gpt2](https://huggingface.co/gpt2)|
-| InternLM   |       Yes       |     Yes      |    Yes   | [internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b) |
 |   Llama3/2 |       Yes       |     Yes      |    Yes   | [meta-llama/Meta-Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct), [meta-llama/Meta-Llama-3.1-8B](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B) |
-|  Mistral   |       Yes       |     Yes      |    Yes   | [mistralai/Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) |
-|    MPT     |       Yes       |     Yes      |    Yes   | [mosaicml/mpt-30b](https://huggingface.co/mosaicml/mpt-30b) |
 |   Phi2     |       Yes       |     Yes      |    No   | [microsoft/phi-2](https://huggingface.co/microsoft/phi-2) |
 |   Qwen2    |       Yes       |     Yes      |    Yes   | [Qwen/Qwen-72B-Chat](https://huggingface.co/Qwen/Qwen-72B-Chat) |
-|    Yi      |       Yes       |     Yes      |    Yes    |[01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B), [01-ai/Yi-34B-Chat-4bits](https://huggingface.co/01-ai/Yi-34B-Chat-4bits), [01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K) |
 
 If your model is not included in the supported list, we are more than willing to assist you. Please feel free to create a request for adding a new model on [GitHub Issues](https://github.com/vectorch-ai/ScaleLLM/issues).
 

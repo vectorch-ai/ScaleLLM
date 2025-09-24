@@ -52,18 +52,6 @@ class PhiMLPImpl : public Module {
 
   torch::Tensor forward(torch::Tensor x) { return fc2_(act_(fc1_(x))); }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    fc1_->load_state_dict(state_dict.select("fc1."));
-    fc2_->load_state_dict(state_dict.select("fc2."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    fc1_->verify_loaded_weights(prefix + "fc1.");
-    fc2_->verify_loaded_weights(prefix + "fc2.");
-  }
-
  private:
   // parameter members, must be registered
   ColumnParallelLinear fc1_{nullptr};
@@ -134,18 +122,6 @@ class PhiAttentionImpl : public Module {
     return out_proj_(output);
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    Wqkv_->load_state_dict(state_dict.select("Wqkv."));
-    out_proj_->load_state_dict(state_dict.select("out_proj."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    Wqkv_->verify_loaded_weights(prefix + "Wqkv.");
-    out_proj_->verify_loaded_weights(prefix + "out_proj.");
-  }
-
  private:
   // parameter members, must be registered
   ColumnParallelLinear Wqkv_{nullptr};
@@ -191,20 +167,6 @@ class PhiBlockImpl : public Module {
     return x + attn_output + mlp_output;
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    mixer_->load_state_dict(state_dict.select("mixer."));
-    mlp_->load_state_dict(state_dict.select("mlp."));
-    ln_->load_state_dict(state_dict.select("ln."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    mixer_->verify_loaded_weights(prefix + "mixer.");
-    mlp_->verify_loaded_weights(prefix + "mlp.");
-    ln_->verify_loaded_weights(prefix + "ln.");
-  }
-
  private:
   // parameter members, must be registered
   PhiAttention mixer_{nullptr};
@@ -223,7 +185,7 @@ class PhiModelImpl : public Module {
                const torch::TensorOptions& options) {
     // register submodules
     wte_ = register_module(
-        "wte",
+        "embd.wte",
         ParallelEmbedding(
             args.vocab_size(), args.hidden_size(), parallel_args, options));
 
@@ -254,24 +216,6 @@ class PhiModelImpl : public Module {
       h = layer(h, positions, kv_caches[i], input_params);
     }
     return h;
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    wte_->load_state_dict(state_dict.select("embd.wte."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("h." + std::to_string(i) + "."));
-    }
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    wte_->verify_loaded_weights(prefix + "embd.wte.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights(prefix + "h." + std::to_string(i) +
-                                        ".");
-    }
   }
 
  private:
@@ -309,17 +253,6 @@ class PhiLMHeadImpl : public Module {
   }
 
   torch::Tensor forward(torch::Tensor x) { return linear_(ln_(x)); }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    ln_->load_state_dict(state_dict.select("ln."));
-    linear_->load_state_dict(state_dict.select("linear."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    ln_->verify_loaded_weights(prefix + "ln.");
-    linear_->verify_loaded_weights(prefix + "linear.");
-  }
 
  private:
   // parameter members, must be registered
@@ -364,17 +297,6 @@ class PhiForCausalLMImpl : public Module {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
     return lm_head_(h);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    transformer_->load_state_dict(state_dict.select("transformer."));
-    lm_head_->load_state_dict(state_dict.select("lm_head."));
-  }
-
-  void verify_loaded_weights() const {
-    transformer_->verify_loaded_weights("transformer.");
-    lm_head_->verify_loaded_weights("lm_head.");
   }
 
  private:

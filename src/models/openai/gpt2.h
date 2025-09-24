@@ -8,6 +8,7 @@
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
+#include "layers/linear_impl.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
@@ -20,6 +21,17 @@
 // gpt2 model compatible with huggingface weights
 
 namespace llm::hf {
+
+namespace detail {
+// GPT-2 implementation uses Conv1D instead of Linear. As a result, we
+// need to transpose the weight for linear layer when loading from checkpoint.
+static StateDict transpose_selector(const StateDict& sd,
+                                    const std::string& key) {
+  // transpose the weight
+  return sd.select_with_transform(
+      key + ".", [](const torch::Tensor& tensor) { return tensor.t(); });
+}
+}  // namespace detail
 
 class GPT2MLPImpl : public Module {
  public:
@@ -41,7 +53,8 @@ class GPT2MLPImpl : public Module {
                                                  /*gather_output=*/false,
                                                  quant_args,
                                                  parallel_args,
-                                                 options));
+                                                 options),
+                            detail::transpose_selector);
     c_proj_ = register_module("c_proj",
                               RowParallelLinear(intermediate_size,
                                                 hidden_size,
@@ -49,32 +62,11 @@ class GPT2MLPImpl : public Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                                options));
+                                                options),
+                              detail::transpose_selector);
   }
 
   torch::Tensor forward(torch::Tensor x) { return c_proj_(act_(c_fc_(x))); }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
-    // need to transpose the weight.
-    c_fc_->load_state_dict(state_dict.select_with_transform(
-        "c_fc.",
-        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
-          return tensor.t();
-        }));
-    c_proj_->load_state_dict(state_dict.select_with_transform(
-        "c_proj.",
-        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
-          return tensor.t();
-        }));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    c_fc_->verify_loaded_weights(prefix + "c_fc.");
-    c_proj_->verify_loaded_weights(prefix + "c_proj.");
-  }
 
  private:
   // parameter members, must be registered
@@ -105,7 +97,8 @@ class GPT2AttentionImpl : public Module {
                                                    /*gather_output=*/false,
                                                    quant_args,
                                                    parallel_args,
-                                                   options));
+                                                   options),
+                              detail::transpose_selector);
 
     c_proj_ = register_module("c_proj",
                               RowParallelLinear(hidden_size_,
@@ -114,7 +107,8 @@ class GPT2AttentionImpl : public Module {
                                                 /*input_is_parallelized=*/true,
                                                 quant_args,
                                                 parallel_args,
-                                                options));
+                                                options),
+                              detail::transpose_selector);
 
     // initialize attention
     atten_ = register_module(
@@ -136,27 +130,6 @@ class GPT2AttentionImpl : public Module {
                          kv_cache,
                          input_params);
     return c_proj_(output);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // GPT-2 implementation uses Conv1D instead of Linear. As a result, we
-    // need to transpose the weight.
-    c_attn_->load_state_dict(state_dict.select_with_transform(
-        "c_attn.",
-        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
-          return tensor.t();
-        }));
-    c_proj_->load_state_dict(state_dict.select_with_transform(
-        "c_proj.",
-        [](const std::string_view& /*name*/, const torch::Tensor& tensor) {
-          return tensor.t();
-        }));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    c_attn_->verify_loaded_weights(prefix + "c_attn.");
-    c_proj_->verify_loaded_weights(prefix + "c_proj.");
   }
 
  private:
@@ -205,22 +178,6 @@ class GPT2BlockImpl : public Module {
     // x = x + mlp(ln2(x))
     auto h = x + attn_(ln_1_(x), kv_cache, input_params);
     return h + mlp_(ln_2_(h));
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    attn_->load_state_dict(state_dict.select("attn."));
-    mlp_->load_state_dict(state_dict.select("mlp."));
-    ln_1_->load_state_dict(state_dict.select("ln_1."));
-    ln_2_->load_state_dict(state_dict.select("ln_2."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    attn_->verify_loaded_weights(prefix + "attn.");
-    mlp_->verify_loaded_weights(prefix + "mlp.");
-    ln_1_->verify_loaded_weights(prefix + "ln_1.");
-    ln_2_->verify_loaded_weights(prefix + "ln_2.");
   }
 
  private:
@@ -282,27 +239,6 @@ class GPT2ModelImpl : public Module {
     return ln_f_(h);
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    wte_->load_state_dict(state_dict.select("wte."));
-    wpe_->load_state_dict(state_dict.select("wpe."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("h." + std::to_string(i) + "."));
-    }
-    ln_f_->load_state_dict(state_dict.select("ln_f."));
-  }
-
-  void verify_loaded_weights() const {
-    wte_->verify_loaded_weights("wte.");
-    wpe_->verify_loaded_weights("wpe.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights("h." + std::to_string(i) + ".");
-    }
-    ln_f_->verify_loaded_weights("ln_f.");
-  }
-
  private:
   // parameter members, must be registered
   ParallelEmbedding wte_{nullptr};
@@ -328,10 +264,13 @@ class GPT2ForCausalLMImpl : public Module {
                       const ParallelArgs& parallel_args,
                       const torch::TensorOptions& options) {
     // register submodules
-    model_ = register_module(
-        "model", GPT2Model(args, quant_args, parallel_args, options));
+    model_ =
+        register_module("model",
+                        GPT2Model(args, quant_args, parallel_args, options),
+                        /*selector=*/nullptr);
 
-    lm_head_ = register_module("lm_head",
+    // load wte.weight
+    lm_head_ = register_module("wte",
                                ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
                                                     /*bias=*/false,
@@ -361,18 +300,6 @@ class GPT2ForCausalLMImpl : public Module {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
     return lm_head_(h);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    model_->load_state_dict(state_dict);
-    // TODO: share wte_ weight with lm_head_ to save memory
-    lm_head_->load_state_dict(state_dict.select("wte."));
-  }
-
-  void verify_loaded_weights() const {
-    model_->verify_loaded_weights();
-    lm_head_->verify_loaded_weights("wte.");
   }
 
  private:

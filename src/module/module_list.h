@@ -1,9 +1,5 @@
 #pragma once
 
-#include <c10/util/irange.h>
-#include <torch/nn/cloneable.h>
-#include <torch/nn/module.h>
-
 #include <utility>
 #include <vector>
 
@@ -11,6 +7,16 @@
 #include "module_holder.h"
 
 namespace llm {
+namespace detail {
+/// A type trait whose `value` member is true if `M` derives from `Module`.
+template <typename M>
+using is_module = std::is_base_of<llm::Module, std::decay_t<M>>;
+
+template <typename M, typename T = void>
+using enable_if_module_t = std::enable_if_t<is_module<M>::value, T>;
+
+}  // namespace detail
+
 /// A list of `Module`s that registers its elements.
 class ModuleListImpl : public Module {
  public:
@@ -40,7 +46,7 @@ class ModuleListImpl : public Module {
   /// Adds a new `Module` to the `ModuleList` container, moving or copying
   /// it into a `shared_ptr` internally. This method allows passing value types,
   /// and letting the container deal with the boxing.
-  template <typename M, typename = torch::detail::enable_if_module_t<M>>
+  template <typename M, typename = detail::enable_if_module_t<M>>
   void push_back(M&& module) {
     using Type = std::remove_reference_t<M>;
     push_back(std::make_shared<Type>(std::forward<M>(module)));
@@ -78,7 +84,7 @@ class ModuleListImpl : public Module {
   /// match.
   template <typename T>
   T& at(size_t index) {
-    static_assert(torch::detail::is_module<T>::value,
+    static_assert(detail::is_module<T>::value,
                   "Can only call ModuleList::at with an nn::Module type");
     TORCH_CHECK(index < size(), "Index out of range");
     auto module = modules_[index]->as<T>();
@@ -95,7 +101,7 @@ class ModuleListImpl : public Module {
   /// match.
   template <typename T>
   const T& at(size_t index) const {
-    static_assert(torch::detail::is_module<T>::value,
+    static_assert(detail::is_module<T>::value,
                   "Can only call ModuleList::at with an nn::Module type");
     TORCH_CHECK(index < size(), "Index out of range");
     const auto module = modules_[index]->as<T>();
@@ -120,7 +126,7 @@ class ModuleListImpl : public Module {
   /// match.
   template <typename T>
   std::shared_ptr<T> ptr(size_t index) const {
-    static_assert(torch::detail::is_module<T>::value,
+    static_assert(detail::is_module<T>::value,
                   "Can only call ModuleList::ptr with an nn::Module type");
     TORCH_CHECK(index < size(), "Index out of range");
     return std::dynamic_pointer_cast<T>(modules_[index]);
@@ -137,39 +143,6 @@ class ModuleListImpl : public Module {
 
   /// True if there are no modules in the `ModuleList`.
   bool is_empty() const noexcept { return size() == 0; }
-
-  void insert(size_t index, std::shared_ptr<Module> module) {
-    TORCH_CHECK(index <= size(), "Index out of range");
-
-    if (index == size())
-      push_back(std::move(module));
-    else {
-      modules_.insert(modules_.begin() + Iterator::difference_type(index),
-                      std::move(module));
-
-      for (const auto i : c10::irange(index, size() - 1)) {
-        (void)i;  // Suppress unused variable warning
-        replace_module(std::to_string(index), modules_[index]);
-      }
-      register_module(std::to_string(size() - 1), modules_.back());
-    }
-  }
-
-  /// Unwraps the contained module of a `ModuleHolder` and inserts it in the
-  /// `ModuleList`.
-  template <typename M>
-  void insert(size_t index, const ModuleHolder<M>& module_holder) {
-    insert(index, module_holder.ptr());
-  }
-
-  /// inserts a new `Module` to the `ModuleList` container, moving or copying
-  /// it into a `shared_ptr` internally. This method allows passing value types,
-  /// and letting the container deal with the boxing.
-  template <typename M, typename = torch::detail::enable_if_module_t<M>>
-  void insert(size_t index, M&& module) {
-    using Type = std::remove_reference_t<M>;
-    insert(index, std::make_shared<Type>(std::forward<M>(module)));
-  }
 
  private:
   template <typename Head, typename... Tail>

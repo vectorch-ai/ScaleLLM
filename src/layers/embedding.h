@@ -33,26 +33,6 @@ class EmbeddingImpl : public Module {
     return F::embedding(input, weight_);
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    const auto weight = state_dict.get_tensor("weight");
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes())
-          << "weight size mismatch for " << name();
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix) const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
-  }
-
   // return the weight (for testing)
   torch::Tensor weight() const { return weight_; }
 
@@ -73,6 +53,7 @@ class ParallelEmbeddingImpl : public Module {
                         const ParallelArgs& parallel_args,
                         const torch::TensorOptions& options)
       : parallel_args_(parallel_args) {
+    const auto rank = parallel_args_.rank();
     const auto world_size = parallel_args_.world_size();
     CHECK(embedding_dim % world_size == 0)
         << "out_features " << embedding_dim << " not divisible by world_size "
@@ -80,8 +61,11 @@ class ParallelEmbeddingImpl : public Module {
     const int64_t embedding_dim_per_partition = embedding_dim / world_size;
 
     // register the weight parameter
-    weight_ = register_parameter(
+    weight_ = register_sharded_parameter(
         "weight",
+        /*dim=*/1,
+        rank,
+        world_size,
         torch::empty({num_embeddings, embedding_dim_per_partition}, options));
   }
 
@@ -94,30 +78,6 @@ class ParallelEmbeddingImpl : public Module {
       output = gather_from_model_parallel_region(output, parallel_args_);
     }
     return output;
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    const auto weight = state_dict.get_sharded_tensor(
-        "weight",
-        /*dim=*/1,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes())
-          << "weight size mismatch for " << name();
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix) const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
   // return the weight (for testing)
@@ -143,14 +103,19 @@ class VocabParallelEmbeddingImpl : public Module {
                              const ParallelArgs& parallel_args,
                              const torch::TensorOptions& options)
       : parallel_args_(parallel_args) {
-    const int64_t num_embeddings_per_partition =
-        num_embeddings / parallel_args_.world_size();
-    start_index_ = num_embeddings_per_partition * parallel_args_.rank();
+    const auto rank = parallel_args_.rank();
+    const auto world_size = parallel_args_.world_size();
+
+    const int64_t num_embeddings_per_partition = num_embeddings / world_size;
+    start_index_ = num_embeddings_per_partition * rank;
     end_index_ = start_index_ + num_embeddings_per_partition;
 
     // register the weight parameter
-    weight_ = register_parameter(
+    weight_ = register_sharded_parameter(
         "weight",
+        /*dim=*/0,
+        rank,
+        world_size,
         torch::empty({num_embeddings_per_partition, embedding_dim}, options));
   }
 
@@ -172,30 +137,6 @@ class VocabParallelEmbeddingImpl : public Module {
     output.masked_fill_(input_mask.unsqueeze(-1), 0);
     // reduce across all gpus
     return reduce_from_model_parallel_region(output, parallel_args_);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    const auto weight = state_dict.get_sharded_tensor(
-        "weight",
-        /*dim=*/0,
-        /*rank=*/parallel_args_.rank(),
-        /*world_size=*/parallel_args_.world_size());
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes())
-          << "weight size mismatch for " << name();
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
   // return the weight (for testing)

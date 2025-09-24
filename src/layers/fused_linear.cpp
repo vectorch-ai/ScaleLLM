@@ -13,11 +13,13 @@ namespace llm {
 FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
     int64_t in_features,
     const std::vector<int64_t>& out_features_vec,
+    const std::vector<std::string>& prefixes,
     bool bias,
     bool gather_output,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options) {
+  prefixes_ = prefixes;
   // check if the linear layers can be fused
   fused_ = quant_args.can_be_fused();
   if (fused_) {
@@ -72,28 +74,29 @@ std::vector<torch::Tensor> FusedColumnParallelLinearImpl::forward(
   return outputs;
 }
 
-void FusedColumnParallelLinearImpl::load_state_dict(
-    const StateDict& state_dict,
-    const std::vector<std::string>& prefixes) {
+size_t FusedColumnParallelLinearImpl::load(const StateDict& state_dict,
+                                           const std::string&) {
   if (fused_) {
-    fused_linear_->load_state_dict(state_dict, prefixes);
+    fused_linear_->load_state_dict(state_dict, prefixes_);
   } else {
-    CHECK_EQ(parallel_linears_.size(), prefixes.size());
+    CHECK_EQ(parallel_linears_.size(), prefixes_.size());
     for (size_t i = 0; i < parallel_linears_.size(); ++i) {
-      parallel_linears_[i]->load_state_dict(state_dict.select(prefixes[i]));
+      parallel_linears_[i]->load_state_dict(state_dict.select(prefixes_[i]));
     }
   }
+  return 0;
 }
 
-void FusedColumnParallelLinearImpl::verify_loaded_weights(
-    const std::string& prefix) const {
+bool FusedColumnParallelLinearImpl::verify(
+    const std::string& name_prefix) const {
   if (fused_) {
-    fused_linear_->verify_loaded_weights(prefix);
+    fused_linear_->verify_loaded_weights(name_prefix);
   } else {
     for (const auto& parallel_linear : parallel_linears_) {
-      parallel_linear->verify_loaded_weights(prefix);
+      parallel_linear->verify_loaded_weights(name_prefix);
     }
   }
+  return true;
 }
 
 }  // namespace llm

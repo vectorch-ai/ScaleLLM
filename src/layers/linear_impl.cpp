@@ -18,6 +18,7 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options)
     : gather_output_(gather_output), parallel_args_(parallel_args) {
+  const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
   CHECK(out_features % world_size == 0)
       << "out_features " << out_features << " not divisible by world_size "
@@ -26,13 +27,20 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
 
   // Note: torch.nn.functional.linear performs XA^T + b and as a result
   // we allocate the transpose.
-  weight_ = register_parameter(
+  weight_ = register_sharded_parameter(
       "weight",
+      /*dim=*/0,
+      rank,
+      world_size,
       torch::empty({out_features_per_partition, in_features}, options));
 
   if (bias) {
-    bias_ = register_parameter(
-        "bias", torch::empty({out_features_per_partition}, options));
+    bias_ = register_sharded_parameter(
+        "bias",
+        /*dim=*/0,
+        rank,
+        world_size,
+        torch::empty({out_features_per_partition}, options));
   }
 }
 
@@ -93,14 +101,18 @@ RowParallelLinearImpl::RowParallelLinearImpl(
     const torch::TensorOptions& options)
     : input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
+  const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
   CHECK(in_features % world_size == 0)
       << "in_features " << in_features << " not divisible by world_size "
       << world_size;
   const int64_t in_features_per_partition = in_features / world_size;
   // Allocate the transpose since linear performs XA^T.
-  weight_ = register_parameter(
+  weight_ = register_sharded_parameter(
       "weight",
+      /*dim=*/1,
+      rank,
+      world_size,
       torch::empty({out_features, in_features_per_partition}, options));
 
   if (bias) {

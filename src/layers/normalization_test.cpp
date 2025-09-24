@@ -26,8 +26,8 @@ TEST(NormalizationTest, LayerNorm) {
 
   LayerNorm norm(dim, eps, /*bias=*/true, options);
   // test load state dict
-  norm->load_state_dict(state_dict);
-  norm->verify_loaded_weights();
+  norm->load(state_dict);
+  EXPECT_TRUE(norm->verify());
 
   // verify output
   const auto input = torch::randn({100, dim});
@@ -88,8 +88,8 @@ TEST(NormalizationTest, RMSNorm) {
 
   RMSNorm norm(dim, eps, options);
   // test load state dict
-  norm->load_state_dict(state_dict);
-  norm->verify_loaded_weights();
+  norm->load(state_dict);
+  EXPECT_TRUE(norm->verify());
 
   // verify output
   const auto input = torch::randn({100, dim});

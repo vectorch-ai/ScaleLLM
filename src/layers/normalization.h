@@ -94,38 +94,6 @@ class LayerNormImpl : public Module {
         input, normalized_shape_, weight_, bias_, eps_);
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    const auto weight = state_dict.get_tensor("weight");
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes())
-          << "weight size mismatch for " << name();
-      weight_.copy_(weight);
-      weight_is_loaded_ = true;
-    }
-    if (bias_.defined()) {
-      const auto bias = state_dict.get_tensor("bias");
-      if (bias.defined()) {
-        CHECK_EQ(bias_.sizes(), bias.sizes())
-            << "bias size mismatch for " << name();
-        bias_.copy_(bias);
-        bias_is_loaded_ = true;
-      }
-    }
-  }
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(weight_is_loaded_)
-        << "weight is not loaded for " << prefix + "weight";
-    CHECK(!bias_.defined() || bias_is_loaded_)
-        << "bias is not loaded for " << prefix + "bias";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
-  }
-
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
@@ -159,26 +127,6 @@ class RMSNormImpl : public Module {
     return detail::rms_norm(input, weight_, eps_);
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    const auto weight = state_dict.get_tensor("weight");
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes())
-          << "weight size mismatch for " << name();
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
-  }
-
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
@@ -205,26 +153,6 @@ class GemmaRMSNormImpl : public Module {
       return output;
     }
     return detail::gemma_rms_norm(input, weight_, eps_);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    const auto weight = state_dict.get_tensor("weight");
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes())
-          << "weight size mismatch for " << name();
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
  private:
@@ -266,26 +194,6 @@ class RMSNormResidualImpl : public Module {
     }
     residual = input;
     return detail::rms_norm(input, weight_, eps_);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    const auto weight = state_dict.get_tensor("weight");
-    if (weight.defined()) {
-      CHECK_EQ(weight_.sizes(), weight.sizes())
-          << "weight size mismatch for " << name();
-      weight_.copy_(weight);
-      is_loaded_ = true;
-    }
-  }
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const {
-    CHECK(is_loaded_) << "weight is not loaded for " << prefix + "weight";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
  private:

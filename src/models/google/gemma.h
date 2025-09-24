@@ -11,6 +11,7 @@
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
+#include "layers/linear_impl.h"
 #include "layers/normalization.h"
 #include "layers/qkv_linear.h"
 #include "memory/kv_cache.h"
@@ -42,11 +43,13 @@ class GemmaMLPImpl : public Module {
         FusedColumnParallelLinear(
             hidden_size,
             std::vector<int64_t>{intermediate_size, intermediate_size},
+            std::vector<std::string>{"gate_proj.", "up_proj."},
             /*bias=*/false,
             /*gather_output=*/false,
             quant_args,
             parallel_args,
-            options));
+            options),
+        /*selector=*/nullptr);
     down_proj_ =
         register_module("down_proj",
                         RowParallelLinear(intermediate_size,
@@ -61,18 +64,6 @@ class GemmaMLPImpl : public Module {
   torch::Tensor forward(torch::Tensor x) {
     const auto gate_up = gate_up_proj_(x);
     return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    gate_up_proj_->load_state_dict(state_dict, {"gate_proj.", "up_proj."});
-    down_proj_->load_state_dict(state_dict.select("down_proj."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    gate_up_proj_->verify_loaded_weights(prefix + "[gate_proj,up_proj].");
-    down_proj_->verify_loaded_weights(prefix + "down_proj.");
   }
 
  private:
@@ -102,16 +93,20 @@ class GemmaAttentionImpl : public Module {
         std::max<int64_t>(1, n_kv_heads / world_size);
 
     // register submodules
-    qkv_proj_ = register_module("qkv_proj",
-                                QKVColumnParallelLinear(hidden_size,
-                                                        n_heads,
-                                                        n_kv_heads,
-                                                        head_dim,
-                                                        /*bias=*/false,
-                                                        /*gather_output=*/false,
-                                                        quant_args,
-                                                        parallel_args,
-                                                        options));
+    qkv_proj_ = register_module(
+        "qkv_proj",
+        QKVColumnParallelLinear(
+            hidden_size,
+            n_heads,
+            n_kv_heads,
+            head_dim,
+            std::vector<std::string>{"q_proj.", "k_proj.", "v_proj."},
+            /*bias=*/false,
+            /*gather_output=*/false,
+            quant_args,
+            parallel_args,
+            options),
+        /*selector=*/nullptr);
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(n_heads * head_dim,
@@ -139,19 +134,6 @@ class GemmaAttentionImpl : public Module {
     const auto output =
         atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return o_proj_(output);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    qkv_proj_->load_state_dict(
-        state_dict, {"q_proj.", "k_proj.", "v_proj."}, {"k_proj.", "v_proj."});
-    o_proj_->load_state_dict(state_dict.select("o_proj."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    qkv_proj_->verify_loaded_weights(prefix + "[q_proj,k_proj,v_proj].");
-    o_proj_->verify_loaded_weights(prefix + "o_proj.");
   }
 
  private:
@@ -206,21 +188,6 @@ class GemmaDecoderLayerImpl : public Module {
     hidden_states = mlp_(hidden_states);
     hidden_states += residual;
     return hidden_states;
-  }
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    input_layernorm_->load_state_dict((state_dict.select("input_layernorm.")));
-    mlp_->load_state_dict(state_dict.select("mlp."));
-    post_attention_layernorm_->load_state_dict(
-        (state_dict.select("post_attention_layernorm.")));
-    self_attn_->load_state_dict(state_dict.select("self_attn."));
-  }
-  void verify_loaded_weights(const std::string& prefix) const {
-    self_attn_->verify_loaded_weights(prefix + "self_attn.");
-    mlp_->verify_loaded_weights(prefix + "mlp.");
-    input_layernorm_->verify_loaded_weights(prefix + "input_layernorm.");
-    post_attention_layernorm_->verify_loaded_weights(
-        prefix + "post_attention_layernorm.");
   }
 
  private:
@@ -286,26 +253,6 @@ class GemmaModelImpl : public Module {
     return norm_(h);
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    embed_tokens_->load_state_dict(state_dict.select("embed_tokens."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("layers." + std::to_string(i) + "."));
-    }
-    norm_->load_state_dict((state_dict.select("norm.")));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    embed_tokens_->verify_loaded_weights(prefix + "embed_tokens.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights(prefix + "layers." + std::to_string(i) +
-                                        ".");
-    }
-    norm_->verify_loaded_weights(prefix + "norm.");
-  }
-
  private:
   ModelArgs modelArgs_;
 
@@ -337,7 +284,7 @@ class GemmaForCausalLMImpl : public Module {
     model_ = register_module(
         "model", GemmaModel(args, quant_args, parallel_args, options));
 
-    lm_head_ = register_module("lm_head",
+    lm_head_ = register_module("model.embed_tokens",
                                ColumnParallelLinear(args.hidden_size(),
                                                     args.vocab_size(),
                                                     /*bias=*/false,
@@ -368,19 +315,6 @@ class GemmaForCausalLMImpl : public Module {
     }
 
     return lm_head_(h);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    model_->load_state_dict(state_dict.select("model."));
-
-    // Share the embedding weights with the final llm_head layer.
-    lm_head_->load_state_dict(state_dict.select("model.embed_tokens."));
-  }
-
-  void verify_loaded_weights() const {
-    model_->verify_loaded_weights("model.");
-    lm_head_->verify_loaded_weights("model.embed_tokens.");
   }
 
  private:

@@ -10,6 +10,7 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
+#include "layers/fused_linear.h"
 #include "layers/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
@@ -20,7 +21,7 @@
 #include "module/module_holder.h"
 #include "module/module_list.h"
 // QWen model compatible with huggingface weights
-// adopted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
+// Adapted from https://huggingface.co/Qwen/Qwen-7B/blob/main/modeling_qwen.py
 namespace llm::hf {
 
 class QWenMLPImpl : public Module {
@@ -38,14 +39,18 @@ class QWenMLPImpl : public Module {
     const int64_t intermediate_size = args.intermediate_size() / 2;
 
     // register the weight parameter
-    w1_w2_proj_ = register_module("gate_up_proj",
-                                  ColumnParallelLinear(hidden_size,
-                                                       intermediate_size * 2,
-                                                       /*bias=*/false,
-                                                       /*gather_output=*/false,
-                                                       quant_args,
-                                                       parallel_args,
-                                                       options));
+    gate_up_proj_ = register_module(
+        "gate_up_proj",
+        FusedColumnParallelLinear(
+            hidden_size,
+            std::vector<int64_t>{intermediate_size, intermediate_size},
+            std::vector<std::string>{"w1.", "w2."},
+            /*bias=*/false,
+            /*gather_output=*/false,
+            quant_args,
+            parallel_args,
+            options),
+        /*selector=*/nullptr);
     c_proj_ = register_module("c_proj",
                               RowParallelLinear(intermediate_size,
                                                 hidden_size,
@@ -57,26 +62,13 @@ class QWenMLPImpl : public Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    auto gate_up_proj = w1_w2_proj_(x);
-    auto chunks = gate_up_proj.chunk(/*chunks=*/2, /*dim=*/-1);
-    return c_proj_(chunks[0] * act_(chunks[1]));
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    w1_w2_proj_->load_state_dict(state_dict, {"w1.", "w2."});
-    c_proj_->load_state_dict(state_dict.select("c_proj."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    w1_w2_proj_->verify_loaded_weights(prefix + "[w1,w2].");
-    c_proj_->verify_loaded_weights(prefix + "c_proj.");
+    const auto gate_up = gate_up_proj_(x);
+    return c_proj_(gate_up[0] * act_(gate_up[1]));
   }
 
  private:
   // parameter members, must be registered
-  ColumnParallelLinear w1_w2_proj_{nullptr};
+  FusedColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear c_proj_{nullptr};
 
   ActFunc act_{nullptr};
@@ -133,18 +125,6 @@ class QWenAttentionImpl : public Module {
     return c_proj_(output);
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    c_attn_->load_state_dict(state_dict.select("c_attn."));
-    c_proj_->load_state_dict(state_dict.select("c_proj."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    c_attn_->verify_loaded_weights(prefix + "c_attn.");
-    c_proj_->verify_loaded_weights(prefix + "c_proj.");
-  }
-
  private:
   // parameter members, must be registered
   ColumnParallelLinear c_attn_{nullptr};
@@ -183,22 +163,6 @@ class QWenBlockImpl : public Module {
     return h + mlp_(ln_2_(h));
   }
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    // call each submodule's load_state_dict function
-    attn_->load_state_dict(state_dict.select("attn."));
-    mlp_->load_state_dict(state_dict.select("mlp."));
-    ln_1_->load_state_dict(state_dict.select("ln_1."));
-    ln_2_->load_state_dict(state_dict.select("ln_2."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    attn_->verify_loaded_weights(prefix + "attn.");
-    mlp_->verify_loaded_weights(prefix + "mlp.");
-    ln_1_->verify_loaded_weights(prefix + "ln_1.");
-    ln_2_->verify_loaded_weights(prefix + "ln_2.");
-  }
-
  private:
   // parameter members, must be registered
   QWenAttention attn_{nullptr};
@@ -226,7 +190,7 @@ class QWenModelImpl : public Module {
     handler_ = AttentionHandler::create_handler_with_rope(
         args, /*interleaved=*/false, options);
 
-    blocks_ = register_module("layers", ModuleList());
+    blocks_ = register_module("h", ModuleList());
     layers_.reserve(args.n_layers());
     for (int32_t i = 0; i < args.n_layers(); i++) {
       auto block =
@@ -252,26 +216,6 @@ class QWenModelImpl : public Module {
       h = layer(h, positions, kv_caches[i], input_params);
     }
     return ln_f_(h);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    wte_->load_state_dict(state_dict.select("wte."));
-    // call each layer's load_state_dict function
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->load_state_dict(
-          state_dict.select("h." + std::to_string(i) + "."));
-    }
-    ln_f_->load_state_dict(state_dict.select("ln_f."));
-  }
-
-  void verify_loaded_weights(const std::string& prefix) const {
-    wte_->verify_loaded_weights(prefix + "wte.");
-    for (int i = 0; i < layers_.size(); i++) {
-      layers_[i]->verify_loaded_weights(prefix + "h." + std::to_string(i) +
-                                        ".");
-    }
-    ln_f_->verify_loaded_weights(prefix + "ln_f.");
   }
 
  private:
@@ -329,17 +273,6 @@ class QWenForCausalLMImpl : public Module {
       h = h.index_select(/*dim=*/0, seleted_idxes);
     }
     return lm_head_(h);
-  }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) {
-    transformer_->load_state_dict(state_dict.select("transformer."));
-    lm_head_->load_state_dict(state_dict.select("lm_head."));
-  }
-
-  void verify_loaded_weights() const {
-    transformer_->verify_loaded_weights("transformer.");
-    lm_head_->verify_loaded_weights("lm_head.");
   }
 
  private:

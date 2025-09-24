@@ -20,6 +20,7 @@ class QKVColumnParallelLinearImpl : public Module {
                               int64_t n_heads,
                               int64_t n_kv_heads,
                               int64_t head_dim,
+                              const std::vector<std::string>& prefixes,
                               bool bias,
                               bool gather_output,
                               const QuantArgs& quant_args,
@@ -30,24 +31,9 @@ class QKVColumnParallelLinearImpl : public Module {
     return parallel_linear_->forward(input);
   }
 
-  // special load_state_dict for fused cases
-  void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string>& prefixes,
-                       const std::vector<std::string>& kv_prefixes);
-
-  void verify_loaded_weights(const std::string& prefix = "") const {
-    parallel_linear_->verify_loaded_weights(prefix);
-  }
-
  private:
+  // registered modules
   FusedColumnParallelLinear parallel_linear_{nullptr};
-
-  // replication ratio of kv heads for MQA/GQA cases
-  int64_t kv_replication_ratio_ = 0;
-
-  int64_t n_kv_heads_ = 0;
-
-  int64_t head_dim_ = 0;
 };
 LLM_MODULE(QKVColumnParallelLinear);
 
