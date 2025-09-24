@@ -76,12 +76,6 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
   void load_state_dict(const StateDict& state_dict,
                        const std::vector<std::string>& prefixes) override;
 
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " device=" << qweight_.device();
-  }
-
  private:
   // parameter members, must be registered
   DEFINE_FUSED_WEIGHT(qweight);
@@ -147,12 +141,6 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
 
   // whether the weight is loaded
   void verify_loaded_weights(const std::string& prefix = "") const override;
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " qweight=" << qweight_.sizes()
-           << " qzeros=" << qzeros_.sizes() << " scales=" << scales_.sizes()
-           << " device=" << qweight_.device();
-  }
 
  private:
   // parameter members, must be registered

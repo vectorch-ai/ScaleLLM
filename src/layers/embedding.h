@@ -33,10 +33,6 @@ class EmbeddingImpl : public Module {
     return F::embedding(input, weight_);
   }
 
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
-  }
-
   // return the weight (for testing)
   torch::Tensor weight() const { return weight_; }
 
@@ -82,10 +78,6 @@ class ParallelEmbeddingImpl : public Module {
       output = gather_from_model_parallel_region(output, parallel_args_);
     }
     return output;
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
   // return the weight (for testing)
@@ -145,10 +137,6 @@ class VocabParallelEmbeddingImpl : public Module {
     output.masked_fill_(input_mask.unsqueeze(-1), 0);
     // reduce across all gpus
     return reduce_from_model_parallel_region(output, parallel_args_);
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
   // return the weight (for testing)

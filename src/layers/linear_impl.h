@@ -42,10 +42,6 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
         << "bias is not loaded for " << prefix + "bias";
   }
 
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
-  }
-
   // return the weight (for testing)
   torch::Tensor weight() const { return weight_; }
 
@@ -93,10 +89,6 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
         << "weight is not loaded for " << prefix + "weight";
     CHECK(!bias_.defined() || bias_is_loaded_)
         << "bias is not loaded for " << prefix + "bias";
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
   // return the weight (for testing)

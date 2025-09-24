@@ -94,10 +94,6 @@ class LayerNormImpl : public Module {
         input, normalized_shape_, weight_, bias_, eps_);
   }
 
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
-  }
-
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
@@ -131,10 +127,6 @@ class RMSNormImpl : public Module {
     return detail::rms_norm(input, weight_, eps_);
   }
 
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
-  }
-
  private:
   // parameter members, must be registered
   torch::Tensor weight_{nullptr};
@@ -161,10 +153,6 @@ class GemmaRMSNormImpl : public Module {
       return output;
     }
     return detail::gemma_rms_norm(input, weight_, eps_);
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
  private:
@@ -206,10 +194,6 @@ class RMSNormResidualImpl : public Module {
     }
     residual = input;
     return detail::rms_norm(input, weight_, eps_);
-  }
-
-  void pretty_print(std::ostream& stream) const override {
-    stream << name() << " " << weight_.sizes() << " " << weight_.device();
   }
 
  private:
