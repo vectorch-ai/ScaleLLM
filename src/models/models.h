@@ -15,5 +15,5 @@
 // #include "mistral.h"   // IWYU pragma: keep
 // #include "mpt.h"       // IWYU pragma: keep
 // #include "phi.h"       // IWYU pragma: keep
-// #include "qwen.h"      // IWYU pragma: keep
-// #include "qwen2.h"     // IWYU pragma: keep
+#include "qwen.h"   // IWYU pragma: keep
+#include "qwen2.h"  // IWYU pragma: keep

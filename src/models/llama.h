@@ -10,7 +10,6 @@
 #include "layers/embedding.h"
 #include "layers/fused_linear.h"
 #include "layers/linear.h"
-#include "layers/linear_impl.h"
 #include "layers/normalization.h"
 #include "layers/qkv_linear.h"
 #include "memory/kv_cache.h"

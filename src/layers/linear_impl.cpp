@@ -35,8 +35,12 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
       torch::empty({out_features_per_partition, in_features}, options));
 
   if (bias) {
-    bias_ = register_parameter(
-        "bias", torch::empty({out_features_per_partition}, options));
+    bias_ = register_sharded_parameter(
+        "bias",
+        /*dim=*/0,
+        rank,
+        world_size,
+        torch::empty({out_features_per_partition}, options));
   }
 }
 
