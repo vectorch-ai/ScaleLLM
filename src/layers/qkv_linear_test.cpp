@@ -56,9 +56,9 @@ TEST_P(QKVColumnParallelLinearTest, LoadFusedWeight) {
         n_heads,
         n_kv_heads,
         head_dim,
+        std::vector<std::string>{"query.", "key.", "value."},
         /*bias=*/false,
         /*gather_output=*/false,
-        std::vector<std::string>{"query.", "key.", "value."},
         quant_args,
         parallel_args,
         options);

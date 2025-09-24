@@ -36,16 +36,18 @@ class LlamaMLPImpl : public Module {
     const int64_t intermediate_size = args.intermediate_size();
 
     // register the weight parameter
-    // gate_up_proj_ = register_module(
-    //     "gate_up_proj",
-    //     FusedColumnParallelLinear(
-    //         hidden_size,
-    //         std::vector<int64_t>{intermediate_size, intermediate_size},
-    //         /*bias=*/false,
-    //         /*gather_output=*/false,
-    //         quant_args,
-    //         parallel_args,
-    //         options));
+    gate_up_proj_ = register_module(
+        "gate_up_proj",
+        FusedColumnParallelLinear(
+            hidden_size,
+            std::vector<int64_t>{intermediate_size, intermediate_size},
+            std::vector<std::string>{"gate_proj.", "up_proj."},
+            /*bias=*/false,
+            /*gather_output=*/false,
+            quant_args,
+            parallel_args,
+            options),
+        /*selector=*/nullptr);
 
     down_proj_ =
         register_module("down_proj",
@@ -62,18 +64,6 @@ class LlamaMLPImpl : public Module {
     const auto gate_up = gate_up_proj_(x);
     return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
   }
-
-  // // load the weight from the checkpoint
-  // void load_state_dict(const StateDict& state_dict) {
-  //   // call each submodule's load_state_dict function
-  //   gate_up_proj_->load_state_dict(state_dict, {"gate_proj.", "up_proj."});
-  //   down_proj_->load_state_dict(state_dict.select("down_proj."));
-  // }
-
-  // void verify_loaded_weights(const std::string& prefix) const {
-  //   gate_up_proj_->verify_loaded_weights(prefix + "[gate_proj,up_proj].");
-  //   down_proj_->verify_loaded_weights(prefix + "down_proj.");
-  // }
 
  private:
   // parameter members, must be registered
@@ -102,16 +92,20 @@ class LlamaAttentionImpl : public Module {
         std::max<int64_t>(1, n_kv_heads / world_size);
 
     // register submodules
-    // qkv_proj_ = register_module("qkv_proj",
-    //                             QKVColumnParallelLinear(hidden_size,
-    //                                                     n_heads,
-    //                                                     n_kv_heads,
-    //                                                     head_dim,
-    //                                                     /*bias=*/false,
-    //                                                     /*gather_output=*/false,
-    //                                                     quant_args,
-    //                                                     parallel_args,
-    //                                                     options));
+    qkv_proj_ = register_module(
+        "qkv_proj",
+        QKVColumnParallelLinear(
+            hidden_size,
+            n_heads,
+            n_kv_heads,
+            head_dim,
+            std::vector<std::string>{"q_proj.", "k_proj.", "v_proj."},
+            /*bias=*/false,
+            /*gather_output=*/false,
+            quant_args,
+            parallel_args,
+            options),
+        /*selector=*/nullptr);
 
     o_proj_ = register_module("o_proj",
                               RowParallelLinear(hidden_size,
@@ -140,20 +134,6 @@ class LlamaAttentionImpl : public Module {
         atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
     return o_proj_(output);
   }
-
-  // // load the weight from the checkpoint
-  // void load_state_dict(const StateDict& state_dict) {
-  //   // call each submodule's load_state_dict function
-  //   qkv_proj_->load_state_dict(
-  //       state_dict, {"q_proj.", "k_proj.", "v_proj."}, {"k_proj.",
-  //       "v_proj."});
-  //   o_proj_->load_state_dict(state_dict.select("o_proj."));
-  // }
-
-  // void verify_loaded_weights(const std::string& prefix) const {
-  //   qkv_proj_->verify_loaded_weights(prefix + "[q_proj,k_proj,v_proj].");
-  //   o_proj_->verify_loaded_weights(prefix + "o_proj.");
-  // }
 
  private:
   // parameter members, must be registered

@@ -20,9 +20,9 @@ class QKVColumnParallelLinearImpl : public Module {
                               int64_t n_heads,
                               int64_t n_kv_heads,
                               int64_t head_dim,
+                              const std::vector<std::string>& prefixes,
                               bool bias,
                               bool gather_output,
-                              const std::vector<std::string>& prefixes,
                               const QuantArgs& quant_args,
                               const ParallelArgs& parallel_args,
                               const torch::TensorOptions& options);
