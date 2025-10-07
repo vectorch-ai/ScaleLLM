@@ -1,4 +1,4 @@
-#include "linear_impl.h"
+#include "parallel_linear.h"
 
 #include <c10/core/TensorImpl.h>
 #include <glog/logging.h>
@@ -54,7 +54,7 @@ torch::Tensor ColumnParallelLinearImpl::forward(torch::Tensor input) {
   return output;
 }
 
-FColumnParallelLinearImpl::FColumnParallelLinearImpl(
+FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
     int64_t in_features,
     const std::vector<int64_t>& out_features_vec,
     const std::vector<std::string>& prefixes,
@@ -67,21 +67,20 @@ FColumnParallelLinearImpl::FColumnParallelLinearImpl(
   const auto world_size = parallel_args_.world_size();
 
   // calculate split size for each prefix
-  std::vector<int64_t> split_sizes;
-  split_sizes.reserve(out_features_vec.size());
+  split_sizes_.reserve(out_features_vec.size());
   for (const auto& out_features : out_features_vec) {
     CHECK(out_features % world_size == 0)
         << "out_features " << out_features << " not divisible by world_size "
         << world_size;
-    split_sizes.push_back(out_features / world_size);
+    split_sizes_.push_back(out_features / world_size);
   }
 
   const int64_t fused_out_features =
-      std::accumulate(split_sizes.begin(), split_sizes.end(), int64_t(0));
+      std::accumulate(split_sizes_.begin(), split_sizes_.end(), int64_t(0));
 
   // allocate fused weight
   weight_ = torch::empty({fused_out_features, in_features}, options);
-  const auto weights = weight_.split(split_sizes, /*dim=*/0);
+  const auto weights = weight_.split(split_sizes_, /*dim=*/0);
   // register sharded weights for each prefix
   for (size_t i = 0; i < prefixes.size(); ++i) {
     const auto& prefix = prefixes[i];
@@ -96,7 +95,7 @@ FColumnParallelLinearImpl::FColumnParallelLinearImpl(
 
   if (bias) {
     bias_ = torch::empty({fused_out_features}, options);
-    const auto biases = bias_.split(split_sizes, /*dim=*/0);
+    const auto biases = bias_.split(split_sizes_, /*dim=*/0);
 
     // register sharded weights for each prefix
     for (size_t i = 0; i < prefixes.size(); ++i) {
@@ -111,13 +110,52 @@ FColumnParallelLinearImpl::FColumnParallelLinearImpl(
   }
 }
 
-torch::Tensor FColumnParallelLinearImpl::forward(torch::Tensor input) {
+std::vector<torch::Tensor> FusedColumnParallelLinearImpl::forward(
+    torch::Tensor input) {
   namespace F = torch::nn::functional;
   auto output = F::linear(input, weight_, bias_);
   if (parallel_args_.world_size() > 1 && gather_output_) {
     output = gather_from_model_parallel_region(output, parallel_args_);
   }
-  return output;
+  return output.split(split_sizes_, /*dim=*/1);
+}
+
+GroupedColumnParallelLinearImpl::GroupedColumnParallelLinearImpl(
+    int64_t in_features,
+    const std::vector<int64_t>& out_features_vec,
+    const std::vector<std::string>& prefixes,
+    bool bias,
+    bool gather_output,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options) {
+  // register linear layers one by one
+  parallel_linears_.reserve(out_features_vec.size());
+  for (size_t i = 0; i < out_features_vec.size(); ++i) {
+    const auto& prefix = prefixes[i];
+    const auto out_features = out_features_vec[i];
+    const auto linear = register_module(
+        "linear_" + std::to_string(i),
+        std::make_shared<ColumnParallelLinearImpl>(in_features,
+                                                   out_features,
+                                                   bias,
+                                                   gather_output,
+                                                   parallel_args,
+                                                   options,
+                                                   prefix),
+        /*selector=*/nullptr);
+
+    parallel_linears_.emplace_back(linear);
+  }
+}
+
+std::vector<torch::Tensor> GroupedColumnParallelLinearImpl::forward(
+    torch::Tensor input) {
+  std::vector<torch::Tensor> outputs;
+  outputs.reserve(parallel_linears_.size());
+  for (auto& parallel_linear : parallel_linears_) {
+    outputs.push_back(parallel_linear->forward(input));
+  }
+  return outputs;
 }
 
 // Linear layer with row parallelism.

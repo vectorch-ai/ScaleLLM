@@ -6,15 +6,15 @@ cc_library(
     linear
   HDRS
     linear.h
-    qkv_linear.h
-    linear_impl.h
-    fused_linear.h
+    qkv_parallel_linear.h
+    parallel_linear.h
+    multi_parallel_linear.h
     weight_utils.h
   SRCS
     linear.cpp
-    qkv_linear.cpp
-    linear_impl.cpp
-    fused_linear.cpp
+    qkv_parallel_linear.cpp
+    parallel_linear.cpp
+    multi_parallel_linear.cpp
     weight_utils.cpp
   DEPS
     :state_dict
@@ -74,7 +74,7 @@ cc_test(
     pos_embedding_test.cpp
     normalization_test.cpp
     linear_test.cpp
-    qkv_linear_test.cpp
+    qkv_parallel_linear_test.cpp
   DEPS
     :layers
     :state_dict

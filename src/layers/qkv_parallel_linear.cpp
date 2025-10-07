@@ -1,4 +1,4 @@
-#include "qkv_linear.h"
+#include "qkv_parallel_linear.h"
 
 #include <absl/strings/match.h>
 #include <glog/logging.h>
@@ -70,7 +70,7 @@ QKVColumnParallelLinearImpl::QKVColumnParallelLinearImpl(
   };
 
   parallel_linear_ = register_module("qkv_parallel_linear",
-                                     FusedColumnParallelLinear(hidden_size,
+                                     MultiColumnParallelLinear(hidden_size,
                                                                out_features,
                                                                prefixes,
                                                                bias,

@@ -340,8 +340,9 @@ size_t Module::load(const StateDict& state_dict,
     }
 
     if (param_tensor.sizes() == tensor.sizes()) {
-      LOG(INFO) << "Loading parameter: " << detail::join_name(name_prefix, key)
-                << " of size " << tensor.sizes();
+      // LOG(INFO) << "Loading parameter: " << detail::join_name(name_prefix,
+      // key)
+      //           << " of size " << tensor.sizes();
       // copy data to the parameter tensor
       param_tensor.copy_(tensor);
       // mark as loaded

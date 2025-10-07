@@ -3,9 +3,10 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include <memory>
+
 #include "linear.h"
-#include "model_loader/state_dict.h"
-#include "weight_utils.h"
+#include "module/module_holder.h"
 
 namespace llm {
 
@@ -42,17 +43,20 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
 };
 
 // Fused linear layer with column parallelism.
-class FColumnParallelLinearImpl : public ParallelLinearImpl {
+class FusedColumnParallelLinearImpl : public MultiParallelLinearImpl {
  public:
-  FColumnParallelLinearImpl(int64_t in_features,
-                            const std::vector<int64_t>& out_features,
-                            const std::vector<std::string>& prefixes,
-                            bool bias,
-                            bool gather_output,
-                            const ParallelArgs& parallel_args,
-                            const torch::TensorOptions& options);
+  FusedColumnParallelLinearImpl(int64_t in_features,
+                                const std::vector<int64_t>& out_features,
+                                const std::vector<std::string>& prefixes,
+                                bool bias,
+                                bool gather_output,
+                                const ParallelArgs& parallel_args,
+                                const torch::TensorOptions& options);
 
-  torch::Tensor forward(torch::Tensor input) override;
+  std::vector<torch::Tensor> forward(torch::Tensor input) override;
+
+  // return the weight (for testing)
+  torch::Tensor weight() const { return weight_; }
 
  private:
   // parameter members, must be registered
@@ -61,12 +65,33 @@ class FColumnParallelLinearImpl : public ParallelLinearImpl {
   torch::Tensor weight_;
   torch::Tensor bias_;
 
+  std::vector<int64_t> split_sizes_;
+
   // whether to gather the output
   bool gather_output_;
 
   // parallel args
   ParallelArgs parallel_args_;
 };
+LLM_MODULE(FusedColumnParallelLinear);
+
+class GroupedColumnParallelLinearImpl : public MultiParallelLinearImpl {
+ public:
+  GroupedColumnParallelLinearImpl(int64_t in_features,
+                                  const std::vector<int64_t>& out_features,
+                                  const std::vector<std::string>& prefixes,
+                                  bool bias,
+                                  bool gather_output,
+                                  const ParallelArgs& parallel_args,
+                                  const torch::TensorOptions& options);
+
+  std::vector<torch::Tensor> forward(torch::Tensor input) override;
+
+ private:
+  // parameter members, must be registered
+  std::vector<std::shared_ptr<ColumnParallelLinearImpl>> parallel_linears_;
+};
+LLM_MODULE(GroupedColumnParallelLinear);
 
 // Linear layer with row parallelism.
 //     The linear layer is defined as Y = XA + b. A is parallelized along

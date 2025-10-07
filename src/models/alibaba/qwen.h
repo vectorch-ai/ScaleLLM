@@ -10,8 +10,8 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
-#include "layers/fused_linear.h"
 #include "layers/linear.h"
+#include "layers/multi_parallel_linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
@@ -41,7 +41,7 @@ class QWenMLPImpl : public Module {
     // register the weight parameter
     gate_up_proj_ = register_module(
         "gate_up_proj",
-        FusedColumnParallelLinear(
+        MultiColumnParallelLinear(
             hidden_size,
             std::vector<int64_t>{intermediate_size, intermediate_size},
             std::vector<std::string>{"w1.", "w2."},
@@ -68,7 +68,7 @@ class QWenMLPImpl : public Module {
 
  private:
   // parameter members, must be registered
-  FusedColumnParallelLinear gate_up_proj_{nullptr};
+  MultiColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear c_proj_{nullptr};
 
   ActFunc act_{nullptr};

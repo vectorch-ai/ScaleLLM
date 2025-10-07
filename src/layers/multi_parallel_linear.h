@@ -3,18 +3,18 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "linear.h"
-#include "model_loader/state_dict.h"
+// #include "linear.h"
 #include "model_parallel/parallel_args.h"
 #include "module/module.h"
 #include "module/module_holder.h"
+#include "parallel_linear.h"
 #include "quantization/quant_args.h"
 
 namespace llm {
 
-class FusedColumnParallelLinearImpl : public Module {
+class MultiColumnParallelLinearImpl : public Module {
  public:
-  FusedColumnParallelLinearImpl(int64_t in_features,
+  MultiColumnParallelLinearImpl(int64_t in_features,
                                 const std::vector<int64_t>& out_features,
                                 const std::vector<std::string>& prefixes,
                                 bool bias,
@@ -30,17 +30,14 @@ class FusedColumnParallelLinearImpl : public Module {
 
  private:
   // non-fused linear layers
-  std::vector<ColumnParallelLinear> parallel_linears_;
+  GroupedColumnParallelLinear grouped_linear_{nullptr};
 
   // fused linear layer
-  ColumnParallelLinear fused_linear_{nullptr};
-
-  // size for each split
-  std::vector<int64_t> split_sizes_;
+  FusedColumnParallelLinear fused_linear_{nullptr};
 
   // whether the linear layer is fused
   bool fused_ = false;
 };
-LLM_MODULE(FusedColumnParallelLinear);
+LLM_MODULE(MultiColumnParallelLinear);
 
 }  // namespace llm

@@ -37,6 +37,15 @@ class ParallelLinearImpl : public Module {
     LOG(FATAL) << "not implemented";
   }
 };
+LLM_MODULE(ParallelLinear);
+
+class MultiParallelLinearImpl : public Module {
+ public:
+  ~MultiParallelLinearImpl() override = default;
+
+  virtual std::vector<torch::Tensor> forward(torch::Tensor input) = 0;
+};
+LLM_MODULE(MultiParallelLinear);
 
 class ColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
  public:
@@ -53,15 +62,6 @@ class ColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
                        const ParallelArgs& parallel_args,
                        const torch::TensorOptions& options,
                        const std::string& prefix = "");
-
-  ColumnParallelLinear(int64_t in_features,
-                       const std::vector<int64_t>& out_features,
-                       const std::vector<std::string>& prefixes,
-                       bool bias,
-                       bool gather_output,
-                       const QuantArgs& quant_args,
-                       const ParallelArgs& parallel_args,
-                       const torch::TensorOptions& options);
 
   ColumnParallelLinear(int64_t in_features,
                        int64_t out_features,

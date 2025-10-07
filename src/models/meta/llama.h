@@ -8,10 +8,10 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
-#include "layers/fused_linear.h"
 #include "layers/linear.h"
+#include "layers/multi_parallel_linear.h"
 #include "layers/normalization.h"
-#include "layers/qkv_linear.h"
+#include "layers/qkv_parallel_linear.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
@@ -37,7 +37,7 @@ class LlamaMLPImpl : public Module {
     // register the weight parameter
     gate_up_proj_ = register_module(
         "gate_up_proj",
-        FusedColumnParallelLinear(
+        MultiColumnParallelLinear(
             hidden_size,
             std::vector<int64_t>{intermediate_size, intermediate_size},
             std::vector<std::string>{"gate_proj.", "up_proj."},
@@ -60,13 +60,14 @@ class LlamaMLPImpl : public Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    const auto gate_up = gate_up_proj_(x);
-    return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
+    // const auto gate_up = gate_up_proj_(x);
+    // return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
+    return {};
   }
 
  private:
   // parameter members, must be registered
-  FusedColumnParallelLinear gate_up_proj_{nullptr};
+  MultiColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 
   // activation function
