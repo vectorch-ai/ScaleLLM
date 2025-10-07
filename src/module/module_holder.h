@@ -1,3 +1,5 @@
+// Adapted from
+// https://github.com/pytorch/pytorch/blob/main/torch/csrc/api/include/torch/nn/pimpl.h
 #pragma once
 
 #include <memory>
