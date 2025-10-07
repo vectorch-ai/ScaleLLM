@@ -340,6 +340,13 @@ torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) {
 
 // construct a ColumnParallelLinear.
 // chose right implementation based on the args.
+ColumnParallelLinear::ColumnParallelLinear(std::nullptr_t)
+    : ModuleHolder(nullptr) {}
+
+ColumnParallelLinear::ColumnParallelLinear(
+    std::shared_ptr<ParallelLinearImpl> module)
+    : ModuleHolder(std::move(module)) {}
+
 ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                            int64_t out_features,
                                            bool bias,
@@ -372,8 +379,13 @@ ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                                  options,
                                                  "")) {}
 
-// construct a rotary positional embedding.
+// construct a row parallel linear.
 // chose right implementation based on the args.
+RowParallelLinear::RowParallelLinear(std::nullptr_t) : ModuleHolder(nullptr) {}
+
+RowParallelLinear::RowParallelLinear(std::shared_ptr<ParallelLinearImpl> module)
+    : ModuleHolder(std::move(module)) {}
+
 RowParallelLinear::RowParallelLinear(int64_t in_features,
                                      int64_t out_features,
                                      bool bias,

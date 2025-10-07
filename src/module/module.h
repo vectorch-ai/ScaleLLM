@@ -1,3 +1,5 @@
+// Adapted from
+// https://github.com/pytorch/pytorch/blob/main/torch/csrc/api/include/torch/nn/module.h
 #pragma once
 
 #include <ATen/ATen.h>

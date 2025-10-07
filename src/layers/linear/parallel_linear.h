@@ -35,7 +35,6 @@ class ParallelLinearImpl : public Module {
     LOG(FATAL) << "not implemented";
   }
 };
-LLM_MODULE(ParallelLinear);
 
 // Linear layer with column parallelism.
 // The linear layer is defined as Y = XA + b. A is parallelized along
@@ -109,8 +108,10 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
 
 class ColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
  public:
-  using ModuleHolder<ParallelLinearImpl>::ModuleHolder;
-  using Impl [[maybe_unused]] = ParallelLinearImpl;
+  /* implicit */ ColumnParallelLinear(std::nullptr_t);
+
+  /* implicit */ ColumnParallelLinear(
+      std::shared_ptr<ParallelLinearImpl> module);
 
   // construct a rotary positional embedding.
   // chose right implementation based on the args.
@@ -133,8 +134,9 @@ class ColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
 
 class RowParallelLinear : public ModuleHolder<ParallelLinearImpl> {
  public:
-  using ModuleHolder<ParallelLinearImpl>::ModuleHolder;
-  using Impl [[maybe_unused]] = ParallelLinearImpl;
+  /* implicit */ RowParallelLinear(std::nullptr_t);
+
+  /* implicit */ RowParallelLinear(std::shared_ptr<ParallelLinearImpl> module);
 
   // construct a rotary positional embedding.
   // chose right implementation based on the args.

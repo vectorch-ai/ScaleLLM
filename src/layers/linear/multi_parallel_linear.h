@@ -18,7 +18,6 @@ class MultiParallelLinearImpl : public Module {
 
   virtual std::vector<torch::Tensor> forward(torch::Tensor input) = 0;
 };
-LLM_MODULE(MultiParallelLinear);
 
 // Fused linear layer with column parallelism.
 class FusedColumnParallelLinearImpl : public MultiParallelLinearImpl {
@@ -71,22 +70,21 @@ class GroupedColumnParallelLinearImpl : public MultiParallelLinearImpl {
 };
 LLM_MODULE(GroupedColumnParallelLinear);
 
-class MultiColumnParallelLinearImpl : public Module {
+class MultiColumnParallelLinear : public ModuleHolder<MultiParallelLinearImpl> {
  public:
-  MultiColumnParallelLinearImpl(int64_t in_features,
-                                const std::vector<int64_t>& out_features,
-                                const std::vector<std::string>& prefixes,
-                                bool bias,
-                                bool gather_output,
-                                const QuantArgs& quant_args,
-                                const ParallelArgs& parallel_args,
-                                const torch::TensorOptions& options);
+  /* implicit */ MultiColumnParallelLinear(std::nullptr_t);
 
-  std::vector<torch::Tensor> forward(torch::Tensor input);
+  /* implicit */ MultiColumnParallelLinear(
+      std::shared_ptr<MultiParallelLinearImpl> module);
 
- private:
-  MultiParallelLinear linear_{nullptr};
+  MultiColumnParallelLinear(int64_t in_features,
+                            const std::vector<int64_t>& out_features,
+                            const std::vector<std::string>& prefixes,
+                            bool bias,
+                            bool gather_output,
+                            const QuantArgs& quant_args,
+                            const ParallelArgs& parallel_args,
+                            const torch::TensorOptions& options);
 };
-LLM_MODULE(MultiColumnParallelLinear);
 
 }  // namespace llm

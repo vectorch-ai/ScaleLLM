@@ -9,6 +9,37 @@
 #include "parallel_linear.h"
 
 namespace llm {
+namespace {
+
+std::shared_ptr<MultiParallelLinearImpl> create_multi_column_parallel_linear(
+    int64_t in_features,
+    const std::vector<int64_t>& out_features,
+    const std::vector<std::string>& prefixes,
+    bool bias,
+    bool gather_output,
+    const QuantArgs& quant_args,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options) {
+  // check if the linear layers can be fused
+  if (quant_args.can_be_fused()) {
+    return std::make_shared<FusedColumnParallelLinearImpl>(in_features,
+                                                           out_features,
+                                                           prefixes,
+                                                           bias,
+                                                           gather_output,
+                                                           parallel_args,
+                                                           options);
+  }
+
+  return std::make_shared<GroupedColumnParallelLinearImpl>(in_features,
+                                                           out_features,
+                                                           prefixes,
+                                                           bias,
+                                                           gather_output,
+                                                           parallel_args,
+                                                           options);
+}
+}  // namespace
 
 FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
     int64_t in_features,
@@ -114,45 +145,28 @@ std::vector<torch::Tensor> GroupedColumnParallelLinearImpl::forward(
   return outputs;
 }
 
-MultiColumnParallelLinearImpl::MultiColumnParallelLinearImpl(
+MultiColumnParallelLinear::MultiColumnParallelLinear(std::nullptr_t)
+    : ModuleHolder(nullptr) {}
+
+MultiColumnParallelLinear::MultiColumnParallelLinear(
+    std::shared_ptr<MultiParallelLinearImpl> module)
+    : ModuleHolder(std::move(module)) {}
+
+MultiColumnParallelLinear::MultiColumnParallelLinear(
     int64_t in_features,
-    const std::vector<int64_t>& out_features_vec,
+    const std::vector<int64_t>& out_features,
     const std::vector<std::string>& prefixes,
     bool bias,
     bool gather_output,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    const torch::TensorOptions& options) {
-  // check if the linear layers can be fused
-  std::shared_ptr<MultiParallelLinearImpl> linear;
-  if (quant_args.can_be_fused()) {
-    // fused linear layer
-    linear = register_module("fused_linear",
-                             FusedColumnParallelLinear(in_features,
-                                                       out_features_vec,
+    const torch::TensorOptions& options)
+    : ModuleHolder(create_multi_column_parallel_linear(in_features,
+                                                       out_features,
                                                        prefixes,
                                                        bias,
                                                        gather_output,
+                                                       quant_args,
                                                        parallel_args,
-                                                       options),
-                             /*selector=*/nullptr);
-  } else {
-    // non-fused linear layers
-    linear = register_module("grouped_linear",
-                             GroupedColumnParallelLinear(in_features,
-                                                         out_features_vec,
-                                                         prefixes,
-                                                         bias,
-                                                         gather_output,
-                                                         parallel_args,
-                                                         options),
-                             /*selector=*/nullptr);
-  }
-  linear_ = linear;
-}
-
-std::vector<torch::Tensor> MultiColumnParallelLinearImpl::forward(
-    torch::Tensor input) {
-  return linear_(input);
-}
+                                                       options)) {}
 }  // namespace llm
