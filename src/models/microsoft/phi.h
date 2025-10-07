@@ -6,7 +6,7 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
-#include "layers/linear.h"
+#include "layers/linear/linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"

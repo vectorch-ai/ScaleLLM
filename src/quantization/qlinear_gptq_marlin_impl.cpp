@@ -5,7 +5,7 @@
 #include <torch/types.h>
 
 #include "kernels/quantization/marlin.h"
-#include "layers/weight_utils.h"
+#include "layers/linear/weight_utils.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
 

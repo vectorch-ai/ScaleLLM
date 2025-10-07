@@ -1,0 +1,41 @@
+include(cc_library)
+include(cc_test)
+
+cc_library(
+  NAME
+    linear
+  HDRS
+    linear.h
+    parallel_linear.h
+    multi_parallel_linear.h
+    qkv_parallel_linear.h
+    weight_utils.h
+  SRCS
+    linear.cpp
+    parallel_linear.cpp
+    qkv_parallel_linear.cpp
+    multi_parallel_linear.cpp
+    weight_utils.cpp
+  DEPS
+    :state_dict
+    :model_parallel
+    :quantization
+    :kernels
+    :module
+    glog::glog
+    gflags::gflags
+    torch
+)
+
+cc_test(
+  NAME
+    linear_test
+  SRCS
+    linear_test.cpp
+    qkv_parallel_linear_test.cpp
+  DEPS
+    :linear
+    :state_dict
+    absl::random_random
+    :gtest_main
+)
