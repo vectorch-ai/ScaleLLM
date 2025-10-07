@@ -60,9 +60,8 @@ class LlamaMLPImpl : public Module {
   }
 
   torch::Tensor forward(torch::Tensor x) {
-    // const auto gate_up = gate_up_proj_(x);
-    // return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
-    return {};
+    const auto gate_up = gate_up_proj_(x);
+    return down_proj_(act_func_(gate_up[0]) * gate_up[1]);
   }
 
  private:
