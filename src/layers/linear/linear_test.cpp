@@ -9,6 +9,7 @@
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
 
 #include "model_loader/state_dict.h"
+#include "multi_parallel_linear.h"
 #include "parallel_linear.h"
 
 namespace llm {

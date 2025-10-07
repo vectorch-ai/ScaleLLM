@@ -4,7 +4,6 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "layers/linear/linear.h"
 #include "model_loader/state_dict.h"
 
 namespace llm {

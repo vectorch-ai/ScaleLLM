@@ -7,7 +7,6 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
-#include "layers/linear/linear.h"
 #include "layers/linear/parallel_linear.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"

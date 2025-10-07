@@ -3,7 +3,7 @@
 #include <ATen/core/TensorBody.h>
 #include <torch/torch.h>
 
-#include "layers/linear/linear.h"
+#include "layers/linear/parallel_linear.h"
 #include "layers/linear/weight_utils.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"

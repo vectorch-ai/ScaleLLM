@@ -5,13 +5,11 @@ cc_library(
   NAME
     linear
   HDRS
-    linear.h
     parallel_linear.h
     multi_parallel_linear.h
     qkv_parallel_linear.h
     weight_utils.h
   SRCS
-    linear.cpp
     parallel_linear.cpp
     qkv_parallel_linear.cpp
     multi_parallel_linear.cpp
