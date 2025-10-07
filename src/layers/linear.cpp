@@ -38,18 +38,6 @@ namespace {
                                       parallel_args,    \
                                       options);
 
-#define MAKE_ROW_PARALLEL_LINEAR(LinearlImplClass)          \
-  std::make_shared<LinearlImplClass>(in_features,           \
-                                     out_features,          \
-                                     bias,                  \
-                                     input_is_parallelized, \
-                                     parallel_args,         \
-                                     options);
-
-#define MAKE_COLUMN_PARALLEL_LINEAR(LinearlImplClass) \
-  std::make_shared<LinearlImplClass>(                 \
-      in_features, out_features, bias, gather_output, parallel_args, options);
-
 std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear_by_impl(
     int64_t in_features,
     int64_t out_features,
@@ -139,6 +127,7 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_qlinear(
   }
   // not supported quant method
   LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
+  return nullptr;
 }
 
 std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
@@ -170,6 +159,7 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_qlinear(
   }
   // not supported quant method
   LOG(FATAL) << "Unsupported quant method: " << quant_args.quant_method();
+  return nullptr;
 }
 
 std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
@@ -179,7 +169,8 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
     bool gather_output,
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
-    const torch::TensorOptions& options) {
+    const torch::TensorOptions& options,
+    const std::string& prefix) {
   if (!quant_args.quant_method().empty()) {
     return create_column_parallel_qlinear(in_features,
                                           out_features,
@@ -189,7 +180,40 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
                                           parallel_args,
                                           options);
   }
-  return MAKE_COLUMN_PARALLEL_LINEAR(ColumnParallelLinearImpl);
+  return std ::make_shared<ColumnParallelLinearImpl>(in_features,
+                                                     out_features,
+                                                     bias,
+                                                     gather_output,
+                                                     parallel_args,
+                                                     options,
+                                                     prefix);
+}
+
+std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
+    int64_t in_features,
+    const std::vector<int64_t>& out_features,
+    const std::vector<std::string>& prefixes,
+    bool bias,
+    bool gather_output,
+    const QuantArgs& quant_args,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options) {
+  // if (!quant_args.quant_method().empty()) {
+  //   return create_column_parallel_qlinear(in_features,
+  //                                         out_features,
+  //                                         bias,
+  //                                         gather_output,
+  //                                         quant_args,
+  //                                         parallel_args,
+  //                                         options);
+  // }
+  return std ::make_shared<FColumnParallelLinearImpl>(in_features,
+                                                      out_features,
+                                                      prefixes,
+                                                      bias,
+                                                      gather_output,
+                                                      parallel_args,
+                                                      options);
 }
 
 std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
@@ -209,7 +233,13 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
                                        parallel_args,
                                        options);
   }
-  return MAKE_ROW_PARALLEL_LINEAR(RowParallelLinearImpl);
+  return std ::make_shared<RowParallelLinearImpl>(in_features,
+                                                  out_features,
+                                                  bias,
+                                                  input_is_parallelized,
+                                                  parallel_args,
+                                                  options);
+  ;
 }
 }  // namespace
 
@@ -221,9 +251,29 @@ ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                            bool gather_output,
                                            const QuantArgs& quant_args,
                                            const ParallelArgs& parallel_args,
-                                           const torch::TensorOptions& options)
+                                           const torch::TensorOptions& options,
+                                           const std::string& prefix)
     : ModuleHolder(create_column_parallel_linear(in_features,
                                                  out_features,
+                                                 bias,
+                                                 gather_output,
+                                                 quant_args,
+                                                 parallel_args,
+                                                 options,
+                                                 prefix)) {}
+
+ColumnParallelLinear::ColumnParallelLinear(
+    int64_t in_features,
+    const std::vector<int64_t>& out_features,
+    const std::vector<std::string>& prefixes,
+    bool bias,
+    bool gather_output,
+    const QuantArgs& quant_args,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options)
+    : ModuleHolder(create_column_parallel_linear(in_features,
+                                                 out_features,
+                                                 prefixes,
                                                  bias,
                                                  gather_output,
                                                  quant_args,
@@ -242,7 +292,8 @@ ColumnParallelLinear::ColumnParallelLinear(int64_t in_features,
                                                  gather_output,
                                                  {}, /*quant_args*/
                                                  parallel_args,
-                                                 options)) {}
+                                                 options,
+                                                 "")) {}
 
 // construct a rotary positional embedding.
 // chose right implementation based on the args.

@@ -4,8 +4,8 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
+#include "module/module.h"
 
 namespace llm {
 
@@ -16,7 +16,8 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
     bool bias,
     bool gather_output,
     const ParallelArgs& parallel_args,
-    const torch::TensorOptions& options)
+    const torch::TensorOptions& options,
+    const std::string& prefix)
     : gather_output_(gather_output), parallel_args_(parallel_args) {
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
@@ -28,7 +29,7 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
   // Note: torch.nn.functional.linear performs XA^T + b and as a result
   // we allocate the transpose.
   weight_ = register_sharded_parameter(
-      "weight",
+      detail::join_name(prefix, "weight"),
       /*dim=*/0,
       rank,
       world_size,
@@ -36,7 +37,7 @@ ColumnParallelLinearImpl::ColumnParallelLinearImpl(
 
   if (bias) {
     bias_ = register_sharded_parameter(
-        "bias",
+        detail::join_name(prefix, "bias"),
         /*dim=*/0,
         rank,
         world_size,
@@ -53,34 +54,70 @@ torch::Tensor ColumnParallelLinearImpl::forward(torch::Tensor input) {
   return output;
 }
 
-// load the weight from the checkpoint
-void ColumnParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
+FColumnParallelLinearImpl::FColumnParallelLinearImpl(
+    int64_t in_features,
+    const std::vector<int64_t>& out_features_vec,
+    const std::vector<std::string>& prefixes,
+    bool bias,
+    bool gather_output,
+    const ParallelArgs& parallel_args,
+    const torch::TensorOptions& options)
+    : gather_output_(gather_output), parallel_args_(parallel_args) {
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
-  // load sharded weights on dim 0
-  LOAD_SHARDED_WEIGHT(weight, 0);
+  // calculate split size for each prefix
+  std::vector<int64_t> split_sizes;
+  split_sizes.reserve(out_features_vec.size());
+  for (const auto& out_features : out_features_vec) {
+    CHECK(out_features % world_size == 0)
+        << "out_features " << out_features << " not divisible by world_size "
+        << world_size;
+    split_sizes.push_back(out_features / world_size);
+  }
 
-  if (bias_.defined()) {
-    // load sharded bias on dim 0
-    LOAD_SHARDED_WEIGHT(bias, 0);
+  const int64_t fused_out_features =
+      std::accumulate(split_sizes.begin(), split_sizes.end(), int64_t(0));
+
+  // allocate fused weight
+  weight_ = torch::empty({fused_out_features, in_features}, options);
+  const auto weights = weight_.split(split_sizes, /*dim=*/0);
+  // register sharded weights for each prefix
+  for (size_t i = 0; i < prefixes.size(); ++i) {
+    const auto& prefix = prefixes[i];
+    const auto& weight = weights[i];
+    // register the weight as a parameter to make sure it is moved to the
+    register_sharded_parameter(detail::join_name(prefix, "weight"),
+                               /*dim=*/0,
+                               rank,
+                               world_size,
+                               weight);
+  }
+
+  if (bias) {
+    bias_ = torch::empty({fused_out_features}, options);
+    const auto biases = bias_.split(split_sizes, /*dim=*/0);
+
+    // register sharded weights for each prefix
+    for (size_t i = 0; i < prefixes.size(); ++i) {
+      const auto& prefix = prefixes[i];
+      const auto& bias = biases[i];
+      register_sharded_parameter(detail::join_name(prefix, "bias"),
+                                 /*dim=*/0,
+                                 rank,
+                                 world_size,
+                                 bias);
+    }
   }
 }
 
-// special load_state_dict for fused cases
-void ColumnParallelLinearImpl::load_state_dict(
-    const StateDict& state_dict,
-    const std::vector<std::string>& prefixes) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load and merge the weights on dim 0
-  LOAD_FUSED_WEIGHT(weight, 0);
-
-  if (bias_.defined()) {
-    // load and merge the bias on dim 0
-    LOAD_FUSED_WEIGHT(bias, 0);
+torch::Tensor FColumnParallelLinearImpl::forward(torch::Tensor input) {
+  namespace F = torch::nn::functional;
+  auto output = F::linear(input, weight_, bias_);
+  if (parallel_args_.world_size() > 1 && gather_output_) {
+    output = gather_from_model_parallel_region(output, parallel_args_);
   }
+  return output;
 }
 
 // Linear layer with row parallelism.
@@ -126,19 +163,6 @@ torch::Tensor RowParallelLinearImpl::forward(torch::Tensor input) {
     output.add_(bias_);
   }
   return output;
-}
-
-// load the weight from the checkpoint
-void RowParallelLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load sharded weights on dim 1
-  LOAD_SHARDED_WEIGHT(weight, 1);
-
-  if (bias_.defined()) {
-    LOAD_WEIGHT(bias);
-  }
 }
 
 }  // namespace llm

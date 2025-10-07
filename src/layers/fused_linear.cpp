@@ -19,20 +19,21 @@ FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
     const QuantArgs& quant_args,
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options) {
-  prefixes_ = prefixes;
   // check if the linear layers can be fused
   fused_ = quant_args.can_be_fused();
   if (fused_) {
     // fused linear layer
-    const int64_t out_features = std::accumulate(
-        out_features_vec.begin(), out_features_vec.end(), int64_t(0));
-    fused_linear_ = ColumnParallelLinear(in_features,
-                                         out_features,
-                                         bias,
-                                         gather_output,
-                                         quant_args,
-                                         parallel_args,
-                                         options);
+    fused_linear_ = register_module("fused_linear",
+                                    ColumnParallelLinear(in_features,
+                                                         out_features_vec,
+                                                         prefixes,
+                                                         bias,
+                                                         gather_output,
+                                                         quant_args,
+                                                         parallel_args,
+                                                         options),
+                                    /*selector=*/nullptr);
+    // TODO: clean up following code for calculating split sizes
     // calculate split sizes
     split_sizes_.reserve(out_features_vec.size());
     const auto world_size = parallel_args.world_size();
@@ -45,14 +46,22 @@ FusedColumnParallelLinearImpl::FusedColumnParallelLinearImpl(
   } else {
     // non-fused linear layers
     parallel_linears_.reserve(out_features_vec.size());
-    for (const auto& out_features : out_features_vec) {
-      parallel_linears_.emplace_back(in_features,
-                                     out_features,
-                                     bias,
-                                     gather_output,
-                                     quant_args,
-                                     parallel_args,
-                                     options);
+    for (size_t i = 0; i < out_features_vec.size(); ++i) {
+      const auto& prefix = prefixes[i];
+      const auto out_features = out_features_vec[i];
+
+      const auto linear = register_module("linear",
+                                          ColumnParallelLinear(in_features,
+                                                               out_features,
+                                                               bias,
+                                                               gather_output,
+                                                               quant_args,
+                                                               parallel_args,
+                                                               options,
+                                                               prefix),
+                                          /*selector=*/nullptr);
+
+      parallel_linears_.emplace_back(linear);
     }
   }
 }
@@ -73,30 +82,4 @@ std::vector<torch::Tensor> FusedColumnParallelLinearImpl::forward(
   }
   return outputs;
 }
-
-size_t FusedColumnParallelLinearImpl::load(const StateDict& state_dict,
-                                           const std::string&) {
-  if (fused_) {
-    fused_linear_->load_state_dict(state_dict, prefixes_);
-  } else {
-    CHECK_EQ(parallel_linears_.size(), prefixes_.size());
-    for (size_t i = 0; i < parallel_linears_.size(); ++i) {
-      parallel_linears_[i]->load_state_dict(state_dict.select(prefixes_[i]));
-    }
-  }
-  return 0;
-}
-
-bool FusedColumnParallelLinearImpl::verify(
-    const std::string& name_prefix) const {
-  if (fused_) {
-    fused_linear_->verify_loaded_weights(name_prefix);
-  } else {
-    for (const auto& parallel_linear : parallel_linears_) {
-      parallel_linear->verify_loaded_weights(name_prefix);
-    }
-  }
-  return true;
-}
-
 }  // namespace llm

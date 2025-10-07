@@ -19,24 +19,10 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
                            bool bias,
                            bool gather_output,
                            const ParallelArgs& parallel_args,
-                           const torch::TensorOptions& options);
+                           const torch::TensorOptions& options,
+                           const std::string& prefix = "");
 
   torch::Tensor forward(torch::Tensor input) override;
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) override;
-
-  // special load_state_dict for fused cases
-  void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string>& prefixes) override;
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix) const override {
-    CHECK(weight_is_loaded_)
-        << "weight is not loaded for " << prefix + "weight";
-    CHECK(!bias_.defined() || bias_is_loaded_)
-        << "bias is not loaded for " << prefix + "bias";
-  }
 
   // return the weight (for testing)
   torch::Tensor weight() const { return weight_; }
@@ -45,8 +31,35 @@ class ColumnParallelLinearImpl : public ParallelLinearImpl {
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features_per_partition, in_features]
-  DEFINE_FUSED_WEIGHT(weight);
-  DEFINE_FUSED_WEIGHT(bias);
+  torch::Tensor weight_;
+  torch::Tensor bias_;
+
+  // whether to gather the output
+  bool gather_output_;
+
+  // parallel args
+  ParallelArgs parallel_args_;
+};
+
+// Fused linear layer with column parallelism.
+class FColumnParallelLinearImpl : public ParallelLinearImpl {
+ public:
+  FColumnParallelLinearImpl(int64_t in_features,
+                            const std::vector<int64_t>& out_features,
+                            const std::vector<std::string>& prefixes,
+                            bool bias,
+                            bool gather_output,
+                            const ParallelArgs& parallel_args,
+                            const torch::TensorOptions& options);
+
+  torch::Tensor forward(torch::Tensor input) override;
+
+ private:
+  // parameter members, must be registered
+  // we allocate the transpose since linear performs XA^T.
+  // A^T: [out_features_per_partition, in_features]
+  torch::Tensor weight_;
+  torch::Tensor bias_;
 
   // whether to gather the output
   bool gather_output_;
@@ -76,17 +89,6 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
 
   torch::Tensor forward(torch::Tensor input) override;
 
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) override;
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const override {
-    CHECK(weight_is_loaded_)
-        << "weight is not loaded for " << prefix + "weight";
-    CHECK(!bias_.defined() || bias_is_loaded_)
-        << "bias is not loaded for " << prefix + "bias";
-  }
-
   // return the weight (for testing)
   torch::Tensor weight() const { return weight_; }
 
@@ -94,8 +96,8 @@ class RowParallelLinearImpl : public ParallelLinearImpl {
   // parameter members, must be registered
   // we allocate the transpose since linear performs XA^T.
   // A^T: [out_features, in_features_per_partition]
-  DEFINE_WEIGHT(weight);
-  DEFINE_WEIGHT(bias);
+  torch::Tensor weight_;
+  torch::Tensor bias_;
 
   // whether the input is already parallelized
   bool input_is_parallelized_;

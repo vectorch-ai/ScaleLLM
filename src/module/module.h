@@ -15,6 +15,12 @@
 
 namespace llm {
 
+namespace detail {
+/// Joins names hierarchically: "name_prefix.name" if `name_prefix` is
+/// non-empty, else just "name".
+std::string join_name(const std::string& name_prefix, const std::string& name);
+}  // namespace detail
+
 /// The base class for all modules.
 ///
 /// A `Module` is an abstraction over the implementation of some function or

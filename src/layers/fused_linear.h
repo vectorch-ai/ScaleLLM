@@ -25,14 +25,6 @@ class FusedColumnParallelLinearImpl : public Module {
 
   std::vector<torch::Tensor> forward(torch::Tensor input);
 
-  // load weights from the checkpoint, override this method if necessary
-  // returns the number of loaded parameters
-  size_t load(const StateDict& state_dict,
-              const std::string& name_prefix = std::string()) override;
-
-  // verify whether the weights are loaded, override this method if necessary
-  bool verify(const std::string& name_prefix = std::string()) const override;
-
   // whether the linear layer is fused
   bool fused() const { return fused_; }
 
@@ -43,10 +35,8 @@ class FusedColumnParallelLinearImpl : public Module {
   // fused linear layer
   ColumnParallelLinear fused_linear_{nullptr};
 
-  // sizes for each split
+  // size for each split
   std::vector<int64_t> split_sizes_;
-
-  std::vector<std::string> prefixes_;
 
   // whether the linear layer is fused
   bool fused_ = false;

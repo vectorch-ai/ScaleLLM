@@ -22,9 +22,14 @@ class ParallelLinearImpl : public Module {
 
   virtual torch::Tensor forward(torch::Tensor input) = 0;
 
-  virtual void load_state_dict(const StateDict& state_dict) = 0;
+  // TODO: clean up the interface of load_state_dict
+  virtual void load_state_dict(const StateDict& state_dict) {
+    LOG(FATAL) << "not implemented";
+  }
 
-  virtual void verify_loaded_weights(const std::string& prefix = "") const = 0;
+  virtual void verify_loaded_weights(const std::string& prefix = "") const {
+    LOG(FATAL) << "not implemented";
+  }
 
   // special load_state_dict for fused cases
   virtual void load_state_dict(const StateDict& /*state_dict*/,
@@ -42,6 +47,16 @@ class ColumnParallelLinear : public ModuleHolder<ParallelLinearImpl> {
   // chose right implementation based on the args.
   ColumnParallelLinear(int64_t in_features,
                        int64_t out_features,
+                       bool bias,
+                       bool gather_output,
+                       const QuantArgs& quant_args,
+                       const ParallelArgs& parallel_args,
+                       const torch::TensorOptions& options,
+                       const std::string& prefix = "");
+
+  ColumnParallelLinear(int64_t in_features,
+                       const std::vector<int64_t>& out_features,
+                       const std::vector<std::string>& prefixes,
                        bool bias,
                        bool gather_output,
                        const QuantArgs& quant_args,
