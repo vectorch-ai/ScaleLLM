@@ -3,10 +3,10 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "layers/quantization/quant_args.h"
 #include "model_parallel/model_parallel.h"
 #include "model_parallel/parallel_args.h"
 #include "parallel_linear.h"
-#include "quantization/quant_args.h"
 
 namespace llm {
 

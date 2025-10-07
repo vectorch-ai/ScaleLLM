@@ -4,6 +4,7 @@
 #include <torch/torch.h>
 
 #include "common/threadpool.h"
+#include "layers/quantization/quant_args.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
 #include "model_runner.h"
@@ -11,7 +12,6 @@
 #include "models/model_args.h"
 #include "models/parameters.h"
 #include "parameters.h"
-#include "quantization/quant_args.h"
 
 namespace llm {
 

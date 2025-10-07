@@ -8,9 +8,9 @@
 #include "chat_template/chat_template.h"
 #include "common/json_reader.h"
 #include "common/type_traits.h"  // IWYU pragma: keep
+#include "layers/quantization/quant_args.h"
 #include "model_args.h"
 #include "model_parallel/parallel_args.h"
-#include "quantization/quant_args.h"
 #include "tokenizer/tokenizer_args.h"
 
 namespace llm {

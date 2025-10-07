@@ -55,5 +55,6 @@ cc_test(
 )
 
 add_subdirectory(linear)
+add_subdirectory(quantization)
 add_subdirectory(attention)
 add_subdirectory(moe)
