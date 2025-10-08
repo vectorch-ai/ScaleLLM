@@ -1,3 +1,5 @@
+// Adapted from
+// https://github.com/pytorch/pytorch/blob/main/torch/csrc/api/include/torch/nn/module.h
 #pragma once
 
 #include <ATen/ATen.h>
@@ -14,6 +16,12 @@
 #include "module_holder.h"
 
 namespace llm {
+
+namespace detail {
+/// Joins names hierarchically: "name_prefix.name" if `name_prefix` is
+/// non-empty, else just "name".
+std::string join_name(const std::string& name_prefix, const std::string& name);
+}  // namespace detail
 
 /// The base class for all modules.
 ///

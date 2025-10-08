@@ -1,16 +1,13 @@
-#include "qlinear_awq_marlin_impl.h"
+#include "qlinear_gptq_marlin_impl.h"
 
 #include <glog/logging.h>
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include <cstdint>
-
 #include "kernels/quantization/marlin.h"
-#include "layers/weight_utils.h"
+#include "layers/linear/weight_utils.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
-#include "pack_utils.h"
 
 namespace llm {
 namespace {
@@ -18,17 +15,17 @@ int64_t round_up(int64_t num, int64_t multiple) {
   return ((num + multiple - 1) / multiple);
 }
 
-void check_awq_quant_args(const QuantArgs& quant_args) {
-  CHECK(quant_args.zero_point() && !quant_args.is_sym())
-      << "Only zero_point is supported for AWQ";
+void check_gptq_quant_args(const QuantArgs& quant_args) {
+  CHECK(quant_args.is_sym())
+      << "Only symmetric quantization is supported for GPTQ";
 
   const auto bits = quant_args.bits();
-  CHECK(bits == 4 || bits == 8) << "Only 4 and 8 bits are supported for AWQ";
+  CHECK(bits == 4 || bits == 8) << "Only 4 and 8 bits are supported for GPTQ";
 
   const auto group_size = quant_args.group_size();
   CHECK(group_size == -1 || group_size == 32 || group_size == 64 ||
         group_size == 128)
-      << "Only group_size of -1, 32, 64, 128 are supported for AWQ";
+      << "Only group_size of -1, 32, 64, 128 are supported for GPTQ";
 }
 
 const std::vector<int64_t> kScalesPerm = {
@@ -41,76 +38,25 @@ const std::vector<int64_t> kScalesPermSingle = {
     4, 5, 12, 13, 20, 21, 28, 29, 6, 7, 14, 15, 22, 23, 30, 31,
 };
 
-// clang-format off
-const std::vector<int64_t> kInterleavingBits4 = {
-    0, 2, 4, 6, 1, 3, 5, 7,
-};
-const std::vector<int64_t> kInterleavingBits8 = {
-    0, 2, 1, 3,
-};
+torch::Tensor repack_weight(torch::Tensor& qweight,
+                            torch::Tensor& scales,
+                            torch::Tensor& g_idx,
+                            int64_t num_bits,
+                            bool act_order) {
+  torch::Tensor perm;
+  if (act_order) {
+    // sort g_idx in ascending order
+    perm = torch::argsort(g_idx).to(torch::kInt32);
+    auto p_g_idx = g_idx.index_select(/*dim=*/0, perm);
+    g_idx.set_data(p_g_idx);
+  } else {
+    perm = torch::empty({0}, g_idx.options());
+  }
 
-// argsort([0, 2, 4, 6, 1, 3, 5, 7])
-const std::vector<int64_t> kUndoInterleavingBits4 = {
-    0, 4, 1, 5, 2, 6, 3, 7,
-};
-// argsort([0, 2, 1, 3])
-const std::vector<int64_t> kUndoInterleavingBits8 = {
-    0, 2, 1, 3,
-};
-// clang-format on
-
-torch::Tensor repack_qzeros(const torch::Tensor& qzeros, int64_t num_bits) {
-  const int64_t n_groups = qzeros.size(0);
-  // unpack qzeros:
-  // (n_groups, out_features/pack_factor) -> (n_groups, out_features)
-  auto unpacked_qzeros = pack_utils::unpack_cols(qzeros, num_bits);
-
-  // undo interleaving
-  const auto& undo_interleaving =
-      num_bits == 4 ? kUndoInterleavingBits4 : kUndoInterleavingBits8;
-  const int64_t undo_interleaving_len = undo_interleaving.size();
-  unpacked_qzeros = unpacked_qzeros.reshape({-1, undo_interleaving_len});
-  unpacked_qzeros = unpacked_qzeros.index_select(
-      /*dim=*/1, torch::tensor(undo_interleaving, qzeros.device()));
-  unpacked_qzeros =
-      unpacked_qzeros.ravel().reshape({n_groups, -1}).contiguous();
-
-  // pack qzeros to marlin compatible format
-  // permute qzeros in the same way as scales
-  const int64_t perm_len = kScalesPerm.size();
-  auto marlin_qzeros =
-      unpacked_qzeros.reshape({-1, perm_len})
-          .index_select(/*dim=*/1, torch::tensor(kScalesPerm, qzeros.device()));
-
-  // interleaving columns
-  const auto& interleaving =
-      num_bits == 4 ? kInterleavingBits4 : kInterleavingBits8;
-  const int64_t interleaving_len = interleaving.size();
-  marlin_qzeros =
-      marlin_qzeros.reshape({-1, interleaving_len})
-          .index_select(/*dim=*/1,
-                        torch::tensor(interleaving, qzeros.device()));
-  marlin_qzeros = marlin_qzeros.reshape(unpacked_qzeros.sizes()).contiguous();
-  // pack qzeros on columns
-  auto packed_marlin_qzeros = pack_utils::pack_cols(marlin_qzeros, num_bits);
-  return packed_marlin_qzeros.to(qzeros);
-}
-
-void repack_weight(torch::Tensor& qweight,
-                   torch::Tensor& qzeros,
-                   torch::Tensor& scales,
-                   int64_t num_bits) {
   // permute and repack qweight to marlin compatible format
-  auto marlin_qweights = torch::empty(
-      {qweight.size(0) / 16, qweight.size(1) * 16}, qweight.options());
-  marlin::awq_repack(qweight, marlin_qweights, num_bits);
-  // (k, n/pack_factor) -> (k/16, n*16/pack_factor)
+  auto marlin_qweights = torch::empty_like(qweight);
+  marlin::gptq_repack(qweight, perm, marlin_qweights, num_bits);
   qweight.set_data(marlin_qweights);
-
-  // permute and repack qzeros
-  auto marlin_qzeros = repack_qzeros(qzeros, num_bits);
-  // (n_groups, n/pack_factor) -> (n_groups, n/pack_factor)
-  qzeros.set_data(marlin_qzeros);
 
   // permute scales
   const int64_t n_groups = scales.size(0);
@@ -120,13 +66,13 @@ void repack_weight(torch::Tensor& qweight,
       scales.reshape({-1, perm_len})
           .index_select(/*dim=*/1, torch::tensor(scale_perm, scales.device()));
   marlin_scales = marlin_scales.reshape(scales.sizes()).contiguous();
-  // (n_groups, n) -> (n_groups, n)
   scales.set_data(marlin_scales);
+  return perm;
 }
 
 }  // namespace
 
-ColumnParallelQLinearAWQMarlinImpl::ColumnParallelQLinearAWQMarlinImpl(
+ColumnParallelQLinearGPTQMarlinImpl::ColumnParallelQLinearGPTQMarlinImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
@@ -135,9 +81,10 @@ ColumnParallelQLinearAWQMarlinImpl::ColumnParallelQLinearAWQMarlinImpl(
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options)
     : bits_(quant_args.bits()),
+      act_order_(quant_args.desc_act()),
       gather_output_(gather_output),
       parallel_args_(parallel_args) {
-  check_awq_quant_args(quant_args);
+  check_gptq_quant_args(quant_args);
 
   const int64_t world_size = parallel_args.world_size();
   CHECK(out_features % world_size == 0)
@@ -146,28 +93,27 @@ ColumnParallelQLinearAWQMarlinImpl::ColumnParallelQLinearAWQMarlinImpl(
   const int64_t out_features_per_partition = out_features / world_size;
   const int64_t pack_factor = 32 / bits_;
 
-  // verify shapes
-  CHECK(out_features_per_partition % 64 == 0);
-  CHECK(in_features % 128 == 0);
+  // gptq pack weight on dim 0
+  qweight_ =
+      torch::empty({in_features / pack_factor, out_features_per_partition},
+                   options.dtype(torch::kInt32));
 
-  // awq pack weight on dim 1
   CHECK(out_features_per_partition % pack_factor == 0)
       << "out_features_per_partition " << out_features_per_partition
       << " not divisible by pack_factor " << pack_factor;
 
-  qweight_ =
-      torch::empty({in_features, out_features_per_partition / pack_factor},
-                   options.dtype(torch::kInt32));
-
   int64_t n_groups = 1;
   if (quant_args.group_size() > 0) {
-    CHECK(in_features % quant_args.group_size() == 0);
-    n_groups = in_features / quant_args.group_size();
+    n_groups = round_up(in_features, quant_args.group_size());
   }
-  qzeros_ = torch::empty({n_groups, out_features_per_partition / pack_factor},
-                         options.dtype(torch::kInt32));
-
   scales_ = torch::empty({n_groups, out_features_per_partition}, options);
+  qzeros_ = torch::empty({0}, options);
+
+  if (act_order_) {
+    g_idx_ = torch::empty({in_features}, options.dtype(torch::kInt32));
+  } else {
+    g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
+  }
 
   if (bias) {
     bias_ = torch::empty({out_features_per_partition}, options);
@@ -175,21 +121,21 @@ ColumnParallelQLinearAWQMarlinImpl::ColumnParallelQLinearAWQMarlinImpl(
 
   const int64_t max_workspace_size = out_features_per_partition / 64 * 16;
   workspace_ = torch::zeros({max_workspace_size}, options.dtype(torch::kInt32));
-
-  g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
-  perm_ = torch::empty({0}, options.dtype(torch::kInt32));
 }
 
 // load the weight from the checkpoint
-void ColumnParallelQLinearAWQMarlinImpl::load_state_dict(
+void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
     const StateDict& state_dict) {
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
   // load sharded weights on dim 1
   LOAD_SHARDED_WEIGHT(qweight, 1);
-  LOAD_SHARDED_WEIGHT(qzeros, 1);
   LOAD_SHARDED_WEIGHT(scales, 1);
+
+  if (act_order_) {
+    LOAD_WEIGHT(g_idx);
+  }
 
   // load bias if defined
   if (bias_.defined()) {
@@ -199,15 +145,16 @@ void ColumnParallelQLinearAWQMarlinImpl::load_state_dict(
 }
 
 // special load_state_dict for fused cases
-void ColumnParallelQLinearAWQMarlinImpl::load_state_dict(
+void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
     const StateDict& state_dict,
     const std::vector<std::string>& prefixes) {
+  CHECK(!act_order_) << "fused weight does not support desc_act";
+
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
   // load and merge weights on dim 1
   LOAD_FUSED_WEIGHT(qweight, 1);
-  LOAD_FUSED_WEIGHT(qzeros, 1);
   LOAD_FUSED_WEIGHT(scales, 1);
 
   // load bias if defined
@@ -217,24 +164,27 @@ void ColumnParallelQLinearAWQMarlinImpl::load_state_dict(
   }
 }
 
-void ColumnParallelQLinearAWQMarlinImpl::verify_loaded_weights(
+void ColumnParallelQLinearGPTQMarlinImpl::verify_loaded_weights(
     const std::string& prefix) const {
   CHECK(qweight_is_loaded_)
       << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
+  CHECK(!act_order_ || g_idx_is_loaded_)
+      << "g_idx is not loaded for " << prefix + "g_idx";
   CHECK(!bias_.defined() || bias_is_loaded_)
       << "bias is not loaded for " << prefix + "bias";
 }
 
-torch::Tensor ColumnParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
+torch::Tensor ColumnParallelQLinearGPTQMarlinImpl::forward(
+    torch::Tensor input) {
   // repack qweight and scales to marlin compatible format at the first call
-  if (!weight_repacked_) {
-    repack_weight(qweight_, qzeros_, scales_, bits_);
-    weight_repacked_ = true;
+  if (!perm_.defined()) {
+    perm_ = repack_weight(qweight_, scales_, g_idx_, bits_, act_order_);
+    CHECK(perm_.defined());
   }
 
-  auto output = torch::empty({input.size(0), scales_.size(1)}, input.options());
+  auto output =
+      torch::empty({input.size(0), qweight_.size(1)}, input.options());
   marlin::gptq_gemm(input,
                     qweight_,
                     output,
@@ -245,7 +195,7 @@ torch::Tensor ColumnParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
                     workspace_,
                     bits_,
                     /*is_k_full=*/true,
-                    /*has_zp=*/true,
+                    /*has_zp=*/false,
                     /*use_fp32_reduce=*/true);
   if (bias_.defined()) {
     output.add_(bias_);
@@ -256,8 +206,8 @@ torch::Tensor ColumnParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
   return output;
 }
 
-// RowParallelQLinearAWQMarlinImpl
-RowParallelQLinearAWQMarlinImpl::RowParallelQLinearAWQMarlinImpl(
+// RowParallelQLinearGPTQMarlinImpl
+RowParallelQLinearGPTQMarlinImpl::RowParallelQLinearGPTQMarlinImpl(
     int64_t in_features,
     int64_t out_features,
     bool bias,
@@ -266,9 +216,10 @@ RowParallelQLinearAWQMarlinImpl::RowParallelQLinearAWQMarlinImpl(
     const ParallelArgs& parallel_args,
     const torch::TensorOptions& options)
     : bits_(quant_args.bits()),
+      act_order_(quant_args.desc_act()),
       input_is_parallelized_(input_is_parallelized),
       parallel_args_(parallel_args) {
-  check_awq_quant_args(quant_args);
+  check_gptq_quant_args(quant_args);
 
   const int64_t world_size = parallel_args.world_size();
   CHECK(in_features % world_size == 0)
@@ -278,40 +229,53 @@ RowParallelQLinearAWQMarlinImpl::RowParallelQLinearAWQMarlinImpl(
   const int64_t pack_factor = 32 / bits_;
 
   qweight_ =
-      torch::empty({in_features_per_partition, out_features / pack_factor},
+      torch::empty({in_features_per_partition / pack_factor, out_features},
                    options.dtype(torch::kInt32));
 
   // load full scales for act_order and channelwise quant
+  load_full_scales_ = act_order_ || quant_args.group_size() == -1;
   int64_t n_groups = 1;
   if (quant_args.group_size() > 0) {
-    CHECK(in_features_per_partition % quant_args.group_size() == 0);
-    n_groups = in_features_per_partition / quant_args.group_size();
+    n_groups =
+        round_up(load_full_scales_ ? in_features : in_features_per_partition,
+                 quant_args.group_size());
   }
-  qzeros_ = torch::empty({n_groups, out_features / pack_factor},
-                         options.dtype(torch::kInt32));
   scales_ = torch::empty({n_groups, out_features}, options);
+  qzeros_ = torch::empty({0}, options);
+
+  if (act_order_) {
+    // load sharded g_idx on dim 0
+    g_idx_ =
+        torch::empty({in_features_per_partition}, options.dtype(torch::kInt32));
+  } else {
+    g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
+  }
 
   if (bias) {
     bias_ = torch::empty({out_features}, options);
   }
 
   const int64_t max_workspace_size = out_features / 64 * 16;
-  workspace_ = torch::zeros({max_workspace_size}, options);
-
-  g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
-  perm_ = torch::empty({0}, options.dtype(torch::kInt32));
+  workspace_ = torch::zeros({max_workspace_size}, options.dtype(torch::kInt32));
 }
 
 // load the weight from the checkpoint
-void RowParallelQLinearAWQMarlinImpl::load_state_dict(
+void RowParallelQLinearGPTQMarlinImpl::load_state_dict(
     const StateDict& state_dict) {
   const auto rank = parallel_args_.rank();
   const auto world_size = parallel_args_.world_size();
 
   // load sharded weights on dim 0
   LOAD_SHARDED_WEIGHT(qweight, 0);
-  LOAD_SHARDED_WEIGHT(qzeros, 0);
-  LOAD_SHARDED_WEIGHT(scales, 0);
+  if (load_full_scales_) {
+    LOAD_WEIGHT(scales);
+  } else {
+    LOAD_SHARDED_WEIGHT(scales, 0);
+  }
+
+  if (act_order_) {
+    LOAD_SHARDED_WEIGHT(g_idx, 0);
+  }
 
   if (bias_.defined()) {
     // load bias
@@ -319,28 +283,30 @@ void RowParallelQLinearAWQMarlinImpl::load_state_dict(
   }
 }
 
-void RowParallelQLinearAWQMarlinImpl::verify_loaded_weights(
+void RowParallelQLinearGPTQMarlinImpl::verify_loaded_weights(
     const std::string& prefix) const {
   CHECK(qweight_is_loaded_)
       << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
   CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
+  CHECK(!act_order_ || g_idx_is_loaded_)
+      << "g_idx is not loaded for " << prefix + "g_idx";
   CHECK(!bias_.defined() || bias_is_loaded_)
       << "bias is not loaded for " << prefix + "bias";
 }
 
-torch::Tensor RowParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
+torch::Tensor RowParallelQLinearGPTQMarlinImpl::forward(torch::Tensor input) {
   // repack qweight and scales to marlin compatible format at the first call
-  if (!weight_repacked_) {
-    repack_weight(qweight_, qzeros_, scales_, bits_);
-    weight_repacked_ = true;
+  if (!perm_.defined()) {
+    perm_ = repack_weight(qweight_, scales_, g_idx_, bits_, act_order_);
+    CHECK(perm_.defined());
   }
 
   if (!input_is_parallelized_) {
     input = scatter_to_model_parallel_region(input, parallel_args_);
   }
 
-  auto output = torch::empty({input.size(0), scales_.size(1)}, input.options());
+  auto output =
+      torch::empty({input.size(0), qweight_.size(1)}, input.options());
   marlin::gptq_gemm(input,
                     qweight_,
                     output,
@@ -350,8 +316,8 @@ torch::Tensor RowParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
                     perm_,
                     workspace_,
                     bits_,
-                    /*is_k_full=*/true,
-                    /*has_zp=*/true,
+                    /*is_k_full=*/!act_order_,
+                    /*has_zp=*/false,
                     /*use_fp32_reduce=*/true);
 
   if (parallel_args_.world_size() > 1) {

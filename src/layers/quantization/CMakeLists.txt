@@ -2,9 +2,9 @@ include(cc_library)
 include(cc_test)
 
 cc_library(
-  NAME 
+  NAME
     quantization
-  HDRS 
+  HDRS
     pack_utils.h
     qlinear_impl.h
     qlinear_gptq_impl.h
@@ -12,7 +12,7 @@ cc_library(
     qlinear_awq_impl.h
     qlinear_gptq_marlin_impl.h
     qlinear_awq_marlin_impl.h
-  SRCS 
+  SRCS
     pack_utils.cpp
     qlinear_impl.cpp
     qlinear_gptq_impl.cpp
@@ -42,7 +42,7 @@ cc_test(
     :quantization
     :state_dict
     :gtest_main
-  DATA 
+  DATA
     data/gptq_small.safetensors
     data/gptq.safetensors
 )

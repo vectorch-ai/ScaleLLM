@@ -2,8 +2,8 @@
 
 #include <gflags/gflags_declare.h>
 
+#include "layers/quantization/quant_args.h"
 #include "models/model_args.h"
-#include "quantization/quant_args.h"
 #include "tokenizer/tokenizer_args.h"
 
 // Model args flags

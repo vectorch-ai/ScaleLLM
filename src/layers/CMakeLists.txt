@@ -3,32 +3,6 @@ include(cc_test)
 
 cc_library(
   NAME
-    linear
-  HDRS
-    linear.h
-    qkv_linear.h
-    linear_impl.h
-    fused_linear.h
-    weight_utils.h
-  SRCS
-    linear.cpp
-    qkv_linear.cpp
-    linear_impl.cpp
-    fused_linear.cpp
-    weight_utils.cpp
-  DEPS
-    :state_dict
-    :model_parallel
-    :quantization
-    :kernels
-    :module
-    glog::glog
-    gflags::gflags
-    torch
-)
-
-cc_library(
-  NAME
     pos_embedding
   HDRS
     pos_embedding.h
@@ -73,8 +47,6 @@ cc_test(
     activation_test.cpp
     pos_embedding_test.cpp
     normalization_test.cpp
-    linear_test.cpp
-    qkv_linear_test.cpp
   DEPS
     :layers
     :state_dict
@@ -82,5 +54,8 @@ cc_test(
     :gtest_main
 )
 
+add_subdirectory(module)
+add_subdirectory(linear)
+add_subdirectory(quantization)
 add_subdirectory(attention)
 add_subdirectory(moe)

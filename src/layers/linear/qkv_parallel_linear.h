@@ -3,12 +3,12 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
-#include "fused_linear.h"
+#include "layers/module/module.h"
+#include "layers/module/module_holder.h"
+#include "layers/quantization/quant_args.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
-#include "module/module.h"
-#include "module/module_holder.h"
-#include "quantization/quant_args.h"
+#include "multi_parallel_linear.h"
 
 namespace llm {
 
@@ -27,13 +27,16 @@ class QKVColumnParallelLinearImpl : public Module {
                               const ParallelArgs& parallel_args,
                               const torch::TensorOptions& options);
 
-  std::vector<torch::Tensor> forward(torch::Tensor input) {
-    return parallel_linear_->forward(input);
+  // returns (query, key, value)
+  std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
+      torch::Tensor input) {
+    const auto qkv = parallel_linear_->forward(input);
+    return {qkv[0], qkv[1], qkv[2]};
   }
 
  private:
   // registered modules
-  FusedColumnParallelLinear parallel_linear_{nullptr};
+  MultiColumnParallelLinear parallel_linear_{nullptr};
 };
 LLM_MODULE(QKVColumnParallelLinear);
 

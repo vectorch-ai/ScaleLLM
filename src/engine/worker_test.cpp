@@ -4,9 +4,9 @@
 
 #include "engine/batch.h"
 #include "engine/utils.h"
+#include "layers/quantization/quant_args.h"
 #include "memory/block_manager.h"
 #include "models/simple_model.h"
-#include "quantization/quant_args.h"
 namespace llm {
 
 class TestableWorker {

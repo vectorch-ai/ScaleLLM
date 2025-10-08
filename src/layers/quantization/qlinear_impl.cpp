@@ -4,7 +4,6 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include "layers/linear_impl.h"
 #include "model_loader/state_dict.h"
 
 namespace llm {
@@ -117,7 +116,8 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
       quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
   CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
-  const int64_t world_size = parallel_args.world_size();
+  const auto rank = parallel_args_.rank();
+  const auto world_size = parallel_args_.world_size();
   CHECK(out_features % world_size == 0)
       << "out_features " << out_features << " not divisible by world_size "
       << world_size;
@@ -125,29 +125,46 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
   const int64_t pack_factor = 32 / bits;
 
   if (qweight_pack_dim == 0) {
-    qweight_ = register_parameter(
+    qweight_ = register_sharded_parameter(
         "qweight",
+        /*dim=*/1,
+        rank,
+        world_size,
         torch::empty({in_features / pack_factor, out_features_per_partition},
                      options.dtype(torch::kInt32)));
   } else {
-    qweight_ = register_parameter(
+    qweight_ = register_sharded_parameter(
         "qweight",
+        /*dim=*/1,
+        rank,
+        world_size,
         torch::empty({in_features, out_features_per_partition / pack_factor},
                      options.dtype(torch::kInt32)));
   }
-  qzeros_ = register_parameter(
+  qzeros_ = register_sharded_parameter(
       "qzeros",
+      /*dim=*/1,
+      rank,
+      world_size,
       torch::empty({round_up(in_features, group_size),
                     out_features_per_partition / pack_factor},
                    options.dtype(torch::kInt32)));
 
-  scales_ = register_parameter("scales",
-                               torch::empty({round_up(in_features, group_size),
-                                             out_features_per_partition},
-                                            options));
+  scales_ = register_sharded_parameter(
+      "scales",
+      /*dim=*/1,
+      rank,
+      world_size,
+      torch::empty(
+          {round_up(in_features, group_size), out_features_per_partition},
+          options));
   if (bias) {
-    bias_ = register_parameter(
-        "bias", torch::empty({out_features_per_partition}, options));
+    bias_ = register_sharded_parameter(
+        "bias",
+        /*dim=*/0,
+        rank,
+        world_size,
+        torch::empty({out_features_per_partition}, options));
   }
 }
 
@@ -226,7 +243,8 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
   const auto bits = quant_args.bits();
   CHECK(qweight_pack_dim == 0 || qweight_pack_dim == 1)
       << "qweight_pack_dim must be 0 or 1";
-  const int64_t world_size = parallel_args.world_size();
+  const auto rank = parallel_args_.rank();
+  const auto world_size = parallel_args_.world_size();
   CHECK(in_features % world_size == 0)
       << "in_features " << in_features << " not divisible by world_size "
       << world_size;
@@ -236,24 +254,36 @@ RowParallelQLinearImpl::RowParallelQLinearImpl(
       quant_args.group_size() > 0 ? quant_args.group_size() : in_features;
 
   if (qweight_pack_dim == 0) {
-    qweight_ = register_parameter(
+    qweight_ = register_sharded_parameter(
         "qweight",
+        /*dim=*/0,
+        rank,
+        world_size,
         torch::empty({in_features_per_partition / pack_factor, out_features},
                      options.dtype(torch::kInt32)));
   } else {
-    qweight_ = register_parameter(
+    qweight_ = register_sharded_parameter(
         "qweight",
+        /*dim=*/0,
+        rank,
+        world_size,
         torch::empty({in_features_per_partition, out_features / pack_factor},
                      options.dtype(torch::kInt32)));
   }
-  qzeros_ = register_parameter(
+  qzeros_ = register_sharded_parameter(
       "qzeros",
+      /*dim=*/0,
+      rank,
+      world_size,
       torch::empty({round_up(in_features_per_partition, group_size),
                     out_features / pack_factor},
                    options.dtype(torch::kInt32)));
 
-  scales_ = register_parameter(
+  scales_ = register_sharded_parameter(
       "scales",
+      /*dim=*/0,
+      rank,
+      world_size,
       torch::empty(
           {round_up(in_features_per_partition, group_size), out_features},
           options));

@@ -10,16 +10,15 @@
 #include "layers/attention/attention.h"
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
-#include "layers/linear.h"
+#include "layers/linear/qkv_parallel_linear.h"
+#include "layers/module/module.h"
+#include "layers/module/module_holder.h"
+#include "layers/module/module_list.h"
 #include "layers/normalization.h"
-#include "layers/qkv_linear.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-#include "module/module.h"
-#include "module/module_holder.h"
-#include "module/module_list.h"
 // QWen2 model compatible with huggingface weights
 // ref to:
 // https://github.com/huggingface/transformers/blob/v4.43.3/src/transformers/models/qwen2/modeling_qwen2.py
@@ -40,7 +39,7 @@ class QWen2MLPImpl : public Module {
     // register the weight parameter
     gate_up_proj_ = register_module(
         "gate_up_proj",
-        FusedColumnParallelLinear(
+        MultiColumnParallelLinear(
             hidden_size,
             std::vector<int64_t>{intermediate_size, intermediate_size},
             std::vector<std::string>{"gate_proj.", "up_proj."},
@@ -68,7 +67,7 @@ class QWen2MLPImpl : public Module {
 
  private:
   // parameter members, must be registered
-  FusedColumnParallelLinear gate_up_proj_{nullptr};
+  MultiColumnParallelLinear gate_up_proj_{nullptr};
   RowParallelLinear down_proj_{nullptr};
 
   // activation function
@@ -133,10 +132,9 @@ class QWen2AttentionImpl : public Module {
                         const InputParameters& input_params) {
     // (num_tokens, dim) x (dim, n_local_heads * head_dim)
     // => (num_tokens, n_local_heads * head_dim)
-    const auto qkv = qkv_proj_(x);
+    const auto [q, k, v] = qkv_proj_(x);
     // calculate attention, output: (num_tokens, n_local_heads * head_dim)
-    const auto output =
-        atten_(qkv[0], qkv[1], qkv[2], positions, kv_cache, input_params);
+    const auto output = atten_(q, k, v, positions, kv_cache, input_params);
     return o_proj_(output);
   }
 

@@ -7,7 +7,7 @@
 namespace llm {
 using namespace torch;
 
-namespace {
+namespace detail {
 /// Joins names hierarchically: "name_prefix.name" if `name_prefix` is
 /// non-empty, else just "name".
 std::string join_name(const std::string& name_prefix, const std::string& name) {
@@ -19,12 +19,15 @@ std::string join_name(const std::string& name_prefix, const std::string& name) {
   full_name.reserve(total_size);
   if (!name_prefix.empty()) {
     full_name += name_prefix;
-    full_name.push_back('.');
+    // insert separator if necessary
+    if (name_prefix.back() != '.') {
+      full_name.push_back('.');
+    }
   }
   full_name += name;
   return full_name;
 }
-}  // namespace
+}  // namespace detail
 
 Module::Module()
     : parameters_("Parameter"), buffers_("Buffer"), children_("Submodule") {}
@@ -60,7 +63,8 @@ OrderedDict<std::string, Tensor> Module::named_parameters(bool recurse) const {
     apply([&result](const std::string& name, const Module& module) {
       for (const auto& parameter : module.named_parameters(/*recurse=*/false)) {
         TORCH_INTERNAL_ASSERT(parameter.value().defined());
-        result.insert(join_name(name, parameter.key()), parameter.value());
+        result.insert(detail::join_name(name, parameter.key()),
+                      parameter.value());
       }
     });
   }
@@ -83,7 +87,7 @@ OrderedDict<std::string, Tensor> Module::named_buffers(bool recurse) const {
     apply([&result](const std::string& name, const Module& module) {
       for (const auto& buffer : module.named_buffers(/*recurse=*/false)) {
         TORCH_INTERNAL_ASSERT(buffer.value().defined());
-        result.insert(join_name(name, buffer.key()), buffer.value());
+        result.insert(detail::join_name(name, buffer.key()), buffer.value());
       }
     });
   }
@@ -278,7 +282,7 @@ void Module::apply_to_submodules(
     const NamedModulePointerApplyFunction& function,
     const std::string& name_prefix) const {
   for (const auto& child : children_) {
-    auto qualified_name = join_name(name_prefix, child.key());
+    auto qualified_name = detail::join_name(name_prefix, child.key());
     function(qualified_name, child.value().module);
     child.value().module->apply_to_submodules(function, qualified_name);
   }
@@ -331,12 +335,13 @@ size_t Module::load(const StateDict& state_dict,
     }
 
     if (param.is_loaded) {
-      LOG(WARNING) << "Parameter " << join_name(name_prefix, key)
+      LOG(WARNING) << "Parameter " << detail::join_name(name_prefix, key)
                    << " is already loaded";
     }
 
     if (param_tensor.sizes() == tensor.sizes()) {
-      // LOG(INFO) << "Loading parameter: " << join_name(name_prefix, key)
+      // LOG(INFO) << "Loading parameter: " << detail::join_name(name_prefix,
+      // key)
       //           << " of size " << tensor.sizes();
       // copy data to the parameter tensor
       param_tensor.copy_(tensor);
@@ -345,7 +350,7 @@ size_t Module::load(const StateDict& state_dict,
       ++total_loaded;
     } else {
       LOG(ERROR) << "Size mismatch for parameter "
-                 << join_name(name_prefix, key) << ": expected "
+                 << detail::join_name(name_prefix, key) << ": expected "
                  << param_tensor.sizes() << ", got " << tensor.sizes();
     }
   }
@@ -359,8 +364,8 @@ size_t Module::load(const StateDict& state_dict,
     if (child.selector) {
       // select state dict for the child module
       const auto child_state_dict = child.selector(state_dict, key);
-      total_loaded +=
-          child.module->load(child_state_dict, join_name(name_prefix, key));
+      total_loaded += child.module->load(child_state_dict,
+                                         detail::join_name(name_prefix, key));
     } else {
       total_loaded += child.module->load(state_dict, name_prefix);
     }
@@ -376,7 +381,7 @@ bool Module::verify(const std::string& name_prefix) const {
     const auto& key = item.key();
     const auto& param = item.value();
     if (!param.is_loaded) {
-      LOG(ERROR) << "Missing parameter: " << join_name(name_prefix, key)
+      LOG(ERROR) << "Missing parameter: " << detail::join_name(name_prefix, key)
                  << ", size: " << param.tensor.sizes();
     }
     all_loaded = all_loaded && param.is_loaded;
@@ -386,7 +391,7 @@ bool Module::verify(const std::string& name_prefix) const {
     const auto& key = item.key();
     const auto& child = item.value();
     const std::string prefix =
-        child.selector ? join_name(name_prefix, key) : name_prefix;
+        child.selector ? detail::join_name(name_prefix, key) : name_prefix;
     const bool child_loaded = child.module->verify(prefix);
     all_loaded = all_loaded && child_loaded;
   }
