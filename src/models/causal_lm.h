@@ -34,10 +34,10 @@ class CausalLM {
                                const torch::Tensor& seleted_idxes) = 0;
 
   // load the model from the given state_dict
-  virtual void load_state_dict(const StateDict& state_dict) = 0;
+  virtual void load(const StateDict& state_dict) = 0;
 
   // verify if the model is loaded correctly
-  virtual void verify_loaded_weights() const = 0;
+  virtual void verify() const = 0;
 
   virtual torch::Device device() const = 0;
 
@@ -69,11 +69,9 @@ class CausalLMImpl : public CausalLM {
     return model_->logits(hidden_states, seleted_idxes);
   }
 
-  void load_state_dict(const StateDict& state_dict) override {
-    model_->load(state_dict);
-  }
+  void load(const StateDict& state_dict) override { model_->load(state_dict); }
 
-  void verify_loaded_weights() const override {
+  void verify() const override {
     bool success = model_->verify();
     if (!success) {
       LOG(FATAL) << "Failed to verify loaded weights for the model."

@@ -1,4 +1,4 @@
-#include "qlinear_impl.h"
+#include "parallel_qlinear.h"
 
 #include <glog/logging.h>
 #include <torch/torch.h>
@@ -18,13 +18,20 @@ namespace detail {
 // construct weights matrix for gptq from quantized weights
 // return the weights matrix [in_features, out_features] with following formula:
 // weights = scales * (qweights - qzeros)
+//    pack_factor = 32 / bits
+//    n_in_ints = in_features / pack_factor
+//    n_out_ints = out_features / pack_factor
+//    n_groups = ceil(in_features / group_size)
 torch::Tensor construct_weights(
-    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
-    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& qweights,  // [n_in_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_out_ints] IntTensor
     const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
     const torch::Tensor& g_idx,     // [in_features] IntTensor
     int64_t bits) {
   CHECK(bits == 2 || bits == 4 || bits == 8) << "Only 2,4,8 bits are supported";
+  const int64_t pack_factor = 32 / bits;
+  const int64_t n_groups = scales.size(0);
+  const int64_t out_features = scales.size(1);
 
   std::vector<int32_t> bits_to_shift;
   for (int32_t i = 0; i < 32; i += bits) {
@@ -35,9 +42,9 @@ torch::Tensor construct_weights(
       torch::tensor(bits_to_shift, qweights.options()).unsqueeze(0);
   const auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
   const uint16_t mask = static_cast<uint16_t>(std::pow(2, bits) - 1);
-  // [n_groups, out_features/n_bits, n_ints]
+  // [n_groups, out_features/pack_factor, pack_factor]
   auto zeros = torch::bitwise_right_shift(
-                   qzeros.unsqueeze(2).expand({-1, -1, 32 / bits}),
+                   qzeros.unsqueeze(2).expand({-1, -1, pack_factor}),
                    shift_bits.unsqueeze(0))
                    .to(dtype);
   zeros.bitwise_and_(mask);
@@ -45,14 +52,17 @@ torch::Tensor construct_weights(
   // [n_groups, out_features]
   zeros = zeros.reshape(scales.sizes());
 
+  // [in_features/pack_factor, pack_factor, out_features]
   auto weights = torch::bitwise_right_shift(
-                     qweights.unsqueeze(1).expand({-1, 32 / bits, -1}),
+                     qweights.unsqueeze(1).expand({-1, pack_factor, -1}),
                      shift_bits.unsqueeze(-1))
                      .to(dtype);
   weights.bitwise_and_(mask);
-  weights = weights.reshape({-1, qweights.size(1)});
+  // [in_features, out_features]
+  weights = weights.reshape({-1, out_features});
   // auto gathered_scales = scales.gather(/*dim=*/0, /*index=*/g_idx);
   // auto gathered_zeros = zeros.gather(/*dim=*/0, /*index=*/g_idx);
+  // return gathered_scales * (weights - gathered_zeros);
   return scales.index({g_idx}) * (weights - zeros.index({g_idx}));
 }
 
@@ -61,11 +71,14 @@ torch::Tensor construct_weights(
 // return the weights matrix [in_features, out_features] with following formula:
 // weights = scales * (qweights - qzeros)
 torch::Tensor construct_weights(
-    const torch::Tensor& qweights,  // [n_ints, out_features] IntTensor
-    const torch::Tensor& qzeros,    // [n_groups, n_ints] IntTensor
+    const torch::Tensor& qweights,  // [n_in_ints, out_features] IntTensor
+    const torch::Tensor& qzeros,    // [n_groups, n_out_ints] IntTensor
     const torch::Tensor& scales,    // [n_groups, out_features] HalfTensor
     int64_t bits) {
   CHECK(bits == 2 || bits == 4 || bits == 8) << "Only 2,4,8 bits are supported";
+  const int64_t pack_factor = 32 / bits;
+  const int64_t n_groups = scales.size(0);
+  const int64_t out_features = scales.size(1);
 
   std::vector<int32_t> bits_to_shift;
   for (int32_t i = 0; i < 32; i += bits) {
@@ -77,25 +90,28 @@ torch::Tensor construct_weights(
       torch::tensor(bits_to_shift, qweights.options()).unsqueeze(0);
   const auto dtype = (bits == 8) ? torch::kInt16 : torch::kInt8;
   const uint16_t mask = static_cast<uint16_t>(std::pow(2, bits) - 1);
-  // [n_groups, out_features/n_bits, n_ints]
+  // [n_groups, out_features/pack_factor, pack_factor]
   auto zeros = torch::bitwise_right_shift(
-                   qzeros.unsqueeze(2).expand({-1, -1, 32 / bits}),
+                   qzeros.unsqueeze(2).expand({-1, -1, pack_factor}),
                    shift_bits.unsqueeze(0))
                    .to(dtype);
   zeros.bitwise_and_(mask);
   zeros.add_(1);
   // [n_groups, 1, out_features]
-  zeros = zeros.reshape({scales.size(0), 1, scales.size(1)});
+  zeros = zeros.reshape({n_groups, 1, out_features});
 
+  // [in_features/pack_factor, pack_factor, out_features]
   auto weights = torch::bitwise_right_shift(
-                     qweights.unsqueeze(1).expand({-1, 32 / bits, -1}),
+                     qweights.unsqueeze(1).expand({-1, pack_factor, -1}),
                      shift_bits.unsqueeze(-1))
                      .to(dtype);
   weights.bitwise_and_(mask);
-  // [n_groups, group_size, out_features]
-  weights = weights.reshape({scales.size(0), -1, scales.size(1)});
+  // [in_features, out_features] => [n_groups, group_size, out_features]
+  weights = weights.reshape({n_groups, -1, out_features});
+  // [n_groups, 1, out_features] * [n_groups, group_size, out_features]
   weights = scales.unsqueeze(1) * (weights - zeros);
-  return weights.reshape({-1, scales.size(1)});
+  // [n_groups, group_size, out_features] => [in_features, out_features]
+  return weights.reshape({-1, out_features});
 }
 }  // namespace detail
 
@@ -141,13 +157,13 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
         torch::empty({in_features, out_features_per_partition / pack_factor},
                      options.dtype(torch::kInt32)));
   }
+  const int64_t n_groups = round_up(in_features, group_size);
   qzeros_ = register_sharded_parameter(
       "qzeros",
       /*dim=*/1,
       rank,
       world_size,
-      torch::empty({round_up(in_features, group_size),
-                    out_features_per_partition / pack_factor},
+      torch::empty({n_groups, out_features_per_partition / pack_factor},
                    options.dtype(torch::kInt32)));
 
   scales_ = register_sharded_parameter(
@@ -155,9 +171,8 @@ ColumnParallelQLinearImpl::ColumnParallelQLinearImpl(
       /*dim=*/1,
       rank,
       world_size,
-      torch::empty(
-          {round_up(in_features, group_size), out_features_per_partition},
-          options));
+      torch::empty({n_groups, out_features_per_partition}, options));
+
   if (bias) {
     bias_ = register_sharded_parameter(
         "bias",
@@ -174,58 +189,11 @@ torch::Tensor ColumnParallelQLinearImpl::quant_matmul(
     const torch::Tensor& qzeros,
     const torch::Tensor& scales) const {
   const int64_t out_features = qweight.size(-1);
-  torch::Tensor output =
-      torch::zeros({input.size(0), out_features}, input.options());
+  // scales * (qweights - qzeros): [in_features, out_features]
   const auto weights =
       detail::construct_weights(qweight, qzeros, scales, bits_);
-  torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
-  return output;
-}
-
-// load the weight from the checkpoint
-void ColumnParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load sharded weights on dim 1
-  LOAD_SHARDED_WEIGHT(qweight, 1);
-  LOAD_SHARDED_WEIGHT(qzeros, 1);
-  LOAD_SHARDED_WEIGHT(scales, 1);
-
-  // load bias if defined
-  if (bias_.defined()) {
-    // load sharded bias on dim 0
-    LOAD_SHARDED_WEIGHT(bias, 0);
-  }
-}
-
-// special load_state_dict for fused cases
-void ColumnParallelQLinearImpl::load_state_dict(
-    const StateDict& state_dict,
-    const std::vector<std::string>& prefixes) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load and merge weights on dim 1
-  LOAD_FUSED_WEIGHT(qweight, 1);
-  LOAD_FUSED_WEIGHT(qzeros, 1);
-  LOAD_FUSED_WEIGHT(scales, 1);
-
-  // load bias if defined
-  if (bias_.defined()) {
-    // load and merge bias on dim 0
-    LOAD_FUSED_WEIGHT(bias, 0);
-  }
-}
-
-void ColumnParallelQLinearImpl::verify_loaded_weights(
-    const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + "bias";
+  // output: [batch, out_features]
+  return torch::matmul(input, weights);
 }
 
 RowParallelQLinearImpl::RowParallelQLinearImpl(
@@ -299,38 +267,11 @@ torch::Tensor RowParallelQLinearImpl::quant_matmul(
     const torch::Tensor& qzeros,
     const torch::Tensor& scales) const {
   const int64_t out_features = qweight.size(-1);
-  torch::Tensor output =
-      torch::zeros({input.size(0), out_features}, input.options());
+  // scales * (qweights - qzeros): [in_features, out_features]
   const auto weights =
       detail::construct_weights(qweight, qzeros, scales, bits_);
-  torch::matmul_out(/*out=*/output, /*self=*/input, /*other=*/weights);
-  return output;
-}
-
-// load the weight from the checkpoint
-void RowParallelQLinearImpl::load_state_dict(const StateDict& state_dict) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load sharded weights on dim 0
-  LOAD_SHARDED_WEIGHT(qweight, 0);
-  LOAD_SHARDED_WEIGHT(qzeros, 0);
-  LOAD_SHARDED_WEIGHT(scales, 0);
-
-  if (bias_.defined()) {
-    // load bias
-    LOAD_WEIGHT(bias);
-  }
-}
-
-void RowParallelQLinearImpl::verify_loaded_weights(
-    const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + "bias";
+  // output: [batch, out_features]
+  return torch::matmul(input, weights);
 }
 
 }  // namespace llm

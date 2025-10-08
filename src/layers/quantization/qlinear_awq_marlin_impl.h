@@ -20,17 +20,7 @@ class ColumnParallelQLinearAWQMarlinImpl : public ParallelLinearImpl {
                                      const ParallelArgs& parallel_args,
                                      const torch::TensorOptions& options);
 
-  // verify if the weight is loaded correctly
-  void verify_loaded_weights(const std::string& prefix = "") const override;
-
   torch::Tensor forward(torch::Tensor input) override;
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) override;
-
-  // special load_state_dict for fused cases
-  void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string>& prefixes) override;
 
  private:
   // parameter members, must be registered
@@ -66,12 +56,6 @@ class RowParallelQLinearAWQMarlinImpl : public ParallelLinearImpl {
                                   const torch::TensorOptions& options);
 
   torch::Tensor forward(torch::Tensor input) override;
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) override;
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const override;
 
  private:
   // parameter members, must be registered

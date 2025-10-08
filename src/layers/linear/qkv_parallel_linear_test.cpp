@@ -62,7 +62,7 @@ TEST_P(QKVColumnParallelLinearTest, LoadFusedWeight) {
         quant_args,
         parallel_args,
         options);
-    linear.load(state_dict);
+    EXPECT_EQ(linear.load(state_dict), 3);
     EXPECT_TRUE(linear.verify());
 
     // generate random input and compare with the output

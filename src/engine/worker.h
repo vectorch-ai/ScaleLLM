@@ -30,10 +30,10 @@ class Worker final {
 
   // Load the model weights from state_dict. blocking call
   // can be called multiple times to reload the model with different parameters
-  void load_state_dict(const StateDict& state_dict);
+  void load(const StateDict& state_dict);
 
   // verify if the model is loaded correctly
-  void verify_loaded_weights() const;
+  void verify() const;
 
   // returns available memory and total memory
   std::tuple<int64_t, int64_t> profile_device_memory();
@@ -57,8 +57,7 @@ class Worker final {
 
   // Load the model weights from state_dict. async call
   // the future returns a successfull status with no meaningful value
-  folly::SemiFuture<folly::Unit> load_state_dict_async(
-      const StateDict& state_dict);
+  folly::SemiFuture<folly::Unit> load_async(const StateDict& state_dict);
 
   folly::SemiFuture<std::tuple<int64_t, int64_t>> profile_device_memory_async();
 

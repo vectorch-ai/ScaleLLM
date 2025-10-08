@@ -1,27 +1,14 @@
+#include "parallel_qlinear_gptq.h"
+
 #include <c10/core/TensorOptions.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
 #include "model_loader/state_dict.h"
-#include "qlinear_gptq_impl.h"
 
 namespace llm {
 
-TEST(QlinearTest, Basic) {
-  auto state_dict = StateDict::load_safetensors("data/gptq_small.safetensors");
-  auto weights = detail::construct_weights(state_dict->get_tensor("qweight"),
-                                           state_dict->get_tensor("qzeros"),
-                                           state_dict->get_tensor("scales"),
-                                           /*bits=*/4);
-  auto weights_2 = detail::construct_weights(state_dict->get_tensor("qweight"),
-                                             state_dict->get_tensor("qzeros"),
-                                             state_dict->get_tensor("scales"),
-                                             state_dict->get_tensor("g_idx"),
-                                             /*bits=*/4);
-  EXPECT_TRUE(torch::allclose(weights, weights_2));
-}
-
-TEST(QlinearTest, ColumnParallelQuantLinear) {
+TEST(GPTQQlinearTest, ColumnParallelQLinear) {
   if (!torch::cuda::is_available()) {
     GTEST_SKIP() << "CUDA not available, skipping test";
   }
@@ -58,7 +45,7 @@ TEST(QlinearTest, ColumnParallelQuantLinear) {
                               /*atol=*/1e-02));
 }
 
-TEST(QlinearTest, RowParallelQuantLinear) {
+TEST(GPTQQlinearTest, RowParallelQLinear) {
   if (!torch::cuda::is_available()) {
     GTEST_SKIP() << "CUDA not available, skipping test";
   }

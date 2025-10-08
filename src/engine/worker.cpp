@@ -88,14 +88,14 @@ void Worker::capture_cuda_graph(uint32_t batch_size) {
   return model_runner_->capture_cuda_graphs(batch_size, kv_caches_);
 }
 
-void Worker::load_state_dict(const StateDict& state_dict) {
+void Worker::load(const StateDict& state_dict) {
   CHECK(model_ != nullptr) << "Model is not initialized.";
-  model_->load_state_dict(state_dict);
+  model_->load(state_dict);
 }
 
-void Worker::verify_loaded_weights() const {
+void Worker::verify() const {
   CHECK(model_ != nullptr) << "Model is not initialized.";
-  model_->verify_loaded_weights();
+  model_->verify();
 }
 
 std::tuple<int64_t, int64_t> Worker::profile_device_memory() {
@@ -270,14 +270,13 @@ folly::SemiFuture<folly::Unit> Worker::capture_cuda_graph_async(
   return future;
 }
 
-folly::SemiFuture<folly::Unit> Worker::load_state_dict_async(
-    const StateDict& state_dict) {
+folly::SemiFuture<folly::Unit> Worker::load_async(const StateDict& state_dict) {
   folly::Promise<folly::Unit> promise;
   auto future = promise.getSemiFuture();
   threadpool_.schedule(
       [this, &state_dict, promise = std::move(promise)]() mutable {
         // load the model weights from state_dict within the working thread
-        this->load_state_dict(state_dict);
+        this->load(state_dict);
         promise.setValue();
       });
   return future;

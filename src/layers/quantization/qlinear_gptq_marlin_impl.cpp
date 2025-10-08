@@ -123,58 +123,6 @@ ColumnParallelQLinearGPTQMarlinImpl::ColumnParallelQLinearGPTQMarlinImpl(
   workspace_ = torch::zeros({max_workspace_size}, options.dtype(torch::kInt32));
 }
 
-// load the weight from the checkpoint
-void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
-    const StateDict& state_dict) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load sharded weights on dim 1
-  LOAD_SHARDED_WEIGHT(qweight, 1);
-  LOAD_SHARDED_WEIGHT(scales, 1);
-
-  if (act_order_) {
-    LOAD_WEIGHT(g_idx);
-  }
-
-  // load bias if defined
-  if (bias_.defined()) {
-    // load sharded bias on dim 0
-    LOAD_SHARDED_WEIGHT(bias, 0);
-  }
-}
-
-// special load_state_dict for fused cases
-void ColumnParallelQLinearGPTQMarlinImpl::load_state_dict(
-    const StateDict& state_dict,
-    const std::vector<std::string>& prefixes) {
-  CHECK(!act_order_) << "fused weight does not support desc_act";
-
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load and merge weights on dim 1
-  LOAD_FUSED_WEIGHT(qweight, 1);
-  LOAD_FUSED_WEIGHT(scales, 1);
-
-  // load bias if defined
-  if (bias_.defined()) {
-    // load and merge bias on dim 0
-    LOAD_FUSED_WEIGHT(bias, 0);
-  }
-}
-
-void ColumnParallelQLinearGPTQMarlinImpl::verify_loaded_weights(
-    const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!act_order_ || g_idx_is_loaded_)
-      << "g_idx is not loaded for " << prefix + "g_idx";
-  CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + "bias";
-}
-
 torch::Tensor ColumnParallelQLinearGPTQMarlinImpl::forward(
     torch::Tensor input) {
   // repack qweight and scales to marlin compatible format at the first call
@@ -257,41 +205,6 @@ RowParallelQLinearGPTQMarlinImpl::RowParallelQLinearGPTQMarlinImpl(
 
   const int64_t max_workspace_size = out_features / 64 * 16;
   workspace_ = torch::zeros({max_workspace_size}, options.dtype(torch::kInt32));
-}
-
-// load the weight from the checkpoint
-void RowParallelQLinearGPTQMarlinImpl::load_state_dict(
-    const StateDict& state_dict) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load sharded weights on dim 0
-  LOAD_SHARDED_WEIGHT(qweight, 0);
-  if (load_full_scales_) {
-    LOAD_WEIGHT(scales);
-  } else {
-    LOAD_SHARDED_WEIGHT(scales, 0);
-  }
-
-  if (act_order_) {
-    LOAD_SHARDED_WEIGHT(g_idx, 0);
-  }
-
-  if (bias_.defined()) {
-    // load bias
-    LOAD_WEIGHT(bias);
-  }
-}
-
-void RowParallelQLinearGPTQMarlinImpl::verify_loaded_weights(
-    const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!act_order_ || g_idx_is_loaded_)
-      << "g_idx is not loaded for " << prefix + "g_idx";
-  CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + "bias";
 }
 
 torch::Tensor RowParallelQLinearGPTQMarlinImpl::forward(torch::Tensor input) {

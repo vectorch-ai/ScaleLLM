@@ -8,10 +8,10 @@
 #include <memory>
 
 #include "layers/module/module.h"
+#include "layers/quantization/parallel_qlinear_gptq.h"
 #include "layers/quantization/qlinear_awq_impl.h"
 #include "layers/quantization/qlinear_awq_marlin_impl.h"
 #include "layers/quantization/qlinear_exllamav2_impl.h"
-#include "layers/quantization/qlinear_gptq_impl.h"
 #include "layers/quantization/qlinear_gptq_marlin_impl.h"
 #include "model_parallel/model_parallel.h"
 
@@ -182,13 +182,13 @@ std::shared_ptr<ParallelLinearImpl> create_column_parallel_linear(
                                           parallel_args,
                                           options);
   }
-  return std ::make_shared<ColumnParallelLinearImpl>(in_features,
-                                                     out_features,
-                                                     bias,
-                                                     gather_output,
-                                                     parallel_args,
-                                                     options,
-                                                     prefix);
+  return std::make_shared<ColumnParallelLinearImpl>(in_features,
+                                                    out_features,
+                                                    bias,
+                                                    gather_output,
+                                                    parallel_args,
+                                                    options,
+                                                    prefix);
 }
 
 std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(

@@ -180,53 +180,6 @@ ColumnParallelQLinearAWQMarlinImpl::ColumnParallelQLinearAWQMarlinImpl(
   perm_ = torch::empty({0}, options.dtype(torch::kInt32));
 }
 
-// load the weight from the checkpoint
-void ColumnParallelQLinearAWQMarlinImpl::load_state_dict(
-    const StateDict& state_dict) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load sharded weights on dim 1
-  LOAD_SHARDED_WEIGHT(qweight, 1);
-  LOAD_SHARDED_WEIGHT(qzeros, 1);
-  LOAD_SHARDED_WEIGHT(scales, 1);
-
-  // load bias if defined
-  if (bias_.defined()) {
-    // load sharded bias on dim 0
-    LOAD_SHARDED_WEIGHT(bias, 0);
-  }
-}
-
-// special load_state_dict for fused cases
-void ColumnParallelQLinearAWQMarlinImpl::load_state_dict(
-    const StateDict& state_dict,
-    const std::vector<std::string>& prefixes) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load and merge weights on dim 1
-  LOAD_FUSED_WEIGHT(qweight, 1);
-  LOAD_FUSED_WEIGHT(qzeros, 1);
-  LOAD_FUSED_WEIGHT(scales, 1);
-
-  // load bias if defined
-  if (bias_.defined()) {
-    // load and merge bias on dim 0
-    LOAD_FUSED_WEIGHT(bias, 0);
-  }
-}
-
-void ColumnParallelQLinearAWQMarlinImpl::verify_loaded_weights(
-    const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + "bias";
-}
-
 torch::Tensor ColumnParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
   // repack qweight and scales to marlin compatible format at the first call
   if (!weight_repacked_) {
@@ -300,33 +253,6 @@ RowParallelQLinearAWQMarlinImpl::RowParallelQLinearAWQMarlinImpl(
 
   g_idx_ = torch::empty({0}, options.dtype(torch::kInt32));
   perm_ = torch::empty({0}, options.dtype(torch::kInt32));
-}
-
-// load the weight from the checkpoint
-void RowParallelQLinearAWQMarlinImpl::load_state_dict(
-    const StateDict& state_dict) {
-  const auto rank = parallel_args_.rank();
-  const auto world_size = parallel_args_.world_size();
-
-  // load sharded weights on dim 0
-  LOAD_SHARDED_WEIGHT(qweight, 0);
-  LOAD_SHARDED_WEIGHT(qzeros, 0);
-  LOAD_SHARDED_WEIGHT(scales, 0);
-
-  if (bias_.defined()) {
-    // load bias
-    LOAD_WEIGHT(bias);
-  }
-}
-
-void RowParallelQLinearAWQMarlinImpl::verify_loaded_weights(
-    const std::string& prefix) const {
-  CHECK(qweight_is_loaded_)
-      << "qweight is not loaded for " << prefix + "qweight";
-  CHECK(qzeros_is_loaded_) << "qzeros is not loaded for " << prefix + "qzeros";
-  CHECK(scales_is_loaded_) << "scales is not loaded for " << prefix + "scales";
-  CHECK(!bias_.defined() || bias_is_loaded_)
-      << "bias is not loaded for " << prefix + "bias";
 }
 
 torch::Tensor RowParallelQLinearAWQMarlinImpl::forward(torch::Tensor input) {
