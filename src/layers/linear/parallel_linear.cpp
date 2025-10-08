@@ -215,37 +215,6 @@ std::shared_ptr<ParallelLinearImpl> create_row_parallel_linear(
                                                   parallel_args,
                                                   options);
 }
-
-// std::shared_ptr<MultiParallelLinearImpl> create_multi_column_parallel_linear(
-//     int64_t in_features,
-//     const std::vector<int64_t>& out_features,
-//     const std::vector<std::string>& prefixes,
-//     bool bias,
-//     bool gather_output,
-//     const QuantArgs& quant_args,
-//     const ParallelArgs& parallel_args,
-//     const torch::TensorOptions& options) {
-//   // check if the linear layers can be fused
-//   const bool fused = quant_args.can_be_fused();
-//   std::shared_ptr<MultiParallelLinearImpl> impl;
-//   if (fused) {
-//     return std::make_shared<FusedColumnParallelLinearImpl>(in_features,
-//                                                        out_features,
-//                                                        prefixes,
-//                                                        bias,
-//                                                        gather_output,
-//                                                        parallel_args,
-//                                                        options);
-//   }
-
-//   return std::make_shared<GroupedColumnParallelLinearImpl>(in_features,
-//                                                            out_features,
-//                                                            prefixes,
-//                                                            bias,
-//                                                            gather_output,
-//                                                            parallel_args,
-//                                                            options);
-// }
 }  // namespace
 
 // Linear layer with column parallelism.

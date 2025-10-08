@@ -29,7 +29,8 @@ cc_test(
   NAME
     linear_test
   SRCS
-    linear_test.cpp
+    parallel_linear_test.cpp
+    multi_parallel_linear_test.cpp
     qkv_parallel_linear_test.cpp
   DEPS
     :linear
