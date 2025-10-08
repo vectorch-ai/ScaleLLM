@@ -9,14 +9,14 @@
 #include "layers/attention/handler.h"
 #include "layers/embedding.h"
 #include "layers/linear.h"
+#include "layers/module/module.h"
+#include "layers/module/module_holder.h"
+#include "layers/module/module_list.h"
 #include "layers/normalization.h"
 #include "memory/kv_cache.h"
 #include "models/model_args.h"
 #include "models/model_registry.h"
 #include "models/parameters.h"
-#include "module/module.h"
-#include "module/module_holder.h"
-#include "module/module_list.h"
 #include "tokenizer/tokenizer_args.h"
 
 // ChatGLM model compatible with huggingface weights

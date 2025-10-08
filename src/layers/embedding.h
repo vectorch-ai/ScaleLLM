@@ -5,10 +5,10 @@
 
 #include <cstdint>
 
+#include "layers/module/module.h"
+#include "layers/module/module_holder.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/model_parallel.h"
-#include "module/module.h"
-#include "module/module_holder.h"
 
 namespace llm {
 

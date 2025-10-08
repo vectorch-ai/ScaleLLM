@@ -6,9 +6,9 @@
 #include <torch/torch.h>
 
 #include "kernels/layernorm_kernels.h"
+#include "layers/module/module.h"
+#include "layers/module/module_holder.h"
 #include "model_loader/state_dict.h"
-#include "module/module.h"
-#include "module/module_holder.h"
 
 DECLARE_bool(disable_custom_kernels);
 namespace llm {

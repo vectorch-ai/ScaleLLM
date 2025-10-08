@@ -3,10 +3,10 @@
 #include <torch/torch.h>
 
 #include "layers/attention/handler.h"
+#include "layers/module/module.h"
+#include "layers/module/module_holder.h"
 #include "memory/kv_cache.h"
 #include "models/parameters.h"
-#include "module/module.h"
-#include "module/module_holder.h"
 
 namespace llm {
 

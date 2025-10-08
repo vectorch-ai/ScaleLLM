@@ -54,6 +54,7 @@ cc_test(
     :gtest_main
 )
 
+add_subdirectory(module)
 add_subdirectory(linear)
 add_subdirectory(quantization)
 add_subdirectory(attention)

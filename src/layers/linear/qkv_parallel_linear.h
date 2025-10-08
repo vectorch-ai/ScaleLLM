@@ -3,11 +3,11 @@
 #include <glog/logging.h>
 #include <torch/torch.h>
 
+#include "layers/module/module.h"
+#include "layers/module/module_holder.h"
 #include "layers/quantization/quant_args.h"
 #include "model_loader/state_dict.h"
 #include "model_parallel/parallel_args.h"
-#include "module/module.h"
-#include "module/module_holder.h"
 #include "multi_parallel_linear.h"
 
 namespace llm {
