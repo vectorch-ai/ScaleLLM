@@ -19,21 +19,6 @@ class ParallelLinearImpl : public Module {
   ~ParallelLinearImpl() override = default;
 
   virtual torch::Tensor forward(torch::Tensor input) = 0;
-
-  // TODO: clean up the interface of load_state_dict
-  virtual void load_state_dict(const StateDict& state_dict) {
-    LOG(FATAL) << "not implemented";
-  }
-
-  virtual void verify_loaded_weights(const std::string& prefix = "") const {
-    LOG(FATAL) << "not implemented";
-  }
-
-  // special load_state_dict for fused cases
-  virtual void load_state_dict(const StateDict& /*state_dict*/,
-                               const std::vector<std::string>& /*prefixes*/) {
-    LOG(FATAL) << "not implemented";
-  }
 };
 
 // Linear layer with column parallelism.

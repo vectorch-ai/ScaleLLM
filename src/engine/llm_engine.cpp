@@ -193,7 +193,7 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
     std::vector<folly::SemiFuture<folly::Unit>> futures;
     futures.reserve(workers_.size());
     for (auto& worker : workers_) {
-      futures.push_back(worker->load_state_dict_async(state_dict));
+      futures.push_back(worker->load_async(state_dict));
     }
     // wait for all futures to complete
     auto results = folly::collectAll(futures).get();
@@ -206,7 +206,7 @@ bool LLMEngine::init_model(const std::string& model_weights_path) {
 
   // verify the weights are loaded correctly
   for (const auto& worker : workers_) {
-    worker->verify_loaded_weights();
+    worker->verify();
   }
   return true;
 }

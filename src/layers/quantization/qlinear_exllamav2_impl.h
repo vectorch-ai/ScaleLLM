@@ -5,7 +5,7 @@
 
 #include "model_loader/state_dict.h"
 #include "models/model_args.h"
-#include "qlinear_impl.h"
+#include "parallel_qlinear.h"
 
 namespace llm {
 

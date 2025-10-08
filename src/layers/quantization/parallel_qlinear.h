@@ -48,9 +48,6 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
                             const ParallelArgs& parallel_args,
                             const torch::TensorOptions& options);
 
-  // verify if the weight is loaded correctly
-  void verify_loaded_weights(const std::string& prefix = "") const override;
-
   // all subclasses must implement this function
   virtual torch::Tensor quant_matmul(const torch::Tensor& input,
                                      const torch::Tensor& qweight,
@@ -67,13 +64,6 @@ class ColumnParallelQLinearImpl : public ParallelLinearImpl {
     }
     return output;
   }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) override;
-
-  // special load_state_dict for fused cases
-  void load_state_dict(const StateDict& state_dict,
-                       const std::vector<std::string>& prefixes) override;
 
  private:
   // parameter members, must be registered
@@ -134,12 +124,6 @@ class RowParallelQLinearImpl : public ParallelLinearImpl {
     }
     return output;
   }
-
-  // load the weight from the checkpoint
-  void load_state_dict(const StateDict& state_dict) override;
-
-  // whether the weight is loaded
-  void verify_loaded_weights(const std::string& prefix = "") const override;
 
  private:
   // parameter members, must be registered

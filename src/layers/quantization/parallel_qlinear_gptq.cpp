@@ -1,4 +1,4 @@
-#include "qlinear_gptq_impl.h"
+#include "parallel_qlinear_gptq.h"
 
 #include <c10/core/DeviceType.h>
 #include <glog/logging.h>

@@ -45,8 +45,8 @@ class TestableWorker {
     }
 
     auto state_dict = create_state_dict();
-    worker_->load_state_dict(state_dict);
-    worker_->verify_loaded_weights();
+    worker_->load(state_dict);
+    worker_->verify();
     return true;
   }
 

@@ -6,16 +6,16 @@ cc_library(
     quantization
   HDRS
     pack_utils.h
-    qlinear_impl.h
-    qlinear_gptq_impl.h
+    parallel_qlinear.h
+    parallel_qlinear_gptq.h
     qlinear_exllamav2_impl.h
     qlinear_awq_impl.h
     qlinear_gptq_marlin_impl.h
     qlinear_awq_marlin_impl.h
   SRCS
     pack_utils.cpp
-    qlinear_impl.cpp
-    qlinear_gptq_impl.cpp
+    parallel_qlinear.cpp
+    parallel_qlinear_gptq.cpp
     qlinear_exllamav2_impl.cpp
     qlinear_awq_impl.cpp
     qlinear_gptq_marlin_impl.cpp
@@ -34,10 +34,11 @@ cc_library(
 
 cc_test(
   NAME
-    quantization_test
+    qlinear_test
   SRCS
     pack_utils_test.cpp
-    qlinear_impl_test.cpp
+    parallel_qlinear_test.cpp
+    parallel_qlinear_gptq_test.cpp
   DEPS
     :quantization
     :state_dict
