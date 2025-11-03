@@ -20,6 +20,7 @@ namespace llm {
 // 2. Reversing this process by converting a sequence of integers back into
 // human-readable text using the same vocabulary.
 //
+//
 // For example:
 //  ids = tokenizer.Encode("Hello, world!") # [1, 2, 3]
 //  text = tokenizer.Decode(ids) # "Hello, world!"
