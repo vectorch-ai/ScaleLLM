@@ -2,7 +2,7 @@ include(cc_library)
 include(cc_test)
 
 cc_library(
-  NAME 
+  NAME
     common
   HDRS
     macros.h
@@ -28,21 +28,8 @@ cc_library(
     glog::glog
 )
 
-cc_library(
-  TESTONLY
-  NAME
-    gtest_main
-  SRCS
-    gtest_main.cpp
-  DEPS
-    GTest::gtest
-    CUDA::toolkit
-  LINKOPTS
-    cudart
-)
-
 cc_test(
-  NAME 
+  NAME
     common_test
   SRCS
     range_test.cpp
@@ -55,4 +42,3 @@ cc_test(
     :gtest_main
     torch
 )
-

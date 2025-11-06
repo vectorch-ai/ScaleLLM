@@ -3,76 +3,83 @@
   "version": "0.0.1",
   "dependencies": [
     {
-      "name": "fmt",
-      "version>=": "11.0.2#1",
-      "default-features": false
+      "name": "glog",
+      "version>=": "0.7.1"
     },
     {
       "name": "abseil",
       "version>=": "20250127.0"
     },
     {
-      "name": "boost-asio",
-      "version>=": "1.87.0"
-    },
-    {
-      "name": "boost-algorithm",
-      "version>=": "1.87.0"
-    },
-    {
-      "name": "boost-beast",
-      "version>=": "1.87.0"
-    },
-    {
-      "name": "benchmark",
-      "version>=": "1.9.2"
-    },
-    {
-      "name": "protobuf",
-      "version>=": "5.29.3"
-    },
-    {
-      "name": "folly",
-      "version>=": "2025.03.31.00#1",
-      "default-features": false
-    },
-    {
-      "name": "gflags",
-      "version>=": "2.2.2#9"
-    },
-    {
       "name": "gtest",
       "version>=": "1.16.0#1"
-    },
-    {
-      "name": "glog",
-      "version>=": "0.7.1"
-    },
-    {
-      "name": "grpc",
-      "version>=": "1.71.0",
-      "default-features": false
-    },
-    {
-      "name": "prometheus-cpp",
-      "version>=": "1.3.0",
-      "default-features": false
-    },
-    {
-      "name": "nlohmann-json",
-      "version>=": "3.11.3#1",
-      "default-features": false
-    },
-    {
-      "name": "rapidjson",
-      "version>=": "2025-02-26",
-      "default-features": false
-    },
-    {
-      "name": "re2",
-      "version>=": "2024-07-02",
-      "default-features": false
     }
   ],
+  "features": {
+    "service": {
+      "description": "Dependencies for scalellm service",
+      "dependencies": [
+        {
+          "name": "fmt",
+          "version>=": "11.0.2#1",
+          "default-features": false
+        },
+        {
+          "name": "boost-asio",
+          "version>=": "1.87.0"
+        },
+        {
+          "name": "boost-algorithm",
+          "version>=": "1.87.0"
+        },
+        {
+          "name": "boost-beast",
+          "version>=": "1.87.0"
+        },
+        {
+          "name": "benchmark",
+          "version>=": "1.9.2"
+        },
+        {
+          "name": "protobuf",
+          "version>=": "5.29.3"
+        },
+        {
+          "name": "folly",
+          "version>=": "2025.03.31.00#1",
+          "default-features": false
+        },
+        {
+          "name": "gflags",
+          "version>=": "2.2.2#9"
+        },
+        {
+          "name": "grpc",
+          "version>=": "1.71.0",
+          "default-features": false
+        },
+        {
+          "name": "prometheus-cpp",
+          "version>=": "1.3.0",
+          "default-features": false
+        },
+        {
+          "name": "nlohmann-json",
+          "version>=": "3.11.3#1",
+          "default-features": false
+        },
+        {
+          "name": "rapidjson",
+          "version>=": "2025-02-26",
+          "default-features": false
+        },
+        {
+          "name": "re2",
+          "version>=": "2024-07-02",
+          "default-features": false
+        }
+      ]
+    }
+  },
   "builtin-baseline": "ce613c41372b23b1f51333815feb3edd87ef8a8b"
 }
