@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: ["12.6", "12.8", "12.9", "13.0"]
+        cuda: ["12.6", "12.8", "13.0"]
         gcc: ["12"]
     runs-on: [self-hosted, linux]
     steps:
