@@ -12,7 +12,7 @@ else
   arch_path='sbsa'
 fi
 
-NVSHMEM_VERSION=3.3.24
+NVSHMEM_VERSION=3.4.5
 
 function install_cuda {
   version=$1
@@ -178,10 +178,10 @@ function install_130 {
   NCCL_VERSION=v2.27.7-1
   CUSPARSELT_VERSION=0.8.0.4_cuda13
 
-  echo "Installing CUDA 12.8.1, cuDNN ${CUDNN_VERSION}, NCCL ${NCCL_VERSION}, NVSHMEM ${NVSHMEM_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
+  echo "Installing CUDA 13.0.2, cuDNN ${CUDNN_VERSION}, NCCL ${NCCL_VERSION}, NVSHMEM ${NVSHMEM_VERSION} and cuSparseLt ${CUSPARSELT_VERSION}"
 
   # install CUDA 13.0 in the same container
-  install_cuda 13.0.0 cuda_13.0.0_580.65.06_linux
+  install_cuda 13.0.2 cuda_13.0.2_580.95.05_linux
 
   # cuDNN license: https://developer.nvidia.com/cudnn/license_agreement
   install_cudnn 13 $CUDNN_VERSION

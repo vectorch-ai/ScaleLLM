@@ -7,6 +7,8 @@ option(USE_MANYLINUX "Build for manylinux" OFF)
 option(BUILD_NVBENCH "Build the nvbench binary" OFF)
 option(INSTALL_PY_MODULE "Install python module to scalellm directory" OFF)
 
+option(BUILD_KERNEL_ONLY "Build only the CUDA kernel library" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -92,6 +94,9 @@ message(STATUS "TORCH_CUDA_ARCH_LIST: ${TORCH_CUDA_ARCH_LIST}")
 
 # configure vcpkg
 # have to set CMAKE_TOOLCHAIN_FILE before first project call.
+if (NOT BUILD_KERNEL_ONLY)
+  set(VCPKG_MANIFEST_FEATURES service)
+endif()
 if (DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
       CACHE STRING "Vcpkg toolchain file")
@@ -121,38 +126,53 @@ project(
   LANGUAGES C CXX CUDA
 )
 
-find_package(CUDAToolkit REQUIRED)
-
 # setup CMake module path, defines path for include() and find_package()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-enable_language(Rust)
-find_package(Rust REQUIRED)
+# include current and third_party paths
+list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
+list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
-# include custom cmake modules
-include(static_analyzers)
-# TODO: can't use sanitizers with CUDA for now.
-# include(sanitizers)
-
-if(UNIX)
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og")
-endif()
-
-find_package(Boost REQUIRED)
-find_package(Threads REQUIRED)
-# find all dependencies from vcpkg
-find_package(fmt CONFIG REQUIRED GLOBAL)
+# find required common packages
+find_package(CUDAToolkit REQUIRED)
 find_package(glog CONFIG REQUIRED)
-find_package(gflags CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
-find_package(Protobuf CONFIG REQUIRED)
-find_package(gRPC CONFIG REQUIRED)
-find_package(re2 CONFIG REQUIRED)
-find_package(folly CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
-find_package(benchmark CONFIG REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
-find_package(prometheus-cpp CONFIG REQUIRED)
-find_package(RapidJSON CONFIG REQUIRED)
+
+# find packages for service build
+if (NOT BUILD_KERNEL_ONLY)
+  enable_language(Rust)
+  find_package(Rust REQUIRED)
+
+  # include custom cmake modules
+  include(static_analyzers)
+  # TODO: can't use sanitizers with CUDA for now.
+  # include(sanitizers)
+
+  if(UNIX)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og")
+  endif()
+
+  find_package(Boost REQUIRED)
+  find_package(Threads REQUIRED)
+  # find all dependencies from vcpkg
+  find_package(fmt CONFIG REQUIRED GLOBAL)
+  find_package(gflags CONFIG REQUIRED)
+  find_package(Protobuf CONFIG REQUIRED)
+  find_package(gRPC CONFIG REQUIRED)
+  find_package(re2 CONFIG REQUIRED)
+  find_package(folly CONFIG REQUIRED)
+  find_package(benchmark CONFIG REQUIRED)
+  find_package(nlohmann_json CONFIG REQUIRED)
+  find_package(prometheus-cpp CONFIG REQUIRED)
+  find_package(RapidJSON CONFIG REQUIRED)
+
+  find_package(NCCL REQUIRED)
+
+  find_package(Jemalloc)
+  if(Jemalloc_FOUND)
+    link_libraries(Jemalloc::jemalloc)
+  endif()
+endif()
 
 if (USE_MANYLINUX)
   # manylinux doesn't ship Development.Embed
@@ -160,14 +180,6 @@ if (USE_MANYLINUX)
 else()
   find_package(Python REQUIRED COMPONENTS Interpreter Development)
 endif()
-
-find_package(NCCL REQUIRED)
-
-find_package(Jemalloc)
-if(Jemalloc_FOUND)
-  link_libraries(Jemalloc::jemalloc)
-endif()
-
 # Important Note: Always invoke find_package for other dependencies
 # before including libtorch, as doing so afterwards may lead to
 # unexpected linker errors.
@@ -175,10 +187,10 @@ if (DEFINED ENV{LIBTORCH_ROOT})
   find_package(Torch REQUIRED HINTS "$ENV{LIBTORCH_ROOT}")
   message(STATUS "Using libtorch at $ENV{LIBTORCH_ROOT}")
 else()
-  SET(TORCH_VERSION "2.8.0")
+  SET(TORCH_VERSION "2.9.0")
   include(FetchContent)
-  if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.9)
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu129/libtorch-shared-with-deps-${TORCH_VERSION}%2Bcu129.zip")
+  if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 13.0)
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu130/libtorch-shared-with-deps-${TORCH_VERSION}%2Bcu130.zip")
   elseif (CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
     set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu128/libtorch-shared-with-deps-${TORCH_VERSION}%2Bcu128.zip")
   elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.6)
@@ -235,12 +247,10 @@ message(STATUS "CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
 include(CTest)
 include(GoogleTest)
 
-# include current path
-list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
-list(APPEND COMMON_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
-
 # add subdirectories
-add_subdirectory(proto)
-add_subdirectory(src)
 add_subdirectory(third_party)
-add_subdirectory(scalellm)
+add_subdirectory(src)
+if (NOT BUILD_KERNEL_ONLY)
+  add_subdirectory(proto)
+  add_subdirectory(scalellm)
+endif()
