@@ -6,10 +6,15 @@ cc_library(
   INCLUDES
     cutlass/include
   DEPS
-    torch # TODO: depends on CUDA instead of torch
+    CUDA::toolkit
+  LINKOPTS
+    cudart
 )
 
-add_subdirectory(sentencepiece)
 if (BUILD_NVBENCH)
   add_subdirectory(nvbench)
+endif()
+
+if (NOT BUILD_KERNEL_ONLY)
+  add_subdirectory(sentencepiece)
 endif()

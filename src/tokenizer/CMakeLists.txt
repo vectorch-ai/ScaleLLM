@@ -2,15 +2,15 @@ include(cc_library)
 include(cc_test)
 
 cc_library(
-  NAME 
+  NAME
     tokenizer
-  HDRS 
+  HDRS
     tokenizer_args.h
     tokenizer.h
     tiktoken_tokenizer.h
     sentencepiece_tokenizer.h
     hf_tokenizer.h
-  SRCS 
+  SRCS
     tiktoken_tokenizer.cpp
     sentencepiece_tokenizer.cpp
     hf_tokenizer.cpp
@@ -30,10 +30,12 @@ cc_test(
   SRCS
     sentencepiece_tokenizer_test.cpp
     tiktoken_tokenizer_test.cpp
+    hf_tokenizer_test.cpp
   DEPS
     :tokenizer
     :gtest_main
-  DATA 
+  DATA
     data/tokenizer.model
     data/test.tiktoken
+    data/tokenizer.json
 )

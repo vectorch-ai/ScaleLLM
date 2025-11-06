@@ -1,6 +1,10 @@
 // A simple C wrapper of safetensors and tokenizers library
 // adapted from https://github.com/huggingface/safetensors/tree/c_bindings
 
+// #[repr(C)]: use C language’s data layout
+// extern "C": tells Rust to use C ABI conventions
+// #[no_mangle]: prevent Rust from renaming the function
+
 // Import the needed libraries
 use core::ffi::c_uint;
 use core::str::Utf8Error;
@@ -415,7 +419,6 @@ unsafe fn _get_tensor(
     Ok(())
 }
 
-
 // A simple C wrapper of hf-tokenzier library
 // ported from https://github.com/mlc-ai/tokenizers-cpp
 
@@ -433,12 +436,8 @@ pub struct TokenizerWrapper {
 impl TokenizerWrapper {
     pub fn encode(&mut self, text: &str, add_special_tokens: bool) {
         // Encode the text and store the ids
-        self.encode_ids = Vec::from(
-            self.tokenizer
-                .encode(text, add_special_tokens)
-                .unwrap()
-                .get_ids(),
-        );
+        let encoded = self.tokenizer.encode(text, add_special_tokens).unwrap();
+        self.encode_ids = encoded.get_ids().to_vec();
     }
 
     pub fn decode(&mut self, ids: Vec<u32>, skip_special_tokens: bool) {
@@ -453,11 +452,8 @@ impl TokenizerWrapper {
 
 #[no_mangle]
 extern "C" fn tokenizer_from_file(path: *const c_char) -> *mut TokenizerWrapper {
-    let c_str = unsafe { CStr::from_ptr(path) };
-    let path_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => panic!("Failed to convert C string to Rust string"),
-    };
+    let c_str = unsafe { CStr::from_ptr(path) }; // borrowed C string
+    let path_str = c_str.to_str().unwrap(); // convert CString to &str
 
     let boxed = Box::new(TokenizerWrapper {
         tokenizer: Tokenizer::from_file(path_str).unwrap().into(),
@@ -466,6 +462,7 @@ extern "C" fn tokenizer_from_file(path: *const c_char) -> *mut TokenizerWrapper 
         id_to_token_result: String::new(),
     });
 
+    // Convert into a raw pointer: *mut TokenizerWrapper
     Box::into_raw(boxed)
 }
 
@@ -527,11 +524,7 @@ extern "C" fn tokenizer_free(wrapper: *mut TokenizerWrapper) {
 }
 
 #[no_mangle]
-extern "C" fn tokenizer_token_to_id(
-    handle: *mut TokenizerWrapper,
-    token: *const u8,
-    len: usize
-) {
+extern "C" fn tokenizer_token_to_id(handle: *mut TokenizerWrapper, token: *const u8, len: usize) {
     unsafe {
         let token: &str = std::str::from_utf8(std::slice::from_raw_parts(token, len)).unwrap();
         let id = (*handle).tokenizer.token_to_id(token);
@@ -564,8 +557,7 @@ extern "C" fn tokenizer_id_to_token(
 #[no_mangle]
 extern "C" fn tokenizer_get_vocab_size(
     handle: *mut TokenizerWrapper,
-    with_added_tokens: bool) -> usize {
-    unsafe {
-        (*handle).get_vocab_size(with_added_tokens)
-    }
+    with_added_tokens: bool,
+) -> usize {
+    unsafe { (*handle).get_vocab_size(with_added_tokens) }
 }

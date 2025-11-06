@@ -53,6 +53,7 @@ cc_library(
   DEPS
     :attention.template
     glog::glog
+    torch
 )
 
 cc_test(
