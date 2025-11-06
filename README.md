@@ -37,6 +37,7 @@ ScaleLLM
 ScaleLLM is currently undergoing active development. We are fully committed to consistently enhancing its efficiency while also incorporating additional features. Feel free to explore our [**_Roadmap_**](https://github.com/vectorch-ai/ScaleLLM/issues/84) for more details.
 
 ## News:
+* [08/2025] - [xLLM](https://github.com/jd-opensource/xllm?tab=readme-ov-file#7-acknowledgment) high-performance inference engine builds runtime execution based on ScaleLLM.
 * [01/2025] - Optimized inhouse Attention kernels
 * [06/2024] - ScaleLLM is now available on [PyPI](https://pypi.org/project/scalellm/). You can install it using `pip install scalellm`.
 * [03/2024] - [Advanced features](#advanced-features) support for ✅ [CUDA graph](#cuda-graph), ✅ [prefix cache](#prefix-cache), ✅ [chunked prefill](#chunked-prefill) and ✅ [speculative decoding](#speculative-decoding).
